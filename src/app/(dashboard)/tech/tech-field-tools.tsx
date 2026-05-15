@@ -7,7 +7,7 @@ import { computeBookingPricing } from '@/lib/booking-pricing';
 import { safePriceCentsForDisplay } from '@/lib/safe-price-resolver';
 import { UI_VEHICLE_CLASSES, UI_VEHICLE_LABELS, type UiVehicleClass } from '@/lib/vehicle-pricing';
 import type { DealConfig } from '@/lib/site-config';
-import type { SiteDataOfferCard, PublicSiteDataPayload } from '@/lib/public-site-data';
+import { formatOfferDiscountLabel, offerHasDiscount, type SiteDataOfferCard, type PublicSiteDataPayload } from '@/lib/public-site-data';
 
 type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
@@ -163,8 +163,12 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
     }
     const sel = offers.find((o) => o.id === offerId);
     const claimed =
-      sel && sel.active && sel.discountPercent > 0
-        ? { percent: sel.discountPercent, stackableWithSitePromo: sel.stackable }
+      sel && sel.active && offerHasDiscount(sel)
+        ? {
+            percent: sel.discountKind === 'percent' ? sel.discountPercent : 0,
+            fixedCents: sel.discountKind === 'fixed' ? (sel.discountFixedCents ?? 0) : 0,
+            stackableWithSitePromo: sel.stackable,
+          }
         : null;
     const bd = computeBookingPricing({
       vehicleLineCents,
@@ -464,10 +468,10 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
             >
               <option value=''>No offer</option>
               {offers
-                .filter((o) => o.active)
+                .filter((o) => o.active && !o.archived && offerHasDiscount(o))
                 .map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.title} ({o.discountPercent}% off)
+                    {o.title} ({formatOfferDiscountLabel(o) || '—'})
                   </option>
                 ))}
             </select>

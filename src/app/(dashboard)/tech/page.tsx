@@ -1,9 +1,26 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { TechPremiumShell, type TechAnalytics, type TechJob } from '@/components/tech/tech-premium-shell';
+import {
+  TechPremiumShell,
+  type TechAnalytics,
+  type TechJob,
+  type TechLeadRow,
+  type TechPerformanceMetrics,
+} from '@/components/tech/tech-premium-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+
+function addOnSlugCounts(bookingAddOns: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!Array.isArray(bookingAddOns)) return out;
+  for (const item of bookingAddOns) {
+    const s = String(item ?? '').trim().toLowerCase();
+    if (!s) continue;
+    out[s] = (out[s] ?? 0) + 1;
+  }
+  return out;
+}
 
 export default async function TechnicianDashboardPage() {
   const session = await getSessionWithProfile();
@@ -13,17 +30,31 @@ export default async function TechnicianDashboardPage() {
   let revenueTodayCents = 0;
   let revenueWeekCents = 0;
   const analytics: TechAnalytics = { completedCount: 0, avgJobMinutes: null, revenueMonthCents: 0 };
+  let assignedLeads: TechLeadRow[] = [];
+  let poolLeads: TechLeadRow[] = [];
+  const performance: TechPerformanceMetrics = {
+    jobsCompleted: 0,
+    avgCompletionMinutes: null,
+    longestJobs: [],
+    revenueTodayFromPayments: 0,
+    revenueWeekFromPayments: 0,
+    serviceFrequency: [],
+    topAddOns: [],
+  };
+  let goalLabel: string | null = null;
+  let goalTargetCents: number | null = null;
 
   const techName = session.profile?.full_name?.trim() || session.user?.email?.split('@')[0] || 'Technician';
   const roleLabel = session.profile?.role ?? null;
 
   if (supabase && session.user) {
+    const uid = session.user.id;
     const selectCols =
       'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at';
     const { data } = await supabase
       .from('appointments')
       .select(selectCols)
-      .eq('assigned_technician_id', session.user.id)
+      .eq('assigned_technician_id', uid)
       .in('status', ['assigned', 'confirmed', 'in_progress'])
       .order('scheduled_start', { ascending: true });
     const rawRows = (data ?? []) as Record<string, unknown>[];
@@ -73,19 +104,30 @@ export default async function TechnicianDashboardPage() {
 
     const { data: done } = await supabase
       .from('appointments')
-      .select('base_price_cents, job_completed_at, updated_at')
-      .eq('assigned_technician_id', session.user.id)
+      .select('id, base_price_cents, job_completed_at, updated_at, booking_add_ons, service_slug')
+      .eq('assigned_technician_id', uid)
       .eq('status', 'completed');
     const now = new Date();
     const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const sow = sod - 7 * 86400000;
     const monthAgo = Date.now() - 30 * 86400000;
+    const completedIds: string[] = [];
+
+    const serviceCount: Record<string, number> = {};
+    const addonAgg: Record<string, number> = {};
 
     for (const row of done ?? []) {
       const r = row as Record<string, unknown>;
+      const id = String(r.id ?? '');
+      completedIds.push(id);
       const completed = r.job_completed_at != null ? String(r.job_completed_at) : String(r.updated_at ?? '');
       const t = new Date(completed).getTime();
       const cents = typeof r.base_price_cents === 'number' ? r.base_price_cents : 0;
+      const slug = typeof r.service_slug === 'string' ? r.service_slug : '';
+      if (slug) serviceCount[slug] = (serviceCount[slug] ?? 0) + 1;
+      const merged = addOnSlugCounts(r.booking_add_ons);
+      for (const [k, v] of Object.entries(merged)) addonAgg[k] = (addonAgg[k] ?? 0) + v;
+
       if (!Number.isNaN(t)) {
         if (t >= sod) revenueTodayCents += cents;
         if (t >= sow) revenueWeekCents += cents;
@@ -96,25 +138,120 @@ export default async function TechnicianDashboardPage() {
       }
     }
 
+    performance.jobsCompleted = completedIds.length;
+    performance.serviceFrequency = Object.entries(serviceCount)
+      .map(([slug, count]) => ({ slug, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+    performance.topAddOns = Object.entries(addonAgg)
+      .map(([slug, count]) => ({ slug, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    if (completedIds.length > 0) {
+      const { data: pays } = await supabase
+        .from('payments')
+        .select('amount_cents, status, created_at, appointment_id')
+        .in('appointment_id', completedIds)
+        .eq('status', 'succeeded');
+      for (const p of pays ?? []) {
+        const row = p as { amount_cents?: number; created_at?: string };
+        const c = typeof row.amount_cents === 'number' ? row.amount_cents : 0;
+        const t = new Date(String(row.created_at ?? '')).getTime();
+        if (!Number.isNaN(t)) {
+          performance.revenueWeekFromPayments += t >= sow ? c : 0;
+          performance.revenueTodayFromPayments += t >= sod ? c : 0;
+        }
+      }
+    }
+
     const monthIso = new Date(monthAgo).toISOString();
     const { data: timers } = await supabase
       .from('tech_job_timers')
-      .select('duration_seconds')
-      .eq('technician_id', session.user.id)
+      .select('duration_seconds, appointment_id, started_at')
+      .eq('technician_id', uid)
       .gte('started_at', monthIso)
       .not('duration_seconds', 'is', null)
-      .limit(80);
+      .limit(120);
     const secs = (timers ?? [])
       .map((t) => (t as { duration_seconds?: number }).duration_seconds)
       .filter((n): n is number => typeof n === 'number' && n > 0);
     if (secs.length > 0) {
       const avgSec = secs.reduce((a, b) => a + b, 0) / secs.length;
       analytics.avgJobMinutes = Math.round(avgSec / 60);
+      performance.avgCompletionMinutes = Math.round(avgSec / 60);
     }
+
+    const { data: longest } = await supabase
+      .from('tech_job_timers')
+      .select('duration_seconds, appointment_id, started_at')
+      .eq('technician_id', uid)
+      .not('duration_seconds', 'is', null)
+      .order('duration_seconds', { ascending: false })
+      .limit(5);
+    performance.longestJobs =
+      longest?.map((r) => {
+        const row = r as { duration_seconds?: number; appointment_id?: string | null };
+        return {
+          durationMinutes: Math.round((row.duration_seconds ?? 0) / 60),
+          appointmentId: row.appointment_id != null ? String(row.appointment_id) : null,
+        };
+      }) ?? [];
+
+    const { data: goalRow } = await supabase
+      .from('business_goals')
+      .select('target_cents, label')
+      .eq('goal_key', 'tech_revenue_week')
+      .maybeSingle();
+    if (goalRow && typeof (goalRow as { target_cents?: number }).target_cents === 'number') {
+      goalTargetCents = (goalRow as { target_cents: number }).target_cents;
+      goalLabel = typeof (goalRow as { label?: string }).label === 'string' ? (goalRow as { label: string }).label : 'Weekly revenue goal';
+    }
+
+    const { data: leadsMine } = await supabase
+      .from('leads')
+      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
+      .eq('assigned_technician_id', uid)
+      .order('updated_at', { ascending: false })
+      .limit(40);
+
+    assignedLeads =
+      leadsMine?.map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        name: String(r.name ?? ''),
+        phone: r.phone != null ? String(r.phone) : null,
+        email: r.email != null ? String(r.email) : null,
+        status: String(r.status ?? 'new'),
+        contact_attempts: typeof r.contact_attempts === 'number' ? r.contact_attempts : 0,
+        notes: r.notes != null ? String(r.notes) : null,
+        created_at: String(r.created_at ?? ''),
+        in_pool: Boolean(r.in_pool),
+      })) ?? [];
+
+    const { data: pool } = await supabase
+      .from('leads')
+      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
+      .eq('in_pool', true)
+      .is('assigned_technician_id', null)
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    poolLeads =
+      pool?.map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        name: String(r.name ?? ''),
+        phone: r.phone != null ? String(r.phone) : null,
+        email: r.email != null ? String(r.email) : null,
+        status: String(r.status ?? 'new'),
+        contact_attempts: typeof r.contact_attempts === 'number' ? r.contact_attempts : 0,
+        notes: r.notes != null ? String(r.notes) : null,
+        created_at: String(r.created_at ?? ''),
+        in_pool: Boolean(r.in_pool),
+      })) ?? [];
   }
 
   return (
-    <DashboardShell title='Technician workspace' subtitle='Premium field command — jobs, revenue, and tools in one place.' role='technician'>
+    <DashboardShell title='Technician workspace' subtitle='Dispatch-grade command center — jobs, leads, analytics, field tools.' role='technician'>
       <TechPremiumShell
         techName={techName}
         roleLabel={roleLabel}
@@ -122,6 +259,11 @@ export default async function TechnicianDashboardPage() {
         revenueTodayCents={revenueTodayCents}
         revenueWeekCents={revenueWeekCents}
         analytics={analytics}
+        assignedLeads={assignedLeads}
+        poolLeads={poolLeads}
+        performance={performance}
+        goalLabel={goalLabel}
+        goalTargetCents={goalTargetCents}
       />
     </DashboardShell>
   );

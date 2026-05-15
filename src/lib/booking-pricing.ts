@@ -16,7 +16,15 @@ export type BookingPricingBreakdown = {
   depositPercent: number;
 };
 
-type OfferSnap = { percent: number; stackableWithSitePromo: boolean } | null;
+type OfferSnap = {
+  percent: number;
+  fixedCents: number;
+  stackableWithSitePromo: boolean;
+} | null;
+
+function offerSnapApplies(o: NonNullable<OfferSnap>): boolean {
+  return o.percent > 0 || o.fixedCents > 0;
+}
 
 /**
  * Single source of truth for booking totals (UI + /api/bookings).
@@ -26,7 +34,7 @@ export function computeBookingPricing(params: {
   vehicleLineCents: number[];
   addOnCentsSum: number;
   deals: DealConfig;
-  /** Active CMS offer from ?offer= — takes precedence for base promo */
+  /** Active CMS offer from ?offer= */
   claimedOffer: OfferSnap;
   depositPercent?: number;
 }): BookingPricingBreakdown | { kind: 'invalid' } {
@@ -56,8 +64,12 @@ export function computeBookingPricing(params: {
   let offerDiscountCents = 0;
   let websitePromoDiscountCents = 0;
 
-  if (offer && offer.percent > 0) {
-    offerDiscountCents = Math.round(prePromoCents * (offer.percent / 100));
+  if (offer && offerSnapApplies(offer)) {
+    if (offer.fixedCents > 0) {
+      offerDiscountCents = Math.min(prePromoCents, offer.fixedCents);
+    } else if (offer.percent > 0) {
+      offerDiscountCents = Math.round(prePromoCents * (offer.percent / 100));
+    }
     const afterOffer = prePromoCents - offerDiscountCents;
     if (offer.stackableWithSitePromo && sitePct > 0) {
       websitePromoDiscountCents = Math.round(afterOffer * (sitePct / 100));

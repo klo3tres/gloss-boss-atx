@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import {
   computeMultiCarExample,
   defaultFeaturedShowcaseSlides,
-  defaultMarketingOffers,
   getOfflineMarketingPackages,
+  isOfferEligiblePublicSiteData,
   mapCatalogToServicePackages,
+  mapDbRowToSiteDataOfferCard,
   parseDealConfig,
   parseFeaturedShowcase,
   type PublicSiteDataPayload,
@@ -22,7 +23,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     schemaWarnings: extraWarnings,
     services: getOfflineMarketingPackages(),
     deals: parseDealConfig(null),
-    offers: defaultMarketingOffers(),
+    offers: [],
     multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
     featuredShowcase: defaultFeaturedShowcaseSlides(),
     googleReviewUrl: '',
@@ -42,7 +43,7 @@ export async function GET() {
         schemaWarnings: ['Supabase is not configured (missing URL/keys).'],
         services: getOfflineMarketingPackages(),
         deals: parseDealConfig(null),
-        offers: defaultMarketingOffers(),
+        offers: [],
         multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
         featuredShowcase: defaultFeaturedShowcaseSlides(),
         googleReviewUrl: '',
@@ -113,26 +114,13 @@ export async function GET() {
 
     const deals = parseDealConfig(dealRow?.value ?? null);
 
-    let offers: SiteDataOfferCard[] = offerRows.map((r: Record<string, unknown>) => {
-      const title = (typeof r.title === 'string' && r.title.trim()) || (typeof r.label === 'string' && r.label.trim()) || 'Offer';
-      const desc = typeof r.description === 'string' ? r.description : '';
-      const slugRaw = typeof r.slug === 'string' ? r.slug.trim() : '';
-      const pct =
-        typeof r.discount_percent === 'number' && !Number.isNaN(r.discount_percent)
-          ? r.discount_percent
-          : Number(r.percent_off ?? 0);
-      return {
-        id: String(r.id),
-        slug: slugRaw || undefined,
-        title,
-        description: desc,
-        discountPercent: pct,
-        active: Boolean(r.active),
-        sortOrder: Number(r.sort_order ?? 0),
-        stackable: typeof r.stackable === 'boolean' ? r.stackable : true,
-      };
-    });
-    if (offers.length === 0) offers = defaultMarketingOffers();
+    const now = new Date();
+    const mapped = offerRows
+      .map((r) => mapDbRowToSiteDataOfferCard(r))
+      .filter((o): o is SiteDataOfferCard => Boolean(o));
+    const offers: SiteDataOfferCard[] = mapped
+      .filter((o) => isOfferEligiblePublicSiteData(o, now))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
 
     const multiCar = packages.length ? computeMultiCarExample(packages, deals) : null;
 

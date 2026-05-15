@@ -19,7 +19,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const [apptsRes, vehiclesRes, notesRes] = await Promise.all([
     admin
       .from('appointments')
-      .select('id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at')
+      .select(
+        'id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, guest_name',
+      )
       .eq('customer_id', id)
       .order('scheduled_start', { ascending: false })
       .limit(80),
@@ -36,9 +38,27 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     base_price_cents: number | null;
     deposit_amount_cents?: number | null;
     created_at?: string;
+    assigned_technician_id?: string | null;
+    vehicle_description?: string | null;
+    guest_name?: string | null;
   }[];
 
   const apptIds = apptRows.map((a) => a.id);
+  const techIds = [...new Set(apptRows.map((a) => a.assigned_technician_id).filter(Boolean))] as string[];
+  const { data: techProfiles } =
+    techIds.length > 0
+      ? await admin.from('profiles').select('id, full_name').in('id', techIds)
+      : { data: [] as { id: string; full_name: string | null }[] };
+  const techName = new Map((techProfiles ?? []).map((p) => [p.id, p.full_name ?? p.id.slice(0, 8)]));
+
+  const paymentsQ =
+    apptIds.length > 0
+      ? await admin.from('payments').select('amount_cents, status, created_at, appointment_id').in('appointment_id', apptIds)
+      : { data: [] as { amount_cents: number; status: string; created_at: string; appointment_id: string }[] };
+
+  const paySucceeded = (paymentsQ.data ?? []).filter((p) => p.status === 'succeeded');
+  const paymentsTotalCents = paySucceeded.reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
+
   const now = new Date();
   const upcoming = apptRows.filter((a) => new Date(a.scheduled_start) >= now);
   const past = apptRows.filter((a) => new Date(a.scheduled_start) < now);
@@ -96,7 +116,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
           <h2 className='text-sm font-bold uppercase text-gold-soft'>Lifetime stats</h2>
           <p className='mt-2 text-3xl font-black text-white'>${(totalSpent / 100).toFixed(0)}</p>
-          <p className='text-xs text-zinc-500'>Total booked (past appointments) · {apptRows.length} booking(s)</p>
+          <p className='text-xs text-zinc-500'>Booked job total (past appointments) · {apptRows.length} booking(s)</p>
+          <p className='mt-2 text-sm text-zinc-400'>
+            Stripe (succeeded payments): <span className='font-semibold text-emerald-300'>${(paymentsTotalCents / 100).toFixed(2)}</span>
+          </p>
+          {paySucceeded.length === 0 ? <p className='mt-1 text-xs text-zinc-600'>No succeeded payments linked to these appointments yet.</p> : null}
         </section>
       </div>
 
@@ -142,6 +166,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {upcoming.map((a) => (
             <li key={a.id} className='rounded border border-white/10 px-3 py-2'>
               {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()} · {a.status}
+              {a.assigned_technician_id ? (
+                <span className='ml-2 text-xs text-gold-soft'>Tech: {techName.get(a.assigned_technician_id) ?? a.assigned_technician_id.slice(0, 8)}</span>
+              ) : (
+                <span className='ml-2 text-xs text-zinc-600'>Unassigned</span>
+              )}
               {typeof a.deposit_amount_cents === 'number' ? (
                 <span className='ml-2 text-xs text-zinc-500'>Deposit ${(a.deposit_amount_cents / 100).toFixed(2)}</span>
               ) : null}
@@ -157,6 +186,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {past.map((a) => (
             <li key={a.id} className='rounded border border-white/10 px-3 py-2'>
               {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()} · {a.status}
+              {a.assigned_technician_id ? (
+                <span className='ml-2 text-xs text-gold-soft'>Tech: {techName.get(a.assigned_technician_id) ?? a.assigned_technician_id.slice(0, 8)}</span>
+              ) : null}
               {typeof a.base_price_cents === 'number' ? (
                 <span className='ml-2 text-xs text-emerald-300/90'>${(a.base_price_cents / 100).toFixed(0)}</span>
               ) : null}

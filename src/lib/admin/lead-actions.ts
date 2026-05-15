@@ -23,6 +23,7 @@ export async function createLeadAction(formData: FormData) {
     notes: String(formData.get('notes') ?? '').trim() || null,
     lead_source: String(formData.get('lead_source') ?? 'field').trim() || 'field',
     status: 'new',
+    in_pool: true,
     created_by: session.user.id,
   });
 

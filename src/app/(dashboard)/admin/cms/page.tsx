@@ -9,7 +9,8 @@ import { CmsDocumentDropzone } from '@/components/admin/cms-document-dropzone';
 import { CmsDocumentDeleteButton } from '@/components/admin/cms-document-delete-button';
 import { CmsDocumentManualForm } from '@/components/admin/cms-document-manual-form';
 import { CmsBookingAvailabilityClient } from '@/components/admin/cms-booking-availability-client';
-import { CmsOffersSectionClient } from '@/components/admin/cms-offers-section-client';
+import { PromotionsAdminClient } from '@/components/admin/promotions-admin-client';
+import { parsePromotionAdminRow } from '@/lib/promotion-admin';
 import { CmsGoogleReviewClient } from '@/components/admin/cms-google-review-client';
 import { BrandingUploadDropzone } from '@/components/admin/branding-upload-dropzone';
 import { GalleryLocalUpload } from '@/components/admin/gallery-local-upload';
@@ -59,28 +60,15 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   const homepageRes = await supabase.from('homepage_content').select('*').order('key', { ascending: true });
 
   type GalleryRow = AdminGalleryRow;
-  type OfferRow = { id: string; label: string; percent_off: number | null; active: boolean; sort_order: number; stackable: boolean };
   type HomeRow = { id: string; key: string; value: unknown; updated_at: string };
 
   const galleryRows: GalleryRow[] = galleryRes.error ? [] : mapAdminGalleryRows(galleryRes.data ?? []);
   const gErr = galleryRes.error && galleryRows.length === 0 ? galleryRes.error : null;
 
-  const offerRows: OfferRow[] = !offersRes.error
-    ? (offersRes.data ?? []).map((r: Record<string, unknown>) => ({
-        id: String(r.id),
-        label: String(r.label ?? r.title ?? 'Offer'),
-        percent_off:
-          typeof r.percent_off === 'number'
-            ? r.percent_off
-            : typeof r.discount_percent === 'number'
-              ? r.discount_percent
-              : null,
-        active: Boolean(r.active),
-        sort_order: Number(r.sort_order ?? 0),
-        stackable: typeof r.stackable === 'boolean' ? r.stackable : true,
-      }))
+  const promotionRows = !offersRes.error
+    ? (offersRes.data ?? []).map((r) => parsePromotionAdminRow(r as Record<string, unknown>))
     : [];
-  const oErr = offersRes.error && offerRows.length === 0 ? offersRes.error : null;
+  const oErr = offersRes.error && promotionRows.length === 0 ? offersRes.error : null;
 
   const homeRows: HomeRow[] = !homepageRes.error
     ? ((homepageRes.data ?? []) as HomeRow[])
@@ -153,14 +141,6 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   } catch {
     googleReviewUrl = '';
   }
-
-  const offerEditorRows = offerRows.map((r) => ({
-    id: r.id,
-    label: r.label,
-    percent_off: r.percent_off ?? 0,
-    active: r.active,
-    stackable: r.stackable,
-  }));
 
   const galleryAdminItems = galleryRows.map((r) => ({
     id: r.id,
@@ -331,7 +311,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       </section>
 
       {oErr ? <p className='mb-4 text-sm text-red-300'>{oErr.message}</p> : null}
-      <CmsOffersSectionClient initialRows={offerEditorRows} />
+      <PromotionsAdminClient initialRows={promotionRows} />
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>Homepage content keys</h2>

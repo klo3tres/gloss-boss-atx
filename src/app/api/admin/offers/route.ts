@@ -5,12 +5,38 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
 
+function revalidateOfferSurfaces() {
+  revalidatePath('/admin/cms');
+  revalidatePath('/admin/pricing');
+  revalidatePath('/services');
+  revalidatePath('/book');
+  revalidatePath('/');
+}
+
+function normalizeSlug(raw: string): string {
+  const t = raw.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  return t.slice(0, 80);
+}
+
 type Body = {
   id?: string;
-  label: string;
-  percent_off: number;
-  active: boolean;
+  archive?: boolean;
+  /** Alias for archive (soft deactivate) */
+  delete?: boolean;
+  label?: string;
+  title?: string;
+  description?: string;
+  slug?: string;
+  percent_off?: number;
+  discount_fixed_cents?: number | null;
+  active?: boolean;
   stackable?: boolean;
+  sort_order?: number;
+  show_on_homepage?: boolean;
+  show_on_services?: boolean;
+  show_on_booking?: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -32,30 +58,113 @@ export async function POST(request: Request) {
   }
 
   const id = String(body.id ?? '').trim();
-  const label = String(body.label ?? '').trim().slice(0, 120);
-  const percent = Math.min(100, Math.max(0, Number(body.percent_off ?? 0)));
-  const active = Boolean(body.active);
-  const stackable = body.stackable !== false;
 
-  if (!label) {
+  if (id && (body.archive === true || body.delete === true)) {
+    const payloads = [
+      { archived: true, active: false },
+      { active: false },
+    ];
+    let lastErr: string | null = null;
+    for (const p of payloads) {
+      const { error } = await admin.from('offers').update(p).eq('id', id);
+      if (!error) {
+        revalidateOfferSurfaces();
+        return NextResponse.json({ ok: true });
+      }
+      lastErr = error.message;
+    }
+    return NextResponse.json({ ok: false, error: lastErr ?? 'Archive failed' }, { status: 400 });
+  }
+
+  const title = String(body.title ?? body.label ?? '').trim().slice(0, 200);
+  const description = String(body.description ?? '').slice(0, 2000);
+  const slugIn = typeof body.slug === 'string' ? normalizeSlug(body.slug) : '';
+  const slug = slugIn || undefined;
+
+  let discount_fixed: number | null = null;
+  if (body.discount_fixed_cents != null) {
+    const n = Number(body.discount_fixed_cents);
+    if (Number.isFinite(n) && n > 0) discount_fixed = Math.round(Math.min(n, 500_000_00));
+  }
+
+  let percent = Math.min(100, Math.max(0, Number(body.percent_off ?? 0)));
+  if (discount_fixed != null && discount_fixed > 0) {
+    percent = 0;
+  } else {
+    discount_fixed = null;
+  }
+
+  const active = typeof body.active === 'boolean' ? body.active : true;
+  const stackable = typeof body.stackable === 'boolean' ? body.stackable : true;
+  const sort_order =
+    typeof body.sort_order === 'number' && Number.isFinite(body.sort_order) ? Math.round(body.sort_order) : undefined;
+
+  const show_on_homepage = typeof body.show_on_homepage === 'boolean' ? body.show_on_homepage : true;
+  const show_on_services = typeof body.show_on_services === 'boolean' ? body.show_on_services : true;
+  const show_on_booking = typeof body.show_on_booking === 'boolean' ? body.show_on_booking : true;
+
+  const starts_at =
+    typeof body.starts_at === 'string' && body.starts_at.trim() ? body.starts_at.trim() : null;
+  const ends_at = typeof body.ends_at === 'string' && body.ends_at.trim() ? body.ends_at.trim() : null;
+
+  if (!title) {
     return NextResponse.json({ ok: false, error: 'Offer title required' }, { status: 400 });
+  }
+
+  if (percent <= 0 && (discount_fixed == null || discount_fixed <= 0)) {
+    return NextResponse.json({ ok: false, error: 'Set a percent off or fixed discount amount' }, { status: 400 });
   }
 
   try {
     if (id) {
+      const row: Record<string, unknown> = {
+        label: title,
+        title,
+        description,
+        percent_off: percent,
+        discount_percent: percent,
+        discount_fixed_cents: discount_fixed,
+        active,
+        archived: false,
+        stackable,
+        show_on_homepage,
+        show_on_services,
+        show_on_booking,
+        starts_at,
+        ends_at,
+      };
+      if (slug !== undefined) row.slug = slug;
+      if (sort_order !== undefined) row.sort_order = sort_order;
+
       const payloads = [
-        { label, percent_off: percent, discount_percent: percent, active, title: label, stackable },
-        { label, percent_off: percent, discount_percent: percent, active, stackable },
-        { label, percent_off: percent, active, stackable },
+        row,
+        {
+          ...row,
+          discount_fixed_cents: undefined,
+          show_on_homepage: undefined,
+          show_on_services: undefined,
+          show_on_booking: undefined,
+          starts_at: undefined,
+          ends_at: undefined,
+          archived: undefined,
+        },
+        {
+          label: title,
+          title,
+          description,
+          percent_off: percent,
+          discount_percent: percent,
+          active,
+          stackable,
+        },
       ];
+
       let lastErr: string | null = null;
       for (const p of payloads) {
-        const { error } = await admin.from('offers').update(p).eq('id', id);
+        const clean = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+        const { error } = await admin.from('offers').update(clean).eq('id', id);
         if (!error) {
-          revalidatePath('/admin/cms');
-          revalidatePath('/services');
-          revalidatePath('/book');
-          revalidatePath('/');
+          revalidateOfferSurfaces();
           return NextResponse.json({ ok: true });
         }
         lastErr = error.message;
@@ -64,23 +173,56 @@ export async function POST(request: Request) {
     }
 
     const maxQ = await admin.from('offers').select('sort_order').order('sort_order', { ascending: false }).limit(1);
-    const sort_order =
-      !maxQ.error && maxQ.data?.[0] && typeof (maxQ.data[0] as { sort_order?: number }).sort_order === 'number'
+    const nextSort =
+      sort_order ??
+      (!maxQ.error && maxQ.data?.[0] && typeof (maxQ.data[0] as { sort_order?: number }).sort_order === 'number'
         ? Number((maxQ.data[0] as { sort_order: number }).sort_order) + 10
-        : 10;
+        : 10);
 
-    const inserts = [
-      { label, title: label, percent_off: percent, discount_percent: percent, active, sort_order, stackable },
-      { label, percent_off: percent, discount_percent: percent, active, sort_order },
-      { label, percent_off: percent, active, sort_order },
+    const insertBase: Record<string, unknown> = {
+      label: title,
+      title,
+      description,
+      percent_off: percent,
+      discount_percent: percent,
+      discount_fixed_cents: discount_fixed,
+      active,
+      archived: false,
+      stackable,
+      sort_order: nextSort,
+      show_on_homepage,
+      show_on_services,
+      show_on_booking,
+      starts_at,
+      ends_at,
+    };
+    if (slug) insertBase.slug = slug;
+
+    const insertAttempts = [
+      insertBase,
+      {
+        label: title,
+        title,
+        description,
+        percent_off: percent,
+        discount_percent: percent,
+        active,
+        archived: false,
+        stackable,
+        sort_order: nextSort,
+      },
+      {
+        label: title,
+        percent_off: percent,
+        active,
+        sort_order: nextSort,
+      },
     ];
-    for (const p of inserts) {
-      const { error } = await admin.from('offers').insert(p);
+
+    for (const ins of insertAttempts) {
+      const { error } = await admin.from('offers').insert(ins);
       if (!error) {
-        revalidatePath('/admin/cms');
-        revalidatePath('/services');
-        revalidatePath('/book');
-        revalidatePath('/');
+        revalidateOfferSurfaces();
         return NextResponse.json({ ok: true });
       }
     }

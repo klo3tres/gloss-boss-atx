@@ -8,11 +8,21 @@ export type SiteDataOfferCard = {
   slug?: string;
   title: string;
   description: string;
+  /** 0–100 when `discountKind` is `percent` */
   discountPercent: number;
+  /** Whole cents when `discountKind` is `fixed`; otherwise null */
+  discountFixedCents: number | null;
+  discountKind: 'percent' | 'fixed';
   active: boolean;
+  archived: boolean;
   sortOrder: number;
-  /** When true (default), offer % stacks with sitewide promo after offer is applied. */
+  /** When true (default), offer stacks with sitewide promo after offer is applied. */
   stackable: boolean;
+  showOnHomepage: boolean;
+  showOnServices: boolean;
+  showOnBooking: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
 };
 
 export type SiteDataMultiCar = {
@@ -116,19 +126,76 @@ export function parseDealConfig(raw: unknown): DealConfig {
   return inert ? { ...defaultDealConfig } : parsed;
 }
 
-/** Marketing offer cards when `offers` table is empty or unavailable. */
-export function defaultMarketingOffers(): SiteDataOfferCard[] {
-  return [
-    {
-      id: 'default-website-promo',
-      title: 'Website Booking Offer',
-      description: 'Book online and save on your first detail.',
-      discountPercent: defaultDealConfig.websitePromoPercent,
-      active: defaultDealConfig.websitePromoActive,
-      sortOrder: 0,
-      stackable: true,
-    },
-  ];
+/** True when the offer still has a positive discount in its configured form. */
+export function offerHasDiscount(card: SiteDataOfferCard): boolean {
+  return card.discountKind === 'fixed'
+    ? (card.discountFixedCents ?? 0) > 0
+    : card.discountPercent > 0;
+}
+
+export function isOfferWithinSchedule(card: SiteDataOfferCard, at: Date = new Date()): boolean {
+  if (card.startsAt) {
+    const s = new Date(card.startsAt);
+    if (!Number.isNaN(s.getTime()) && at < s) return false;
+  }
+  if (card.endsAt) {
+    const e = new Date(card.endsAt);
+    if (!Number.isNaN(e.getTime()) && at > e) return false;
+  }
+  return true;
+}
+
+/**
+ * Rows the public site-data API may expose: active, not archived, in schedule, with a real discount.
+ * Placement flags are not checked here — each page filters display.
+ */
+export function isOfferEligiblePublicSiteData(card: SiteDataOfferCard, at: Date = new Date()): boolean {
+  return card.active && !card.archived && offerHasDiscount(card) && isOfferWithinSchedule(card, at);
+}
+
+export function mapDbRowToSiteDataOfferCard(r: Record<string, unknown>): SiteDataOfferCard | null {
+  const id = typeof r.id === 'string' ? r.id : null;
+  if (!id) return null;
+  const title =
+    (typeof r.title === 'string' && r.title.trim()) || (typeof r.label === 'string' && r.label.trim()) || 'Offer';
+  const desc = typeof r.description === 'string' ? r.description : '';
+  const slugRaw = typeof r.slug === 'string' ? r.slug.trim() : '';
+  const fixedRaw = r.discount_fixed_cents;
+  const discountFixedCents =
+    typeof fixedRaw === 'number' && !Number.isNaN(fixedRaw) && fixedRaw > 0 ? Math.round(fixedRaw) : null;
+  const pctRaw =
+    typeof r.discount_percent === 'number' && !Number.isNaN(r.discount_percent)
+      ? r.discount_percent
+      : Number(r.percent_off ?? 0);
+  const pct = !Number.isFinite(pctRaw) ? 0 : Math.min(100, Math.max(0, pctRaw));
+  const discountKind: 'percent' | 'fixed' = discountFixedCents != null ? 'fixed' : 'percent';
+
+  return {
+    id,
+    slug: slugRaw || undefined,
+    title,
+    description: desc,
+    discountPercent: discountKind === 'percent' ? pct : 0,
+    discountFixedCents,
+    discountKind,
+    active: Boolean(r.active),
+    archived: Boolean(r.archived),
+    sortOrder: Number(r.sort_order ?? 0),
+    stackable: typeof r.stackable === 'boolean' ? r.stackable : true,
+    showOnHomepage: typeof r.show_on_homepage === 'boolean' ? r.show_on_homepage : true,
+    showOnServices: typeof r.show_on_services === 'boolean' ? r.show_on_services : true,
+    showOnBooking: typeof r.show_on_booking === 'boolean' ? r.show_on_booking : true,
+    startsAt: typeof r.starts_at === 'string' ? r.starts_at : null,
+    endsAt: typeof r.ends_at === 'string' ? r.ends_at : null,
+  };
+}
+
+export function formatOfferDiscountLabel(card: SiteDataOfferCard): string {
+  if (card.discountKind === 'fixed' && (card.discountFixedCents ?? 0) > 0) {
+    return `$${(card.discountFixedCents! / 100).toFixed(0)} off`;
+  }
+  if (card.discountPercent > 0) return `${card.discountPercent}% off`;
+  return '';
 }
 
 const DEFAULT_FEATURED_SLIDES: SiteDataFeaturedSlide[] = [

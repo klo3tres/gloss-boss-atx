@@ -1,37 +1,57 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { LeadsAdminClient, type AssignmentEventRow } from '@/components/admin/leads-admin-client';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminLeadsPage() {
-  let rows: Record<string, unknown>[] = [];
-  let err: string | null = null;
   const admin = tryCreateAdminSupabase();
-  if (admin) {
-    const { data, error } = await admin.from('leads').select('*').order('created_at', { ascending: false }).limit(200);
-    if (error) err = error.message;
-    else rows = (data ?? []) as Record<string, unknown>[];
+  if (!admin) {
+    return (
+      <DashboardShell title='Leads' subtitle='Field and web leads — mini CRM.' role='admin'>
+        <p className='text-amber-200'>Service role unavailable — cannot load leads.</p>
+      </DashboardShell>
+    );
+  }
+
+  const [leadsRes, techRes, evRes] = await Promise.all([
+    admin.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
+    admin.from('profiles').select('id, full_name, email, role').eq('role', 'technician').order('full_name', { ascending: true }),
+    admin.from('assignment_events').select('id, action, technician_id, previous_technician_id, actor_id, created_at, note, entity_id').eq('entity_type', 'lead').order('created_at', { ascending: false }).limit(600),
+  ]);
+
+  const rows = (leadsRes.data ?? []) as Record<string, unknown>[];
+  const technicians = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
+  const eventsByLead: Record<string, AssignmentEventRow[]> = {};
+  for (const e of evRes.data ?? []) {
+    const row = e as AssignmentEventRow & { entity_id?: string };
+    const lid = String(row.entity_id ?? '');
+    if (!lid) continue;
+    if (!eventsByLead[lid]) eventsByLead[lid] = [];
+    if (eventsByLead[lid].length < 25) {
+      eventsByLead[lid].push({
+        id: String(row.id),
+        action: String(row.action),
+        technician_id: row.technician_id != null ? String(row.technician_id) : null,
+        previous_technician_id: row.previous_technician_id != null ? String(row.previous_technician_id) : null,
+        actor_id: row.actor_id != null ? String(row.actor_id) : null,
+        created_at: String(row.created_at),
+        note: row.note != null ? String(row.note) : null,
+      });
+    }
   }
 
   return (
-    <DashboardShell title='Leads' subtitle='Field and web leads — mini CRM.' role='admin'>
+    <DashboardShell title='Leads' subtitle='Dispatch assignments, pool, and conversion — wired assignment history.' role='admin'>
       <Link href='/admin/super' className='mb-4 inline-block text-xs font-bold uppercase text-gold-soft underline'>
         ← Command center
       </Link>
-      {err ? <p className='mb-4 text-sm text-amber-200'>Run migration 000016: {err}</p> : null}
-      <ul className='space-y-2'>
-        {rows.map((r) => (
-          <li key={String(r.id)} className='rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm'>
-            <p className='font-bold text-white'>{String(r.name)}</p>
-            <p className='text-xs text-zinc-500'>
-              {String(r.status)} · {String(r.lead_source ?? '')} · {r.created_at ? new Date(String(r.created_at)).toLocaleString() : ''}
-            </p>
-            {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
-            {r.notes ? <p className='text-zinc-500'>{String(r.notes)}</p> : null}
-          </li>
-        ))}
-      </ul>
+      {leadsRes.error ? (
+        <p className='mb-4 text-sm text-amber-200'>Leads query: {leadsRes.error.message}. Run migration 000023 if columns are missing.</p>
+      ) : null}
+      {techRes.error ? <p className='mb-4 text-xs text-amber-200'>Technician list: {techRes.error.message}</p> : null}
+      <LeadsAdminClient leads={rows} technicians={technicians} eventsByLead={eventsByLead} />
     </DashboardShell>
   );
 }

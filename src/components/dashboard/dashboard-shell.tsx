@@ -43,6 +43,7 @@ const superLinks = [
 
 const techLinks = [
   { href: '/tech', label: 'Home' },
+  { href: '/tech/workflow', label: 'Walk-in workflow' },
   { href: '/tech#field-invoice', label: 'Field tools' },
   { href: '/tech/resources', label: 'SOPs' },
 ];

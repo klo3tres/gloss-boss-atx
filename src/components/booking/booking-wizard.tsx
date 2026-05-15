@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { getLocalFallbackCatalog, mergeServicesWithPricesStable, servicesHaveQuotesForBooking } from '@/lib/catalog-fallback';
-import type { SiteDataOfferCard } from '@/lib/public-site-data';
+import { isOfferWithinSchedule, offerHasDiscount, type SiteDataOfferCard } from '@/lib/public-site-data';
 import {
   bookingAvailabilityHint,
   DEFAULT_BOOKING_AVAILABILITY,
@@ -390,12 +390,18 @@ export function BookingWizard() {
   const claimedOfferSnap = useMemo(() => {
     if (!offerFromUrl) return null;
     const o = offers.find(
-      (x) => x.active && (x.id === offerFromUrl || (Boolean(x.slug) && x.slug === offerFromUrl)),
+      (x) =>
+        x.active &&
+        !x.archived &&
+        offerHasDiscount(x) &&
+        isOfferWithinSchedule(x) &&
+        (x.id === offerFromUrl || (Boolean(x.slug) && x.slug === offerFromUrl)),
     );
-    if (!o || o.discountPercent <= 0) return null;
+    if (!o) return null;
     return {
       id: o.id,
-      percent: o.discountPercent,
+      percent: o.discountKind === 'percent' ? o.discountPercent : 0,
+      fixedCents: o.discountKind === 'fixed' ? (o.discountFixedCents ?? 0) : 0,
       stackableWithSitePromo: o.stackable !== false,
     };
   }, [offerFromUrl, offers]);
@@ -437,7 +443,11 @@ export function BookingWizard() {
       addOnCentsSum,
       deals,
       claimedOffer: claimedOfferSnap
-        ? { percent: claimedOfferSnap.percent, stackableWithSitePromo: claimedOfferSnap.stackableWithSitePromo }
+        ? {
+            percent: claimedOfferSnap.percent,
+            fixedCents: claimedOfferSnap.fixedCents,
+            stackableWithSitePromo: claimedOfferSnap.stackableWithSitePromo,
+          }
         : null,
       depositPercent: 30,
     });
@@ -595,7 +605,11 @@ export function BookingWizard() {
       ) : null}
       {claimedOfferSnap ? (
         <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
-          Offer applied: {claimedOfferSnap.percent}% off eligible services & add-ons after any multi-car discount
+          Offer applied:{' '}
+          {claimedOfferSnap.fixedCents > 0
+            ? `$${(claimedOfferSnap.fixedCents / 100).toFixed(2)} off`
+            : `${claimedOfferSnap.percent}% off`}{' '}
+          eligible services & add-ons after any multi-car discount
           {claimedOfferSnap.stackableWithSitePromo ? ' (stacks with sitewide promo when configured).' : '.'}
         </p>
       ) : offerFromUrl ? (
@@ -883,7 +897,7 @@ export function BookingWizard() {
             {priceSummary?.kind === 'ok' ? (
               <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
                 <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
-                  <span>Vehicle services</span>
+                  <span>Original — vehicle services</span>
                   <span className='text-zinc-300'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>
                 </p>
                 {priceSummary.lines.map((l, i) => (
@@ -911,19 +925,19 @@ export function BookingWizard() {
                   </p>
                 ) : null}
                 <p className='flex justify-between text-[11px] text-zinc-500'>
-                  <span>Eligible subtotal</span>
+                  <span>Subtotal before offers & sitewide (after multi-car)</span>
                   <span className='tabular-nums'>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
                 </p>
-                {priceSummary.breakdown.websitePromoDiscountCents > 0 ? (
-                  <p className='flex justify-between text-xs text-emerald-300'>
-                    <span>Sitewide promo</span>
-                    <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
-                  </p>
-                ) : null}
                 {priceSummary.breakdown.offerDiscountCents > 0 ? (
                   <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Offer discount</span>
                     <span className='tabular-nums'>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                {priceSummary.breakdown.websitePromoDiscountCents > 0 ? (
+                  <p className='flex justify-between text-xs text-emerald-300'>
+                    <span>Sitewide promo</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
                 <div className='border-t border-white/10 pt-3'>

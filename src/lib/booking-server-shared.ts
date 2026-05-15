@@ -40,38 +40,68 @@ export async function loadDealConfigForBooking(admin: SupabaseClient) {
 
 export const OFFER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export type ClaimedOfferRow = { percent: number; stackableWithSitePromo: boolean; offerId: string };
+export type ClaimedOfferRow = {
+  percent: number;
+  fixedCents: number;
+  stackableWithSitePromo: boolean;
+  offerId: string;
+};
+
+const OFFER_SELECT_FULL =
+  'id, percent_off, discount_percent, active, stackable, archived, discount_fixed_cents, starts_at, ends_at';
+
+function parseClaimedOfferRow(data: Record<string, unknown> | null): ClaimedOfferRow | null {
+  if (!data || !data.active) return null;
+  if (data.archived === true) return null;
+  const id = typeof data.id === 'string' ? data.id : null;
+  if (!id) return null;
+
+  const now = new Date();
+  if (typeof data.starts_at === 'string') {
+    const s = new Date(data.starts_at);
+    if (!Number.isNaN(s.getTime()) && now < s) return null;
+  }
+  if (typeof data.ends_at === 'string') {
+    const e = new Date(data.ends_at);
+    if (!Number.isNaN(e.getTime()) && now > e) return null;
+  }
+
+  const fixedRaw = data.discount_fixed_cents;
+  const fixedCents =
+    typeof fixedRaw === 'number' && !Number.isNaN(fixedRaw) && fixedRaw > 0 ? Math.round(fixedRaw) : 0;
+  const pct = Number(
+    (data as { percent_off?: number; discount_percent?: number }).percent_off ??
+      (data as { discount_percent?: number }).discount_percent ??
+      0,
+  );
+  const pctClamped = Math.min(100, Math.max(0, Number.isFinite(pct) ? pct : 0));
+  const useFixed = fixedCents > 0;
+  if (!useFixed && pctClamped <= 0) return null;
+
+  const stack = (data as { stackable?: boolean }).stackable;
+  return {
+    percent: useFixed ? 0 : pctClamped,
+    fixedCents: useFixed ? fixedCents : 0,
+    stackableWithSitePromo: stack !== false,
+    offerId: id,
+  };
+}
 
 export async function loadClaimedOffer(admin: SupabaseClient, offerRef: string | undefined): Promise<ClaimedOfferRow | null> {
   const ref = String(offerRef ?? '').trim();
   if (!ref) return null;
 
-  const parseRow = (data: Record<string, unknown> | null) => {
-    if (!data || !data.active) return null;
-    const id = typeof data.id === 'string' ? data.id : null;
-    if (!id) return null;
-    const pct = Number(
-      (data as { percent_off?: number; discount_percent?: number }).percent_off ??
-        (data as { discount_percent?: number }).discount_percent ??
-        0,
-    );
-    if (!Number.isFinite(pct) || pct <= 0) return null;
-    const stack = (data as { stackable?: boolean }).stackable;
-    return { percent: pct, stackableWithSitePromo: stack !== false, offerId: id };
-  };
-
-  const byId = async (sel: string) =>
-    admin.from('offers').select(sel).eq('id', ref).maybeSingle();
+  const byId = async (sel: string) => admin.from('offers').select(sel).eq('id', ref).maybeSingle();
 
   const bySlug = async (sel: string, slug: string) =>
     admin.from('offers').select(sel).eq('slug', slug.toLowerCase()).maybeSingle();
 
   if (OFFER_UUID_RE.test(ref)) {
-    let { data, error } = await byId('id, percent_off, discount_percent, active, stackable');
+    let { data, error } = await byId(OFFER_SELECT_FULL);
     if (error && isSchemaDriftError(error.message)) {
-      ({ data, error } = await byId('id, percent_off, discount_percent, active'));
+      ({ data, error } = await byId('id, percent_off, discount_percent, active, stackable'));
       if (!error && data) {
-        return parseRow({ ...(data as unknown as Record<string, unknown>), stackable: true });
+        return parseClaimedOfferRow({ ...(data as unknown as Record<string, unknown>), archived: false });
       }
       return null;
     }
@@ -79,14 +109,14 @@ export async function loadClaimedOffer(admin: SupabaseClient, offerRef: string |
       console.warn('[booking-shared] loadClaimedOffer id', error.message);
       return null;
     }
-    return parseRow(data as Record<string, unknown> | null);
+    return parseClaimedOfferRow(data as Record<string, unknown> | null);
   }
 
-  let { data, error } = await bySlug('id, percent_off, discount_percent, active, stackable', ref);
+  let { data, error } = await bySlug(OFFER_SELECT_FULL, ref);
   if (error && isSchemaDriftError(error.message)) {
-    ({ data, error } = await bySlug('id, percent_off, discount_percent, active', ref));
+    ({ data, error } = await bySlug('id, percent_off, discount_percent, active, stackable', ref));
     if (!error && data) {
-      return parseRow({ ...(data as unknown as Record<string, unknown>), stackable: true });
+      return parseClaimedOfferRow({ ...(data as unknown as Record<string, unknown>), archived: false });
     }
     return null;
   }
@@ -94,7 +124,7 @@ export async function loadClaimedOffer(admin: SupabaseClient, offerRef: string |
     console.warn('[booking-shared] loadClaimedOffer slug', error.message);
     return null;
   }
-  return parseRow(data as Record<string, unknown> | null);
+  return parseClaimedOfferRow(data as Record<string, unknown> | null);
 }
 
 export async function sumSelectedAddonCents(admin: SupabaseClient, selections: string[]): Promise<number> {
@@ -327,7 +357,13 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
     vehicleLineCents: pricedLines.vehicleLineCents,
     addOnCentsSum,
     deals,
-    claimedOffer: claimed ? { percent: claimed.percent, stackableWithSitePromo: claimed.stackableWithSitePromo } : null,
+    claimedOffer: claimed
+      ? {
+          percent: claimed.percent,
+          fixedCents: claimed.fixedCents,
+          stackableWithSitePromo: claimed.stackableWithSitePromo,
+        }
+      : null,
     depositPercent: 30,
   });
 

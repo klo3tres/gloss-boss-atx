@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
-import { defaultMarketingOffers, type PublicSiteDataPayload, type SiteDataMultiCar, type SiteDataOfferCard } from "@/lib/public-site-data";
+import {
+  formatOfferDiscountLabel,
+  isOfferEligiblePublicSiteData,
+  type PublicSiteDataPayload,
+  type SiteDataMultiCar,
+  type SiteDataOfferCard,
+} from "@/lib/public-site-data";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const emptyDeals: DealConfig = {
@@ -76,8 +82,11 @@ export default function ServicesPage() {
   }, [multiCar, loaded]);
 
   const activeOfferCards = useMemo(() => {
-    const src = offers.length > 0 ? offers : loaded ? defaultMarketingOffers() : [];
-    return [...src].filter((o) => o.active).sort((a, b) => a.sortOrder - b.sortOrder);
+    if (!loaded) return [];
+    const now = new Date();
+    return [...offers]
+      .filter((o) => o.showOnServices && isOfferEligiblePublicSiteData(o, now))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
   }, [offers, loaded]);
 
   const showPromosBand =
@@ -119,8 +128,10 @@ export default function ServicesPage() {
                       <p className='text-[10px] uppercase tracking-[0.2em] text-gold-soft'>Promotion</p>
                       <h2 className='mt-1.5 text-base font-black uppercase leading-tight text-white sm:text-lg'>{o.title}</h2>
                       {o.description ? <p className='mt-1.5 line-clamp-2 text-xs text-zinc-400'>{o.description}</p> : null}
-                      {o.discountPercent > 0 ? (
-                        <p className='mt-2 text-2xl font-black text-gold-soft drop-shadow-[0_0_10px_rgba(212,166,77,0.35)] sm:text-[26px]'>{o.discountPercent}% off</p>
+                      {formatOfferDiscountLabel(o) ? (
+                        <p className='mt-2 text-2xl font-black text-gold-soft drop-shadow-[0_0_10px_rgba(212,166,77,0.35)] sm:text-[26px]'>
+                          {formatOfferDiscountLabel(o)}
+                        </p>
                       ) : null}
                       {o.stackable === false ? <p className='mt-2 text-[10px] text-amber-200/90'>Not stackable with other promos.</p> : null}
                     </div>

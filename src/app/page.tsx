@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Gauge, ShieldCheck, Sparkles, X, Zap } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
@@ -17,7 +17,13 @@ import {
   type ServicePackage,
 } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
-import type { PublicSiteDataPayload, SiteDataOfferCard, SiteDataMultiCar } from '@/lib/public-site-data';
+import {
+  formatOfferDiscountLabel,
+  isOfferEligiblePublicSiteData,
+  type PublicSiteDataPayload,
+  type SiteDataOfferCard,
+  type SiteDataMultiCar,
+} from '@/lib/public-site-data';
 
 const emptyDeals: DealConfig = {
   websitePromoPercent: 0,
@@ -97,7 +103,13 @@ export default function HomePage() {
   }, []);
 
   const fmtMoney = (cents: number) => `$${(cents / 100).toFixed(0)}`;
-  const activeOffers = [...offers].filter((o) => o.active).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const activeOffers = useMemo(() => {
+    const now = new Date();
+    return [...offers]
+      .filter((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+  }, [offers]);
 
   const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
 
@@ -281,12 +293,12 @@ export default function HomePage() {
                     {activeOffers.map((o) => (
                       <li key={o.id} className='rounded-lg border border-gold/15 bg-black/50 px-3 py-2 text-sm text-zinc-200'>
                         <span className='font-semibold text-gold-soft'>{o.title}</span>
-                        {o.discountPercent > 0 ? <span className='text-zinc-400'> — {o.discountPercent}%</span> : null}
+                        {formatOfferDiscountLabel(o) ? <span className='text-zinc-400'> — {formatOfferDiscountLabel(o)}</span> : null}
                         {o.description ? <p className='mt-1 text-xs text-zinc-500'>{o.description}</p> : null}
                         {o.active ? (
                           <p className='mt-2'>
                             <Link
-                              href={`/book?offer=${encodeURIComponent(o.id)}`}
+                              href={`/book?offer=${encodeURIComponent(o.slug?.trim() || o.id)}`}
                               className='text-[10px] font-bold uppercase tracking-wider text-emerald-300 underline'
                             >
                               Book with this offer
