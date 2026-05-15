@@ -6,8 +6,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Gauge, ShieldCheck, Sparkles, X, Zap } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
-import { MotionFade } from '@/components/marketing/motion-fade';
 import { HomeGalleryStrip } from '@/components/marketing/home-gallery-strip';
+import { MotionFade } from '@/components/marketing/motion-fade';
+import { OffersMarketingBand } from '@/components/marketing/offers-marketing-band';
 import { SectionErrorBoundary } from '@/components/site/section-error-boundary';
 import {
   defaultDealConfig,
@@ -18,7 +19,6 @@ import {
 } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import {
-  formatOfferDiscountLabel,
   isOfferEligiblePublicSiteData,
   type PublicSiteDataPayload,
   type SiteDataOfferCard,
@@ -104,11 +104,9 @@ export default function HomePage() {
 
   const fmtMoney = (cents: number) => `$${(cents / 100).toFixed(0)}`;
 
-  const activeOffers = useMemo(() => {
+  const hasHomeOffers = useMemo(() => {
     const now = new Date();
-    return [...offers]
-      .filter((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+    return offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now));
   }, [offers]);
 
   const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
@@ -288,27 +286,7 @@ export default function HomePage() {
                 ) : siteLoaded && services.length > 0 ? (
                   <p className='mt-3 text-xs text-zinc-400'>Publish services and prices to show a live multi-car example.</p>
                 ) : null}
-                {activeOffers.length > 0 ? (
-                  <ul className='mt-4 max-h-40 space-y-2 overflow-y-auto pr-1 text-left' aria-label='Active promotional offers'>
-                    {activeOffers.map((o) => (
-                      <li key={o.id} className='rounded-lg border border-gold/15 bg-black/50 px-3 py-2 text-sm text-zinc-200'>
-                        <span className='font-semibold text-gold-soft'>{o.title}</span>
-                        {formatOfferDiscountLabel(o) ? <span className='text-zinc-400'> — {formatOfferDiscountLabel(o)}</span> : null}
-                        {o.description ? <p className='mt-1 text-xs text-zinc-500'>{o.description}</p> : null}
-                        {o.active ? (
-                          <p className='mt-2'>
-                            <Link
-                              href={`/book?offer=${encodeURIComponent(o.slug?.trim() || o.id)}`}
-                              className='text-[10px] font-bold uppercase tracking-wider text-emerald-300 underline'
-                            >
-                              Book with this offer
-                            </Link>
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
+                {hasHomeOffers ? <OffersMarketingBand offers={offers} placement='homepage' heading='' className='mt-4' /> : null}
               </article>
             </div>
           </MotionFade>

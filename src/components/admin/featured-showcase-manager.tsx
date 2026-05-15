@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
-type Slide = { id: string; label: string; image: string };
+type Slide = { id: string; label: string; image: string; published: boolean };
 
 function parseSlides(json: string): Slide[] {
   try {
@@ -18,10 +18,12 @@ function parseSlides(json: string): Slide[] {
         const r = s as Record<string, unknown>;
         const image = typeof r.image === 'string' ? r.image.trim() : '';
         if (!image) return null;
+        const published = r.published === false ? false : true;
         return {
           id: String(r.id ?? `slide-${i + 1}`),
           label: typeof r.label === 'string' ? r.label : `Transformation ${i + 1}`,
           image,
+          published,
         };
       })
       .filter((x): x is Slide => x != null);
@@ -70,7 +72,12 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
           setMsg(j.error ?? 'Upload failed');
           return;
         }
-        const next: Slide = { id: `slide-${Date.now()}`, label: file.name.replace(/\.[^.]+$/, ''), image: j.url };
+        const next: Slide = {
+          id: `slide-${Date.now()}`,
+          label: 'New transformation',
+          image: j.url,
+          published: true,
+        };
         syncJson([...slides, next]);
         setMsg('Image added to showcase.');
         router.refresh();
@@ -178,13 +185,25 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
                 <span className='absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[10px] text-white'>#{idx + 1}</span>
               </div>
               <div className='p-2'>
+                <label className='flex items-center gap-2 text-[10px] text-zinc-400'>
+                  <input
+                    type='checkbox'
+                    checked={s.published}
+                    onChange={(e) => {
+                      const next = slides.map((x) => (x.id === s.id ? { ...x, published: e.target.checked } : x));
+                      syncJson(next);
+                    }}
+                  />
+                  Published on site
+                </label>
                 <input
                   value={s.label}
                   onChange={(e) => {
                     const next = slides.map((x) => (x.id === s.id ? { ...x, label: e.target.value } : x));
                     syncJson(next);
                   }}
-                  className='w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                  className='mt-2 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                  placeholder='Short caption (shown on homepage)'
                 />
                 <button
                   type='button'

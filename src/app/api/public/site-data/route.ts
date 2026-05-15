@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   computeMultiCarExample,
+  dedupePublicOffers,
   defaultFeaturedShowcaseSlides,
   getOfflineMarketingPackages,
   isOfferEligiblePublicSiteData,
@@ -26,6 +27,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     offers: [],
     multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
     featuredShowcase: defaultFeaturedShowcaseSlides(),
+    featuredShowcaseFromCms: false,
     googleReviewUrl: '',
   };
 }
@@ -46,6 +48,7 @@ export async function GET() {
         offers: [],
         multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
         featuredShowcase: defaultFeaturedShowcaseSlides(),
+        featuredShowcaseFromCms: false,
         googleReviewUrl: '',
       };
       return NextResponse.json(payload);
@@ -118,14 +121,17 @@ export async function GET() {
     const mapped = offerRows
       .map((r) => mapDbRowToSiteDataOfferCard(r))
       .filter((o): o is SiteDataOfferCard => Boolean(o));
-    const offers: SiteDataOfferCard[] = mapped
-      .filter((o) => isOfferEligiblePublicSiteData(o, now))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+    const offers: SiteDataOfferCard[] = dedupePublicOffers(
+      mapped
+        .filter((o) => isOfferEligiblePublicSiteData(o, now))
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)),
+    );
 
     const multiCar = packages.length ? computeMultiCarExample(packages, deals) : null;
 
-    const cmsFeatured = fErr ? [] : parseFeaturedShowcase(featuredRes.data?.value ?? null);
-    const featuredShowcase = cmsFeatured.length > 0 ? cmsFeatured : defaultFeaturedShowcaseSlides();
+    const cmsFeatured = fErr ? [] : parseFeaturedShowcase(featuredRes.data?.value ?? null, { publicSite: true });
+    const featuredShowcaseFromCms = cmsFeatured.length > 0;
+    const featuredShowcase = featuredShowcaseFromCms ? cmsFeatured : defaultFeaturedShowcaseSlides();
 
     let googleReviewUrl = '';
     const rawRv = reviewRes.data?.value;
@@ -142,6 +148,7 @@ export async function GET() {
       offers,
       multiCar,
       featuredShowcase,
+      featuredShowcaseFromCms,
       googleReviewUrl,
     };
 

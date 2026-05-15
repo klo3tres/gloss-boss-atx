@@ -16,7 +16,103 @@ export function extractMissingColumnKey(message: string): string | null {
   if (m3?.[1]) return m3[1];
   const m4 = /undefined column:?\s*([\w]+)/i.exec(message);
   if (m4?.[1]) return m4[1];
+  const m5 = /null value in column "?([\w]+)"?/i.exec(message);
+  if (m5?.[1]) return m5[1];
   return null;
+}
+
+/** True when stripping unknown columns or null-in-optional-column may fix the insert. */
+export function isRetriableAppointmentInsertError(message: string): boolean {
+  if (!message) return false;
+  if (isSchemaDriftError(message)) return true;
+  if (/foreign key constraint|violates foreign key constraint|\b23503\b/i.test(message)) return true;
+  if (/null value in column/i.test(message)) return true;
+  if (/invalid input syntax for type json/i.test(message)) return true;
+  return false;
+}
+
+export function isDefinitelyFatalAppointmentInsertError(message: string): boolean {
+  return /duplicate key value|unique constraint|\b23505\b/i.test(message);
+}
+
+function logAppointmentInsertFailure(
+  attempt: number,
+  err: { message?: string; code?: string; details?: string; hint?: string } | null | undefined,
+  row: Record<string, unknown>,
+) {
+  console.error('[booking-shared] appointments insert attempt failed', {
+    attempt,
+    rowKeys: Object.keys(row),
+    message: err?.message,
+    code: err?.code,
+    details: err?.details,
+    hint: err?.hint,
+  });
+}
+
+async function insertAppointmentSelectingTokens(
+  admin: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<{
+  data: { id: string; access_token: string } | null;
+  error: { message: string; code?: string; details?: string; hint?: string } | null;
+}> {
+  const run = async (sel: string) => admin.from('appointments').insert(row).select(sel).single();
+
+  let res = await run('id, access_token');
+  if (!res.error && res.data) {
+    return { data: res.data as unknown as { id: string; access_token: string }, error: null };
+  }
+  const msg0 = res.error?.message ?? '';
+  if (
+    res.error &&
+    /access_token|Could not find the 'access_token' column|undefined column:?\s*access_token/i.test(msg0)
+  ) {
+    const res2 = await run('id');
+    if (res2.error || !res2.data) {
+      return { data: null, error: res2.error ?? res.error };
+    }
+    const row2 = res2.data as unknown as { id?: unknown };
+    if (typeof row2.id !== 'string') {
+      return { data: null, error: res2.error ?? res.error };
+    }
+    const id = row2.id;
+    const tokRow = await admin.from('appointments').select('access_token').eq('id', id).maybeSingle();
+    if (tokRow.error || !tokRow.data || tokRow.data.access_token == null) {
+      console.error('[booking-shared] read access_token after insert failed', id, tokRow.error?.message);
+      return { data: null, error: tokRow.error ?? res2.error ?? res.error };
+    }
+    return { data: { id, access_token: String(tokRow.data.access_token) }, error: null };
+  }
+  return { data: null, error: res.error };
+}
+
+function shrinkRowToMinimalAppointment(full: Record<string, unknown>): Record<string, unknown> {
+  const o: Record<string, unknown> = {};
+  for (const k of APPOINTMENT_CORE_KEYS) {
+    if (k in full && full[k] !== undefined) o[k] = full[k];
+  }
+  return o;
+}
+
+function stripForeignKeyColumnsFromRow(message: string, row: Record<string, unknown>): boolean {
+  let changed = false;
+  if (
+    (/Key \(offer_id\)|table ["']offers["']/i.test(message) || (/offer_id/i.test(message) && /foreign key/i.test(message))) &&
+    'offer_id' in row
+  ) {
+    delete row.offer_id;
+    changed = true;
+  }
+  if (
+    (/Key \(customer_id\)|table ["']customers["']/i.test(message) ||
+      (/customer_id/i.test(message) && /foreign key/i.test(message))) &&
+    'customer_id' in row
+  ) {
+    delete row.customer_id;
+    changed = true;
+  }
+  return changed;
 }
 
 export async function loadBookingAvailabilityRules(admin: SupabaseClient) {
@@ -196,9 +292,12 @@ const APPOINTMENT_STRIP_ORDER: string[] = [
   'booking_vehicles',
   'notes',
   'customer_id',
+  'payment_id',
+  'technician_id',
   'deposit_percent',
   'assigned_technician_id',
   'stripe_checkout_session_id',
+  'stripe_payment_intent_id',
   'created_by',
   'stripe_checkout_kind',
   'field_invoice_paid_at',
@@ -212,17 +311,24 @@ export async function insertAppointmentResilient(
   payload: Record<string, unknown>,
 ): Promise<{ data: { id: string; access_token: string } | null; error: string | null }> {
   let row: Record<string, unknown> = { ...payload };
-  const maxAttempts = 48;
+  const maxAttempts = 40;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await admin.from('appointments').insert(row).select('id, access_token').single();
-    if (!res.error && res.data) {
-      return { data: res.data as { id: string; access_token: string }, error: null };
+    const { data, error } = await insertAppointmentSelectingTokens(admin, row);
+    if (data && !error) return { data, error: null };
+
+    const errObj = error;
+    const msg = errObj?.message ?? '';
+    logAppointmentInsertFailure(attempt, errObj, row);
+
+    if (msg && isDefinitelyFatalAppointmentInsertError(msg)) {
+      return { data: null, error: msg };
     }
-    const msg = res.error?.message ?? '';
-    if (!isSchemaDriftError(msg)) {
-      return { data: null, error: msg || 'Could not create booking' };
+    if (msg && !isRetriableAppointmentInsertError(msg)) {
+      return { data: null, error: msg };
     }
+
+    if (stripForeignKeyColumnsFromRow(msg, row)) continue;
 
     const badCol = extractMissingColumnKey(msg);
     if (badCol && badCol in row && !APPOINTMENT_CORE_KEYS.has(badCol)) {
@@ -246,7 +352,43 @@ export async function insertAppointmentResilient(
     break;
   }
 
-  console.error('[booking-shared] insertAppointmentResilient exhausted retries', payload);
+  const minimal = shrinkRowToMinimalAppointment(payload);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const { data, error } = await insertAppointmentSelectingTokens(admin, minimal);
+    if (data && !error) return { data, error: null };
+
+    const errObj = error;
+    const msg = errObj?.message ?? '';
+    logAppointmentInsertFailure(100 + attempt, errObj, minimal);
+
+    if (msg && isDefinitelyFatalAppointmentInsertError(msg)) {
+      return { data: null, error: msg };
+    }
+    if (msg && !isRetriableAppointmentInsertError(msg)) {
+      return { data: null, error: msg };
+    }
+
+    if (stripForeignKeyColumnsFromRow(msg, minimal)) continue;
+
+    const badCol = extractMissingColumnKey(msg);
+    if (badCol && badCol in minimal && !APPOINTMENT_CORE_KEYS.has(badCol)) {
+      delete minimal[badCol];
+      continue;
+    }
+
+    const extras = Object.keys(minimal).filter((k) => !APPOINTMENT_CORE_KEYS.has(k));
+    if (extras.length > 0) {
+      extras.sort();
+      delete minimal[extras[0]!];
+      continue;
+    }
+
+    break;
+  }
+
+  console.error('[booking-shared] insertAppointmentResilient exhausted retries (full + minimal)', {
+    payloadKeys: Object.keys(payload),
+  });
   return {
     data: null,
     error:

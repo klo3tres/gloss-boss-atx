@@ -38,6 +38,8 @@ export type SiteDataFeaturedSlide = {
   id: string;
   label: string;
   image: string;
+  /** When false, slide is hidden on the public site (stored in CMS JSON). Default: published. */
+  published?: boolean;
 };
 
 export type PublicSiteDataPayload = {
@@ -48,6 +50,8 @@ export type PublicSiteDataPayload = {
   offers: SiteDataOfferCard[];
   multiCar: SiteDataMultiCar | null;
   featuredShowcase: SiteDataFeaturedSlide[];
+  /** True when `featured_showcase` CMS JSON produced at least one published slide. */
+  featuredShowcaseFromCms?: boolean;
   googleReviewUrl: string;
 };
 
@@ -190,6 +194,31 @@ export function mapDbRowToSiteDataOfferCard(r: Record<string, unknown>): SiteDat
   };
 }
 
+/**
+ * Stable key for collapsing duplicate CMS rows (e.g. slug clash or title typo).
+ * Prefer slug when set; otherwise normalized title.
+ */
+export function normalizeOfferDedupeKey(card: Pick<SiteDataOfferCard, 'slug' | 'title'>): string {
+  const slug = (card.slug ?? '').trim().toLowerCase();
+  if (slug) return `s:${slug}`;
+  let t = card.title.trim().toLowerCase().replace(/\s+/g, ' ');
+  t = t.replace(/speacial/g, 'special');
+  return `t:${t}`;
+}
+
+/** De-dupe eligible offers after sorting — first occurrence wins (best sort_order). */
+export function dedupePublicOffers(offers: SiteDataOfferCard[]): SiteDataOfferCard[] {
+  const seen = new Set<string>();
+  const out: SiteDataOfferCard[] = [];
+  for (const o of offers) {
+    const k = normalizeOfferDedupeKey(o);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(o);
+  }
+  return out;
+}
+
 export function formatOfferDiscountLabel(card: SiteDataOfferCard): string {
   if (card.discountKind === 'fixed' && (card.discountFixedCents ?? 0) > 0) {
     return `$${(card.discountFixedCents! / 100).toFixed(0)} off`;
@@ -238,7 +267,8 @@ function coerceHomepageJson(raw: unknown): Record<string, unknown> | null {
 }
 
 /** Parses `homepage_content.featured_showcase` value. Returns only valid slides — empty array if none (no stock filler). */
-export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
+export function parseFeaturedShowcase(raw: unknown, opts?: { publicSite?: boolean }): SiteDataFeaturedSlide[] {
+  const publicSite = opts?.publicSite === true;
   const o = coerceHomepageJson(raw);
   if (!o) return [];
   const slides = o.slides;
@@ -247,12 +277,14 @@ export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
   slides.forEach((item, i) => {
     if (!item || typeof item !== 'object') return;
     const row = item as Record<string, unknown>;
+    if (publicSite && row.published === false) return;
     const rawImg = typeof row.image === 'string' ? row.image.trim() : '';
     const image = rawImg.startsWith('http') || rawImg.startsWith('/') ? rawImg : '';
     if (!image) return;
     const label = typeof row.label === 'string' && row.label.trim() ? row.label.trim() : 'Featured Transformation';
     const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : `slide-${i}`;
-    out.push({ id, label, image });
+    const published = typeof row.published === 'boolean' ? row.published : undefined;
+    out.push({ id, label, image, published });
   });
   return out;
 }

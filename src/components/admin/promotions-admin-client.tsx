@@ -29,6 +29,8 @@ export function PromotionsAdminClient({
   heading?: string;
 }) {
   const router = useRouter();
+  const activeRows = initialRows.filter((r) => !r.archived);
+  const archivedRows = initialRows.filter((r) => r.archived);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -204,11 +206,11 @@ export function PromotionsAdminClient({
         </button>
       </div>
 
-      <ul className='mt-6 space-y-4 text-sm'>
-        {initialRows.length === 0 ? (
-          <li className='text-zinc-500'>No promotions yet — create one above.</li>
+      <ul className='mt-6 space-y-3 text-sm'>
+        {activeRows.length === 0 ? (
+          <li className='text-zinc-500'>No active promotions yet — create one above.</li>
         ) : null}
-        {initialRows.map((row) => (
+        {activeRows.map((row) => (
           <PromotionRowEditor
             key={row.id}
             row={row}
@@ -218,6 +220,25 @@ export function PromotionsAdminClient({
           />
         ))}
       </ul>
+
+      {archivedRows.length > 0 ? (
+        <details className='mt-6 rounded-xl border border-white/10 bg-black/25 p-3'>
+          <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-400'>
+            Archived promotions ({archivedRows.length})
+          </summary>
+          <ul className='mt-4 space-y-3'>
+            {archivedRows.map((row) => (
+              <PromotionRowEditor
+                key={row.id}
+                row={row}
+                onSaved={() => router.refresh()}
+                onError={(text) => setMsg({ type: 'err', text })}
+                onOk={(text) => setMsg({ type: 'ok', text })}
+              />
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {msg ? (
         <p

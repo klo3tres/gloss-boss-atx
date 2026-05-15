@@ -121,21 +121,42 @@ export async function POST(request: Request) {
 
     const emailNorm = guestEmail.trim().toLowerCase();
     let customerId: string | null = null;
-    const { data: existingCustomer } = await admin.from('customers').select('id').eq('email', emailNorm).maybeSingle();
-
-    if (existingCustomer) {
-      customerId = existingCustomer.id;
-      await admin.from('customers').update({ phone: phoneDigits, full_name: guestName }).eq('id', customerId);
-    } else {
-      const { data: newCustomer, error: custErr } = await admin
+    try {
+      const { data: existingCustomer, error: lookupErr } = await admin
         .from('customers')
-        .insert({ email: emailNorm, phone: phoneDigits, full_name: guestName })
         .select('id')
-        .single();
-      if (custErr || !newCustomer) {
-        return NextResponse.json({ error: 'Could not create customer record' }, { status: 500 });
+        .eq('email', emailNorm)
+        .maybeSingle();
+      if (lookupErr) {
+        console.error('[api/bookings] customer lookup failed — continuing without CRM link', lookupErr.message);
+      } else if (existingCustomer?.id) {
+        customerId = existingCustomer.id;
+        const { error: upErr } = await admin
+          .from('customers')
+          .update({ phone: phoneDigits, full_name: guestName })
+          .eq('id', customerId);
+        if (upErr) {
+          console.error('[api/bookings] customer update failed — appointment still links to customer', upErr.message);
+        }
+      } else {
+        const { data: newCustomer, error: custErr } = await admin
+          .from('customers')
+          .insert({ email: emailNorm, phone: phoneDigits, full_name: guestName })
+          .select('id')
+          .single();
+        if (custErr || !newCustomer?.id) {
+          console.error(
+            '[api/bookings] customer insert failed — continuing as guest-only booking',
+            custErr?.message,
+          );
+          customerId = null;
+        } else {
+          customerId = newCustomer.id;
+        }
       }
-      customerId = newCustomer.id;
+    } catch (e) {
+      console.error('[api/bookings] customer upsert unexpected — continuing as guest-only booking', e);
+      customerId = null;
     }
 
     const vehicleDescriptionJoined = resolved.map((r) => r.vehicleDescription).join(' · ');
@@ -150,7 +171,6 @@ export async function POST(request: Request) {
       guest_email: emailNorm,
       guest_phone: phoneDigits,
       guest_name: guestName,
-      customer_id: customerId,
       vehicle_description: vehicleDescriptionJoined,
       service_slug: primary.serviceSlug,
       vehicle_class: primary.vehicleClass,
@@ -164,13 +184,27 @@ export async function POST(request: Request) {
       booking_add_ons: addOns,
       booking_source: 'online',
     };
+    if (customerId) insertPayload.customer_id = customerId;
     if (offerRowId) insertPayload.offer_id = offerRowId;
 
     const { data: appointment, error: apptErr } = await insertAppointmentResilient(admin, insertPayload);
 
     if (apptErr || !appointment) {
-      console.error('[api/bookings] insert failed', apptErr);
-      return NextResponse.json({ error: apptErr || 'Could not create booking' }, { status: 500 });
+      const detail = apptErr ?? 'unknown';
+      console.error('[api/bookings] appointment insert failed — internal detail for support', {
+        detail,
+        hadCustomerLink: Boolean(customerId),
+        hadOffer: Boolean(offerRowId),
+      });
+      const friendly =
+        typeof detail === 'string' &&
+        (detail.includes('database configuration issue') || detail.includes('Please call Gloss Boss'))
+          ? detail
+          : 'We could not save your booking right now. Please try again or call Gloss Boss ATX at (512) 481-2319.';
+      return NextResponse.json(
+        { error: friendly, code: 'BOOKING_INSERT_FAILED' },
+        { status: 500 },
+      );
     }
 
     void notifyBookingConfirmationQueued({

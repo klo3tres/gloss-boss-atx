@@ -4,6 +4,19 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NormalizedGalleryImage } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import type { PublicSiteDataPayload, SiteDataFeaturedSlide } from '@/lib/public-site-data';
+
+function slidesToGalleryRows(slides: SiteDataFeaturedSlide[]): NormalizedGalleryImage[] {
+  return slides.map((s, i) => ({
+    id: s.id,
+    url: s.image,
+    image_url: s.image,
+    caption: s.label?.trim() ? s.label.trim() : null,
+    sort_order: i,
+    order_index: i,
+    featured: i === 0,
+  }));
+}
 
 /** Stock placeholders when no published CMS images exist */
 const FALLBACK_IMAGES: NormalizedGalleryImage[] = [
@@ -79,8 +92,11 @@ export function HomeGalleryStrip() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchWithTimeout('/api/gallery/public', { cache: 'no-store', timeoutMs: 10000 })
-      .then(async (r) => {
+    Promise.all([
+      fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 10000 }).then(async (r) =>
+        r.ok ? ((await r.json()) as PublicSiteDataPayload) : null,
+      ),
+      fetchWithTimeout('/api/gallery/public', { cache: 'no-store', timeoutMs: 10000 }).then(async (r) => {
         if (!r.ok) {
           console.warn('[CRM_DEBUG_UI]', 'gallery_public_http', r.status);
           return null;
@@ -90,11 +106,20 @@ export function HomeGalleryStrip() {
         } catch {
           return null;
         }
-      })
-      .then((data) => {
+      }),
+    ])
+      .then(([site, gal]) => {
         if (cancelled) return;
         settledRef.current = true;
-        const list = (data?.images ?? []) as NormalizedGalleryImage[];
+        if (site?.featuredShowcaseFromCms === true && site.featuredShowcase?.length) {
+          const mapped = slidesToGalleryRows(site.featuredShowcase);
+          const resolved = resolveGalleryRows(mapped);
+          setRows(resolved.rows);
+          setUsedFallback(resolved.usedFallback);
+          setPage(0);
+          return;
+        }
+        const list = (gal?.images ?? []) as NormalizedGalleryImage[];
         const resolved = resolveGalleryRows(list);
         setRows(resolved.rows);
         setUsedFallback(resolved.usedFallback);

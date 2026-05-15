@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
 import {
-  formatOfferDiscountLabel,
   isOfferEligiblePublicSiteData,
   type PublicSiteDataPayload,
   type SiteDataMultiCar,
   type SiteDataOfferCard,
 } from "@/lib/public-site-data";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { OffersMarketingBand } from "@/components/marketing/offers-marketing-band";
 
 const emptyDeals: DealConfig = {
   websitePromoPercent: 0,
@@ -81,17 +81,14 @@ export default function ServicesPage() {
     return `Example: two ${multiCar.serviceSlug.replace(/-/g, " ")} (${multiCar.vehicleClass.replace("_", " ")}) — ${fmtMoney(multiCar.firstCents)} + ${fmtMoney(multiCar.secondCents)} = ${fmtMoney(multiCar.totalCents)} total.`;
   }, [multiCar, loaded]);
 
-  const activeOfferCards = useMemo(() => {
-    if (!loaded) return [];
+  const hasServiceOffers = useMemo(() => {
     const now = new Date();
-    return [...offers]
-      .filter((o) => o.showOnServices && isOfferEligiblePublicSiteData(o, now))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
-  }, [offers, loaded]);
+    return offers.some((o) => o.showOnServices && isOfferEligiblePublicSiteData(o, now));
+  }, [offers]);
 
   const showPromosBand =
     loaded &&
-    ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || activeOfferCards.length > 0);
+    ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || hasServiceOffers);
 
   return (
     <main className="min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
@@ -117,33 +114,7 @@ export default function ServicesPage() {
                   </p>
                 </article>
               ) : null}
-              {activeOfferCards.map((o) => {
-                const href = `/book?offer=${encodeURIComponent(o.slug && o.slug.trim() ? o.slug : o.id)}`;
-                return (
-                  <article
-                    key={o.id}
-                    className='group flex min-h-[150px] min-w-[min(100%,300px)] snap-start flex-col justify-between rounded-xl border border-gold/32 bg-gradient-to-b from-zinc-900/95 to-black/95 p-4 shadow-[0_0_22px_rgba(212,166,77,0.15)] ring-1 ring-gold/12 transition duration-300 hover:-translate-y-1 hover:border-gold/50 hover:shadow-[0_0_34px_rgba(212,166,77,0.28)]'
-                  >
-                    <div>
-                      <p className='text-[10px] uppercase tracking-[0.2em] text-gold-soft'>Promotion</p>
-                      <h2 className='mt-1.5 text-base font-black uppercase leading-tight text-white sm:text-lg'>{o.title}</h2>
-                      {o.description ? <p className='mt-1.5 line-clamp-2 text-xs text-zinc-400'>{o.description}</p> : null}
-                      {formatOfferDiscountLabel(o) ? (
-                        <p className='mt-2 text-2xl font-black text-gold-soft drop-shadow-[0_0_10px_rgba(212,166,77,0.35)] sm:text-[26px]'>
-                          {formatOfferDiscountLabel(o)}
-                        </p>
-                      ) : null}
-                      {o.stackable === false ? <p className='mt-2 text-[10px] text-amber-200/90'>Not stackable with other promos.</p> : null}
-                    </div>
-                    <Link
-                      href={href}
-                      className='mt-3 inline-flex w-full items-center justify-center rounded-lg bg-gold px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-black transition group-hover:brightness-110'
-                    >
-                      Claim offer
-                    </Link>
-                  </article>
-                );
-              })}
+              <OffersMarketingBand embed offers={offers} placement='services' />
             </div>
           </section>
         ) : null}
