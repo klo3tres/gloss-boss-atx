@@ -8,13 +8,15 @@ import {
   servicesHaveQuotesForBooking,
 } from '@/lib/catalog-fallback';
 import { isSupabasePublicReady, tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
+import { consolidatePriceRowsForUi } from '@/lib/vehicle-pricing';
 
 function jsonFallback(extra: Record<string, unknown>) {
   const fb = getLocalFallbackCatalog();
-  const canBook = servicesHaveQuotesForBooking(fb.services, fb.prices);
+  const prices = consolidatePriceRowsForUi(fb.prices);
+  const canBook = servicesHaveQuotesForBooking(fb.services, prices);
   return NextResponse.json({
     services: fb.services,
-    prices: fb.prices,
+    prices,
     live: false,
     canBookOnline: canBook,
     catalogEmpty: false,
@@ -84,7 +86,7 @@ export async function GET() {
     if (services.length > 0) {
       const stable = mergeServicesWithPricesStable(services, prices);
       services = stable.services;
-      prices = stable.prices;
+      prices = consolidatePriceRowsForUi(stable.prices);
     }
 
     if (pErr) {

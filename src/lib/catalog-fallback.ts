@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { slugifyServiceSlug } from '@/lib/slugify';
 import { defaultServicePackages } from '@/lib/site-config';
+import { pickSuvTruckCents, type PriceRowLike } from '@/lib/vehicle-pricing';
 
 export type FallbackServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 export type FallbackPriceRow = { service_id: string; vehicle_class: string; price_cents: number };
@@ -24,30 +26,29 @@ export function fallbackServiceIdForSlug(slug: string): string {
 /** Slugs that may legitimately have no numeric online quote (consultation-only packages). */
 const BOOKING_OPTIONAL_QUOTE_SLUGS = new Set(['ceramic-coating']);
 
-const STABLE_VEHICLE_CLASSES = ['sedan', 'suv', 'truck', 'suv_truck'] as const;
+/** UI output classes only — sedan + merged SUV/Truck. */
+const STABLE_VEHICLE_CLASSES = ['sedan', 'suv_truck'] as const;
 
 /** Marketing default cents for a package slug + vehicle class (null = no default, e.g. consultation-only). */
 export function centsForSlugVehicleFromDefaults(slug: string, vehicleClass: string): number | null {
   const pkg = defaultServicePackages.find((p) => p.id === slug);
   if (!pkg) return null;
-  if (vehicleClass === 'sedan' && pkg.sedanPrice != null) return Math.round(pkg.sedanPrice * 100);
-  const large = pkg.truckPrice ?? pkg.suvPrice ?? pkg.suvTruckPrice;
-  if (large != null && (vehicleClass === 'suv' || vehicleClass === 'truck' || vehicleClass === 'suv_truck')) {
-    return Math.round(large * 100);
-  }
+  const cls = vehicleClass === 'sedan' ? 'sedan' : 'suv_truck';
+  if (cls === 'sedan' && pkg.sedanPrice != null && pkg.sedanPrice > 0) return Math.round(pkg.sedanPrice * 100);
+  if (cls === 'suv_truck' && pkg.suvTruckPrice != null && pkg.suvTruckPrice > 0) return Math.round(pkg.suvTruckPrice * 100);
   return null;
 }
 
 function pickDbPriceCents(dbPrices: FallbackPriceRow[], serviceId: string, cls: string): number | undefined {
-  const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === cls);
-  if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
-    return direct.price_cents;
-  }
-  if (cls === 'suv' || cls === 'truck') {
-    const leg = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'suv_truck');
-    if (leg && typeof leg.price_cents === 'number' && !Number.isNaN(leg.price_cents) && leg.price_cents > 0) {
-      return leg.price_cents;
+  if (cls === 'sedan') {
+    const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'sedan');
+    if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
+      return direct.price_cents;
     }
+    return undefined;
+  }
+  if (cls === 'suv_truck') {
+    return pickSuvTruckCents(dbPrices as PriceRowLike[], serviceId);
   }
   return undefined;
 }
@@ -92,12 +93,8 @@ export function mergeFallbackPricesByServiceSlug(services: { id: string; slug: s
     if (pkg.sedanPrice != null) {
       prices.push({ service_id: s.id, vehicle_class: 'sedan', price_cents: Math.round(pkg.sedanPrice * 100) });
     }
-    const large = pkg.truckPrice ?? pkg.suvPrice ?? pkg.suvTruckPrice;
-    if (large != null) {
-      const cents = Math.round(large * 100);
-      prices.push({ service_id: s.id, vehicle_class: 'suv', price_cents: cents });
-      prices.push({ service_id: s.id, vehicle_class: 'truck', price_cents: cents });
-      prices.push({ service_id: s.id, vehicle_class: 'suv_truck', price_cents: cents });
+    if (pkg.suvTruckPrice != null && pkg.suvTruckPrice > 0) {
+      prices.push({ service_id: s.id, vehicle_class: 'suv_truck', price_cents: Math.round(pkg.suvTruckPrice * 100) });
     }
   }
   return prices;
@@ -110,7 +107,7 @@ export function servicesHaveQuotesForBooking(services: { id: string; slug: strin
     if (rows.length === 0) return false;
     const classes = new Set(rows.map((p) => p.vehicle_class));
     const okSedan = classes.has('sedan');
-    const okLarge = classes.has('suv_truck') || classes.has('suv') || classes.has('truck');
+    const okLarge = classes.has('suv_truck') || classes.has('suv') || classes.has('truck'); // read DB drift; UI only shows suv_truck
     if (!okSedan && !okLarge) return false;
   }
   return true;
@@ -135,12 +132,8 @@ export function getLocalFallbackCatalog(): { services: FallbackServiceRow[]; pri
     if (p.sedanPrice != null) {
       prices.push({ service_id: sid, vehicle_class: 'sedan', price_cents: Math.round(p.sedanPrice * 100) });
     }
-    const large = p.truckPrice ?? p.suvPrice ?? p.suvTruckPrice;
-    if (large != null) {
-      const cents = Math.round(large * 100);
-      prices.push({ service_id: sid, vehicle_class: 'suv', price_cents: cents });
-      prices.push({ service_id: sid, vehicle_class: 'truck', price_cents: cents });
-      prices.push({ service_id: sid, vehicle_class: 'suv_truck', price_cents: cents });
+    if (p.suvTruckPrice != null && p.suvTruckPrice > 0) {
+      prices.push({ service_id: sid, vehicle_class: 'suv_truck', price_cents: Math.round(p.suvTruckPrice * 100) });
     }
   }
 
@@ -192,16 +185,10 @@ export function mergeLiveCatalogWithDefaults(
   return { services, prices: [...dedup.values()] };
 }
 
-function deriveSlugWhenColumnMissing(id: string, title: string, index: number): string {
-  const base = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-  const short = id.replace(/-/g, '').slice(0, 8);
-  if (base) return `${base}-${short}`;
-  return `service-${short || String(index)}`;
+function deriveSlugWhenColumnMissing(id: string, title: string, name: string, index: number): string {
+  const s = slugifyServiceSlug(title, name, id);
+  if (s !== 'service' && !s.startsWith('service-')) return s;
+  return `service-${id.replace(/-/g, '').slice(0, 8) || String(index)}`;
 }
 
 function strCell(v: unknown): string {
@@ -220,8 +207,9 @@ export function mapUnknownToFallbackServiceRow(row: Record<string, unknown>, ind
   if (!id) return null;
   if (row.active === false || row.published === false) return null;
   const title = strCell(row.title) || strCell(row.name) || 'Service';
+  const name = strCell(row.name);
   const slugRaw = strCell(row.slug);
-  const slug = slugRaw || deriveSlugWhenColumnMissing(id, title, index);
+  const slug = slugRaw || deriveSlugWhenColumnMissing(id, title, name, index);
   const subtitle =
     typeof row.subtitle === 'string'
       ? row.subtitle

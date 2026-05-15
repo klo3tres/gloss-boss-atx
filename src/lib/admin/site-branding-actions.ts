@@ -43,3 +43,37 @@ export async function submitNavbarLogoForm(formData: FormData): Promise<void> {
   }
   redirect('/admin/cms?logoOk=1');
 }
+
+export async function saveHomepageLogoUrlAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const session = await getSessionWithProfile();
+  if (!session.user || (session.profile?.role !== 'super_admin' && session.profile?.role !== 'admin')) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const url = String(formData.get('homepage_logo_url') ?? '').trim();
+  if (!url.startsWith('http') && !url.startsWith('/')) {
+    return { ok: false, error: 'Enter a valid https URL or site-relative path.' };
+  }
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { ok: false, error: 'Server admin client unavailable.' };
+
+  const now = new Date().toISOString();
+  const { error } = await admin.from('site_settings').upsert(
+    { key: 'homepage_logo', value: url, updated_at: now },
+    { onConflict: 'key' },
+  );
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  return { ok: true };
+}
+
+export async function submitHomepageLogoForm(formData: FormData): Promise<void> {
+  const r = await saveHomepageLogoUrlAction(formData);
+  if (!r.ok) {
+    redirect(`/admin/cms?homeLogoErr=${encodeURIComponent(r.error ?? 'Save failed')}`);
+  }
+  redirect('/admin/cms?homeLogoOk=1');
+}

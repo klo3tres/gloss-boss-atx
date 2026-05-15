@@ -1,4 +1,5 @@
 import { getLocalFallbackCatalog, centsForSlugVehicleFromDefaults } from '@/lib/catalog-fallback';
+import { pickSedanCents, pickSuvTruckCents } from '@/lib/vehicle-pricing';
 import { defaultDealConfig, type DealConfig, type ServicePackage } from '@/lib/site-config';
 
 export type SiteDataOfferCard = {
@@ -69,41 +70,22 @@ export function mapCatalogToServicePackages(
   return [...services]
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((s) => {
-      const pick = (cls: string) => prices.find((p) => p.service_id === s.id && p.vehicle_class === cls)?.price_cents;
-      let sedanC = pick('sedan');
-      let suvC = pick('suv');
-      let truckC = pick('truck');
-      const legacyC = pick('suv_truck');
-      let suvTruckC = legacyC ?? suvC ?? truckC;
-      if (sedanC == null || Number.isNaN(sedanC)) {
+      let sedanC = pickSedanCents(prices, s.id);
+      let suvTruckC = pickSuvTruckCents(prices, s.id);
+      if (sedanC == null) {
         const fb = centsForSlugVehicleFromDefaults(s.slug, 'sedan');
         if (fb != null) sedanC = fb;
       }
-      if (suvC == null || Number.isNaN(suvC)) {
-        const fb = centsForSlugVehicleFromDefaults(s.slug, 'suv');
-        if (fb != null) suvC = fb;
-      }
-      if (truckC == null || Number.isNaN(truckC)) {
-        const fb = centsForSlugVehicleFromDefaults(s.slug, 'truck');
-        if (fb != null) truckC = fb;
-      }
-      if (suvTruckC == null || Number.isNaN(suvTruckC)) {
+      if (suvTruckC == null) {
         const fb = centsForSlugVehicleFromDefaults(s.slug, 'suv_truck');
         if (fb != null) suvTruckC = fb;
       }
-      if (suvTruckC == null || Number.isNaN(suvTruckC)) {
-        suvTruckC = legacyC ?? suvC ?? truckC;
-      }
-      const suvD = dollarsFromCents(suvC);
-      const truckD = dollarsFromCents(truckC);
       return {
         id: s.slug,
         title: s.title,
         subtitle: s.subtitle ?? '',
         sedanPrice: dollarsFromCents(sedanC),
         suvTruckPrice: dollarsFromCents(suvTruckC),
-        suvPrice: suvD,
-        truckPrice: truckD,
         includes: subtitleToIncludes(s.subtitle),
       };
     });
@@ -203,36 +185,14 @@ export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
 export function computeMultiCarExample(services: ServicePackage[], deals: DealConfig, preferSlug = 'full-detail'): SiteDataMultiCar | null {
   const disc = deals.multiCarSecondVehicleDiscountPercent;
   const pickService =
-    services.find((s) => s.id === preferSlug) ??
-    services.find((s) => s.truckPrice != null || s.suvPrice != null || s.suvTruckPrice != null);
+    services.find((s) => s.id === preferSlug) ?? services.find((s) => s.suvTruckPrice != null && s.suvTruckPrice > 0);
 
   if (!pickService) return null;
 
-  const truckD = pickService.truckPrice ?? pickService.suvTruckPrice;
-  const suvOnlyD = pickService.suvPrice;
-  const legacyD = pickService.suvTruckPrice;
+  const firstDollars = pickService.suvTruckPrice;
+  if (firstDollars == null || firstDollars <= 0) return null;
 
-  let vehicleClass = 'suv_truck';
-  let firstDollars: number | null = null;
-
-  if (pickService.truckPrice != null) {
-    vehicleClass = 'truck';
-    firstDollars = pickService.truckPrice;
-  } else if (pickService.suvPrice != null) {
-    vehicleClass = 'suv';
-    firstDollars = pickService.suvPrice;
-  } else if (legacyD != null) {
-    vehicleClass = 'suv_truck';
-    firstDollars = legacyD;
-  } else if (truckD != null) {
-    vehicleClass = 'truck';
-    firstDollars = truckD;
-  } else if (suvOnlyD != null) {
-    vehicleClass = 'suv';
-    firstDollars = suvOnlyD;
-  }
-
-  if (firstDollars == null) return null;
+  const vehicleClass = 'suv_truck';
 
   const firstCents = Math.round(firstDollars * 100);
   const secondCents = Math.round(firstCents * (1 - disc / 100));

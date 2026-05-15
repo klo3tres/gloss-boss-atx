@@ -3,12 +3,8 @@ export type ServicePackage = {
   title: string;
   subtitle: string;
   sedanPrice: number | null;
-  /** Larger-vehicle pricing when DB only has a combined `suv_truck` row. */
+  /** SUV / Truck combined price (merged from suv_truck, suv, or truck DB rows). */
   suvTruckPrice: number | null;
-  /** Distinct SUV price when `service_prices` has a `suv` row (dollars, rounded from cents). */
-  suvPrice?: number | null;
-  /** Distinct truck price when `service_prices` has a `truck` row. */
-  truckPrice?: number | null;
   includes: string[];
 };
 
@@ -26,8 +22,6 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Premium maintenance wash package",
     sedanPrice: 60,
     suvTruckPrice: 75,
-    suvPrice: null,
-    truckPrice: null,
     includes: [
       "Full hand wash",
       "Tire shine",
@@ -43,8 +37,6 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Clay, polish prep, wax or sealant protection",
     sedanPrice: 90,
     suvTruckPrice: 110,
-    suvPrice: null,
-    truckPrice: null,
     includes: [
       "Hand wash and decontamination",
       "Clay bar treatment",
@@ -60,8 +52,6 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Deep interior reset package",
     sedanPrice: 80,
     suvTruckPrice: 100,
-    suvPrice: null,
-    truckPrice: null,
     includes: [
       "Full vacuum",
       "Cup holders cleaned",
@@ -77,8 +67,6 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Complete inside and outside detail",
     sedanPrice: 150,
     suvTruckPrice: 175,
-    suvPrice: null,
-    truckPrice: null,
     includes: [
       "Everything in Exterior",
       "Everything in Interior",
@@ -94,8 +82,6 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Long-term gloss and hydrophobic protection",
     sedanPrice: null,
     suvTruckPrice: null,
-    suvPrice: null,
-    truckPrice: null,
     includes: [
       "Consultation required",
       "Paint condition assessment",
@@ -112,11 +98,11 @@ export const defaultDealConfig: DealConfig = {
 };
 
 export function formatStartingPrice(value: number | null): string {
-  if (value === null) return 'Quote';
+  if (value == null || value <= 0) return 'Quote';
   return `$${value}+`;
 }
 
 export function formatVehiclePrice(value: number | null): string {
-  if (value === null) return 'Quote';
+  if (value == null || value <= 0) return 'Quote';
   return `$${value}`;
 }

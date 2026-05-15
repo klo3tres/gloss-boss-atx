@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isBookingSlotAllowed, parseBookingAvailabilityRules } from '@/lib/booking-availability';
 import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
+import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function loadBookingAvailabilityRules(admin: SupabaseClient) {
@@ -117,9 +118,10 @@ export async function POST(request: Request) {
       }
 
       const priceRows = await loadServicePricesForService(admin, service.id);
+      const vehicleClass = normalizeVehicleClass(line.vehicleClass);
       const priceCents = safePriceCentsForBooking(
         { slug: line.serviceSlug, serviceId: service.id },
-        line.vehicleClass,
+        vehicleClass,
         priceRows,
       );
       if (priceCents == null) {
@@ -137,7 +139,7 @@ export async function POST(request: Request) {
       totalBaseCents += priceCents;
       resolved.push({
         serviceSlug: line.serviceSlug,
-        vehicleClass: line.vehicleClass,
+        vehicleClass,
         vehicleDescription: line.vehicleDescription,
         priceCents,
       });

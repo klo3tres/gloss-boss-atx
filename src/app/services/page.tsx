@@ -173,12 +173,7 @@ export default function ServicesPage() {
         ) : null}
 
         <div className="mt-6 space-y-4">
-          {packages.map((service) => {
-              const suvT = service.suvTruckPrice;
-              const suv = service.suvPrice ?? null;
-              const truck = service.truckPrice ?? null;
-              const showSplit = suv != null && truck != null && suv !== truck;
-              return (
+          {packages.map((service) => (
                 <article
                   key={service.id}
                   className="rounded-2xl border border-gold/20 bg-zinc-950 p-5 shadow-[0_0_0_rgba(212,166,77,0)] transition duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_32px_rgba(212,166,77,0.18)]"
@@ -187,14 +182,7 @@ export default function ServicesPage() {
                     <h2 className="text-2xl font-black uppercase text-gold-soft">{service.title}</h2>
                     <div className="flex flex-wrap gap-2 text-sm font-bold">
                       <span className="rounded-lg border border-gold/30 px-3 py-2">Sedan {formatVehiclePrice(service.sedanPrice)}</span>
-                      {showSplit ? (
-                        <>
-                          <span className="rounded-lg border border-gold/30 px-3 py-2">SUV {formatVehiclePrice(suv)}</span>
-                          <span className="rounded-lg border border-gold/30 px-3 py-2">Truck {formatVehiclePrice(truck)}</span>
-                        </>
-                      ) : (
-                        <span className="rounded-lg border border-gold/30 px-3 py-2">SUV / Truck {formatVehiclePrice(suvT)}</span>
-                      )}
+                      <span className="rounded-lg border border-gold/30 px-3 py-2">SUV / Truck {formatVehiclePrice(service.suvTruckPrice)}</span>
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-zinc-300">{service.subtitle}</p>
@@ -204,8 +192,7 @@ export default function ServicesPage() {
                     ))}
                   </ul>
                 </article>
-              );
-            })}
+              ))}
         </div>
 
         <div className="mt-8 flex flex-wrap gap-3">

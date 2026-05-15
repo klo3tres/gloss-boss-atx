@@ -88,6 +88,41 @@ export async function reorderGalleryImageAction(formData: FormData) {
   revalidatePath('/gallery');
 }
 
+/** Apply drag-reorder: comma-separated gallery image ids in display order. */
+export async function reorderGalleryBulkAction(formData: FormData) {
+  const orderRaw = String(formData.get('order') ?? '').trim();
+  if (!orderRaw) return;
+
+  const ids = orderRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return;
+
+  const gate = await requireAdminSupabase();
+  if (!gate.ok) return;
+
+  let i = 0;
+  for (const id of ids) {
+    i += 10;
+    try {
+      const { error } = await gate.supabase
+        .from('gallery_images')
+        .update({ sort_order: i, order_index: i })
+        .eq('id', id);
+      if (error) {
+        await gate.supabase.from('gallery_images').update({ sort_order: i }).eq('id', id);
+      }
+    } catch (e) {
+      console.warn('[gallery] bulk reorder', id, e);
+    }
+  }
+
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  revalidatePath('/gallery');
+}
+
 export async function addGalleryImageAction(formData: FormData) {
   const imageUrl = String(formData.get('image_url') ?? '').trim();
   const caption = String(formData.get('caption') ?? '').trim();

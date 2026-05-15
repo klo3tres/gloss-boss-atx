@@ -11,6 +11,7 @@ import {
   type SiteDataOfferCard,
 } from '@/lib/public-site-data';
 import { loadActiveServicesResilient, mapServicePriceRows, mergeServicesWithPricesStable } from '@/lib/catalog-fallback';
+import { consolidatePriceRowsForUi } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -92,8 +93,8 @@ export async function GET() {
     const svcList = services ?? [];
     const rawPriceRows = mapServicePriceRows((prices ?? []) as unknown[]);
     const stable = svcList.length > 0 && !sErr ? mergeServicesWithPricesStable(svcList, rawPriceRows) : { services: [] as typeof svcList, prices: [] as typeof rawPriceRows };
-    let packages =
-      stable.services.length > 0 && !sErr ? mapCatalogToServicePackages(stable.services, stable.prices) : [];
+    const uiPrices = consolidatePriceRowsForUi(stable.prices);
+    let packages = stable.services.length > 0 && !sErr ? mapCatalogToServicePackages(stable.services, uiPrices) : [];
 
     if (packages.length === 0) {
       console.warn('[CRM_DEBUG_DB]', 'site_data_catalog_fallback', {

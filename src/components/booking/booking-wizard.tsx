@@ -12,6 +12,13 @@ import {
 } from '@/lib/booking-availability';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
+import {
+  UI_VEHICLE_CLASSES,
+  UI_VEHICLE_LABELS,
+  consolidatePriceRowsForUi,
+  normalizeVehicleClass,
+  type UiVehicleClass,
+} from '@/lib/vehicle-pricing';
 
 const BOOKING_SEED = getLocalFallbackCatalog();
 
@@ -25,7 +32,7 @@ const DEFAULT_ADDON_LABELS = ['Engine bay detail', 'Pet hair removal', 'Odor tre
 type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
 
-type VehicleClass = 'sedan' | 'suv' | 'truck' | 'suv_truck';
+type VehicleClass = UiVehicleClass;
 
 type ExtraLine = { serviceSlug: string; vehicleClass: VehicleClass; vehicleDescription: string };
 
@@ -37,16 +44,13 @@ function serviceIcon(slug: string) {
 }
 
 function classLabel(c: VehicleClass) {
-  if (c === 'sedan') return 'Sedan';
-  if (c === 'suv') return 'SUV';
-  if (c === 'truck') return 'Truck';
-  return 'SUV / Truck';
+  return UI_VEHICLE_LABELS[c];
 }
 
 export function BookingWizard() {
   const liveCatalogAppliedRef = useRef(false);
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
-  const [prices, setPrices] = useState<PriceRow[]>(() => [...BOOKING_SEED.prices]);
+  const [prices, setPrices] = useState<PriceRow[]>(() => consolidatePriceRowsForUi([...BOOKING_SEED.prices]));
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +133,7 @@ export function BookingWizard() {
         const fb = getLocalFallbackCatalog();
         setCanBookOnline(servicesHaveQuotesForBooking(fb.services, fb.prices));
         setServices(fb.services);
-        setPrices(fb.prices);
+        setPrices(consolidatePriceRowsForUi(fb.prices));
         setError(
           data.message ??
             'Showing default packages while the live catalog is unavailable. You can still book when prices are shown below.',
@@ -142,7 +146,7 @@ export function BookingWizard() {
         const fb = getLocalFallbackCatalog();
         setCanBookOnline(servicesHaveQuotesForBooking(fb.services, fb.prices));
         setServices(fb.services);
-        setPrices(fb.prices);
+        setPrices(consolidatePriceRowsForUi(fb.prices));
         setError(data.message ?? 'Showing default packages.');
         if (fb.services[0]) setServiceSlug(fb.services[0].slug);
         return;
@@ -153,7 +157,7 @@ export function BookingWizard() {
       const quotesOk = servicesHaveQuotesForBooking(mergedSvc, mergedPrices);
       setCanBookOnline(quotesOk || (mergedSvc.length > 0 && mergedPrices.length > 0));
       setServices(mergedSvc);
-      setPrices(mergedPrices);
+      setPrices(consolidatePriceRowsForUi(mergedPrices));
 
       if (!quotesOk) {
         setError(data.message ?? 'Some vehicle lines may need a custom quote — check totals before checkout.');
@@ -189,7 +193,7 @@ export function BookingWizard() {
         return;
       }
       setServices((prev) => (prev.length ? prev : [...BOOKING_SEED.services]));
-      setPrices((prev) => (prev.length ? prev : [...BOOKING_SEED.prices]));
+      setPrices((prev) => (prev.length ? prev : consolidatePriceRowsForUi([...BOOKING_SEED.prices])));
       if (cached?.payload?.services?.length) {
         applyPayload(cached.payload);
         setError((prev) => prev ?? 'Catalog request took too long — showing cached packages.');
@@ -355,7 +359,7 @@ export function BookingWizard() {
         .slice(0, 3)
         .map((l) => ({
           serviceSlug: l.serviceSlug.trim(),
-          vehicleClass: l.vehicleClass,
+          vehicleClass: normalizeVehicleClass(l.vehicleClass),
           vehicleDescription: l.vehicleDescription.trim(),
         }));
 
@@ -486,7 +490,7 @@ export function BookingWizard() {
           <section>
             <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>2. Vehicle class (vehicle 1)</p>
             <div className='mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4'>
-              {(['sedan', 'suv', 'truck', 'suv_truck'] as const).map((c) => (
+              {UI_VEHICLE_CLASSES.map((c) => (
                 <button
                   key={c}
                   type='button'
@@ -524,8 +528,8 @@ export function BookingWizard() {
                   ))}
                 </select>
               </label>
-              <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4'>
-                {(['sedan', 'suv', 'truck', 'suv_truck'] as const).map((c) => (
+              <div className='mt-3 grid grid-cols-2 gap-2'>
+                {UI_VEHICLE_CLASSES.map((c) => (
                   <button
                     key={c}
                     type='button'

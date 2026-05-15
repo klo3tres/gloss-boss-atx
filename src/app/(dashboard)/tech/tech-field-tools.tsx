@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay } from '@/lib/safe-price-resolver';
+import { UI_VEHICLE_CLASSES, UI_VEHICLE_LABELS, type UiVehicleClass } from '@/lib/vehicle-pricing';
 
 type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
-type VehicleClass = 'sedan' | 'suv' | 'truck' | 'suv_truck';
+type VehicleClass = UiVehicleClass;
 
 const DEFAULT_CHECKLIST_LINES = ['Walk-around inspection', 'Pre-wash photos', 'Interior protection', 'Final QC'];
 
@@ -251,10 +252,11 @@ export function TechFieldTools() {
               onChange={(e) => setVehicleClass(e.target.value as VehicleClass)}
               className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
             >
-              <option value='sedan'>Sedan</option>
-              <option value='suv'>SUV</option>
-              <option value='truck'>Truck</option>
-              <option value='suv_truck'>SUV / Truck (legacy)</option>
+              {UI_VEHICLE_CLASSES.map((c) => (
+                <option key={c} value={c}>
+                  {UI_VEHICLE_LABELS[c]}
+                </option>
+              ))}
             </select>
           </label>
           <label className='block text-xs text-zinc-400 sm:col-span-2'>

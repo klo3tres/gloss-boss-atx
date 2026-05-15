@@ -17,6 +17,6 @@ export default async function AcknowledgementPage({ params, searchParams }: Prop
     redirect('/book?error=missing_acknowledgement_context');
   }
   redirect(
-    `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}&session_id=${encodeURIComponent(sessionId)}`
+    `/agreement?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}&session_id=${encodeURIComponent(sessionId)}`,
   );
 }

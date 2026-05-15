@@ -1,4 +1,5 @@
 import { centsForSlugVehicleFromDefaults } from '@/lib/catalog-fallback';
+import { normalizeVehicleClass, pickSuvTruckCents, type PriceRowLike } from '@/lib/vehicle-pricing';
 
 export type PriceRowInput = { service_id: string; vehicle_class: string; price_cents: number };
 export type SafePriceServiceRef = { slug: string; serviceId: string };
@@ -10,23 +11,21 @@ export type SafePriceResult =
   | { ok: true; isQuote: true; cents: null }
   | { ok: false; isQuote: false; cents: null };
 
-function pickDbCents(dbPrices: PriceRowInput[], serviceId: string, vehicleClass: string): number | undefined {
-  const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
-  if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
-    return direct.price_cents;
-  }
-  if (vehicleClass === 'suv' || vehicleClass === 'truck') {
-    const legacy = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'suv_truck');
-    if (legacy && typeof legacy.price_cents === 'number' && !Number.isNaN(legacy.price_cents) && legacy.price_cents > 0) {
-      return legacy.price_cents;
+function pickDbCents(dbPrices: PriceRowInput[], serviceId: string, uiClass: 'sedan' | 'suv_truck'): number | undefined {
+  if (uiClass === 'sedan') {
+    const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'sedan');
+    if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
+      return direct.price_cents;
     }
+    return undefined;
   }
-  return undefined;
+  return pickSuvTruckCents(dbPrices as PriceRowLike[], serviceId);
 }
 
 /**
  * Resolve bookable/display price: DB `service_prices` first, then embedded catalog by slug.
  * Ceramic = quote-only. Never returns 0 — unknown numeric falls back to marketing defaults.
+ * suv / truck inputs are normalized to suv_truck.
  */
 export function safePriceResolver(
   service: SafePriceServiceRef,
@@ -37,19 +36,13 @@ export function safePriceResolver(
     return { ok: true, isQuote: true, cents: null };
   }
 
-  const fromDb = pickDbCents(dbPrices, service.serviceId, vehicleClass);
+  const uiClass = normalizeVehicleClass(vehicleClass);
+
+  const fromDb = pickDbCents(dbPrices, service.serviceId, uiClass);
   if (fromDb != null) return { ok: true, cents: fromDb, isQuote: false };
 
-  const fromDef = centsForSlugVehicleFromDefaults(service.slug, vehicleClass);
+  const fromDef = centsForSlugVehicleFromDefaults(service.slug, uiClass);
   if (fromDef != null && fromDef > 0) return { ok: true, cents: fromDef, isQuote: false };
-
-  if (vehicleClass === 'suv' || vehicleClass === 'truck') {
-    const legacyDef = centsForSlugVehicleFromDefaults(service.slug, 'suv_truck');
-    if (legacyDef != null && legacyDef > 0) return { ok: true, cents: legacyDef, isQuote: false };
-  }
-
-  const sedanDef = centsForSlugVehicleFromDefaults(service.slug, 'sedan');
-  if (sedanDef != null && sedanDef > 0) return { ok: true, cents: sedanDef, isQuote: false };
 
   return { ok: false, isQuote: false, cents: null };
 }

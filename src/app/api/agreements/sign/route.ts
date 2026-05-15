@@ -120,6 +120,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not save agreement' }, { status: 500 });
     }
 
+    try {
+      const { error: jaErr } = await admin.from('job_agreements').insert({
+        appointment_id: appointmentId,
+        signer_legal_name: signerLegalName.trim(),
+        agreement_snapshot: snapshot,
+        signature_type: signatureType,
+        signature_data: signatureData ?? null,
+        template_id: template.id,
+        template_version: template.version,
+        signed_at: new Date().toISOString(),
+      });
+      if (jaErr && !/duplicate|unique|already exists/i.test(jaErr.message)) {
+        console.warn('[agreements/sign] job_agreements', jaErr.message);
+      }
+    } catch (jobAgErr) {
+      console.warn('[agreements/sign] job_agreements insert skipped', jobAgErr);
+    }
+
     await admin
       .from('appointments')
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
