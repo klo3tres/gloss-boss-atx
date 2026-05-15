@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { techAddJobMediaAction, techSaveJobNotesAction } from './tech-actions';
+import { useState, useTransition } from 'react';
+import { techAddJobMediaAction, techSaveChecklistSnapshotAction, techSaveJobNotesAction } from './tech-actions';
 import { checklistForServiceSlug } from '@/lib/tech-service-checklist';
 
 type Job = {
@@ -11,15 +11,34 @@ type Job = {
   notes?: string | null;
 };
 
-export function TechJobWorkspace({ job }: { job: Job }) {
+export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boolean }) {
   const showWorkspace = ['assigned', 'confirmed', 'in_progress'].includes(job.status);
   const checklist = checklistForServiceSlug(job.service_slug ?? '');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [chkMsg, setChkMsg] = useState<string | null>(null);
+  const [pendingChk, startChkTransition] = useTransition();
 
   if (!showWorkspace) return null;
 
+  const logChecklist = () => {
+    const items = checklist.filter((item) => checked[item]);
+    startChkTransition(() => {
+      void techSaveChecklistSnapshotAction(job.id, JSON.stringify(items)).then(() => {
+        setChkMsg(
+          items.length ? `Logged ${items.length} checklist item(s) to the timeline.` : 'Checklist snapshot sent (no items checked).',
+        );
+      });
+    });
+  };
+
   return (
     <div className='mt-4 space-y-4 border-t border-white/10 pt-4'>
+      {hasIntake === false ? (
+        <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-xs text-amber-100'>
+          Intake missing — share the customer&apos;s `/intake` link (appointment id + access token from their confirmation).
+        </p>
+      ) : null}
+
       <div>
         <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Service checklist</p>
         <ul className='mt-2 space-y-1'>
@@ -35,7 +54,17 @@ export function TechJobWorkspace({ job }: { job: Job }) {
             </li>
           ))}
         </ul>
+        <button
+          type='button'
+          disabled={pendingChk}
+          onClick={logChecklist}
+          className='mt-3 rounded-lg border border-white/20 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-200 disabled:opacity-40'
+        >
+          {pendingChk ? 'Saving…' : 'Log checklist to job timeline'}
+        </button>
+        {chkMsg ? <p className='mt-2 text-[10px] text-zinc-500'>{chkMsg}</p> : null}
       </div>
+
       <form action={techSaveJobNotesAction} className='space-y-2'>
         <input type='hidden' name='appointmentId' value={job.id} />
         <label className='block text-xs text-zinc-400'>

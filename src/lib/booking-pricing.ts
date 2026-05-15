@@ -42,7 +42,9 @@ export function computeBookingPricing(params: {
 
   let multiCarDiscountCents = 0;
   if (lines.length >= 2 && mcPct > 0) {
-    multiCarDiscountCents = Math.round(lines[1] * (mcPct / 100));
+    for (let i = 1; i < lines.length; i++) {
+      multiCarDiscountCents += Math.round(lines[i]! * (mcPct / 100));
+    }
   }
 
   const afterMultiCarVehicleCents = Math.max(0, vehicleSubtotalCents - multiCarDiscountCents);

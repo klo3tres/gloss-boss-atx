@@ -11,8 +11,10 @@ import {
   bookingAvailabilityHint,
   DEFAULT_BOOKING_AVAILABILITY,
   isBookingSlotAllowed,
-  type BookingAvailabilityRules,
 } from '@/lib/booking-availability';
+import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
+import { getBookableDateKeys, getTimeSlotsForDate } from '@/lib/booking-schedule-slots';
+import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
@@ -65,12 +67,17 @@ export function BookingWizard() {
 
   const [serviceSlug, setServiceSlug] = useState(() => BOOKING_SEED.services[0]?.slug ?? '');
   const [vehicleClass, setVehicleClass] = useState<VehicleClass>('sedan');
-  const [scheduledStart, setScheduledStart] = useState('');
-  const [bookingRules, setBookingRules] = useState<BookingAvailabilityRules>(DEFAULT_BOOKING_AVAILABILITY);
+  const [bookingDateKey, setBookingDateKey] = useState('');
+  const [bookingTimeValue, setBookingTimeValue] = useState('');
+  const [bookingRules, setBookingRules] = useState<BookingAvailabilityConfig>(() => ({
+    ...DEFAULT_BOOKING_AVAILABILITY,
+    blackoutDates: [],
+  }));
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [vehicleDescription, setVehicleDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
@@ -321,14 +328,19 @@ export function BookingWizard() {
     void fetchWithTimeout('/api/public/site-settings', { cache: 'no-store', timeoutMs: 8000 })
       .then(async (r) => {
         try {
-          return (await r.json()) as { bookingAvailability?: BookingAvailabilityRules };
+          return (await r.json()) as { bookingAvailability?: BookingAvailabilityConfig };
         } catch {
           return null;
         }
       })
       .then((data) => {
         if (cancelled || !data?.bookingAvailability) return;
-        setBookingRules(data.bookingAvailability);
+        const b = data.bookingAvailability;
+        setBookingRules({
+          ...DEFAULT_BOOKING_AVAILABILITY,
+          ...b,
+          blackoutDates: Array.isArray(b.blackoutDates) ? b.blackoutDates : [],
+        });
       })
       .catch(() => {});
     return () => {
@@ -336,13 +348,56 @@ export function BookingWizard() {
     };
   }, []);
 
-  const selectedService = useMemo(() => services.find((s) => s.slug === serviceSlug), [services, serviceSlug]);
+  const bookableDateKeys = useMemo(
+    () => getBookableDateKeys(bookingRules, { limit: 56, maxScanDays: 180 }),
+    [bookingRules],
+  );
+
+  useEffect(() => {
+    if (bookableDateKeys.length === 0) return;
+    setBookingDateKey((prev) => (prev && bookableDateKeys.includes(prev) ? prev : bookableDateKeys[0]!));
+  }, [bookableDateKeys]);
+
+  const slotOpts = useMemo(
+    () => (bookingDateKey ? getTimeSlotsForDate(bookingDateKey, bookingRules) : []),
+    [bookingDateKey, bookingRules],
+  );
+
+  useEffect(() => {
+    if (!bookingDateKey || slotOpts.length === 0) {
+      setBookingTimeValue('');
+      return;
+    }
+    const now = Date.now();
+    const pickFirst = () => {
+      const hit = slotOpts.find((s) => {
+        const d = new Date(`${bookingDateKey}T${s.value}:00`);
+        return !Number.isNaN(d.getTime()) && d.getTime() >= now - 60_000 && isBookingSlotAllowed(d, bookingRules);
+      });
+      return hit?.value ?? '';
+    };
+    setBookingTimeValue((prev) => {
+      if (prev) {
+        const d = new Date(`${bookingDateKey}T${prev}:00`);
+        if (!Number.isNaN(d.getTime()) && isBookingSlotAllowed(d, bookingRules) && d.getTime() >= now - 60_000) {
+          return prev;
+        }
+      }
+      return pickFirst();
+    });
+  }, [bookingDateKey, bookingRules, slotOpts]);
 
   const claimedOfferSnap = useMemo(() => {
     if (!offerFromUrl) return null;
-    const o = offers.find((x) => x.id === offerFromUrl && x.active);
+    const o = offers.find(
+      (x) => x.active && (x.id === offerFromUrl || (Boolean(x.slug) && x.slug === offerFromUrl)),
+    );
     if (!o || o.discountPercent <= 0) return null;
-    return { percent: o.discountPercent, stackableWithSitePromo: o.stackable !== false };
+    return {
+      id: o.id,
+      percent: o.discountPercent,
+      stackableWithSitePromo: o.stackable !== false,
+    };
   }, [offerFromUrl, offers]);
 
   const bookingLines = useMemo(
@@ -381,7 +436,9 @@ export function BookingWizard() {
       vehicleLineCents,
       addOnCentsSum,
       deals,
-      claimedOffer: claimedOfferSnap,
+      claimedOffer: claimedOfferSnap
+        ? { percent: claimedOfferSnap.percent, stackableWithSitePromo: claimedOfferSnap.stackableWithSitePromo }
+        : null,
       depositPercent: 30,
     });
     if ('kind' in bd) return null;
@@ -424,7 +481,14 @@ export function BookingWizard() {
     }
     setSubmitting(true);
     setError(null);
+    setPhoneError(null);
     try {
+      const p10 = normalizeUsPhone10Digits(guestPhone);
+      if (!p10.ok) {
+        setPhoneError(p10.error);
+        setSubmitting(false);
+        return;
+      }
       const vehicles = bookingLines
         .filter((l) => l.serviceSlug && l.vehicleClass && l.vehicleDescription.trim())
         .slice(0, 3)
@@ -440,8 +504,14 @@ export function BookingWizard() {
         return;
       }
 
-      const scheduled = new Date(scheduledStart);
-      if (!isBookingSlotAllowed(scheduled, bookingRules)) {
+      if (!bookingDateKey || !bookingTimeValue) {
+        setScheduleError('Please choose a valid appointment date and time.');
+        setSubmitting(false);
+        return;
+      }
+
+      const scheduled = new Date(`${bookingDateKey}T${bookingTimeValue}:00`);
+      if (Number.isNaN(scheduled.getTime()) || !isBookingSlotAllowed(scheduled, bookingRules)) {
         setScheduleError(
           'Selected time is outside online booking hours. ' + bookingAvailabilityHint(bookingRules),
         );
@@ -457,11 +527,11 @@ export function BookingWizard() {
         body: JSON.stringify({
           vehicles,
           addOns: selectedAddOnSlugs,
-          offerId: claimedOfferSnap ? offerFromUrl : undefined,
+          offerId: claimedOfferSnap?.id,
           scheduledStart: startIso,
           guestName,
           guestEmail,
-          guestPhone,
+          guestPhone: p10.digits10,
           notes: notes || undefined,
         }),
       });
@@ -500,7 +570,11 @@ export function BookingWizard() {
       }
 
       if (!checkoutJson.url) {
-        setError(checkoutJson.message ?? checkoutJson.error ?? 'Checkout could not start');
+        const hint =
+          checkoutRes.status >= 500
+            ? 'Payments are temporarily unavailable. Your booking is saved — call Gloss Boss ATX to complete your deposit, or try again shortly.'
+            : checkoutJson.message ?? checkoutJson.error ?? 'Checkout could not start.';
+        setError(hint);
         setSubmitting(false);
         return;
       }
@@ -678,23 +752,48 @@ export function BookingWizard() {
 
           <section className='grid gap-4 md:grid-cols-2'>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Appointment date & time</span>
+              <span className='mb-2 block text-zinc-300'>Appointment date</span>
               <p className='mb-2 text-xs text-zinc-500'>{bookingAvailabilityHint(bookingRules)}</p>
-              <input
-                type='datetime-local'
-                value={scheduledStart}
+              <select
+                value={bookingDateKey}
                 onChange={(e) => {
-                  setScheduledStart(e.target.value);
-                  const d = new Date(e.target.value);
-                  if (e.target.value && !Number.isNaN(d.getTime()) && !isBookingSlotAllowed(d, bookingRules)) {
-                    setScheduleError(bookingAvailabilityHint(bookingRules));
-                  } else {
-                    setScheduleError(null);
-                  }
+                  setBookingDateKey(e.target.value);
+                  setScheduleError(null);
                 }}
                 className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
                 required
-              />
+              >
+                {bookableDateKeys.length === 0 ? <option value="">No online dates available — call us</option> : null}
+                {bookableDateKeys.map((k) => (
+                  <option key={k} value={k}>
+                    {new Date(`${k}T12:00:00`).toLocaleDateString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Start time (15-minute slots)</span>
+              <select
+                value={bookingTimeValue}
+                onChange={(e) => {
+                  setBookingTimeValue(e.target.value);
+                  setScheduleError(null);
+                }}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                required
+              >
+                <option value=''>Select a time</option>
+                {slotOpts.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
               {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
             </label>
             <label className='text-sm md:col-span-2'>
@@ -719,8 +818,29 @@ export function BookingWizard() {
               <input type='email' value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Phone</span>
-              <input type='tel' value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
+              <span className='mb-2 block text-zinc-300'>Phone (10 digits)</span>
+              <input
+                type='tel'
+                inputMode='numeric'
+                autoComplete='tel-national'
+                maxLength={10}
+                value={guestPhone}
+                onChange={(e) => {
+                  setGuestPhone(digitsOnly(e.target.value).slice(0, 10));
+                  setPhoneError(null);
+                }}
+                onBlur={() => {
+                  if (!guestPhone) {
+                    setPhoneError('Phone number is required.');
+                    return;
+                  }
+                  const r = normalizeUsPhone10Digits(guestPhone);
+                  setPhoneError(r.ok ? null : r.error);
+                }}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                required
+              />
+              {phoneError ? <p className='mt-2 text-xs text-amber-300'>{phoneError}</p> : null}
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Notes (optional)</span>
@@ -761,15 +881,25 @@ export function BookingWizard() {
             })}
             {priceSummary?.kind === 'ok' ? (
               <div className='mt-3 space-y-2 border-t border-white/10 pt-3'>
+                <p className='flex justify-between border-b border-white/10 pb-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500'>
+                  <span>Vehicle services</span>
+                  <span className='text-zinc-300'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>
+                </p>
                 {priceSummary.lines.map((l, i) => (
-                  <p key={i} className='flex justify-between text-sm text-zinc-400'>
+                  <p key={i} className='flex justify-between text-xs text-zinc-400'>
                     <span>{l.label}</span>
                     <span>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
+                {priceSummary.breakdown.addOnSubtotalCents > 0 ? (
+                  <p className='flex justify-between text-sm text-zinc-300'>
+                    <span>Add-ons</span>
+                    <span>${(priceSummary.breakdown.addOnSubtotalCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
                 {priceSummary.addOnLines.map((l, i) => (
-                  <p key={`a-${i}`} className='flex justify-between text-sm text-zinc-400'>
-                    <span>Add-on · {l.label}</span>
+                  <p key={`a-${i}`} className='flex justify-between text-xs text-zinc-500'>
+                    <span>· {l.label}</span>
                     <span>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
@@ -779,28 +909,28 @@ export function BookingWizard() {
                     <span>-${(priceSummary.breakdown.multiCarDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
-                {priceSummary.breakdown.offerDiscountCents > 0 ? (
-                  <p className='flex justify-between text-sm text-emerald-300'>
-                    <span>Offer discount</span>
-                    <span>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
-                  </p>
-                ) : null}
+                <p className='flex justify-between text-xs text-zinc-500'>
+                  <span>Eligible subtotal (after multi-car)</span>
+                  <span>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
+                </p>
                 {priceSummary.breakdown.websitePromoDiscountCents > 0 ? (
                   <p className='flex justify-between text-sm text-emerald-300'>
                     <span>Sitewide promo</span>
                     <span>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
-                <p className='flex justify-between border-t border-white/10 pt-2 text-sm text-zinc-500'>
-                  <span>Subtotal before discounts</span>
-                  <span>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
-                </p>
-                <p className='flex justify-between text-2xl font-black text-white'>
-                  <span>Total</span>
+                {priceSummary.breakdown.offerDiscountCents > 0 ? (
+                  <p className='flex justify-between text-sm text-emerald-300'>
+                    <span>Offer discount</span>
+                    <span>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                <p className='flex justify-between pt-2 text-3xl font-black tracking-tight text-white'>
+                  <span>Combined total</span>
                   <span>${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}</span>
                 </p>
-                <p className='flex justify-between rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm font-bold text-gold-soft'>
-                  <span>Deposit due now (30%)</span>
+                <p className='flex justify-between rounded-lg border border-gold/40 bg-gold/15 px-3 py-2.5 text-base font-black text-gold-soft shadow-[0_0_20px_rgba(212,166,77,0.2)]'>
+                  <span>Deposit due now ({priceSummary.breakdown.depositPercent}%)</span>
                   <span>${(priceSummary.breakdown.depositCents / 100).toFixed(2)}</span>
                 </p>
               </div>

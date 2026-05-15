@@ -17,8 +17,10 @@ export default function IntakeContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [html, setHtml] = useState<string | null>(null);
+  const [cmsHtmlRejected, setCmsHtmlRejected] = useState(false);
   const [fields, setFields] = useState<IntakeField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [signatureText, setSignatureText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -34,19 +36,29 @@ export default function IntakeContent() {
       { timeoutMs: 12000 },
     )
       .then((r) => r.json())
-      .then((data: { ok?: boolean; error?: string; html?: string; fields?: IntakeField[]; alreadySubmitted?: boolean }) => {
-        if (cancelled) return;
-        if (!data.ok) {
-          setError(data.error ?? 'Unable to load intake form');
-          return;
-        }
-        if (data.alreadySubmitted) {
-          setDone(true);
-          return;
-        }
-        setHtml(data.html ?? null);
-        setFields(data.fields ?? []);
-      })
+      .then(
+        (data: {
+          ok?: boolean;
+          error?: string;
+          html?: string;
+          cmsHtmlRejected?: boolean;
+          fields?: IntakeField[];
+          alreadySubmitted?: boolean;
+        }) => {
+          if (cancelled) return;
+          if (!data.ok) {
+            setError(data.error ?? 'Unable to load intake form');
+            return;
+          }
+          if (data.alreadySubmitted) {
+            setDone(true);
+            return;
+          }
+          setHtml(data.html ?? null);
+          setCmsHtmlRejected(Boolean(data.cmsHtmlRejected));
+          setFields(data.fields ?? []);
+        },
+      )
       .catch(() => {
         if (!cancelled) setError('Could not load intake form');
       })
@@ -61,13 +73,18 @@ export default function IntakeContent() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!appointmentId || !token) return;
+    const sig = signatureText.trim();
+    if (sig.length < 3) {
+      setError('Please sign using your full name.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const res = await fetchWithTimeout('/api/intake/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointmentId, token, sessionId, formData: values }),
+        body: JSON.stringify({ appointmentId, token, sessionId, formData: values, signatureText: sig }),
         timeoutMs: 20000,
       });
       const j = (await res.json()) as { ok?: boolean; error?: string };
@@ -107,8 +124,17 @@ export default function IntakeContent() {
 
         {error ? <p className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">{error}</p> : null}
 
+        {cmsHtmlRejected ? (
+          <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
+            The CMS intake template was skipped for safety. Please use the secure form below.
+          </p>
+        ) : null}
+
         {html ? (
-          <div className="prose prose-invert mt-6 max-w-none rounded-xl border border-white/10 bg-zinc-950 p-4 text-sm" dangerouslySetInnerHTML={{ __html: html }} />
+          <div
+            className="prose prose-invert mt-6 max-w-none rounded-xl border border-white/10 bg-zinc-950 p-4 text-sm"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         ) : null}
 
         <form onSubmit={submit} className="mt-6 space-y-4">
@@ -134,6 +160,19 @@ export default function IntakeContent() {
               />
             </label>
           ))}
+
+          <label className="block text-xs text-zinc-400">
+            Type your full name as electronic signature *
+            <input
+              value={signatureText}
+              onChange={(e) => setSignatureText(e.target.value)}
+              required
+              autoComplete="name"
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white"
+              placeholder="First and last name"
+            />
+          </label>
+
           <button
             type="submit"
             disabled={submitting}

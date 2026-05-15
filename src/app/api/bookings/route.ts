@@ -1,88 +1,20 @@
 import { NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { isBookingSlotAllowed } from '@/lib/booking-availability';
-import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
-import { parseDealConfig } from '@/lib/public-site-data';
-import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
+import {
+  computeQuoteFromInputs,
+  insertAppointmentResilient,
+  loadBookingAvailabilityRules,
+  type VehicleLineInput,
+} from '@/lib/booking-server-shared';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-
-async function loadBookingAvailabilityRules(admin: SupabaseClient) {
-  try {
-    const { data } = await admin.from('site_settings').select('value').eq('key', 'booking_availability').maybeSingle();
-    if (!data?.value) return parseBookingAvailabilityConfig(null);
-    try {
-      return parseBookingAvailabilityConfig(JSON.parse(String(data.value)));
-    } catch {
-      return parseBookingAvailabilityConfig(null);
-    }
-  } catch {
-    return parseBookingAvailabilityConfig(null);
-  }
-}
-
-async function loadDealConfigForBooking(admin: SupabaseClient) {
-  const { data } = await admin.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle();
-  return parseDealConfig(data?.value ?? null);
-}
-
-async function loadClaimedOffer(admin: SupabaseClient, offerId: string | undefined) {
-  const id = String(offerId ?? '').trim();
-  if (!id) return null;
-  const { data } = await admin
-    .from('offers')
-    .select('percent_off, discount_percent, active, stackable')
-    .eq('id', id)
-    .maybeSingle();
-  if (!data || !data.active) return null;
-  const pct = Number(
-    (data as { percent_off?: number; discount_percent?: number }).percent_off ??
-      (data as { discount_percent?: number }).discount_percent ??
-      0,
-  );
-  if (!Number.isFinite(pct) || pct <= 0) return null;
-  const stack = (data as { stackable?: boolean }).stackable;
-  return { percent: pct, stackableWithSitePromo: stack !== false };
-}
-
-async function sumSelectedAddonCents(admin: SupabaseClient, selections: string[]): Promise<number> {
-  if (selections.length === 0) return 0;
-  const { data } = await admin.from('addons').select('slug, label, price_cents').eq('active', true);
-  const rows = (data ?? []) as { slug?: string | null; label?: string | null; price_cents?: number | null }[];
-  let sum = 0;
-  for (const sel of selections) {
-    const key = sel.trim().toLowerCase();
-    const hit = rows.find(
-      (r) =>
-        (typeof r.slug === 'string' && r.slug.toLowerCase() === key) ||
-        (typeof r.label === 'string' && r.label.toLowerCase() === key),
-    );
-    if (hit && typeof hit.price_cents === 'number' && hit.price_cents > 0) sum += hit.price_cents;
-  }
-  return sum;
-}
-
-async function loadServicePricesForService(admin: SupabaseClient, serviceId: string): Promise<PriceRowInput[]> {
-  const { data } = await admin.from('service_prices').select('*').eq('service_id', serviceId);
-  const rows: PriceRowInput[] = [];
-  for (const row of data ?? []) {
-    if (!row || typeof row !== 'object') continue;
-    const r = row as Record<string, unknown>;
-    const sid = typeof r.service_id === 'string' ? r.service_id : serviceId;
-    const vc = typeof r.vehicle_class === 'string' ? r.vehicle_class : '';
-    const pc = r.price_cents;
-    if (typeof pc === 'number' && !Number.isNaN(pc)) rows.push({ service_id: sid, vehicle_class: vc, price_cents: pc });
-  }
-  return rows;
-}
-
-type VehicleLine = { serviceSlug: string; vehicleClass: string; vehicleDescription: string };
+import { normalizeUsPhone10Digits } from '@/lib/us-phone';
+import { notifyBookingConfirmationQueued } from '@/lib/notifications-placeholder';
 
 type Body = {
   serviceSlug?: string;
   vehicleClass?: string;
-  vehicles?: VehicleLine[];
+  vehicles?: VehicleLineInput[];
   addOns?: string[];
   offerId?: string;
   scheduledStart: string;
@@ -107,7 +39,7 @@ export async function POST(request: Request) {
           .map((s) => s.slice(0, 120))
       : [];
 
-    let lines: VehicleLine[] = [];
+    let lines: VehicleLineInput[] = [];
     if (Array.isArray(body.vehicles) && body.vehicles.length > 0) {
       lines = body.vehicles.slice(0, 3).map((v) => ({
         serviceSlug: String(v.serviceSlug ?? '').trim(),
@@ -124,12 +56,17 @@ export async function POST(request: Request) {
       ];
     }
 
+    const phoneNorm = normalizeUsPhone10Digits(guestPhone);
+    if (!phoneNorm.ok) {
+      return NextResponse.json({ error: phoneNorm.error }, { status: 400 });
+    }
+    const phoneDigits = phoneNorm.digits10;
+
     if (
       lines.length === 0 ||
       !scheduledStart ||
       !guestName ||
       !guestEmail ||
-      !guestPhone ||
       lines.some(
         (l) =>
           !l.serviceSlug ||
@@ -153,69 +90,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const vehicleLineCents: number[] = [];
-    const resolved: { serviceSlug: string; vehicleClass: string; vehicleDescription: string; priceCents: number }[] = [];
-
-    for (const line of lines) {
-      const { data: service, error: svcErr } = await admin
-        .from('services')
-        .select('id, slug')
-        .eq('slug', line.serviceSlug)
-        .eq('active', true)
-        .maybeSingle();
-
-      if (svcErr || !service) {
-        return NextResponse.json({ error: `Invalid service: ${line.serviceSlug}` }, { status: 400 });
-      }
-
-      const priceRows = await loadServicePricesForService(admin, service.id);
-      const vehicleClass = normalizeVehicleClass(line.vehicleClass);
-      const priceCents = safePriceCentsForBooking(
-        { slug: line.serviceSlug, serviceId: service.id },
-        vehicleClass,
-        priceRows,
-      );
-      if (priceCents == null) {
-        return NextResponse.json(
-          {
-            error:
-              line.serviceSlug === 'ceramic-coating'
-                ? 'Ceramic coating requires a consultation — call us to book.'
-                : `Pricing not available for ${line.serviceSlug} / ${line.vehicleClass}.`,
-          },
-          { status: 400 },
-        );
-      }
-
-      vehicleLineCents.push(priceCents);
-      resolved.push({
-        serviceSlug: line.serviceSlug,
-        vehicleClass,
-        vehicleDescription: line.vehicleDescription,
-        priceCents,
-      });
+    const quote = await computeQuoteFromInputs(admin, { lines, addOns, offerRef: body.offerId });
+    if (!quote.ok) {
+      return NextResponse.json({ error: quote.error }, { status: quote.status });
     }
-
-    const addOnCentsSum = await sumSelectedAddonCents(admin, addOns);
-    const deals = await loadDealConfigForBooking(admin);
-    const claimed = await loadClaimedOffer(admin, body.offerId);
-    const depositPercent = 30;
-    const breakdown = computeBookingPricing({
-      vehicleLineCents,
-      addOnCentsSum,
-      deals,
-      claimedOffer: claimed,
-      depositPercent,
-    });
-    if ('kind' in breakdown) {
-      return NextResponse.json({ error: 'Invalid pricing' }, { status: 400 });
-    }
-    const priced = breakdown as BookingPricingBreakdown;
+    const priced = quote.breakdown;
+    const resolved = quote.resolved;
+    const claimed = quote.claimed;
 
     const totalBaseCents = priced.finalTotalCents;
     const depositAmountCents = priced.depositCents;
     const primary = resolved[0]!;
-    const offerIdForRow = claimed && body.offerId ? String(body.offerId).trim() : null;
+    const offerRowId = claimed?.offerId ?? null;
 
     const scheduled = new Date(scheduledStart);
     if (Number.isNaN(scheduled.getTime())) {
@@ -239,11 +125,11 @@ export async function POST(request: Request) {
 
     if (existingCustomer) {
       customerId = existingCustomer.id;
-      await admin.from('customers').update({ phone: guestPhone, full_name: guestName }).eq('id', customerId);
+      await admin.from('customers').update({ phone: phoneDigits, full_name: guestName }).eq('id', customerId);
     } else {
       const { data: newCustomer, error: custErr } = await admin
         .from('customers')
-        .insert({ email: emailNorm, phone: guestPhone, full_name: guestName })
+        .insert({ email: emailNorm, phone: phoneDigits, full_name: guestName })
         .select('id')
         .single();
       if (custErr || !newCustomer) {
@@ -262,36 +148,39 @@ export async function POST(request: Request) {
 
     const insertPayload: Record<string, unknown> = {
       guest_email: emailNorm,
-      guest_phone: guestPhone,
+      guest_phone: phoneDigits,
       guest_name: guestName,
       customer_id: customerId,
       vehicle_description: vehicleDescriptionJoined,
       service_slug: primary.serviceSlug,
       vehicle_class: primary.vehicleClass,
       base_price_cents: totalBaseCents,
-      deposit_percent: depositPercent,
+      deposit_percent: priced.depositPercent,
       deposit_amount_cents: depositAmountCents,
       scheduled_start: scheduled.toISOString(),
       notes: notes ?? null,
       status: 'awaiting_payment',
       booking_vehicles: bookingVehicles,
       booking_add_ons: addOns,
+      booking_source: 'online',
     };
-    if (offerIdForRow) insertPayload.offer_id = offerIdForRow;
+    if (offerRowId) insertPayload.offer_id = offerRowId;
 
-    let ins = await admin.from('appointments').insert(insertPayload).select('id, access_token').single();
-    if (ins.error && /offer_id|column/i.test(ins.error.message)) {
-      const rest = { ...insertPayload };
-      delete rest.offer_id;
-      ins = await admin.from('appointments').insert(rest).select('id, access_token').single();
-    }
-    const appointment = ins.data;
-    const apptErr = ins.error;
-
+    const { data: appointment, error: apptErr } = await insertAppointmentResilient(admin, insertPayload);
 
     if (apptErr || !appointment) {
-      return NextResponse.json({ error: 'Could not create booking' }, { status: 500 });
+      console.error('[api/bookings] insert failed', apptErr);
+      return NextResponse.json({ error: apptErr || 'Could not create booking' }, { status: 500 });
     }
+
+    void notifyBookingConfirmationQueued({
+      toEmail: emailNorm,
+      guestName: guestName.trim(),
+      whenIso: scheduled.toISOString(),
+      totalCents: priced.finalTotalCents,
+      depositCents: depositAmountCents,
+      vehicles: vehicleDescriptionJoined,
+    }).catch(() => {});
 
     return NextResponse.json({
       appointmentId: appointment.id,

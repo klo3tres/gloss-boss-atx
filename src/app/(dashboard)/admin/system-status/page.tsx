@@ -20,8 +20,21 @@ type StatusPayload = {
     keySource: string;
     mode: string;
   };
-  resend: { apiKeyConfigured: boolean; fromEmailConfigured: boolean };
-  webhooks: { primaryUrlHint: string | null };
+  resend: { apiKeyConfigured: boolean; fromEmailConfigured: boolean; ready?: boolean };
+  twilio?: {
+    accountSidConfigured: boolean;
+    authTokenConfigured: boolean;
+    fromNumberConfigured: boolean;
+    ready?: boolean;
+  };
+  readiness?: {
+    stripe: boolean;
+    stripeWebhook: boolean;
+    resend: boolean;
+    twilio: boolean;
+    supabaseServiceRole: boolean;
+  };
+  webhooks: { primaryUrlHint: string | null; legacyUrlHint?: string | null };
 };
 
 function Row({ label, ok, detail }: { label: string; ok: boolean; detail?: string | null }) {
@@ -61,10 +74,12 @@ export default function SystemStatusPage() {
     };
   }, []);
 
+  const r = data?.readiness;
+
   return (
     <DashboardShell
       title='System status'
-      subtitle='Pre-flight checklist for Supabase, Stripe, Resend, and environment wiring before production cutover.'
+      subtitle='Pre-flight checklist for Supabase, Stripe, webhooks, Resend, Twilio, and production env wiring.'
       role='admin'
     >
       {error ? (
@@ -82,6 +97,19 @@ export default function SystemStatusPage() {
       {data ? (
         <div className='space-y-6'>
           <p className='text-xs text-zinc-500'>Last checked: {new Date(data.timestamp).toLocaleString()}</p>
+
+          {r ? (
+            <section className='rounded-2xl border border-gold/35 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.08)] backdrop-blur-sm'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Integrations at a glance</h2>
+              <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+                <Row label='Stripe (secret key)' ok={r.stripe} />
+                <Row label='Stripe webhook secret' ok={r.stripeWebhook} detail='Required to verify checkout.session.completed.' />
+                <Row label='Resend (send email)' ok={r.resend} />
+                <Row label='Twilio (SMS)' ok={r.twilio} detail='Optional — job SMS hooks no-op when missing.' />
+                <Row label='Supabase service role' ok={r.supabaseServiceRole} detail='Server booking, intake, and admin writes.' />
+              </div>
+            </section>
+          ) : null}
 
           <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
             <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Supabase</h2>
@@ -111,21 +139,51 @@ export default function SystemStatusPage() {
             <div className='mt-4 space-y-2'>
               <Row label='RESEND_API_KEY' ok={data.resend.apiKeyConfigured} />
               <Row label='RESEND_FROM_EMAIL' ok={data.resend.fromEmailConfigured} />
+              {typeof data.resend.ready === 'boolean' ? (
+                <Row label='Ready to send transactional mail' ok={data.resend.ready} detail='Both API key and From must be set.' />
+              ) : null}
               <p className='rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-400'>
-                Messages still save without Resend. Add <code className='text-gold-soft'>RESEND_API_KEY</code> and{' '}
-                <code className='text-gold-soft'>RESEND_FROM_EMAIL</code> in Vercel to email the shop on new contact form submissions.
+                Without Resend, confirmations and receipts are logged only; no customer email is sent.
               </p>
+            </div>
+          </section>
+
+          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
+            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Twilio</h2>
+            <div className='mt-4 space-y-2'>
+              {data.twilio ? (
+                <>
+                  <Row label='TWILIO_ACCOUNT_SID' ok={data.twilio.accountSidConfigured} />
+                  <Row label='TWILIO_AUTH_TOKEN' ok={data.twilio.authTokenConfigured} />
+                  <Row label='TWILIO_FROM_NUMBER' ok={data.twilio.fromNumberConfigured} />
+                  {typeof data.twilio.ready === 'boolean' ? (
+                    <Row label='Ready to send SMS' ok={data.twilio.ready} detail='All three values required for job SMS hooks.' />
+                  ) : null}
+                </>
+              ) : (
+                <p className='text-xs text-zinc-500'>Twilio status unavailable — refresh after deploy.</p>
+              )}
             </div>
           </section>
 
           <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
             <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>App URL & webhooks</h2>
             <div className='mt-4 space-y-2'>
-              <Row label='NEXT_PUBLIC_APP_URL' ok={Boolean(data.env.nextPublicAppUrl)} detail={data.env.nextPublicAppUrl ?? 'Set for Stripe redirects and webhook URL hints.'} />
+              <Row
+                label='NEXT_PUBLIC_APP_URL'
+                ok={Boolean(data.env.nextPublicAppUrl)}
+                detail={data.env.nextPublicAppUrl ?? 'Set for Stripe redirects and webhook URL hints.'}
+              />
               <div className='rounded-xl border border-white/10 bg-black/30 px-4 py-3'>
-                <p className='text-sm font-semibold text-zinc-200'>Stripe webhook target</p>
+                <p className='text-sm font-semibold text-zinc-200'>Stripe webhook (canonical)</p>
                 <p className='mt-2 break-all font-mono text-xs text-zinc-400'>{data.webhooks.primaryUrlHint}</p>
               </div>
+              {data.webhooks.legacyUrlHint ? (
+                <div className='rounded-xl border border-white/10 bg-black/30 px-4 py-3'>
+                  <p className='text-sm font-semibold text-zinc-200'>Legacy webhook path</p>
+                  <p className='mt-2 break-all font-mono text-xs text-zinc-400'>{data.webhooks.legacyUrlHint}</p>
+                </div>
+              ) : null}
             </div>
           </section>
         </div>

@@ -1,9 +1,11 @@
 import { getLocalFallbackCatalog } from '@/lib/catalog-fallback';
 import { pickSedanCents, pickSuvTruckCents } from '@/lib/vehicle-pricing';
-import { defaultDealConfig, type DealConfig, type ServicePackage } from '@/lib/site-config';
+import { defaultDealConfig, defaultServicePackages, type DealConfig, type ServicePackage } from '@/lib/site-config';
 
 export type SiteDataOfferCard = {
   id: string;
+  /** URL param for /book?offer= — stable slug when configured in Supabase */
+  slug?: string;
   title: string;
   description: string;
   discountPercent: number;
@@ -76,13 +78,16 @@ export function mapCatalogToServicePackages(
     .map((s) => {
       const sedanC = pickSedanCents(prices, s.id);
       const suvTruckC = pickSuvTruckCents(prices, s.id);
+      const canon = defaultServicePackages.find((p) => p.id === s.slug);
+      const includes =
+        canon && canon.includes.length > 0 ? [...canon.includes] : subtitleToIncludes(s.subtitle);
       return {
         id: s.slug,
         title: s.title,
-        subtitle: s.subtitle ?? '',
+        subtitle: canon?.subtitle ?? (s.subtitle ?? ''),
         sedanPrice: dollarsFromCents(sedanC),
         suvTruckPrice: dollarsFromCents(suvTruckC),
-        includes: subtitleToIncludes(s.subtitle),
+        includes,
       };
     });
 }

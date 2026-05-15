@@ -68,6 +68,13 @@ export default async function AdminServicesPricingPage() {
           Catalog seed note: {seedMsg} Check <code className='text-gold-soft'>SUPABASE_SERVICE_ROLE_KEY</code> for automatic seeding.
         </p>
       ) : null}
+      {!admin ? (
+        <p className='mb-4 rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
+          <span className='font-semibold'>Service role key recommended.</span> Without{' '}
+          <code className='text-gold-soft'>SUPABASE_SERVICE_ROLE_KEY</code>, catalog seeding and some price joins may stay empty even
+          when public booking works. Add the key on the server, then refresh this page.
+        </p>
+      ) : null}
       {error ? (
         <p className='rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200'>
           Could not load service_prices: {error.message}. Run migrations in Supabase if tables are missing.

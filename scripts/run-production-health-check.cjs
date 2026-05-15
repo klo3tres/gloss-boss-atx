@@ -108,6 +108,11 @@ async function main() {
     fail('safePriceResolver module', 'missing');
   }
 
+  const resendOk = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+  const twilioOk = Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+  pass('Resend email (optional)', resendOk ? 'configured for transactional mail' : 'not configured — booking emails log only');
+  pass('Twilio SMS (optional)', twilioOk ? 'configured for job SMS' : 'not configured — SMS hooks log only');
+
   const failed = checks.filter((c) => !c.ok);
   const result = failed.length === 0 ? 'PASS' : 'FAIL';
   console.log(`\nResult: ${result} (${checks.length - failed.length}/${checks.length} checks passed)\n`);

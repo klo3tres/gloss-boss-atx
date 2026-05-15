@@ -116,12 +116,14 @@ export async function GET() {
     let offers: SiteDataOfferCard[] = offerRows.map((r: Record<string, unknown>) => {
       const title = (typeof r.title === 'string' && r.title.trim()) || (typeof r.label === 'string' && r.label.trim()) || 'Offer';
       const desc = typeof r.description === 'string' ? r.description : '';
+      const slugRaw = typeof r.slug === 'string' ? r.slug.trim() : '';
       const pct =
         typeof r.discount_percent === 'number' && !Number.isNaN(r.discount_percent)
           ? r.discount_percent
           : Number(r.percent_off ?? 0);
       return {
         id: String(r.id),
+        slug: slugRaw || undefined,
         title,
         description: desc,
         discountPercent: pct,

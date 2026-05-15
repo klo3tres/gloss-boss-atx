@@ -1,5 +1,6 @@
 'use client';
 
+import { useActionState } from 'react';
 import { techCompleteJobAction, techStartJobAction } from './tech-actions';
 import { TechJobWorkspace } from './tech-job-workspace';
 import { formatVehicleClassLabel } from '@/lib/display-pricing';
@@ -16,6 +17,7 @@ type Job = {
   vehicle_class: string;
   base_price_cents: number | null;
   notes?: string | null;
+  hasIntake?: boolean;
 };
 
 function mapsUrl(address: string): string {
@@ -28,12 +30,19 @@ function telHref(phone: string): string {
 }
 
 export function TechJobsClient({ jobs }: { jobs: Job[] }) {
+  const [completeState, completeAction, completePending] = useActionState(techCompleteJobAction, null);
+
   if (jobs.length === 0) {
     return <p className='text-sm text-zinc-500'>No jobs assigned to you yet.</p>;
   }
 
   return (
     <div className='space-y-4'>
+      {completeState?.error ? (
+        <p className='rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200' role='alert'>
+          {completeState.error}
+        </p>
+      ) : null}
       {jobs.map((job) => {
         const price = job.base_price_cents && job.base_price_cents > 0 ? job.base_price_cents / 100 : null;
         const locationHint = job.notes?.trim() || job.vehicle_description?.trim() || '';
@@ -52,6 +61,11 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   <p className='mt-1 text-xs font-semibold text-emerald-300/90'>Job value · ${price.toFixed(0)}</p>
                 ) : null}
                 {locationHint ? <p className='mt-2 text-xs text-zinc-400'>{locationHint}</p> : null}
+                {job.hasIntake === false ? (
+                  <p className='mt-2 text-xs font-semibold text-amber-200'>
+                    Intake not on file yet — customer must complete `/intake` after paying before you can close this job.
+                  </p>
+                ) : null}
               </div>
               <div className='flex flex-col gap-2'>
                 {phone ? (
@@ -81,19 +95,20 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   </form>
                 ) : null}
                 {job.status === 'in_progress' ? (
-                  <form action={techCompleteJobAction}>
+                  <form action={completeAction}>
                     <input type='hidden' name='appointmentId' value={job.id} />
                     <button
                       type='submit'
-                      className='w-full rounded-lg border border-emerald-500/50 px-4 py-2 text-xs font-bold uppercase tracking-wider text-emerald-300'
+                      disabled={completePending}
+                      className='w-full rounded-lg border border-emerald-500/50 px-4 py-2 text-xs font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-50'
                     >
-                      Mark complete
+                      {completePending ? 'Saving…' : 'Mark complete'}
                     </button>
                   </form>
                 ) : null}
               </div>
             </div>
-            <TechJobWorkspace job={{ ...job, service_slug: job.service_slug }} />
+            <TechJobWorkspace job={{ ...job, service_slug: job.service_slug }} hasIntake={job.hasIntake} />
             <p className='mt-3 text-xs text-zinc-600'>On-site liability acknowledgment must be on file before completion.</p>
           </article>
         );

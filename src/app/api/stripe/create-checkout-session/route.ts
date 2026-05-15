@@ -55,6 +55,18 @@ export async function POST(request: Request) {
           { status: 200 }
         );
       }
+      if (result.code === 'STRIPE_ERROR') {
+        return NextResponse.json(
+          {
+            error: result.error,
+            code: result.code,
+            message: result.error,
+            appointmentId,
+            accessToken,
+          },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: result.error, code: result.code }, { status: 400 });
     }
 

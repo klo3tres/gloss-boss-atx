@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sanitizeIntakeCmsHtml } from '@/lib/intake-html';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 
@@ -70,6 +71,7 @@ export async function GET(req: Request) {
   }
 
   let html: string | null = null;
+  let cmsHtmlRejected = false;
   try {
     const { data: doc } = await admin
       .from('cms_documents')
@@ -80,7 +82,12 @@ export async function GET(req: Request) {
       .maybeSingle();
     if (doc?.file_url && typeof doc.file_url === 'string') {
       const res = await fetch(doc.file_url, { cache: 'no-store' });
-      if (res.ok) html = await res.text();
+      if (res.ok) {
+        const raw = await res.text();
+        const safe = sanitizeIntakeCmsHtml(raw);
+        if (safe) html = safe;
+        else cmsHtmlRejected = true;
+      }
     }
   } catch {
     /* optional HTML template */
@@ -97,5 +104,5 @@ export async function GET(req: Request) {
     /* use defaults */
   }
 
-  return NextResponse.json({ ok: true, html, fields, alreadySubmitted: false });
+  return NextResponse.json({ ok: true, html, cmsHtmlRejected, fields, alreadySubmitted: false });
 }

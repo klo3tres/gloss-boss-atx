@@ -96,29 +96,45 @@ export default function ServicesPage() {
         {showPromosBand ? (
           <section className="mt-8">
             <p className="text-xs uppercase tracking-[0.22em] text-gold-soft">Featured offers</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory">
               {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
-                <article className="min-h-[160px] rounded-2xl border-2 border-amber-400/45 bg-gradient-to-br from-amber-500/20 via-black/50 to-black/80 p-6 shadow-[0_0_28px_rgba(251,191,36,0.14)] ring-1 ring-amber-300/25">
+                <article className="min-w-[min(100%,320px)] snap-start rounded-2xl border border-amber-400/45 bg-gradient-to-br from-amber-500/18 via-black/60 to-black/90 p-5 shadow-[0_0_34px_rgba(251,191,36,0.22)] ring-1 ring-amber-300/30 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(251,191,36,0.28)]">
                   <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">{displayDeals.websitePromoLabel || "Website booking offer"}</p>
-                  <p className="mt-2 text-2xl font-black text-white sm:text-3xl">{displayDeals.websitePromoPercent}% OFF Website Bookings</p>
-                  <p className="mt-2 text-sm text-zinc-300">Cannot be stacked with multi-car discount — best savings applies automatically at checkout.</p>
+                  <p className="mt-2 text-2xl font-black text-white sm:text-3xl">{displayDeals.websitePromoPercent}% OFF online bookings</p>
+                  <p className="mt-2 text-sm text-zinc-300">
+                    {displayDeals.promoStacksWithMultiCar
+                      ? "Stacks with our multi-car bundle when configured in checkout."
+                      : "Does not stack with multi-car discount — best savings applies automatically at checkout."}
+                  </p>
                 </article>
               ) : null}
-              {activeOfferCards.map((o) => (
-                <article
-                  key={o.id}
-                  className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gold/30 bg-zinc-950/90 p-6 shadow-[0_0_22px_rgba(212,166,77,0.12)]"
-                >
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Promotion</p>
-                    <h2 className="mt-2 text-xl font-black uppercase text-white">{o.title}</h2>
-                    {o.description ? <p className="mt-2 text-sm text-zinc-400">{o.description}</p> : null}
-                  </div>
-                  {o.discountPercent > 0 ? (
-                    <p className="mt-4 text-3xl font-black text-gold-soft">{o.discountPercent}% off</p>
-                  ) : null}
-                </article>
-              ))}
+              {activeOfferCards.map((o) => {
+                const href = `/book?offer=${encodeURIComponent(o.slug && o.slug.trim() ? o.slug : o.id)}`;
+                return (
+                  <article
+                    key={o.id}
+                    className="group flex min-h-[180px] min-w-[min(100%,340px)] snap-start flex-col justify-between rounded-2xl border border-gold/35 bg-gradient-to-b from-zinc-900/95 to-black/95 p-5 shadow-[0_0_26px_rgba(212,166,77,0.2)] ring-1 ring-gold/15 transition duration-300 hover:-translate-y-1 hover:border-gold/55 hover:shadow-[0_0_40px_rgba(212,166,77,0.35)]"
+                  >
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Promotion</p>
+                      <h2 className="mt-2 text-lg font-black uppercase leading-tight text-white sm:text-xl">{o.title}</h2>
+                      {o.description ? <p className="mt-2 line-clamp-3 text-sm text-zinc-400">{o.description}</p> : null}
+                      {o.discountPercent > 0 ? (
+                        <p className="mt-3 text-3xl font-black text-gold-soft drop-shadow-[0_0_12px_rgba(212,166,77,0.45)]">{o.discountPercent}% off</p>
+                      ) : null}
+                      {o.stackable === false ? (
+                        <p className="mt-2 text-xs text-amber-200/90">This offer is not stackable with other promos.</p>
+                      ) : null}
+                    </div>
+                    <Link
+                      href={href}
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gold px-4 py-3 text-center text-xs font-black uppercase tracking-[0.16em] text-black transition group-hover:brightness-110"
+                    >
+                      Claim offer
+                    </Link>
+                  </article>
+                );
+              })}
             </div>
           </section>
         ) : null}
@@ -192,7 +208,7 @@ export default function ServicesPage() {
                       <span className="rounded-lg border border-gold/30 px-3 py-2">SUV / Truck {formatVehiclePrice(service.suvTruckPrice)}</span>
                     </div>
                   </div>
-                  <p className="mt-2 text-sm text-zinc-300">{service.subtitle}</p>
+                  {service.subtitle?.trim() ? <p className="mt-2 text-sm text-zinc-400">{service.subtitle}</p> : null}
                   <ul className="mt-4 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2">
                     {service.includes.map((line) => (
                       <li key={line}>✦ {line}</li>

@@ -1,10 +1,21 @@
 import Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
+import { isSchemaDriftError } from '@/lib/booking-server-shared';
+import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
+import { sendPaymentReceivedEmailIfConfigured } from '@/lib/email-send';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
   | { ok: false; error: string; code?: string };
+
+function stripeErrorMessage(e: unknown): string {
+  const raw =
+    e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : '';
+  return raw && raw !== 'undefined'
+    ? raw
+    : 'Checkout could not start. Your booking is saved — try again or call Gloss Boss ATX.';
+}
 
 /**
  * Creates Stripe Checkout for appointment deposit. Updates appointment with session id on success.
@@ -66,10 +77,11 @@ export async function createDepositCheckoutSession(params: {
       metadata: {
         appointment_id: appt.id,
         access_token: accessToken,
+        stripe_checkout_kind: 'deposit',
       },
     });
 
-    await admin.from('appointments').update({ stripe_checkout_session_id: session.id }).eq('id', appt.id);
+    await upsertSessionIdSafe(admin, appt.id, session.id);
 
     if (!session.url) {
       return { ok: false, error: 'No checkout URL returned' };
@@ -78,7 +90,108 @@ export async function createDepositCheckoutSession(params: {
     return { ok: true, url: session.url };
   } catch (e) {
     console.warn('[checkout] createDepositCheckoutSession', e);
-    return { ok: false, error: 'Checkout failed' };
+    return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
+  }
+}
+
+/**
+ * Field / walk-up: charge full quoted total (stored on appointment as deposit_amount_cents = 100% total).
+ */
+export async function createFieldInvoiceCheckoutSession(params: {
+  admin: SupabaseClient | null;
+  appointmentId: string;
+  accessToken: string;
+  origin: string;
+  technicianId: string;
+}): Promise<CreateDepositCheckoutResult> {
+  const { admin, appointmentId, accessToken, origin, technicianId } = params;
+
+  if (!admin) {
+    return { ok: false, error: 'Database unavailable', code: 'SUPABASE_NOT_READY' };
+  }
+
+  const stripe = await getStripeSdk(admin);
+  if (!stripe) {
+    return { ok: false, error: 'Stripe is not configured', code: 'STRIPE_NOT_CONFIGURED' };
+  }
+
+  try {
+    const { data: appt, error } = await admin
+      .from('appointments')
+      .select('id, access_token, status, deposit_amount_cents, guest_email, base_price_cents')
+      .eq('id', appointmentId)
+      .maybeSingle();
+
+    if (error || !appt) {
+      return { ok: false, error: 'Booking not found' };
+    }
+
+    if (appt.access_token !== accessToken) {
+      return { ok: false, error: 'Invalid access token' };
+    }
+
+    if (appt.status !== 'awaiting_payment') {
+      return { ok: false, error: 'Invoice is not awaiting payment' };
+    }
+
+    const amount =
+      typeof appt.deposit_amount_cents === 'number' && appt.deposit_amount_cents > 0
+        ? appt.deposit_amount_cents
+        : typeof appt.base_price_cents === 'number'
+          ? appt.base_price_cents
+          : 0;
+
+    if (amount < 500) {
+      return { ok: false, error: 'Invalid invoice amount' };
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: appt.guest_email ?? undefined,
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: amount,
+            product_data: {
+              name: 'Gloss Boss ATX — Field service (paid in full)',
+              description: `Invoice ${appt.id}`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken}`,
+      cancel_url: `${origin}/tech?invoice=cancel`,
+      metadata: {
+        appointment_id: appt.id,
+        access_token: accessToken,
+        technician_id: technicianId,
+        tech_field_invoice: '1',
+        stripe_checkout_kind: 'field_full',
+      },
+    });
+
+    await upsertSessionIdSafe(admin, appt.id, session.id);
+
+    if (!session.url) {
+      return { ok: false, error: 'No checkout URL returned' };
+    }
+
+    return { ok: true, url: session.url };
+  } catch (e) {
+    console.warn('[checkout] createFieldInvoiceCheckoutSession', e);
+    return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
+  }
+}
+
+async function upsertSessionIdSafe(admin: SupabaseClient, appointmentId: string, sessionId: string): Promise<void> {
+  const u = await admin
+    .from('appointments')
+    .update({ stripe_checkout_session_id: sessionId, updated_at: new Date().toISOString() })
+    .eq('id', appointmentId);
+  if (u.error && isSchemaDriftError(u.error.message)) {
+    await admin.from('appointments').update({ updated_at: new Date().toISOString() }).eq('id', appointmentId);
   }
 }
 
@@ -86,9 +199,6 @@ export type CreateGiftCheckoutResult =
   | { ok: true; url: string }
   | { ok: false; error: string; code?: string };
 
-/**
- * One-time gift card purchase (no DB row required; fulfillment can be manual or email-based).
- */
 export async function createGiftCheckoutSession(params: {
   admin: SupabaseClient | null;
   amountCents: number;
@@ -142,6 +252,51 @@ export async function createGiftCheckoutSession(params: {
   }
 }
 
+async function upsertPaymentRow(
+  admin: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  const full = await admin.from('payments').upsert(row, { onConflict: 'stripe_checkout_session_id' });
+  if (!full.error) return { ok: true };
+  const msg = full.error.message ?? '';
+  console.warn('[checkout] payments upsert', msg);
+  if (!isSchemaDriftError(msg)) return { ok: false, error: msg };
+
+  const sid = row.stripe_checkout_session_id;
+  const aid = row.appointment_id;
+  const amt = row.amount_cents;
+  const minimal = {
+    appointment_id: aid,
+    stripe_checkout_session_id: sid,
+    amount_cents: amt,
+    status: row.status ?? 'succeeded',
+  };
+  const m = await admin.from('payments').upsert(minimal, { onConflict: 'stripe_checkout_session_id' });
+  if (m.error) {
+    console.warn('[checkout] payments minimal upsert', m.error.message);
+    return { ok: false, error: m.error.message };
+  }
+  return { ok: true };
+}
+
+async function updateAppointmentPaidSafe(
+  admin: SupabaseClient,
+  appointmentId: string,
+  extras: Record<string, unknown>,
+): Promise<void> {
+  const base = { status: 'deposit_paid', updated_at: new Date().toISOString(), ...extras };
+  let u = await admin.from('appointments').update(base).eq('id', appointmentId);
+  if (u.error && isSchemaDriftError(u.error.message)) {
+    u = await admin
+      .from('appointments')
+      .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
+      .eq('id', appointmentId);
+  }
+  if (u.error) {
+    console.warn('[checkout] appointment paid update', u.error.message);
+  }
+}
+
 export async function processCheckoutSessionCompleted(params: {
   admin: SupabaseClient | null;
   session: Stripe.Checkout.Session;
@@ -159,29 +314,74 @@ export async function processCheckoutSessionCompleted(params: {
 
   if (!appointmentId) return;
 
+  const isField = session.metadata?.tech_field_invoice === '1';
+  const technicianId = session.metadata?.technician_id ?? null;
+
   try {
-    await admin.from('payments').upsert(
-      {
-        appointment_id: appointmentId,
-        stripe_checkout_session_id: session.id,
-        stripe_payment_intent_id:
-          typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
-        amount_cents: amount,
-        status: 'succeeded',
-      },
-      { onConflict: 'stripe_checkout_session_id' }
-    );
-
-    const { error: statusErr } = await admin
-      .from('appointments')
-      .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
-      .eq('id', appointmentId);
-
-    if (statusErr) {
-      console.warn('[checkout] deposit_paid update failed', appointmentId, statusErr.message);
-    } else {
-      console.info('[checkout] appointment marked deposit_paid', appointmentId, 'amount', amount);
+    const paymentRow: Record<string, unknown> = {
+      appointment_id: appointmentId,
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id:
+        typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
+      amount_cents: amount,
+      status: 'succeeded',
+      payment_kind: isField ? 'field_full' : 'deposit',
+    };
+    if (technicianId && typeof technicianId === 'string') {
+      paymentRow.technician_id = technicianId;
     }
+
+    const payResult = await upsertPaymentRow(admin, paymentRow);
+    if (!payResult.ok) {
+      console.warn('[checkout] payment row not saved', appointmentId, payResult.error);
+    }
+
+    const extras: Record<string, unknown> = {};
+    if (isField) {
+      extras.field_invoice_paid_at = new Date().toISOString();
+      extras.stripe_checkout_kind = 'field_full';
+    } else {
+      extras.stripe_checkout_kind = 'deposit';
+    }
+
+    await updateAppointmentPaidSafe(admin, appointmentId, extras);
+
+    await recordJobTimelineEvent(admin, {
+      appointmentId,
+      eventType: 'payment_received',
+      meta: {
+        amount_cents: amount,
+        field_full: isField,
+        session_id: session.id,
+      },
+      createdBy: typeof technicianId === 'string' ? technicianId : null,
+    });
+
+    const { data: appt } = await admin
+      .from('appointments')
+      .select('guest_email, guest_name, scheduled_start, base_price_cents, deposit_amount_cents')
+      .eq('id', appointmentId)
+      .maybeSingle();
+
+    if (appt?.guest_email) {
+      void sendPaymentReceivedEmailIfConfigured({
+        to: String(appt.guest_email),
+        guestName: String(appt.guest_name ?? 'there'),
+        appointmentId,
+        whenIso: String(appt.scheduled_start ?? new Date().toISOString()),
+        totalCents: typeof appt.base_price_cents === 'number' ? appt.base_price_cents : amount,
+        paidCents: amount,
+        isFieldFull: isField,
+      });
+    }
+
+    console.info(
+      '[checkout] checkout.session.completed',
+      appointmentId,
+      'amount',
+      amount,
+      isField ? 'field_full' : 'deposit',
+    );
   } catch (e) {
     console.warn('[checkout] processCheckoutSessionCompleted', e);
   }
