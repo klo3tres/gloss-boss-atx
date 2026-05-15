@@ -1,0 +1,180 @@
+/** Normalize arbitrary `gallery_images` rows (schema drift) for UI + public API. */
+
+export type NormalizedGalleryImage = {
+  id: string;
+  /** Primary resolved public image URL */
+  url: string;
+  /** Legacy alias — same as `url` for components that still read `image_url` */
+  image_url: string;
+  caption: string | null;
+  sort_order: number;
+  order_index: number | null;
+  published?: boolean;
+};
+
+function str(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' && !Number.isNaN(v)) return String(v);
+  return '';
+}
+
+/** Prefer `url`, then `public_url`, then legacy `image_url` / other keys. */
+export function resolveGalleryImageUrl(row: Record<string, unknown>): string {
+  const direct = str(row.url) || str(row.public_url) || str(row.image_url) || str(row.photo_url) || str(row.src);
+  return direct;
+}
+
+/** Automotive stock fallback when CMS row has no usable URL (never empty cards). */
+export const GALLERY_SAFE_PLACEHOLDER_IMAGE =
+  'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=1200&q=80';
+
+/** Resolved image URL or placeholder — never returns empty string. */
+export function safeImageUrl(row: Record<string, unknown>): string {
+  const u = resolveGalleryImageUrl(row);
+  return u || GALLERY_SAFE_PLACEHOLDER_IMAGE;
+}
+
+/** caption → title → label → '' */
+export function safeCaption(row: Record<string, unknown>): string {
+  return resolveGalleryCaption(row) ?? '';
+}
+
+/** caption ?? title ?? label ?? '' (trimmed); empty stored as null for compact JSON. */
+export function resolveGalleryCaption(row: Record<string, unknown>): string | null {
+  const c = str(row.caption) || str(row.title) || str(row.label);
+  return c || null;
+}
+
+export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGalleryImage | null {
+  const id = str(row.id);
+  if (!id) return null;
+  const url = safeImageUrl(row);
+  const sort_order =
+    typeof row.sort_order === 'number' && !Number.isNaN(row.sort_order)
+      ? row.sort_order
+      : typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
+        ? row.order_index
+        : 0;
+  const order_index =
+    typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
+      ? row.order_index
+      : typeof row.sort_order === 'number' && !Number.isNaN(row.sort_order)
+        ? row.sort_order
+        : null;
+  const published = (row.published ?? row.active ?? true) as boolean | undefined;
+  return {
+    id,
+    url,
+    image_url: url,
+    caption: resolveGalleryCaption(row),
+    sort_order,
+    order_index: order_index ?? null,
+    published: typeof published === 'boolean' ? published : true,
+  };
+}
+
+/** For reorder / admin lists: derive sort fields from `select('*')` rows without requiring image URL. */
+export function extractGallerySortRow(row: Record<string, unknown>): { id: string; sort_order: number; order_index: number | null } | null {
+  const id = str(row.id);
+  if (!id) return null;
+  const sort_order =
+    typeof row.sort_order === 'number' && !Number.isNaN(row.sort_order)
+      ? row.sort_order
+      : typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
+        ? row.order_index
+        : 0;
+  const order_index =
+    typeof row.order_index === 'number' && !Number.isNaN(row.order_index) ? row.order_index : typeof row.sort_order === 'number' ? row.sort_order : null;
+  return { id, sort_order, order_index };
+}
+
+export function normalizeGalleryRows(rows: unknown[] | null | undefined): NormalizedGalleryImage[] {
+  if (!Array.isArray(rows)) return [];
+  const out: NormalizedGalleryImage[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const n = normalizeGalleryRow(r as Record<string, unknown>);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
+export type AdminGalleryRow = {
+  id: string;
+  image_url: string;
+  url: string | null;
+  caption: string | null;
+  sort_order: number;
+  order_index: number | null;
+  published: boolean;
+  created_at: string;
+};
+
+export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGalleryRow | null {
+  const n = normalizeGalleryRow(raw);
+  if (n) {
+    return {
+      id: n.id,
+      image_url: n.image_url,
+      url: n.url,
+      caption: n.caption,
+      sort_order: n.sort_order,
+      order_index: n.order_index,
+      published: Boolean(raw.published ?? raw.active ?? true),
+      created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    };
+  }
+  const id = str(raw.id);
+  if (!id) return null;
+  const sortEx = extractGallerySortRow(raw);
+  if (!sortEx) return null;
+  const url = safeImageUrl(raw);
+  return {
+    id,
+    image_url: url,
+    url: resolveGalleryImageUrl(raw) || null,
+    caption: resolveGalleryCaption(raw),
+    sort_order: sortEx.sort_order,
+    order_index: sortEx.order_index,
+    published: Boolean(raw.published ?? raw.active ?? true),
+    created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+  };
+}
+
+export function mapAdminGalleryRows(raw: unknown[] | null | undefined): AdminGalleryRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AdminGalleryRow[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const row = mapRawToAdminGalleryRow(r as Record<string, unknown>);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/** Max sort key from raw gallery rows (for next `sort_order` after `select('*')`). */
+export function maxGallerySortFromRows(raw: unknown[] | null | undefined): number {
+  let max = 0;
+  for (const r of raw ?? []) {
+    if (!r || typeof r !== 'object') continue;
+    const e = extractGallerySortRow(r as Record<string, unknown>);
+    if (!e) continue;
+    max = Math.max(max, e.sort_order, e.order_index ?? 0);
+  }
+  return max;
+}
+
+/** Insert payloads to try against drifted `gallery_images` schemas (first non-error wins). */
+export function galleryInsertPayloadVariants(publicUrl: string, caption: string, nextOrder: number): Record<string, unknown>[] {
+  const cap = caption.trim() || null;
+  const title = caption.trim() || null;
+  return [
+    { image_url: publicUrl, url: publicUrl, caption: cap, sort_order: nextOrder, order_index: nextOrder, published: true },
+    { image_url: publicUrl, url: publicUrl, title, sort_order: nextOrder, order_index: nextOrder, published: true },
+    { url: publicUrl, public_url: publicUrl, title, sort_order: nextOrder, order_index: nextOrder, published: true },
+    { url: publicUrl, image_url: publicUrl, sort_order: nextOrder, order_index: nextOrder, published: true },
+    { image_url: publicUrl, sort_order: nextOrder, published: true },
+    { url: publicUrl, sort_order: nextOrder, published: true },
+  ];
+}

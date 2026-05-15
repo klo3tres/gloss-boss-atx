@@ -22,12 +22,24 @@ export default async function AdminCustomersPage() {
   let rows: CustomerRow[] = [];
   let qErr: string | null = null;
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
-    const { data, error } = await supabase.from('customers').select('id, email, full_name, phone, created_at').order('created_at', { ascending: false }).limit(200);
-    if (error) {
-      qErr = error.message;
-      console.warn('[CRM_DEBUG_DB]', 'customers_list', error.message);
+    const full = await supabase.from('customers').select('id, email, full_name, phone, created_at').order('created_at', { ascending: false }).limit(200);
+    if (full.error && /phone|full_name|column .* does not exist|Could not find|schema cache/i.test(full.error.message)) {
+      const lean = await supabase.from('customers').select('id, email, created_at').order('created_at', { ascending: false }).limit(200);
+      if (lean.error) {
+        qErr = lean.error.message;
+        console.warn('[CRM_DEBUG_DB]', 'customers_list', lean.error.message);
+      } else {
+        rows = (lean.data ?? []).map((r) => ({
+          ...r,
+          full_name: null,
+          phone: null,
+        })) as CustomerRow[];
+      }
+    } else if (full.error) {
+      qErr = full.error.message;
+      console.warn('[CRM_DEBUG_DB]', 'customers_list', full.error.message);
     } else {
-      rows = (data ?? []) as CustomerRow[];
+      rows = (full.data ?? []) as CustomerRow[];
     }
   }
 

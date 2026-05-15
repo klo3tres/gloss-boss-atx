@@ -2,13 +2,20 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { addGalleryImageAction, deleteGalleryImageAction, reorderGalleryImageAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { addGalleryImageAction, deleteGalleryImageAction, reorderGalleryImageAction, saveFeaturedShowcaseAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
 import { GalleryLocalUpload } from '@/components/admin/gallery-local-upload';
+import { defaultFeaturedShowcaseSlides } from '@/lib/public-site-data';
+import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normalize';
+import { submitNavbarLogoForm } from '@/lib/admin/site-branding-actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminCmsPage() {
+export default async function AdminCmsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getSessionWithProfile();
+  const sp = await searchParams;
+  const logoOk = typeof sp.logoOk === 'string' ? sp.logoOk : Array.isArray(sp.logoOk) ? sp.logoOk[0] : undefined;
+  const logoErrRaw = typeof sp.logoErr === 'string' ? sp.logoErr : Array.isArray(sp.logoErr) ? sp.logoErr[0] : undefined;
+  const logoErr = logoErrRaw ? decodeURIComponent(logoErrRaw) : null;
 
   if (!session.supabaseConfigured) {
     return (
@@ -29,32 +36,49 @@ export default async function AdminCmsPage() {
     );
   }
 
-  const [{ data: gallery, error: gErr }, { data: offers, error: oErr }, { data: homepage, error: hErr }] = await Promise.all([
-    supabase
-      .from('gallery_images')
-      .select('id, image_url, url, caption, sort_order, order_index, published, created_at')
-      .order('order_index', { ascending: true, nullsFirst: false })
-      .order('sort_order', { ascending: true }),
-    supabase.from('offers').select('id, label, percent_off, active, sort_order').order('sort_order', { ascending: true }),
-    supabase.from('homepage_content').select('id, key, value, updated_at').order('key', { ascending: true }),
-  ]);
+  const galleryRes = await supabase.from('gallery_images').select('*').order('sort_order', { ascending: true });
+  const offersRes = await supabase.from('offers').select('*').order('sort_order', { ascending: true });
+  const homepageRes = await supabase.from('homepage_content').select('*').order('key', { ascending: true });
 
-  type GalleryRow = {
-    id: string;
-    image_url: string;
-    url: string | null;
-    caption: string | null;
-    sort_order: number;
-    order_index: number | null;
-    published: boolean;
-    created_at: string;
-  };
+  type GalleryRow = AdminGalleryRow;
   type OfferRow = { id: string; label: string; percent_off: number | null; active: boolean; sort_order: number };
   type HomeRow = { id: string; key: string; value: unknown; updated_at: string };
 
-  const galleryRows = (gallery ?? []) as GalleryRow[];
-  const offerRows = (offers ?? []) as OfferRow[];
-  const homeRows = (homepage ?? []) as HomeRow[];
+  const galleryRows: GalleryRow[] = galleryRes.error ? [] : mapAdminGalleryRows(galleryRes.data ?? []);
+  const gErr = galleryRes.error && galleryRows.length === 0 ? galleryRes.error : null;
+
+  const offerRows: OfferRow[] = !offersRes.error
+    ? (offersRes.data ?? []).map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        label: String(r.label ?? r.title ?? 'Offer'),
+        percent_off:
+          typeof r.percent_off === 'number'
+            ? r.percent_off
+            : typeof r.discount_percent === 'number'
+              ? r.discount_percent
+              : null,
+        active: Boolean(r.active),
+        sort_order: Number(r.sort_order ?? 0),
+      }))
+    : [];
+  const oErr = offersRes.error && offerRows.length === 0 ? offersRes.error : null;
+
+  const homeRows: HomeRow[] = !homepageRes.error
+    ? ((homepageRes.data ?? []) as HomeRow[])
+    : [];
+  const hErr = homepageRes.error && homeRows.length === 0 ? homepageRes.error : null;
+
+  const featuredRow = homeRows.find((r) => r.key === 'featured_showcase');
+  const featuredJson =
+    featuredRow?.value != null && typeof featuredRow.value === 'object'
+      ? JSON.stringify(featuredRow.value, null, 2)
+      : JSON.stringify({ slides: defaultFeaturedShowcaseSlides() }, null, 2);
+
+  let navbarLogoUrl = '';
+  const logoRes = await supabase.from('site_settings').select('value').eq('key', 'navbar_logo').maybeSingle();
+  if (!logoRes.error && typeof logoRes.data?.value === 'string') {
+    navbarLogoUrl = logoRes.data.value.trim();
+  }
 
   return (
     <DashboardShell
@@ -67,6 +91,58 @@ export default async function AdminCmsPage() {
           Gallery query failed: {gErr.message}. Apply <code className='text-gold-soft'>supabase/migrations/000002_cms_job_times_signature.sql</code> in the Supabase SQL editor.
         </p>
       ) : null}
+
+      {logoOk ? (
+        <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
+          Navbar logo saved. Public site will pick it up within a minute (CDN cache).
+        </p>
+      ) : null}
+      {logoErr ? (
+        <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100' role='alert'>
+          {logoErr}
+        </p>
+      ) : null}
+
+      <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <h2 className='text-lg font-bold uppercase'>Navbar logo</h2>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Paste a public HTTPS URL (for example from Supabase Storage after upload). Falls back to <code className='text-gold-soft'>/brand/glossboss-official-atx.png</code> when empty.
+        </p>
+        <form action={submitNavbarLogoForm} className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
+          <label className='block min-w-0 flex-1 text-xs text-zinc-400'>
+            Logo URL
+            <input
+              name='navbar_logo_url'
+              type='url'
+              defaultValue={navbarLogoUrl}
+              placeholder='https://…'
+              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+            />
+          </label>
+          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+            Save navbar logo
+          </button>
+        </form>
+      </section>
+
+      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <h2 className='text-lg font-bold uppercase'>Homepage featured transformations</h2>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Controls the Before/After preview on the homepage. Use JSON: <code className='text-gold-soft'>{`{ "slides": [ { "id": "1", "label": "…", "image": "https://…" } ] }`}</code>
+        </p>
+        <form action={saveFeaturedShowcaseAction} className='mt-4 space-y-3'>
+          <textarea
+            name='json'
+            rows={12}
+            defaultValue={featuredJson}
+            className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white'
+            spellCheck={false}
+          />
+          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+            Save featured showcase
+          </button>
+        </form>
+      </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>Gallery images</h2>

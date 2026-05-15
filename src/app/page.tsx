@@ -149,7 +149,7 @@ export default function HomePage() {
               </p>
               <div className='mt-5'>
                 <Image
-                  src='/brand/glossboss-clean-logo.png'
+                  src='/brand/glossboss-official-atx.png'
                   alt='Gloss Boss ATX official logo'
                   width={560}
                   height={280}
@@ -178,10 +178,23 @@ export default function HomePage() {
                   Buy Gift Card
                 </Link>
               </div>
-              <div className='mt-6 rounded-xl border border-gold/20 bg-black/40 p-4 text-sm text-zinc-300'>
-                <p className='font-semibold text-gold-soft'>Quick Contact</p>
-                <p className='mt-1'>(512) 481-2319 · glossbossatx1@gmail.com</p>
-                <p className='text-zinc-400'>Austin, Texas & surrounding areas</p>
+              <div className='mt-6 rounded-xl border border-gold/20 bg-black/40 p-5 text-base sm:p-6'>
+                <p className='text-sm font-semibold uppercase tracking-wider text-gold-soft sm:text-base'>Quick Contact</p>
+                <div className='mt-3 flex flex-col gap-3 sm:mt-4'>
+                  <a
+                    href='tel:+15124812319'
+                    className='inline-flex min-h-[48px] items-center rounded-lg border border-gold/30 bg-black/50 px-4 py-3 text-lg font-semibold text-white transition hover:border-gold/60 hover:bg-black/70 sm:text-xl'
+                  >
+                    (512) 481-2319
+                  </a>
+                  <a
+                    href='mailto:glossbossatx1@gmail.com'
+                    className='inline-flex min-h-[48px] items-center break-all rounded-lg border border-white/15 bg-black/50 px-4 py-3 text-base font-medium text-gold-soft underline decoration-gold/40 underline-offset-4 transition hover:border-gold/40 hover:text-white sm:text-lg'
+                  >
+                    glossbossatx1@gmail.com
+                  </a>
+                </div>
+                <p className='mt-3 text-sm text-zinc-400 sm:mt-4'>Austin, Texas & surrounding areas</p>
               </div>
             </div>
           </MotionFade>
@@ -199,7 +212,8 @@ export default function HomePage() {
                   >
                     <div className='flex items-start justify-between gap-2'>
                       <div className='min-w-0 flex-1'>
-                        <p className='font-semibold'>Missing database configuration: run migrations</p>
+                        <p className='font-semibold'>Site notice</p>
+                        <p className='mt-1 text-xs text-amber-100/90'>We are using safe defaults where needed. Dismiss anytime.</p>
                         <ul className='mt-2 list-disc space-y-1 pl-4 text-xs break-words text-amber-100/95'>
                           {schemaWarnings.map((w) => (
                             <li key={w}>{w}</li>
@@ -271,7 +285,7 @@ export default function HomePage() {
                   <h3 className='text-lg font-bold text-gold-soft'>{service.title}</h3>
                   <p className='mt-2 text-sm text-zinc-300'>{service.subtitle}</p>
                   <p className='mt-4 text-3xl font-black'>
-                    {service.sedanPrice !== null ? formatStartingPrice(service.sedanPrice) : 'TBD'}
+                    {formatStartingPrice(service.sedanPrice)}
                   </p>
                 </article>
               </MotionFade>
@@ -335,7 +349,15 @@ export default function HomePage() {
         <div className='mx-auto flex w-full max-w-7xl flex-col gap-10 lg:flex-row lg:items-start lg:justify-between'>
           <div className='flex-1'>
             <p className='text-sm uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
-            <p className='mt-2 text-zinc-200'>(512) 481-2319 · glossbossatx1@gmail.com</p>
+            <p className='mt-2 text-zinc-200'>
+              <a href='tel:+15124812319' className='text-gold-soft underline decoration-gold/40 underline-offset-2 hover:text-white'>
+                (512) 481-2319
+              </a>
+              <span className='text-zinc-500'> · </span>
+              <a href='mailto:glossbossatx1@gmail.com' className='hover:text-gold-soft'>
+                glossbossatx1@gmail.com
+              </a>
+            </p>
             <p className='text-zinc-400'>Austin, Texas & surrounding areas</p>
             <div className='mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap'>
               <a href='https://instagram.com/glossbossatx' className='rounded-lg border border-gold/40 px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-gold-soft'>

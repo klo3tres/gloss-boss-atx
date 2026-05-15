@@ -32,7 +32,12 @@ export async function POST(request: Request) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    await processCheckoutSessionCompleted({ admin, session });
+    try {
+      await processCheckoutSessionCompleted({ admin, session });
+      console.info('[stripe/webhook] checkout.session.completed processed', session.id, session.metadata?.appointment_id ?? 'gift');
+    } catch (e) {
+      console.error('[stripe/webhook] processCheckoutSessionCompleted failed — logged only, returning 200', session.id, e);
+    }
   }
 
   return NextResponse.json({ received: true });

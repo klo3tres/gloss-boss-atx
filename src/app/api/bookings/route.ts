@@ -1,25 +1,35 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isBookingSlotAllowed, parseBookingAvailabilityRules } from '@/lib/booking-availability';
+import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
-async function resolveServicePriceCents(admin: SupabaseClient, serviceId: string, vehicleClass: string): Promise<number | null> {
-  const { data: direct } = await admin
-    .from('service_prices')
-    .select('price_cents')
-    .eq('service_id', serviceId)
-    .eq('vehicle_class', vehicleClass)
-    .maybeSingle();
-  if (direct?.price_cents != null) return direct.price_cents;
-  if (vehicleClass === 'suv' || vehicleClass === 'truck') {
-    const { data: legacy } = await admin
-      .from('service_prices')
-      .select('price_cents')
-      .eq('service_id', serviceId)
-      .eq('vehicle_class', 'suv_truck')
-      .maybeSingle();
-    if (legacy?.price_cents != null) return legacy.price_cents;
+async function loadBookingAvailabilityRules(admin: SupabaseClient) {
+  try {
+    const { data } = await admin.from('site_settings').select('value').eq('key', 'booking_availability').maybeSingle();
+    if (!data?.value) return parseBookingAvailabilityRules(null);
+    try {
+      return parseBookingAvailabilityRules(JSON.parse(String(data.value)));
+    } catch {
+      return parseBookingAvailabilityRules(null);
+    }
+  } catch {
+    return parseBookingAvailabilityRules(null);
   }
-  return null;
+}
+
+async function loadServicePricesForService(admin: SupabaseClient, serviceId: string): Promise<PriceRowInput[]> {
+  const { data } = await admin.from('service_prices').select('*').eq('service_id', serviceId);
+  const rows: PriceRowInput[] = [];
+  for (const row of data ?? []) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const sid = typeof r.service_id === 'string' ? r.service_id : serviceId;
+    const vc = typeof r.vehicle_class === 'string' ? r.vehicle_class : '';
+    const pc = r.price_cents;
+    if (typeof pc === 'number' && !Number.isNaN(pc)) rows.push({ service_id: sid, vehicle_class: vc, price_cents: pc });
+  }
+  return rows;
 }
 
 type VehicleLine = { serviceSlug: string; vehicleClass: string; vehicleDescription: string };
@@ -106,10 +116,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Invalid service: ${line.serviceSlug}` }, { status: 400 });
       }
 
-      const priceCents = await resolveServicePriceCents(admin, service.id, line.vehicleClass);
+      const priceRows = await loadServicePricesForService(admin, service.id);
+      const priceCents = safePriceCentsForBooking(
+        { slug: line.serviceSlug, serviceId: service.id },
+        line.vehicleClass,
+        priceRows,
+      );
       if (priceCents == null) {
         return NextResponse.json(
-          { error: `Pricing not available for ${line.serviceSlug} / ${line.vehicleClass}.` },
+          {
+            error:
+              line.serviceSlug === 'ceramic-coating'
+                ? 'Ceramic coating requires a consultation — call us to book.'
+                : `Pricing not available for ${line.serviceSlug} / ${line.vehicleClass}.`,
+          },
           { status: 400 },
         );
       }
@@ -130,6 +150,17 @@ export async function POST(request: Request) {
     const scheduled = new Date(scheduledStart);
     if (Number.isNaN(scheduled.getTime())) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
+    const availRules = await loadBookingAvailabilityRules(admin);
+    if (!isBookingSlotAllowed(scheduled, availRules)) {
+      return NextResponse.json(
+        {
+          error:
+            'Selected time is outside online booking hours. We accept appointments Friday after 5pm, all day Saturday, and all day Sunday.',
+        },
+        { status: 400 },
+      );
     }
 
     const emailNorm = guestEmail.trim().toLowerCase();

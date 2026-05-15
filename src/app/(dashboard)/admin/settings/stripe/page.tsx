@@ -32,7 +32,13 @@ export default async function AdminStripeSettingsPage() {
       subtitle='Secrets are stored in Supabase settings (server-side only) or via Vercel env. Nothing sensitive is sent to the browser after save.'
       role='admin'
     >
-      <div className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950 p-5 text-sm text-zinc-300'>
+      <div className='mt-6 space-y-4 rounded-2xl border border-gold/20 bg-zinc-950 p-5 text-sm text-zinc-300'>
+        <p className='text-xs text-zinc-500'>
+          Stripe mode:{' '}
+          <span className='font-semibold text-gold-soft'>
+            {flags.stripeMode === 'live' ? 'Live' : flags.stripeMode === 'test' ? 'Test' : flags.stripeMode === 'unknown' ? 'Unknown' : 'Not connected'}
+          </span>
+        </p>
         {!stripeConnected ? (
           <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
             Stripe not connected yet — deposits and gift card checkout stay disabled until you add a secret key (environment variable or secure save below).
@@ -57,12 +63,34 @@ export default async function AdminStripeSettingsPage() {
             DB secret: {flags.dbHasSecret ? <span className='text-emerald-400'>saved</span> : <span className='text-zinc-500'>not set</span>}
           </li>
           <li className='rounded border border-white/10 bg-black/40 px-3 py-2'>
-            Webhook secret: {flags.dbHasWebhook ? <span className='text-emerald-400'>saved</span> : <span className='text-zinc-500'>not set</span>}
+            Webhook secret: {flags.dbHasWebhook || flags.envHasWebhook ? <span className='text-emerald-400'>configured</span> : <span className='text-zinc-500'>not set</span>}
           </li>
           <li className='rounded border border-white/10 bg-black/40 px-3 py-2'>
-            Publishable: {flags.dbHasPublishable ? <span className='text-emerald-400'>saved</span> : <span className='text-zinc-500'>not set</span>}
+            Publishable: {flags.dbHasPublishable || flags.envHasPublishable ? <span className='text-emerald-400'>configured</span> : <span className='text-zinc-500'>not set</span>}
           </li>
         </ul>
+
+        {stripeConnected && flags.stripeMode === 'unknown' ? (
+          <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
+            Stripe keys detected but mode could not be determined.
+          </p>
+        ) : null}
+
+        {stripeConnected && !flags.envHasPublishable && !flags.dbHasPublishable ? (
+          <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
+            Stripe publishable key missing.
+            <br />
+            Add <code className='text-gold-soft'>NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</code> in Vercel environment variables.
+          </p>
+        ) : null}
+
+        {stripeConnected && !flags.envHasWebhook && !flags.dbHasWebhook ? (
+          <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
+            Stripe webhook not connected yet.
+            <br />
+            Add webhook endpoint after production domain is finalized.
+          </p>
+        ) : null}
       </div>
 
       <form action={submitStripeSettingsForm} className='mt-6 space-y-4 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

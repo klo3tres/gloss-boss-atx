@@ -1,6 +1,7 @@
 'use client';
 
 import { techCompleteJobAction, techStartJobAction } from './tech-actions';
+import { TechJobWorkspace } from './tech-job-workspace';
 
 type Job = {
   id: string;
@@ -9,6 +10,7 @@ type Job = {
   guest_name: string | null;
   service_slug: string;
   vehicle_class: string;
+  notes?: string | null;
 };
 
 export function TechJobsClient({ jobs }: { jobs: Job[] }) {
@@ -47,6 +49,7 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
               ) : null}
             </div>
           </div>
+          <TechJobWorkspace job={job} />
           <p className='mt-3 text-xs text-zinc-600'>Completion requires a signed on-site agreement in the database.</p>
         </article>
       ))}

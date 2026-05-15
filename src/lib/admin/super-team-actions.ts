@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -40,12 +41,24 @@ export async function promoteProfileRoleAction(formData: FormData): Promise<{ ok
 
   revalidatePath('/admin/super');
   revalidatePath('/admin/team');
+  revalidatePath('/');
   return { ok: true };
 }
 
 export async function submitPromoteRoleForm(formData: FormData): Promise<void> {
   const res = await promoteProfileRoleAction(formData);
+  const base = '/admin/super';
   if (!res.ok) {
-    console.warn('[GLOSS_ROLE_DEBUG]', JSON.stringify({ step: 'super_team_promote_failed', error: res.error ?? 'unknown' }));
+    redirect(`${base}?promoteErr=${encodeURIComponent(res.error ?? 'Role update failed')}`);
   }
+  redirect(`${base}?promoteOk=1`);
+}
+
+export async function submitPromoteRoleFromTeamForm(formData: FormData): Promise<void> {
+  const res = await promoteProfileRoleAction(formData);
+  const base = '/admin/team';
+  if (!res.ok) {
+    redirect(`${base}?roleErr=${encodeURIComponent(res.error ?? 'Role update failed')}`);
+  }
+  redirect(`${base}?roleOk=1`);
 }

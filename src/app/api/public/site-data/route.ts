@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import {
   computeMultiCarExample,
+  defaultFeaturedShowcaseSlides,
+  defaultMarketingOffers,
   getOfflineMarketingPackages,
   mapCatalogToServicePackages,
   parseDealConfig,
+  parseFeaturedShowcase,
   type PublicSiteDataPayload,
   type SiteDataOfferCard,
 } from '@/lib/public-site-data';
+import { loadActiveServicesResilient, mapServicePriceRows, mergeServicesWithPricesStable } from '@/lib/catalog-fallback';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -17,8 +21,9 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     schemaWarnings: extraWarnings,
     services: getOfflineMarketingPackages(),
     deals: parseDealConfig(null),
-    offers: [],
+    offers: defaultMarketingOffers(),
     multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
+    featuredShowcase: defaultFeaturedShowcaseSlides(),
   };
 }
 
@@ -35,39 +40,46 @@ export async function GET() {
         schemaWarnings: ['Supabase is not configured (missing URL/keys).'],
         services: getOfflineMarketingPackages(),
         deals: parseDealConfig(null),
-        offers: [],
+        offers: defaultMarketingOffers(),
         multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
+        featuredShowcase: defaultFeaturedShowcaseSlides(),
       };
       return NextResponse.json(payload);
     }
 
-    const [servicesRes, pricesRes, dealRes, offersFull] = await Promise.all([
-      client.from('services').select('id, slug, title, subtitle, sort_order').eq('active', true).order('sort_order', { ascending: true }),
-      client.from('service_prices').select('service_id, vehicle_class, price_cents'),
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad] = await Promise.all([
+      client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
         .from('offers')
-        .select('id, title, description, discount_percent, label, percent_off, active, sort_order')
+        .select('*')
         .order('sort_order', { ascending: true }),
+      client.from('homepage_content').select('value').eq('key', 'featured_showcase').maybeSingle(),
+      loadActiveServicesResilient(client),
     ]);
 
-    const sErr = servicesRes.error;
+    const sErr = svcLoad.error ? { message: svcLoad.error } : null;
     const pErr = pricesRes.error;
     const dErr = dealRes.error;
-    const services = servicesRes.data;
+    const fErr = featuredRes.error;
+    const services = svcLoad.rows;
     const prices = pricesRes.data;
     const dealRow = dealRes.data;
 
-    if (sErr) schemaWarnings.push(`services: ${sErr.message}`);
-    if (pErr) schemaWarnings.push(`service_prices: ${pErr.message}`);
+    if (sErr) {
+      console.warn('[CRM_DEBUG_DB]', 'site_data_services', sErr.message);
+      schemaWarnings.push('Using default catalog temporarily.');
+    }
+    if (pErr) {
+      console.warn('[CRM_DEBUG_DB]', 'site_data_service_prices', pErr.message);
+      schemaWarnings.push('Using default pricing temporarily.');
+    }
     if (dErr) schemaWarnings.push(`homepage_content(deal_config): ${dErr.message}`);
+    if (fErr) schemaWarnings.push(`homepage_content(featured_showcase): ${fErr.message}`);
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
-      const offersCompat = await client
-        .from('offers')
-        .select('id, label, percent_off, active, sort_order')
-        .order('sort_order', { ascending: true });
+      const offersCompat = await client.from('offers').select('*').order('sort_order', { ascending: true });
       if (offersCompat.error) {
         schemaWarnings.push(`offers: ${offersFull.error.message}`);
       } else {
@@ -78,8 +90,10 @@ export async function GET() {
     }
 
     const svcList = services ?? [];
-    const priceList = prices ?? [];
-    let packages = svcList.length > 0 && !sErr ? mapCatalogToServicePackages(svcList, priceList) : [];
+    const rawPriceRows = mapServicePriceRows((prices ?? []) as unknown[]);
+    const stable = svcList.length > 0 && !sErr ? mergeServicesWithPricesStable(svcList, rawPriceRows) : { services: [] as typeof svcList, prices: [] as typeof rawPriceRows };
+    let packages =
+      stable.services.length > 0 && !sErr ? mapCatalogToServicePackages(stable.services, stable.prices) : [];
 
     if (packages.length === 0) {
       console.warn('[CRM_DEBUG_DB]', 'site_data_catalog_fallback', {
@@ -94,7 +108,7 @@ export async function GET() {
 
     const deals = parseDealConfig(dealRow?.value ?? null);
 
-    const offers: SiteDataOfferCard[] = offerRows.map((r: Record<string, unknown>) => {
+    let offers: SiteDataOfferCard[] = offerRows.map((r: Record<string, unknown>) => {
       const title = (typeof r.title === 'string' && r.title.trim()) || (typeof r.label === 'string' && r.label.trim()) || 'Offer';
       const desc = typeof r.description === 'string' ? r.description : '';
       const pct =
@@ -110,8 +124,11 @@ export async function GET() {
         sortOrder: Number(r.sort_order ?? 0),
       };
     });
+    if (offers.length === 0) offers = defaultMarketingOffers();
 
     const multiCar = packages.length ? computeMultiCarExample(packages, deals) : null;
+
+    const featuredShowcase = fErr ? defaultFeaturedShowcaseSlides() : parseFeaturedShowcase(featuredRes.data?.value ?? null);
 
     const payload: PublicSiteDataPayload = {
       ok: schemaWarnings.length === 0 && svcList.length > 0 && !sErr,
@@ -120,6 +137,7 @@ export async function GET() {
       deals,
       offers,
       multiCar,
+      featuredShowcase,
     };
 
     return NextResponse.json(payload);

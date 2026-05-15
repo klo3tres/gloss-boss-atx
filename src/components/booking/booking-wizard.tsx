@@ -2,9 +2,16 @@
 
 import clsx from 'clsx';
 import { Car, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { getLocalFallbackCatalog, mergeLiveCatalogWithDefaults, servicesHaveQuotesForBooking } from '@/lib/catalog-fallback';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getLocalFallbackCatalog, mergeServicesWithPricesStable, servicesHaveQuotesForBooking } from '@/lib/catalog-fallback';
+import {
+  bookingAvailabilityHint,
+  DEFAULT_BOOKING_AVAILABILITY,
+  isBookingSlotAllowed,
+  type BookingAvailabilityRules,
+} from '@/lib/booking-availability';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
 
 const BOOKING_SEED = getLocalFallbackCatalog();
 
@@ -29,16 +36,6 @@ function serviceIcon(slug: string) {
   return <Sparkles className='h-6 w-6 text-gold-soft' />;
 }
 
-function resolvePriceCents(prices: PriceRow[], serviceId: string, vehicleClass: string): number | null {
-  const direct = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
-  if (direct) return direct.price_cents;
-  if (vehicleClass === 'suv' || vehicleClass === 'truck') {
-    const legacy = prices.find((p) => p.service_id === serviceId && p.vehicle_class === 'suv_truck');
-    if (legacy) return legacy.price_cents;
-  }
-  return null;
-}
-
 function classLabel(c: VehicleClass) {
   if (c === 'sedan') return 'Sedan';
   if (c === 'suv') return 'SUV';
@@ -47,9 +44,10 @@ function classLabel(c: VehicleClass) {
 }
 
 export function BookingWizard() {
+  const liveCatalogAppliedRef = useRef(false);
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
   const [prices, setPrices] = useState<PriceRow[]>(() => [...BOOKING_SEED.prices]);
-  const [catalogRefreshing, setCatalogRefreshing] = useState(true);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canBookOnline, setCanBookOnline] = useState(false);
@@ -57,6 +55,8 @@ export function BookingWizard() {
   const [serviceSlug, setServiceSlug] = useState(() => BOOKING_SEED.services[0]?.slug ?? '');
   const [vehicleClass, setVehicleClass] = useState<VehicleClass>('sedan');
   const [scheduledStart, setScheduledStart] = useState('');
+  const [bookingRules, setBookingRules] = useState<BookingAvailabilityRules>(DEFAULT_BOOKING_AVAILABILITY);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
@@ -122,44 +122,48 @@ export function BookingWizard() {
       catalogEmpty?: boolean;
       fallbackCatalog?: boolean;
     }) => {
-      let svcList = data.services ?? [];
-      let priceList = data.prices ?? [];
-      if (svcList.length > 0) {
-        const merged = mergeLiveCatalogWithDefaults(svcList, priceList);
-        svcList = merged.services;
-        priceList = merged.prices;
-      }
-      if (svcList.length === 0) {
+      const svcList = data.services ?? [];
+      const priceList = data.prices ?? [];
+
+      if (svcList.length === 0 || data.catalogEmpty) {
         const fb = getLocalFallbackCatalog();
-        svcList = fb.services;
-        priceList = fb.prices;
-        setCanBookOnline(false);
-        setServices(svcList);
-        setPrices(priceList);
+        setCanBookOnline(servicesHaveQuotesForBooking(fb.services, fb.prices));
+        setServices(fb.services);
+        setPrices(fb.prices);
         setError(
           data.message ??
-            'Showing sample packages while the live catalog is unavailable. Online booking stays off until Supabase returns real service rows.',
+            'Showing default packages while the live catalog is unavailable. You can still book when prices are shown below.',
         );
-        if (svcList[0]) setServiceSlug(svcList[0].slug);
+        if (fb.services[0]) setServiceSlug(fb.services[0].slug);
         return;
       }
 
-      setCanBookOnline(data.canBookOnline === true && servicesHaveQuotesForBooking(svcList, priceList));
-      setServices(svcList);
-      setPrices(priceList);
+      if (data.fallbackCatalog) {
+        const fb = getLocalFallbackCatalog();
+        setCanBookOnline(servicesHaveQuotesForBooking(fb.services, fb.prices));
+        setServices(fb.services);
+        setPrices(fb.prices);
+        setError(data.message ?? 'Showing default packages.');
+        if (fb.services[0]) setServiceSlug(fb.services[0].slug);
+        return;
+      }
 
-      if (data.canBookOnline === false || data.fallbackCatalog) {
-        setError(
-          data.message ??
-            (data.fallbackCatalog
-              ? 'Sample packages shown for reference — online booking requires a live catalog in Supabase.'
-              : 'Online booking is temporarily unavailable.'),
-        );
+      const { services: mergedSvc, prices: mergedPrices } = mergeServicesWithPricesStable(svcList, priceList);
+      liveCatalogAppliedRef.current = true;
+      const quotesOk = servicesHaveQuotesForBooking(mergedSvc, mergedPrices);
+      setCanBookOnline(quotesOk || (mergedSvc.length > 0 && mergedPrices.length > 0));
+      setServices(mergedSvc);
+      setPrices(mergedPrices);
+
+      if (!quotesOk) {
+        setError(data.message ?? 'Some vehicle lines may need a custom quote — check totals before checkout.');
+      } else if (data.message && data.canBookOnline === false) {
+        setError(data.message);
       } else {
         setError(null);
       }
 
-      if (svcList[0]) setServiceSlug(svcList[0].slug);
+      if (mergedSvc[0]) setServiceSlug((prev) => (mergedSvc.some((s) => s.slug === prev) ? prev : mergedSvc[0].slug));
     };
 
     const localFallbackPayload = (): CatalogPayload => {
@@ -167,20 +171,23 @@ export function BookingWizard() {
       return {
         services: fb.services,
         prices: fb.prices,
-        canBookOnline: false,
+        canBookOnline: servicesHaveQuotesForBooking(fb.services, fb.prices),
         catalogEmpty: false,
         fallbackCatalog: true,
-        message:
-          'Could not reach the server in time — showing sample packages. Online booking is disabled until the live catalog loads.',
+        message: 'Could not reach the server in time — showing default packages.',
       };
     };
 
     const cached = readCache();
 
     let alive = true;
+    setCatalogRefreshing(true);
     const failsafe = window.setTimeout(() => {
       if (!alive) return;
       setCatalogRefreshing(false);
+      if (liveCatalogAppliedRef.current) {
+        return;
+      }
       setServices((prev) => (prev.length ? prev : [...BOOKING_SEED.services]));
       setPrices((prev) => (prev.length ? prev : [...BOOKING_SEED.prices]));
       if (cached?.payload?.services?.length) {
@@ -221,12 +228,12 @@ export function BookingWizard() {
         const rawSvc = data.services ?? [];
         const rawPrice = data.prices ?? [];
         if (rawSvc.length > 0 && !data.catalogEmpty && !data.fallbackCatalog) {
-          const merged = mergeLiveCatalogWithDefaults(rawSvc, rawPrice);
-          const okOnline = data.canBookOnline === true && servicesHaveQuotesForBooking(merged.services, merged.prices);
+          const stable = mergeServicesWithPricesStable(rawSvc, rawPrice);
+          const okOnline = servicesHaveQuotesForBooking(stable.services, stable.prices) || stable.prices.length > 0;
           if (okOnline) {
             writeCache({
-              services: merged.services,
-              prices: merged.prices,
+              services: stable.services,
+              prices: stable.prices,
               canBookOnline: true,
               catalogEmpty: data.catalogEmpty,
               message: data.message,
@@ -269,6 +276,26 @@ export function BookingWizard() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWithTimeout('/api/public/site-settings', { cache: 'no-store', timeoutMs: 8000 })
+      .then(async (r) => {
+        try {
+          return (await r.json()) as { bookingAvailability?: BookingAvailabilityRules };
+        } catch {
+          return null;
+        }
+      })
+      .then((data) => {
+        if (cancelled || !data?.bookingAvailability) return;
+        setBookingRules(data.bookingAvailability);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selectedService = useMemo(() => services.find((s) => s.slug === serviceSlug), [services, serviceSlug]);
 
   const bookingLines = useMemo(
@@ -282,10 +309,10 @@ export function BookingWizard() {
     for (const line of bookingLines) {
       const svc = services.find((s) => s.slug === line.serviceSlug);
       if (!svc) continue;
-      const cents = resolvePriceCents(prices, svc.id, line.vehicleClass);
-      if (cents == null) {
-        return 'Quote required for one or more vehicle lines';
-      }
+      const resolved = safePriceResolver({ slug: svc.slug, serviceId: svc.id }, line.vehicleClass, prices);
+      if (resolved.isQuote) return 'Quote required for one or more vehicle lines (e.g. ceramic coating)';
+      const cents = safePriceCentsForDisplay({ slug: svc.slug, serviceId: svc.id }, line.vehicleClass, prices);
+      if (cents == null) return 'Quote required for one or more vehicle lines';
       total += cents;
       parts.push(`${classLabel(line.vehicleClass)} · $${(cents / 100).toFixed(2)}`);
     }
@@ -338,7 +365,17 @@ export function BookingWizard() {
         return;
       }
 
-      const startIso = new Date(scheduledStart).toISOString();
+      const scheduled = new Date(scheduledStart);
+      if (!isBookingSlotAllowed(scheduled, bookingRules)) {
+        setScheduleError(
+          'Selected time is outside online booking hours. ' + bookingAvailabilityHint(bookingRules),
+        );
+        setSubmitting(false);
+        return;
+      }
+      setScheduleError(null);
+
+      const startIso = scheduled.toISOString();
       const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -551,13 +588,23 @@ export function BookingWizard() {
           <section className='grid gap-4 md:grid-cols-2'>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Appointment date & time</span>
+              <p className='mb-2 text-xs text-zinc-500'>{bookingAvailabilityHint(bookingRules)}</p>
               <input
                 type='datetime-local'
                 value={scheduledStart}
-                onChange={(e) => setScheduledStart(e.target.value)}
+                onChange={(e) => {
+                  setScheduledStart(e.target.value);
+                  const d = new Date(e.target.value);
+                  if (e.target.value && !Number.isNaN(d.getTime()) && !isBookingSlotAllowed(d, bookingRules)) {
+                    setScheduleError(bookingAvailabilityHint(bookingRules));
+                  } else {
+                    setScheduleError(null);
+                  }
+                }}
                 className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
                 required
               />
+              {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Vehicle 1 (year / make / model)</span>

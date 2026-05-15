@@ -60,6 +60,11 @@ export async function POST() {
   const { data: existing, error: readErr } = await admin.from('profiles').select('id, role').eq('id', user.id).maybeSingle();
 
   if (readErr) {
+    const m = readErr.message ?? '';
+    if (/relation|does not exist|Could not find|schema cache|column .* does not exist/i.test(m)) {
+      console.warn('[ensure-profile] read_schema_drift', m);
+      return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
+    }
     console.error('[ensure-profile] read', readErr);
     return NextResponse.json({ error: readErr.message }, { status: 500 });
   }
@@ -86,6 +91,11 @@ export async function POST() {
       if (!/column .* does not exist|schema cache|full_name|updated_at|email|Could not find/i.test(msg)) break;
     }
     if (insErr) {
+      const m = String(insErr.message ?? '');
+      if (/relation|does not exist|Could not find|schema cache/i.test(m)) {
+        console.warn('[ensure-profile] insert_schema_drift', insErr);
+        return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
+      }
       console.error('[ensure-profile] insert', insErr);
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
@@ -111,6 +121,11 @@ export async function POST() {
       if (!/column .* does not exist|schema cache|updated_at|email|Could not find/i.test(msg)) break;
     }
     if (upErr) {
+      const m = String(upErr.message ?? '');
+      if (/relation|does not exist|Could not find|schema cache/i.test(m)) {
+        console.warn('[ensure-profile] owner_promote_schema_drift', upErr);
+        return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
+      }
       console.error('[ensure-profile] owner promote', upErr);
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }

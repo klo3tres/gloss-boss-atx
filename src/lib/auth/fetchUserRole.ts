@@ -241,6 +241,35 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
     const msg = e instanceof Error ? e.message : String(e);
     logAuthFlow({ step: 'fetchUserRole', profileFetch: 'exception', profileError: msg });
     logRoleDebug({ step: 'fetchUserRole', code: 'EXCEPTION', detail: msg });
+    try {
+      const {
+        data: { user },
+        error: userErr,
+      } = await client.auth.getUser();
+      if (!userErr && user) {
+        const email = user.email ?? null;
+        if (isOwnerEmail(email)) {
+          return {
+            ok: true,
+            userId: user.id,
+            role: 'super_admin',
+            email,
+            profileRow: null,
+            source: 'owner_bootstrap',
+          };
+        }
+        return {
+          ok: true,
+          userId: user.id,
+          role: 'customer',
+          email,
+          profileRow: null,
+          source: 'session_fallback',
+        };
+      }
+    } catch {
+      /* fall through */
+    }
     return { ok: false, code: 'NO_SESSION', userId: null, email: null };
   }
 }

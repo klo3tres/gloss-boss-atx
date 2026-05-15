@@ -5,6 +5,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { tryCreateServerSupabase } from '@/lib/supabase/server';
+import { galleryInsertPayloadVariants, maxGallerySortFromRows } from '@/lib/gallery-normalize';
 
 export const runtime = 'nodejs';
 
@@ -48,6 +49,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: buckets, error: bucketListErr } = await admin.storage.listBuckets();
+  if (bucketListErr) {
+    console.warn('[CRM_DEBUG]', 'gallery_storage_list_buckets', bucketListErr.message);
+  }
+  const galleryBucketReady = !bucketListErr && buckets?.some((b) => b.name === 'gallery');
+  if (!galleryBucketReady) {
+    return NextResponse.json(
+      {
+        error: 'Storage bucket not configured yet. Uploads are temporarily disabled.',
+        code: 'BUCKET_MISSING',
+      },
+      { status: 503 },
+    );
+  }
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -73,38 +89,44 @@ export async function POST(request: Request) {
 
   const { error: upErr } = await admin.storage.from('gallery').upload(path, buf, { contentType: mime, upsert: false });
   if (upErr) {
-    console.warn('[CRM_DEBUG]', 'gallery_storage_upload', upErr.message);
-    return NextResponse.json({ error: upErr.message }, { status: 500 });
+    const m = upErr.message ?? '';
+    console.warn('[CRM_DEBUG]', 'gallery_storage_upload', m);
+    if (/Bucket not found|bucket does not exist|not found/i.test(m)) {
+      return NextResponse.json(
+        {
+          error:
+            'Storage bucket "gallery" is missing in Supabase. Create the bucket (public read) or add image URLs manually in CMS.',
+          code: 'BUCKET_MISSING',
+        },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json({ error: m }, { status: 500 });
   }
 
   const { data: pub } = admin.storage.from('gallery').getPublicUrl(path);
   const publicUrl = pub.publicUrl;
 
-  const { data: maxRow } = await admin
-    .from('gallery_images')
-    .select('sort_order, order_index')
-    .order('order_index', { ascending: false, nullsFirst: false })
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextOrder = Math.max(maxRow?.order_index ?? 0, maxRow?.sort_order ?? 0) + 1;
+  const maxQ = await admin.from('gallery_images').select('*').limit(500);
+  if (maxQ.error) {
+    console.warn('[CRM_DEBUG]', 'gallery_max_sort', maxQ.error.message);
+    return NextResponse.json({ error: 'Could not read gallery order.' }, { status: 500 });
+  }
+  const nextOrder = maxGallerySortFromRows(maxQ.data ?? []) + 1;
 
-  const { data: row, error: insErr } = await admin
-    .from('gallery_images')
-    .insert({
-      image_url: publicUrl,
-      url: publicUrl,
-      caption: caption || null,
-      sort_order: nextOrder,
-      order_index: nextOrder,
-      published: true,
-    })
-    .select('id, url')
-    .single();
+  const variants = galleryInsertPayloadVariants(publicUrl, caption, nextOrder);
+  let row: { id: string; url?: string | null } | null = null;
+  for (const payload of variants) {
+    const { data, error: insErr } = await admin.from('gallery_images').insert(payload).select('id').maybeSingle();
+    if (!insErr && data) {
+      row = data as { id: string; url?: string | null };
+      break;
+    }
+    if (insErr) console.warn('[CRM_DEBUG]', 'gallery_images_insert_try', insErr.message);
+  }
 
-  if (insErr || !row) {
-    console.warn('[CRM_DEBUG]', 'gallery_images_insert', insErr?.message);
-    return NextResponse.json({ error: insErr?.message ?? 'Could not save gallery row' }, { status: 500 });
+  if (!row) {
+    return NextResponse.json({ error: 'Could not save gallery row for this database schema.' }, { status: 500 });
   }
 
   revalidatePath('/admin/cms');

@@ -2,18 +2,21 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   getLocalFallbackCatalog,
-  mergeFallbackPricesByServiceSlug,
+  loadActiveServicesResilient,
+  mapServicePriceRows,
+  mergeServicesWithPricesStable,
   servicesHaveQuotesForBooking,
 } from '@/lib/catalog-fallback';
 import { isSupabasePublicReady, tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 function jsonFallback(extra: Record<string, unknown>) {
   const fb = getLocalFallbackCatalog();
+  const canBook = servicesHaveQuotesForBooking(fb.services, fb.prices);
   return NextResponse.json({
     services: fb.services,
     prices: fb.prices,
     live: false,
-    canBookOnline: false,
+    canBookOnline: canBook,
     catalogEmpty: false,
     fallbackCatalog: true,
     ...extra,
@@ -49,15 +52,13 @@ export async function GET() {
     }
 
     async function loadCatalog(client: SupabaseClient) {
-      const { data: services, error: sErr } = await client
-        .from('services')
-        .select('id, slug, title, subtitle, sort_order')
-        .eq('active', true)
-        .order('sort_order', { ascending: true });
+      const { rows: services, error: sErrMsg } = await loadActiveServicesResilient(client);
+      const sErr = sErrMsg ? { message: sErrMsg } : null;
 
-      const { data: prices, error: pErr } = await client.from('service_prices').select('service_id, vehicle_class, price_cents');
+      const { data: pricesRaw, error: pErr } = await client.from('service_prices').select('*');
+      const prices = mapServicePriceRows((pricesRaw ?? []) as unknown[]);
 
-      return { services: services ?? [], prices: prices ?? [], sErr, pErr };
+      return { services, prices, sErr, pErr };
     }
 
     const first = await loadCatalog(supabase);
@@ -71,7 +72,7 @@ export async function GET() {
       }
       return jsonFallback({
         code: 'SUPABASE_QUERY_ERROR',
-        message: 'Could not load services from the database — showing sample packages. Online booking is disabled until the catalog loads.',
+        message: 'Could not load services from the database — showing default packages with reference pricing.',
         detail: msg,
       });
     }
@@ -79,6 +80,12 @@ export async function GET() {
     let services = first.services;
     let prices = first.prices;
     const pErr = first.pErr;
+
+    if (services.length > 0) {
+      const stable = mergeServicesWithPricesStable(services, prices);
+      services = stable.services;
+      prices = stable.prices;
+    }
 
     if (pErr) {
       const msg = pErr.message ?? '';
@@ -97,10 +104,9 @@ export async function GET() {
       });
     }
 
-    if (pErr || prices.length === 0) {
-      const merged = mergeFallbackPricesByServiceSlug(services);
-      prices = merged.length > 0 ? merged : prices;
-      const canBook = servicesHaveQuotesForBooking(services, prices);
+    const canBook = servicesHaveQuotesForBooking(services, prices) || (services.length > 0 && prices.length > 0);
+
+    if (pErr || first.prices.length === 0) {
       return NextResponse.json({
         services,
         prices,
@@ -111,9 +117,9 @@ export async function GET() {
         code: pErr ? 'SUPABASE_QUERY_ERROR' : 'PRICES_FILLED_FROM_DEFAULTS',
         message: canBook
           ? pErr
-            ? 'Live services with reference pricing from defaults until service_prices is available.'
+            ? 'Live services with default pricing until service_prices is available.'
             : undefined
-          : 'Some packages are missing prices in the database — online booking is disabled until pricing is configured.',
+          : 'Some rows may need prices in Admin — booking stays available when quotes compute.',
         detail: pErr ? pErr.message : undefined,
       });
     }
@@ -122,7 +128,7 @@ export async function GET() {
       services,
       prices,
       live: true,
-      canBookOnline: true,
+      canBookOnline: servicesHaveQuotesForBooking(services, prices) || (services.length > 0 && prices.length > 0),
       catalogEmpty: false,
       fallbackCatalog: false,
     });
@@ -131,7 +137,7 @@ export async function GET() {
     console.warn('[CRM_DEBUG_DB]', 'services_route_unhandled', msg);
     return jsonFallback({
       code: 'UNHANDLED',
-      message: 'Catalog service error — showing sample packages. Online booking is disabled.',
+      message: 'Catalog service error — showing default packages.',
       detail: msg,
     });
   }

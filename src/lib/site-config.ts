@@ -112,11 +112,11 @@ export const defaultDealConfig: DealConfig = {
 };
 
 export function formatStartingPrice(value: number | null): string {
-  if (value === null) return "TBD";
+  if (value === null) return 'Quote';
   return `$${value}+`;
 }
 
 export function formatVehiclePrice(value: number | null): string {
-  if (value === null) return "TBD";
+  if (value === null) return 'Quote';
   return `$${value}`;
 }

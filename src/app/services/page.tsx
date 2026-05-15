@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { defaultDealConfig, defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
-import type { PublicSiteDataPayload, SiteDataMultiCar } from "@/lib/public-site-data";
+import { defaultMarketingOffers, type PublicSiteDataPayload, type SiteDataMultiCar, type SiteDataOfferCard } from "@/lib/public-site-data";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const emptyDeals: DealConfig = {
@@ -22,12 +22,14 @@ export default function ServicesPage() {
   const [services, setServices] = useState<ServicePackage[]>([]);
   const [deals, setDeals] = useState<DealConfig>(emptyDeals);
   const [multiCar, setMultiCar] = useState<SiteDataMultiCar | null>(null);
+  const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  const packages = loaded ? services : defaultServicePackages;
+  const packages = services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : defaultDealConfig;
   const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
+  const showCatalogFallbackNote = loaded && services.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +52,7 @@ export default function ServicesPage() {
         setServices(data.services ?? []);
         setDeals(data.deals ?? emptyDeals);
         setMultiCar(data.multiCar ?? null);
+        setOffers(data.offers ?? []);
         setSchemaWarnings(data.schemaWarnings ?? []);
         setLoaded(true);
       })
@@ -71,6 +74,16 @@ export default function ServicesPage() {
     return `Example: two ${multiCar.serviceSlug.replace(/-/g, " ")} (${multiCar.vehicleClass.replace("_", " ")}) — ${fmtMoney(multiCar.firstCents)} + ${fmtMoney(multiCar.secondCents)} = ${fmtMoney(multiCar.totalCents)} total.`;
   }, [multiCar, loaded]);
 
+  const activeOfferCards = useMemo(() => {
+    const src = offers.length > 0 ? offers : loaded ? defaultMarketingOffers() : [];
+    return [...src].filter((o) => o.active).sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [offers, loaded]);
+
+  const showPromosBand =
+    (displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) ||
+    activeOfferCards.length > 0 ||
+    !loaded;
+
   return (
     <main className="min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
       <div className="mx-auto w-full max-w-6xl">
@@ -80,11 +93,42 @@ export default function ServicesPage() {
           Transparent package pricing with clear deliverables so customers know exactly what they are buying.
         </p>
 
+        {showPromosBand ? (
+          <section className="mt-8">
+            <p className="text-xs uppercase tracking-[0.22em] text-gold-soft">Featured offers</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
+                <article className="min-h-[160px] rounded-2xl border-2 border-amber-400/45 bg-gradient-to-br from-amber-500/20 via-black/50 to-black/80 p-6 shadow-[0_0_28px_rgba(251,191,36,0.14)] ring-1 ring-amber-300/25">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">{displayDeals.websitePromoLabel || "Website booking offer"}</p>
+                  <p className="mt-2 text-2xl font-black text-white sm:text-3xl">{displayDeals.websitePromoPercent}% OFF Website Bookings</p>
+                  <p className="mt-2 text-sm text-zinc-300">Cannot be stacked with multi-car discount — best savings applies automatically at checkout.</p>
+                </article>
+              ) : null}
+              {activeOfferCards.map((o) => (
+                <article
+                  key={o.id}
+                  className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gold/30 bg-zinc-950/90 p-6 shadow-[0_0_22px_rgba(212,166,77,0.12)]"
+                >
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Promotion</p>
+                    <h2 className="mt-2 text-xl font-black uppercase text-white">{o.title}</h2>
+                    {o.description ? <p className="mt-2 text-sm text-zinc-400">{o.description}</p> : null}
+                  </div>
+                  {o.discountPercent > 0 ? (
+                    <p className="mt-4 text-3xl font-black text-gold-soft">{o.discountPercent}% off</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {showSchemaNotice ? (
           <div role="alert" className="mt-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-left text-sm text-amber-100">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold">Missing database configuration: run migrations</p>
+                <p className="font-semibold">Site notice</p>
+                <p className="mt-1 text-xs text-amber-100/90">We are using safe defaults where needed. Dismiss anytime.</p>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs break-words text-amber-100/95">
                   {schemaWarnings.map((w) => (
                     <li key={w}>{w}</li>
@@ -103,13 +147,33 @@ export default function ServicesPage() {
           </div>
         ) : null}
 
-        {!loaded ? <p className="mt-2 text-xs text-zinc-500">Loading latest packages…</p> : null}
-
-        <div className="mt-8 space-y-4">
-          {loaded && services.length === 0 ? (
-            <p className="rounded-2xl border border-white/15 bg-zinc-950/80 p-6 text-sm text-zinc-400">No services configured.</p>
+        <section className="mt-6 rounded-2xl border border-gold/30 bg-black/40 p-5">
+          <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Two Car Deal</p>
+          <h3 className="mt-2 text-3xl font-black uppercase">Multi-Car Bundle</h3>
+          {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
+            <p className="mt-2 text-zinc-200">
+              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
+            </p>
+          ) : loaded ? (
+            <p className="mt-2 text-sm text-zinc-400">Multi-car discount is managed in Admin → deal settings.</p>
           ) : (
-            packages.map((service) => {
+            <p className="mt-2 text-zinc-200">
+              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
+            </p>
+          )}
+          {multiCarLine ? <p className="mt-2 text-sm text-zinc-400">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
+        </section>
+
+        {!loaded ? <p className="mt-4 text-xs text-zinc-500">Loading latest packages…</p> : null}
+
+        {showCatalogFallbackNote ? (
+          <p className="mt-3 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
+            Live catalog returned no rows — showing standard packages until services are published in Admin.
+          </p>
+        ) : null}
+
+        <div className="mt-6 space-y-4">
+          {packages.map((service) => {
               const suvT = service.suvTruckPrice;
               const suv = service.suvPrice ?? null;
               const truck = service.truckPrice ?? null;
@@ -141,34 +205,8 @@ export default function ServicesPage() {
                   </ul>
                 </article>
               );
-            })
-          )}
+            })}
         </div>
-
-        <section className="mt-8 rounded-2xl border border-gold/30 bg-black/40 p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Two Car Deal</p>
-          <h3 className="mt-2 text-3xl font-black uppercase">Multi-Car Bundle</h3>
-          {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
-            <p className="mt-2 text-zinc-200">
-              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
-            </p>
-          ) : loaded ? (
-            <p className="mt-2 text-sm text-zinc-400">Multi-car discount is managed in Admin → deal settings.</p>
-          ) : (
-            <p className="mt-2 text-zinc-200">
-              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
-            </p>
-          )}
-          {multiCarLine ? <p className="mt-2 text-sm text-zinc-400">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
-        </section>
-
-        {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
-          <section className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">{displayDeals.websitePromoLabel || "Website booking offer"}</p>
-            <p className="mt-2 text-2xl font-black">{displayDeals.websitePromoPercent}% OFF Website Bookings</p>
-            <p className="mt-1 text-sm text-zinc-300">Promo cannot be stacked with multi-car discount. Best deal is auto-applied for customers.</p>
-          </section>
-        ) : null}
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/book" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">

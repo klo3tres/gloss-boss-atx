@@ -41,6 +41,15 @@ export default function LoginForm() {
     setSupabase(createSupabaseBrowserClient());
   }, []);
 
+  useEffect(() => {
+    if (phase !== 'finishing') return;
+    const watchdog = window.setTimeout(() => {
+      setError('Redirect is taking too long. Try again, or open the site in a fresh tab.');
+      setPhase('idle');
+    }, 18000);
+    return () => clearTimeout(watchdog);
+  }, [phase]);
+
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -116,15 +125,17 @@ export default function LoginForm() {
         console.info('[CRM_DEBUG_AUTH]', 'ensure_profile_ok');
       }
 
-      const outcome = await fetchUserRole(client);
+        const outcome = await fetchUserRole(client);
 
-      if (!outcome.ok) {
-        console.warn('[CRM_DEBUG_AUTH]', 'role_resolution_failed', outcome);
-        await client.auth.signOut();
-        setError(formatLoginFailure(outcome));
-        setPhase('idle');
-        return;
-      }
+        if (!outcome.ok) {
+          console.warn('[CRM_DEBUG_AUTH]', 'role_resolution_failed', outcome);
+          if (outcome.code !== 'NO_SESSION') {
+            await client.auth.signOut();
+          }
+          setError(formatLoginFailure(outcome));
+          setPhase('idle');
+          return;
+        }
 
       setRoleCache(outcome.userId, outcome.role);
       writeHydratedOnceFlag();

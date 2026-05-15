@@ -172,7 +172,16 @@ export async function processCheckoutSessionCompleted(params: {
       { onConflict: 'stripe_checkout_session_id' }
     );
 
-    await admin.from('appointments').update({ status: 'deposit_paid', updated_at: new Date().toISOString() }).eq('id', appointmentId);
+    const { error: statusErr } = await admin
+      .from('appointments')
+      .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
+      .eq('id', appointmentId);
+
+    if (statusErr) {
+      console.warn('[checkout] deposit_paid update failed', appointmentId, statusErr.message);
+    } else {
+      console.info('[checkout] appointment marked deposit_paid', appointmentId, 'amount', amount);
+    }
   } catch (e) {
     console.warn('[checkout] processCheckoutSessionCompleted', e);
   }

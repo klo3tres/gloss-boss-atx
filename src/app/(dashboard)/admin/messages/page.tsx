@@ -21,9 +21,14 @@ export default async function AdminMessagesPage() {
   const supabase = await createSupabaseServerClient();
 
   let rows: Msg[] = [];
+  let messagesError: string | null = null;
   if (supabase && session.user) {
-    const { data } = await supabase.from('messages').select('id, from_name, from_email, subject, body, status, created_at').order('created_at', { ascending: false }).limit(100);
-    rows = (data ?? []) as Msg[];
+    const { data, error } = await supabase.from('messages').select('id, from_name, from_email, subject, body, status, created_at').order('created_at', { ascending: false }).limit(100);
+    if (error) {
+      messagesError = error.message;
+    } else {
+      rows = (data ?? []) as Msg[];
+    }
   }
 
   return (
@@ -33,7 +38,12 @@ export default async function AdminMessagesPage() {
       role='admin'
     >
       <div className='space-y-4'>
-        {rows.length === 0 ? (
+        {messagesError ? (
+          <p role='alert' className='rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
+            Could not load messages: {messagesError}. Check the <code className='text-gold-soft'>messages</code> table and RLS policies.
+          </p>
+        ) : null}
+        {rows.length === 0 && !messagesError ? (
           <p className='rounded-2xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400'>No messages yet. They appear here when visitors submit the homepage contact form.</p>
         ) : null}
         {rows.map((m) => (

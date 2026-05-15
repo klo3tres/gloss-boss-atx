@@ -90,3 +90,59 @@ export async function techCompleteJobAction(formData: FormData) {
   if (error) console.error('[tech] complete job', error.message);
   revalidatePath('/tech');
 }
+
+export async function techSaveJobNotesAction(formData: FormData) {
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
+  if (!appointmentId) return;
+
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return;
+
+  const { data: appt, error: fetchErr } = await gate.supabase
+    .from('appointments')
+    .select('id, assigned_technician_id')
+    .eq('id', appointmentId)
+    .maybeSingle();
+
+  if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) return;
+
+  const { error } = await gate.supabase
+    .from('appointments')
+    .update({ notes: notes || null, updated_at: new Date().toISOString() })
+    .eq('id', appointmentId);
+
+  if (error) console.warn('[tech] save notes', error.message);
+  revalidatePath('/tech');
+}
+
+export async function techAddJobMediaAction(formData: FormData) {
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const category = String(formData.get('category') ?? 'other').trim();
+  const fileUrl = String(formData.get('fileUrl') ?? '').trim();
+  if (!appointmentId || !fileUrl) return;
+
+  const allowed = new Set(['inspection', 'before', 'after', 'other']);
+  const cat = allowed.has(category) ? category : 'other';
+
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return;
+
+  const { data: appt, error: fetchErr } = await gate.supabase
+    .from('appointments')
+    .select('id, assigned_technician_id')
+    .eq('id', appointmentId)
+    .maybeSingle();
+
+  if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) return;
+
+  const { error } = await gate.supabase.from('job_media').insert({
+    appointment_id: appointmentId,
+    uploaded_by: gate.userId,
+    category: cat,
+    file_url: fileUrl,
+  });
+
+  if (error) console.warn('[tech] job_media insert', error.message);
+  revalidatePath('/tech');
+}

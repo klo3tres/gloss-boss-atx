@@ -145,6 +145,25 @@ export function SuperAdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
+  const [promoteBanner, setPromoteBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      const err = u.searchParams.get('promoteErr');
+      const ok = u.searchParams.get('promoteOk');
+      if (err) setPromoteBanner({ kind: 'err', text: err });
+      else if (ok) setPromoteBanner({ kind: 'ok', text: 'Role update saved to the database.' });
+      if (err || ok) {
+        u.searchParams.delete('promoteErr');
+        u.searchParams.delete('promoteOk');
+        const qs = u.searchParams.toString();
+        window.history.replaceState({}, '', `${u.pathname}${qs ? `?${qs}` : ''}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -355,6 +374,18 @@ export function SuperAdminDashboard() {
       </div>
 
       <div className='rounded-2xl border border-gold/25 bg-zinc-950/90 p-5 shadow-[0_0_24px_rgba(212,166,77,0.08)] backdrop-blur-md'>
+        {promoteBanner ? (
+          <div
+            role='alert'
+            className={`mb-4 rounded-xl border p-3 text-sm ${
+              promoteBanner.kind === 'ok'
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                : 'border-amber-500/45 bg-amber-500/10 text-amber-100'
+            }`}
+          >
+            {promoteBanner.text}
+          </div>
+        ) : null}
         <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
           <div>
             <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Team management</p>

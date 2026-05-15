@@ -110,24 +110,46 @@ export async function saveStripeSettings(
 
 export async function getStripeSettingsFlags(admin: SupabaseClient | null): Promise<{
   envHasSecret: boolean;
+  envHasPublishable: boolean;
+  envHasWebhook: boolean;
   dbHasSecret: boolean;
   dbHasWebhook: boolean;
   dbHasPublishable: boolean;
+  stripeMode: 'live' | 'test' | 'unknown' | 'unset';
 }> {
   const envHasSecret = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+  const envHasPublishable = Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim());
+  const envHasWebhook = Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim());
+
+  const secrets = await getStripeSecrets(admin);
+  const sk = secrets.secretKey;
+  let stripeMode: 'live' | 'test' | 'unknown' | 'unset' = 'unset';
+  if (sk) {
+    if (sk.startsWith('sk_live')) stripeMode = 'live';
+    else if (sk.startsWith('sk_test')) stripeMode = 'test';
+    else stripeMode = 'unknown';
+  }
+
   if (!admin) {
-    return { envHasSecret, dbHasSecret: false, dbHasWebhook: false, dbHasPublishable: false };
+    return { envHasSecret, envHasPublishable, envHasWebhook, dbHasSecret: false, dbHasWebhook: false, dbHasPublishable: false, stripeMode };
   }
   try {
-    const { data } = await admin.from('settings').select('key').in('key', [KEYS.secret, KEYS.webhook, KEYS.publishable]);
+    const { data, error } = await admin.from('settings').select('key').in('key', [KEYS.secret, KEYS.webhook, KEYS.publishable]);
+    if (error) {
+      console.warn('[stripeService] settings flags read failed', error.message);
+      return { envHasSecret, envHasPublishable, envHasWebhook, dbHasSecret: false, dbHasWebhook: false, dbHasPublishable: false, stripeMode };
+    }
     const set = new Set((data ?? []).map((r: { key: string }) => r.key));
     return {
       envHasSecret,
+      envHasPublishable,
+      envHasWebhook,
       dbHasSecret: set.has(KEYS.secret),
       dbHasWebhook: set.has(KEYS.webhook),
       dbHasPublishable: set.has(KEYS.publishable),
+      stripeMode: envHasSecret || set.has(KEYS.secret) ? stripeMode : 'unset',
     };
   } catch {
-    return { envHasSecret, dbHasSecret: false, dbHasWebhook: false, dbHasPublishable: false };
+    return { envHasSecret, envHasPublishable, envHasWebhook, dbHasSecret: false, dbHasWebhook: false, dbHasPublishable: false, stripeMode };
   }
 }

@@ -5,14 +5,7 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 type Row = { id: string; image_url: string | null; url: string | null; caption: string | null };
 
-/** Local bundled placeholders (works offline); then remote samples if needed. */
-const LOCAL_PLACEHOLDER_IMAGES: Row[] = [
-  { id: 'local-ph-1', image_url: '/gallery-fallback/1.svg', url: null, caption: null },
-  { id: 'local-ph-2', image_url: '/gallery-fallback/2.svg', url: null, caption: null },
-  { id: 'local-ph-3', image_url: '/gallery-fallback/3.svg', url: null, caption: null },
-];
-
-/** Curated placeholders when CMS has no rows or fetch fails (never blank strip). */
+/** Curated placeholders when CMS has no rows or fetch fails (car photography only; no abstract SVGs). */
 const REMOTE_PLACEHOLDER_IMAGES: Row[] = [
   {
     id: 'ph-1',
@@ -34,7 +27,7 @@ const REMOTE_PLACEHOLDER_IMAGES: Row[] = [
   },
 ];
 
-const GALLERY_FALLBACK_ROWS = [...LOCAL_PLACEHOLDER_IMAGES, ...REMOTE_PLACEHOLDER_IMAGES];
+const GALLERY_FALLBACK_ROWS = [...REMOTE_PLACEHOLDER_IMAGES];
 
 function rowVisualUrl(r: Row): string {
   return String(r.url || r.image_url || '').trim();

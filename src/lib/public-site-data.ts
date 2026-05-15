@@ -1,5 +1,5 @@
-import { getLocalFallbackCatalog } from '@/lib/catalog-fallback';
-import type { DealConfig, ServicePackage } from '@/lib/site-config';
+import { getLocalFallbackCatalog, centsForSlugVehicleFromDefaults } from '@/lib/catalog-fallback';
+import { defaultDealConfig, type DealConfig, type ServicePackage } from '@/lib/site-config';
 
 export type SiteDataOfferCard = {
   id: string;
@@ -19,6 +19,12 @@ export type SiteDataMultiCar = {
   discountPercent: number;
 };
 
+export type SiteDataFeaturedSlide = {
+  id: string;
+  label: string;
+  image: string;
+};
+
 export type PublicSiteDataPayload = {
   ok: boolean;
   schemaWarnings: string[];
@@ -26,6 +32,7 @@ export type PublicSiteDataPayload = {
   deals: DealConfig;
   offers: SiteDataOfferCard[];
   multiCar: SiteDataMultiCar | null;
+  featuredShowcase: SiteDataFeaturedSlide[];
 };
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */
@@ -45,7 +52,7 @@ function subtitleToIncludes(subtitle: string | null): string[] {
 }
 
 function dollarsFromCents(cents: number | undefined): number | null {
-  if (cents == null || Number.isNaN(cents)) return null;
+  if (cents == null || Number.isNaN(cents) || cents <= 0) return null;
   return Math.round(cents / 100);
 }
 
@@ -63,11 +70,30 @@ export function mapCatalogToServicePackages(
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((s) => {
       const pick = (cls: string) => prices.find((p) => p.service_id === s.id && p.vehicle_class === cls)?.price_cents;
-      const sedanC = pick('sedan');
-      const suvC = pick('suv');
-      const truckC = pick('truck');
+      let sedanC = pick('sedan');
+      let suvC = pick('suv');
+      let truckC = pick('truck');
       const legacyC = pick('suv_truck');
-      const suvTruckC = legacyC ?? suvC ?? truckC;
+      let suvTruckC = legacyC ?? suvC ?? truckC;
+      if (sedanC == null || Number.isNaN(sedanC)) {
+        const fb = centsForSlugVehicleFromDefaults(s.slug, 'sedan');
+        if (fb != null) sedanC = fb;
+      }
+      if (suvC == null || Number.isNaN(suvC)) {
+        const fb = centsForSlugVehicleFromDefaults(s.slug, 'suv');
+        if (fb != null) suvC = fb;
+      }
+      if (truckC == null || Number.isNaN(truckC)) {
+        const fb = centsForSlugVehicleFromDefaults(s.slug, 'truck');
+        if (fb != null) truckC = fb;
+      }
+      if (suvTruckC == null || Number.isNaN(suvTruckC)) {
+        const fb = centsForSlugVehicleFromDefaults(s.slug, 'suv_truck');
+        if (fb != null) suvTruckC = fb;
+      }
+      if (suvTruckC == null || Number.isNaN(suvTruckC)) {
+        suvTruckC = legacyC ?? suvC ?? truckC;
+      }
       const suvD = dollarsFromCents(suvC);
       const truckD = dollarsFromCents(truckC);
       return {
@@ -84,18 +110,90 @@ export function mapCatalogToServicePackages(
 }
 
 export function parseDealConfig(raw: unknown): DealConfig {
-  if (!raw || typeof raw !== 'object') return { ...EMPTY_DEALS };
+  if (!raw || typeof raw !== 'object') return { ...defaultDealConfig };
   const o = raw as Record<string, unknown>;
-  return {
+  const parsed: DealConfig = {
     websitePromoPercent:
-      typeof o.websitePromoPercent === 'number' && !Number.isNaN(o.websitePromoPercent) ? o.websitePromoPercent : EMPTY_DEALS.websitePromoPercent,
-    websitePromoLabel: typeof o.websitePromoLabel === 'string' ? o.websitePromoLabel : EMPTY_DEALS.websitePromoLabel,
-    websitePromoActive: typeof o.websitePromoActive === 'boolean' ? o.websitePromoActive : EMPTY_DEALS.websitePromoActive,
+      typeof o.websitePromoPercent === 'number' && !Number.isNaN(o.websitePromoPercent)
+        ? o.websitePromoPercent
+        : defaultDealConfig.websitePromoPercent,
+    websitePromoLabel: typeof o.websitePromoLabel === 'string' ? o.websitePromoLabel : defaultDealConfig.websitePromoLabel,
+    websitePromoActive: typeof o.websitePromoActive === 'boolean' ? o.websitePromoActive : defaultDealConfig.websitePromoActive,
     multiCarSecondVehicleDiscountPercent:
       typeof o.multiCarSecondVehicleDiscountPercent === 'number' && !Number.isNaN(o.multiCarSecondVehicleDiscountPercent)
         ? o.multiCarSecondVehicleDiscountPercent
-        : EMPTY_DEALS.multiCarSecondVehicleDiscountPercent,
+        : defaultDealConfig.multiCarSecondVehicleDiscountPercent,
   };
+  const inert =
+    !parsed.websitePromoActive &&
+    parsed.websitePromoPercent <= 0 &&
+    parsed.multiCarSecondVehicleDiscountPercent <= 0;
+  return inert ? { ...defaultDealConfig } : parsed;
+}
+
+/** Marketing offer cards when `offers` table is empty or unavailable. */
+export function defaultMarketingOffers(): SiteDataOfferCard[] {
+  return [
+    {
+      id: 'default-website-promo',
+      title: 'Website Booking Offer',
+      description: 'Book online and save on your first detail.',
+      discountPercent: defaultDealConfig.websitePromoPercent,
+      active: defaultDealConfig.websitePromoActive,
+      sortOrder: 0,
+    },
+  ];
+}
+
+const DEFAULT_FEATURED_SLIDES: SiteDataFeaturedSlide[] = [
+  {
+    id: 'default-1',
+    label: 'Featured Transformation',
+    image: 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=1200&q=80',
+  },
+  {
+    id: 'default-2',
+    label: 'Featured Transformation',
+    image: 'https://images.unsplash.com/photo-1549317336-206569e8475c?auto=format&fit=crop&w=1200&q=80',
+  },
+  {
+    id: 'default-3',
+    label: 'Featured Transformation',
+    image: 'https://images.unsplash.com/photo-1494976388531-dad849ce67e7?auto=format&fit=crop&w=1200&q=80',
+  },
+];
+
+export function defaultFeaturedShowcaseSlides(): SiteDataFeaturedSlide[] {
+  return DEFAULT_FEATURED_SLIDES.map((s) => ({ ...s }));
+}
+
+/** When CMS JSON is empty or invalid — automotive stock placeholders with clear CMS hint. */
+export function featuredShowcasePlaceholders(): SiteDataFeaturedSlide[] {
+  return [
+    { id: 'ph-1', label: 'Upload first transformation in Admin → Site content', image: DEFAULT_FEATURED_SLIDES[0].image },
+    { id: 'ph-2', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[1].image },
+    { id: 'ph-3', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[2].image },
+  ];
+}
+
+/** Parses `homepage_content.featured_showcase` JSON: `{ "slides": [ { "image": "url", "label": "..." } ] }`. */
+export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
+  if (!raw || typeof raw !== 'object') return featuredShowcasePlaceholders();
+  const o = raw as Record<string, unknown>;
+  const slides = o.slides;
+  if (!Array.isArray(slides) || slides.length === 0) return featuredShowcasePlaceholders();
+  const out: SiteDataFeaturedSlide[] = [];
+  slides.forEach((item, i) => {
+    if (!item || typeof item !== 'object') return;
+    const row = item as Record<string, unknown>;
+    const rawImg = typeof row.image === 'string' ? row.image.trim() : '';
+    const image = rawImg.startsWith('http') || rawImg.startsWith('/') ? rawImg : '';
+    if (!image) return;
+    const label = typeof row.label === 'string' && row.label.trim() ? row.label.trim() : 'Featured Transformation';
+    const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : `slide-${i}`;
+    out.push({ id, label, image });
+  });
+  return out.length > 0 ? out : featuredShowcasePlaceholders();
 }
 
 /**

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
@@ -14,6 +14,26 @@ export function GalleryLocalUpload() {
   const [msg, setMsg] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const [staged, setStaged] = useState<Staged[]>([]);
+  const [galleryReady, setGalleryReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWithTimeout('/api/admin/gallery-bucket-status', { credentials: 'same-origin', timeoutMs: 15000 })
+      .then(async (r) => {
+        try {
+          const j = (await r.json()) as { galleryReady?: boolean; ok?: boolean };
+          if (!cancelled) setGalleryReady(Boolean(j.galleryReady));
+        } catch {
+          if (!cancelled) setGalleryReady(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGalleryReady(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => f.size > 0 && f.type.startsWith('image/'));
@@ -38,6 +58,10 @@ export function GalleryLocalUpload() {
 
   const uploadStaged = useCallback(async () => {
     if (staged.length === 0) return;
+    if (galleryReady === false) {
+      setMsg('Storage bucket not configured yet. Uploads are temporarily disabled.');
+      return;
+    }
     setBusy(true);
     setMsg(null);
     const failed: Staged[] = [];
@@ -54,10 +78,14 @@ export function GalleryLocalUpload() {
             credentials: 'same-origin',
             timeoutMs: 120000,
           });
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
           if (!res.ok) {
             console.warn('[CRM_DEBUG_UI]', 'gallery_upload', res.status, j);
             lastErr = j.error ?? `Upload failed (${res.status})`;
+            if (j.code === 'BUCKET_MISSING') {
+              setGalleryReady(false);
+              lastErr = 'Storage bucket not configured yet. Uploads are temporarily disabled.';
+            }
             failed.push(row);
             continue;
           }
@@ -78,7 +106,7 @@ export function GalleryLocalUpload() {
     } finally {
       setBusy(false);
     }
-  }, [router, staged]);
+  }, [router, staged, galleryReady]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -92,6 +120,11 @@ export function GalleryLocalUpload() {
   return (
     <div className='mt-4 space-y-2'>
       <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Local upload (drag & drop)</p>
+      {galleryReady === false ? (
+        <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
+          Storage bucket not configured yet. Uploads are temporarily disabled.
+        </p>
+      ) : null}
       <div
         onDragEnter={(e) => {
           e.preventDefault();
@@ -105,12 +138,14 @@ export function GalleryLocalUpload() {
         onDrop={onDrop}
         className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center text-sm transition ${
           drag ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/20 bg-black/30 text-zinc-400 hover:border-gold/40'
-        }`}
-        onClick={() => inputRef.current?.click()}
+        } ${galleryReady === false ? 'pointer-events-none opacity-50' : ''}`}
+        onClick={() => {
+          if (galleryReady !== false) inputRef.current?.click();
+        }}
         role='button'
         tabIndex={0}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click();
+          if (galleryReady !== false && (e.key === 'Enter' || e.key === ' ')) inputRef.current?.click();
         }}
         aria-label='Upload gallery images from your computer'
       >
@@ -124,6 +159,7 @@ export function GalleryLocalUpload() {
         accept='image/jpeg,image/png,image/webp,image/gif'
         multiple
         className='hidden'
+        disabled={galleryReady === false}
         onChange={(e) => {
           if (e.target.files?.length) addFiles(e.target.files);
           e.target.value = '';
@@ -154,7 +190,7 @@ export function GalleryLocalUpload() {
           </div>
           <button
             type='button'
-            disabled={busy}
+            disabled={busy || galleryReady === false}
             onClick={() => void uploadStaged()}
             className='w-full rounded-lg border border-gold/40 bg-gold/15 py-2 text-xs font-bold uppercase tracking-wider text-gold-soft hover:bg-gold/25 disabled:opacity-50'
           >

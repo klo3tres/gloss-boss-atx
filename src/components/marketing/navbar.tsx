@@ -9,6 +9,9 @@ import { clearAuthUxSession } from '@/lib/auth/auth-session-ux';
 import { defaultDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+
+const DEFAULT_NAV_LOGO = '/brand/glossboss-official-atx.png';
 
 const marketingLinks = [
   { href: '/', label: 'Home' },
@@ -31,6 +34,7 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [dashboardHref, setDashboardHref] = useState('/login');
+  const [navLogoSrc, setNavLogoSrc] = useState(DEFAULT_NAV_LOGO);
 
   const isDash = isDashboardPath(pathname);
 
@@ -38,6 +42,28 @@ export function Navbar() {
     if (section.startsWith('/')) return section;
     return pathname === '/' ? section : `/${section}`;
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWithTimeout('/api/public/site-settings', { cache: 'no-store', timeoutMs: 8000 })
+      .then(async (r) => {
+        try {
+          return (await r.json()) as { navbarLogo?: string | null };
+        } catch {
+          return null;
+        }
+      })
+      .then((data) => {
+        if (cancelled || !data?.navbarLogo) return;
+        setNavLogoSrc(data.navbarLogo);
+      })
+      .catch(() => {
+        /* keep default */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSupabasePublicReady()) {
@@ -74,6 +100,21 @@ export function Navbar() {
       } catch (e) {
         console.warn('[Navbar] session/role refresh failed', e);
         if (!cancelled) {
+          try {
+            const {
+              data: { user },
+            } = await client.auth.getUser();
+            if (user) {
+              const outcome = await fetchUserRole(client);
+              setSignedIn(true);
+              setDashboardHref(
+                outcome.ok ? defaultDashboardPathForRole(outcome.role) : defaultDashboardPathForRole('customer'),
+              );
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
           setSignedIn(false);
           setDashboardHref('/login');
         }
@@ -136,11 +177,12 @@ export function Navbar() {
         <div className='flex items-center justify-between gap-3'>
           <Link href='/' className='group inline-flex min-w-0 items-center gap-3' onClick={() => setOpen(false)}>
             <Image
-              src='/brand/glossboss-atx-alt-logo.png'
+              src={navLogoSrc}
               alt='Gloss Boss ATX'
-              width={126}
-              height={38}
-              className='h-8 w-auto shrink-0 sm:h-9'
+              width={200}
+              height={56}
+              unoptimized={navLogoSrc.startsWith('http')}
+              className='h-9 w-auto max-h-10 max-w-[min(200px,46vw)] shrink-0 object-contain object-left sm:h-10'
               priority
             />
             <span className='hidden text-[11px] font-bold uppercase tracking-[0.16em] text-gold-soft/90 sm:inline sm:text-xs'>Premium Auto Care</span>
