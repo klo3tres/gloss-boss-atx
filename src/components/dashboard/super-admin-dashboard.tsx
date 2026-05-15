@@ -18,6 +18,8 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
 type Stats = {
   jobsToday: number;
   activeJobs: number;
+  openPoolLeads: number;
+  assignedDispatchJobs: number;
   completedToday: number;
   revenueTodayCents: number;
   pendingDeposits: number;
@@ -31,6 +33,14 @@ type Stats = {
   paymentsWeekCount: number;
   paymentsMonthCount: number;
   completedMonth: number;
+  timelineEvents24h: number;
+  intakeSubmissionsMonth: number;
+  signedAgreementsMonth: number;
+  leadsTotal: number;
+  leadsBooked: number;
+  leadConversionPercent: number | null;
+  avgJobMinutesAll: number | null;
+  longestTimerSessions: Array<{ minutes: number; serviceSlug: string }>;
   techniciansRoster: number;
   latestAppointments: Array<{
     id: string;
@@ -51,7 +61,12 @@ type Stats = {
     status: string;
     created_at: string;
   }>;
-  technicianPerformance: Array<{ id: string; full_name: string | null; completed_jobs: number }>;
+  technicianPerformance: Array<{
+    id: string;
+    full_name: string | null;
+    completed_jobs: number;
+    avg_job_minutes: number | null;
+  }>;
   teamRoster: Array<{ id: string; full_name: string | null; role: string; created_at: string }>;
   stripe: {
     connected: boolean;
@@ -332,25 +347,71 @@ export function SuperAdminDashboard() {
       </div>
 
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Pending deposits' value={stats.pendingDeposits} hint='Awaiting payment' delay={0.22} />
-        <StatCard label='Post-deposit' value={stats.depositPaidAwaitingNext} hint='Deposit paid — next CRM steps' delay={0.24} />
-        <StatCard label='Unread messages' value={stats.unreadMessages} delay={0.26} />
-        <StatCard label='Active services' value={stats.activeServices} delay={0.28} />
+        <StatCard label='Open lead pool' value={stats.openPoolLeads} hint='Unclaimed pool leads' delay={0.29} />
+        <StatCard label='Assigned jobs' value={stats.assignedDispatchJobs} hint='With technician · active statuses' delay={0.3} />
+        <StatCard label='Avg job time (timers)' value={stats.avgJobMinutesAll != null ? `${stats.avgJobMinutesAll} min` : '—'} hint='Stopped timers sample' delay={0.31} />
+        <StatCard
+          label='Lead conversion'
+          value={stats.leadConversionPercent != null ? `${stats.leadConversionPercent}%` : '—'}
+          hint={stats.leadsTotal ? `${stats.leadsBooked} booked / ${stats.leadsTotal} leads` : 'No leads yet'}
+          delay={0.32}
+        />
+      </div>
+
+      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+        <StatCard label='Timeline events (24h)' value={stats.timelineEvents24h} hint='job_timeline_events' delay={0.33} />
+        <StatCard label='Intakes (month)' value={stats.intakeSubmissionsMonth} hint='intake_submissions' delay={0.34} />
+        <StatCard label='Signed agreements (month)' value={stats.signedAgreementsMonth} delay={0.35} />
+        <StatCard label='Post-deposit' value={stats.depositPaidAwaitingNext} hint='Deposit paid — next CRM steps' delay={0.36} />
+      </div>
+
+      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+        <StatCard label='Pending deposits' value={stats.pendingDeposits} hint='Awaiting payment' delay={0.37} />
+        <StatCard label='Unread messages' value={stats.unreadMessages} delay={0.38} />
+        <StatCard label='Active services' value={stats.activeServices} delay={0.39} />
+        <StatCard
+          label='Longest timer (peak)'
+          value={stats.longestTimerSessions[0] ? `${stats.longestTimerSessions[0].minutes} min` : '—'}
+          hint={stats.longestTimerSessions[0] ? stats.longestTimerSessions[0].serviceSlug.replace(/-/g, ' ') : 'Stopped timers'}
+          delay={0.4}
+        />
       </div>
 
       <div className='grid gap-4 lg:grid-cols-2'>
         <PulseChart stats={stats} />
         <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
+          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Longest timer sessions</p>
+          <p className='mt-1 text-sm text-zinc-400'>Top stopped timers with service slug (real data).</p>
+          <ul className='mt-4 space-y-2'>
+            {stats.longestTimerSessions.length === 0 ? (
+              <li className='text-sm text-zinc-500'>No completed timers yet.</li>
+            ) : (
+              stats.longestTimerSessions.map((row, i) => (
+                <li key={i} className='flex justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-200'>
+                  <span>{row.serviceSlug.replace(/-/g, ' ')}</span>
+                  <span className='font-mono text-gold-soft'>{row.minutes} min</span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </div>
+
+      <div className='grid gap-4 lg:grid-cols-2'>
+        <div className='lg:col-span-2 rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Technician performance</p>
-          <p className='mt-1 text-sm text-zinc-400'>Completed jobs by assignee (all time).</p>
+          <p className='mt-1 text-sm text-zinc-400'>Completed jobs and average stopped-timer duration by technician (sample).</p>
           <ul className='mt-4 space-y-2'>
             {stats.technicianPerformance.length === 0 ? (
               <li className='text-sm text-zinc-500'>No technician completions yet.</li>
             ) : (
               stats.technicianPerformance.map((t) => (
-                <li key={t.id} className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm'>
+                <li key={t.id} className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm'>
                   <span className='text-zinc-200'>{t.full_name ?? 'Technician'}</span>
-                  <span className='font-mono text-gold-soft'>{t.completed_jobs}</span>
+                  <span className='font-mono text-gold-soft'>
+                    {t.completed_jobs} done
+                    {t.avg_job_minutes != null ? ` · ~${t.avg_job_minutes}m avg` : ''}
+                  </span>
                 </li>
               ))
             )}

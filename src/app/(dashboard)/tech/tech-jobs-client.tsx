@@ -32,6 +32,7 @@ function telHref(phone: string): string {
 }
 
 export function TechJobsClient({ jobs }: { jobs: Job[] }) {
+  const [startState, startAction, startPending] = useActionState(techStartJobAction, null);
   const [completeState, completeAction, completePending] = useActionState(techCompleteJobAction, null);
 
   if (jobs.length === 0) {
@@ -40,6 +41,11 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
 
   return (
     <div className='space-y-4'>
+      {startState?.error ? (
+        <p className='rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200' role='alert'>
+          {startState.error}
+        </p>
+      ) : null}
       {completeState?.error ? (
         <p className='rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200' role='alert'>
           {completeState.error}
@@ -89,10 +95,14 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   </a>
                 ) : null}
                 {['assigned', 'confirmed'].includes(job.status) ? (
-                  <form action={techStartJobAction}>
+                  <form action={startAction}>
                     <input type='hidden' name='appointmentId' value={job.id} />
-                    <button type='submit' className='w-full rounded-lg bg-gold px-4 py-2 text-xs font-bold uppercase tracking-wider text-black'>
-                      Start job
+                    <button
+                      type='submit'
+                      disabled={startPending}
+                      className='w-full rounded-lg bg-gold px-4 py-2 text-xs font-bold uppercase tracking-wider text-black disabled:opacity-50'
+                    >
+                      {startPending ? 'Starting…' : 'Start job'}
                     </button>
                   </form>
                 ) : null}
@@ -111,7 +121,9 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
               </div>
             </div>
             <TechJobWorkspace job={{ ...job, service_slug: job.service_slug }} hasIntake={job.hasIntake} />
-            <p className='mt-3 text-xs text-zinc-600'>On-site liability acknowledgment must be on file before completion.</p>
+            <p className='mt-3 text-xs text-zinc-600'>
+              Starting a job requires a signed liability agreement and at least one before photo. Completing requires after photos and a logged checklist.
+            </p>
           </article>
         );
       })}

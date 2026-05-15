@@ -9,7 +9,7 @@ import {
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
-import { notifyBookingConfirmationQueued } from '@/lib/notifications-placeholder';
+import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
 
 type Body = {
   serviceSlug?: string;
@@ -179,6 +179,17 @@ export async function POST(request: Request) {
       whenIso: scheduled.toISOString(),
       totalCents: priced.finalTotalCents,
       depositCents: depositAmountCents,
+      vehicles: vehicleDescriptionJoined,
+    }).catch(() => {});
+
+    void notifyBusinessNewBookingQueued({
+      guestName: guestName.trim(),
+      guestEmail: emailNorm,
+      guestPhone: phoneDigits,
+      whenIso: scheduled.toISOString(),
+      totalCents: priced.finalTotalCents,
+      depositCents: depositAmountCents,
+      appointmentId: appointment.id,
       vehicles: vehicleDescriptionJoined,
     }).catch(() => {});
 

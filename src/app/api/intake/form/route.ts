@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sanitizeIntakeCmsHtml } from '@/lib/intake-html';
+import { intakeCmsMarkupToPlainText, sanitizeIntakeCmsHtml } from '@/lib/intake-html';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 
@@ -67,10 +67,10 @@ export async function GET(req: Request) {
 
   const { data: existing } = await admin.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
   if (existing) {
-    return NextResponse.json({ ok: true, alreadySubmitted: true, fields: DEFAULT_FIELDS });
+    return NextResponse.json({ ok: true, alreadySubmitted: true, referencePlain: null, fields: DEFAULT_FIELDS });
   }
 
-  let html: string | null = null;
+  let referencePlain: string | null = null;
   let cmsHtmlRejected = false;
   try {
     const { data: doc } = await admin
@@ -85,12 +85,12 @@ export async function GET(req: Request) {
       if (res.ok) {
         const raw = await res.text();
         const safe = sanitizeIntakeCmsHtml(raw);
-        if (safe) html = safe;
+        if (safe) referencePlain = intakeCmsMarkupToPlainText(safe) || null;
         else cmsHtmlRejected = true;
       }
     }
   } catch {
-    /* optional HTML template */
+    /* optional CMS reference */
   }
 
   let fields = DEFAULT_FIELDS;
@@ -104,5 +104,5 @@ export async function GET(req: Request) {
     /* use defaults */
   }
 
-  return NextResponse.json({ ok: true, html, cmsHtmlRejected, fields, alreadySubmitted: false });
+  return NextResponse.json({ ok: true, referencePlain, cmsHtmlRejected, fields, alreadySubmitted: false });
 }

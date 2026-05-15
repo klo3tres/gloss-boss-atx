@@ -200,6 +200,47 @@ export async function sendJobCompletedEmailIfConfigured(params: {
   await sendResendHtml({ to, subject: 'Gloss Boss ATX — Service complete', html });
 }
 
+export function businessNotifyDestination(): string | null {
+  const a = process.env.CONTACT_NOTIFY_EMAIL?.trim();
+  const b = process.env.BUSINESS_NOTIFY_EMAIL?.trim();
+  return a || b || null;
+}
+
+/** Notify shop owner of a new online booking (Resend only; no-op if destination or API not configured). */
+export async function sendBusinessNewBookingEmailIfConfigured(params: {
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  whenIso: string;
+  totalCents: number;
+  depositCents: number;
+  appointmentId: string;
+  vehicles: string;
+}): Promise<void> {
+  const to = businessNotifyDestination();
+  if (!to) {
+    console.info('[email] business booking notify skipped (set CONTACT_NOTIFY_EMAIL or BUSINESS_NOTIFY_EMAIL)');
+    return;
+  }
+  if (!resendConfigured()) {
+    console.info('[email] business booking notify skipped (Resend not configured)');
+    return;
+  }
+  const whenLabel = new Date(params.whenIso).toLocaleString();
+  const inner = `
+    <p style="margin:0 0 16px;font-size:15px;color:#fafafa;">New online booking received.</p>
+    <div style="border:1px solid #3f3f46;border-radius:10px;padding:16px;">
+      <p style="margin:0;font-size:14px;color:#fafafa;"><strong>${params.guestName}</strong></p>
+      <p style="margin:8px 0 0;font-size:14px;color:#d4d4d8;">${params.guestEmail} · ${params.guestPhone}</p>
+      <p style="margin:8px 0 0;font-size:14px;color:#a1a1aa;">When: ${whenLabel}</p>
+      <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Total $${(params.totalCents / 100).toFixed(2)} · Deposit $${(params.depositCents / 100).toFixed(2)}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${params.vehicles}</p>
+      <p style="margin:8px 0 0;font-size:12px;color:#71717a;font-family:monospace;">Appointment ${params.appointmentId}</p>
+    </div>`;
+  const html = glossBossEmailShell({ title: 'New booking', bodyHtml: inner });
+  await sendResendHtml({ to, subject: `Gloss Boss ATX — New booking: ${params.guestName}`, html });
+}
+
 export async function sendAppointmentReminderIfConfigured(params: { to: string; whenIso: string }): Promise<void> {
   const whenLabel = new Date(params.whenIso).toLocaleString();
   const inner = `

@@ -1,6 +1,7 @@
 import {
   sendAppointmentReminderIfConfigured,
   sendBookingConfirmationEmailIfConfigured,
+  sendBusinessNewBookingEmailIfConfigured,
   sendJobCompletedEmailIfConfigured,
   sendJobStartedEmailIfConfigured,
   sendTwilioSms,
@@ -88,6 +89,23 @@ export async function notifyJobCompletedPlaceholder(
     });
   } catch (e) {
     console.warn('[notify] job_completed email', e);
+  }
+}
+
+export async function notifyBusinessNewBookingQueued(params: {
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  whenIso: string;
+  totalCents: number;
+  depositCents: number;
+  appointmentId: string;
+  vehicles: string;
+}): Promise<void> {
+  try {
+    await sendBusinessNewBookingEmailIfConfigured(params);
+  } catch (e) {
+    console.warn('[notify] business_booking', e);
   }
 }
 

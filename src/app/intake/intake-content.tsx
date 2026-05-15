@@ -16,7 +16,7 @@ export default function IntakeContent() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [html, setHtml] = useState<string | null>(null);
+  const [referencePlain, setReferencePlain] = useState<string | null>(null);
   const [cmsHtmlRejected, setCmsHtmlRejected] = useState(false);
   const [fields, setFields] = useState<IntakeField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -40,7 +40,7 @@ export default function IntakeContent() {
         (data: {
           ok?: boolean;
           error?: string;
-          html?: string;
+          referencePlain?: string | null;
           cmsHtmlRejected?: boolean;
           fields?: IntakeField[];
           alreadySubmitted?: boolean;
@@ -54,7 +54,7 @@ export default function IntakeContent() {
             setDone(true);
             return;
           }
-          setHtml(data.html ?? null);
+          setReferencePlain(data.referencePlain ?? null);
           setCmsHtmlRejected(Boolean(data.cmsHtmlRejected));
           setFields(data.fields ?? []);
         },
@@ -126,15 +126,15 @@ export default function IntakeContent() {
 
         {cmsHtmlRejected ? (
           <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-            The CMS intake template was skipped for safety. Please use the secure form below.
+            A CMS intake file was skipped (unsafe markup). Use the secure fields below — update the intake document in Admin CMS if needed.
           </p>
         ) : null}
 
-        {html ? (
-          <div
-            className="prose prose-invert mt-6 max-w-none rounded-xl border border-white/10 bg-zinc-950 p-4 text-sm"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+        {referencePlain ? (
+          <div className="mt-6 rounded-xl border border-white/10 bg-zinc-950 p-4 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gold-soft">Reference (from your shop docs)</p>
+            <p className="mt-2">{referencePlain}</p>
+          </div>
         ) : null}
 
         <form onSubmit={submit} className="mt-6 space-y-4">

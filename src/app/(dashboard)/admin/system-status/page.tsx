@@ -33,7 +33,10 @@ type StatusPayload = {
     resend: boolean;
     twilio: boolean;
     supabaseServiceRole: boolean;
+    businessNotifyEmail?: boolean;
   };
+  envChecklist?: Array<{ key: string; ok: boolean; tier: string; detail: string }>;
+  authNotes?: { passwordReset?: string };
   webhooks: { primaryUrlHint: string | null; legacyUrlHint?: string | null };
 };
 
@@ -107,7 +110,45 @@ export default function SystemStatusPage() {
                 <Row label='Resend (send email)' ok={r.resend} />
                 <Row label='Twilio (SMS)' ok={r.twilio} detail='Optional — job SMS hooks no-op when missing.' />
                 <Row label='Supabase service role' ok={r.supabaseServiceRole} detail='Server booking, intake, and admin writes.' />
+                <Row
+                  label='Business inbox (booking alerts)'
+                  ok={Boolean(r.businessNotifyEmail)}
+                  detail='CONTACT_NOTIFY_EMAIL or BUSINESS_NOTIFY_EMAIL — shop copy when customers book (still needs Resend).'
+                />
               </div>
+            </section>
+          ) : null}
+
+          {data.envChecklist?.length ? (
+            <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Environment variables</h2>
+              <p className='mt-2 text-xs text-zinc-500'>
+                Required rows must be set for core CRM; optional rows enable email/SMS. Values are not shown — only presence.
+              </p>
+              <div className='mt-4 space-y-2'>
+                {data.envChecklist.map((row) => (
+                  <div
+                    key={row.key}
+                    className='flex flex-col gap-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'
+                  >
+                    <div>
+                      <p className='text-sm font-semibold text-zinc-200'>{row.key}</p>
+                      <p className='mt-1 text-xs text-zinc-500'>{row.detail}</p>
+                      <p className='mt-1 text-[10px] uppercase tracking-wider text-zinc-600'>{row.tier}</p>
+                    </div>
+                    <span className={row.ok ? 'text-sm font-bold text-emerald-400' : 'text-sm font-bold text-amber-400'}>
+                      {row.ok ? 'Set' : 'Missing'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {data.authNotes?.passwordReset ? (
+            <section className='rounded-2xl border border-white/10 bg-black/30 p-5'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Auth email (password reset)</h2>
+              <p className='mt-2 text-sm text-zinc-400'>{data.authNotes.passwordReset}</p>
             </section>
           ) : null}
 

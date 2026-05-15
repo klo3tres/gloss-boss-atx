@@ -1,3 +1,23 @@
+/** Turn CMS/markup into plain text for safe display (no HTML/JSX rendering in the client). */
+export function intakeCmsMarkupToPlainText(raw: string): string {
+  const t = raw.trim();
+  if (!t) return '';
+  const noTags = t
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return noTags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 6000);
+}
+
 /** Strip unsafe CMS HTML; return null to fall back to React fields only. */
 export function sanitizeIntakeCmsHtml(html: string): string | null {
   const t = html.trim();

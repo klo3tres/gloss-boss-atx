@@ -255,7 +255,11 @@ export function TechWorkflowWizard() {
     startTransition(() => {
       const fd = new FormData();
       fd.set('appointmentId', appointmentId);
-      void techStartJobAction(fd).then(() => {
+      void techStartJobAction(null, fd).then((r) => {
+        if (r?.error) {
+          setError(r.error);
+          return;
+        }
         router.push('/tech');
       });
     });

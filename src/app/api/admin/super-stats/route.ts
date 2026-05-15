@@ -73,6 +73,8 @@ export async function GET() {
   const admin = tryCreateAdminSupabase();
   const stripeSecrets = await getStripeSecrets(admin);
 
+  const last24h = new Date(Date.now() - 86400000).toISOString();
+
   const [
     apptToday,
     activeJobs,
@@ -93,6 +95,16 @@ export async function GET() {
     completedForTech,
     technicianProfiles,
     teamRoster,
+    openPoolLeads,
+    assignedDispatchJobs,
+    timelineLast24h,
+    intakeSubmissionsMonth,
+    signedAgreementsMonth,
+    leadsTotal,
+    leadsBooked,
+    timerSamples,
+    longTimerRows,
+    timerByTechRows,
   ] = await Promise.all([
     supabase
       .from('appointments')
@@ -119,8 +131,27 @@ export async function GET() {
     supabase.from('payments').select('id, amount_cents, status, created_at, appointment_id').order('created_at', { ascending: false }).limit(8),
     supabase.from('messages').select('id, from_name, from_email, subject, status, created_at').order('created_at', { ascending: false }).limit(8),
     supabase.from('appointments').select('assigned_technician_id').eq('status', 'completed').not('assigned_technician_id', 'is', null),
-    supabase.from('profiles').select('id').eq('role', 'technician'),
-    supabase.from('profiles').select('id, role, created_at').order('created_at', { ascending: false }).limit(30),
+    supabase.from('profiles').select('id, full_name').eq('role', 'technician'),
+    supabase.from('profiles').select('id, role, full_name, created_at').order('created_at', { ascending: false }).limit(30),
+    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('in_pool', true).is('assigned_technician_id', null),
+    supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .not('assigned_technician_id', 'is', null)
+      .in('status', ['assigned', 'confirmed', 'in_progress']),
+    supabase.from('job_timeline_events').select('id', { count: 'exact', head: true }).gte('created_at', last24h),
+    supabase.from('intake_submissions').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
+    supabase.from('signed_agreements').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
+    supabase.from('leads').select('id', { count: 'exact', head: true }),
+    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'booked'),
+    supabase.from('tech_job_timers').select('duration_seconds').not('duration_seconds', 'is', null).limit(800),
+    supabase
+      .from('tech_job_timers')
+      .select('duration_seconds, appointment_id')
+      .not('duration_seconds', 'is', null)
+      .order('duration_seconds', { ascending: false })
+      .limit(8),
+    supabase.from('tech_job_timers').select('technician_id, duration_seconds').not('duration_seconds', 'is', null).limit(1500),
   ]);
 
   const rows = paymentsTodayRows.data ?? [];
@@ -131,15 +162,55 @@ export async function GET() {
     const tid = (row as { assigned_technician_id: string | null }).assigned_technician_id;
     if (tid) techCounts.set(tid, (techCounts.get(tid) ?? 0) + 1);
   }
-  const techList = (technicianProfiles.data ?? []) as { id: string }[];
+
+  const byTechDurations = new Map<string, number[]>();
+  for (const row of timerByTechRows.data ?? []) {
+    const r = row as { technician_id?: string | null; duration_seconds?: number | null };
+    if (!r.technician_id || typeof r.duration_seconds !== 'number' || r.duration_seconds <= 0) continue;
+    const arr = byTechDurations.get(r.technician_id) ?? [];
+    arr.push(r.duration_seconds);
+    byTechDurations.set(r.technician_id, arr);
+  }
+
+  const techList = (technicianProfiles.data ?? []) as { id: string; full_name: string | null }[];
   const technicianPerformance = techList
-    .map((t) => ({
-      id: t.id,
-      full_name: null as string | null,
-      completed_jobs: techCounts.get(t.id) ?? 0,
-    }))
+    .map((t) => {
+      const secs = byTechDurations.get(t.id) ?? [];
+      const avgMin = secs.length ? Math.round(secs.reduce((a, b) => a + b, 0) / secs.length / 60) : null;
+      return {
+        id: t.id,
+        full_name: t.full_name,
+        completed_jobs: techCounts.get(t.id) ?? 0,
+        avg_job_minutes: avgMin,
+      };
+    })
     .sort((a, b) => b.completed_jobs - a.completed_jobs)
     .slice(0, 8);
+
+  const durs = (timerSamples.data ?? [])
+    .map((r: { duration_seconds?: number }) => r.duration_seconds)
+    .filter((n): n is number => typeof n === 'number' && n > 0);
+  const avgJobMinutesAll = durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 60) : null;
+
+  const ltRows = (longTimerRows.data ?? []) as { duration_seconds: number; appointment_id: string | null }[];
+  const apptIdsForLong = [...new Set(ltRows.map((r) => r.appointment_id).filter(Boolean))] as string[];
+  const slugByAppt = new Map<string, string>();
+  if (apptIdsForLong.length > 0) {
+    const { data: apptSlugRows } = await supabase.from('appointments').select('id, service_slug').in('id', apptIdsForLong);
+    for (const row of apptSlugRows ?? []) {
+      const a = row as { id: string; service_slug?: string | null };
+      slugByAppt.set(a.id, String(a.service_slug ?? '—'));
+    }
+  }
+  const longestTimerSessions = ltRows.map((r) => ({
+    minutes: Math.round((r.duration_seconds ?? 0) / 60),
+    serviceSlug: r.appointment_id ? slugByAppt.get(r.appointment_id) ?? '—' : '—',
+  }));
+
+  const leadsTotalCount = leadsTotal.count ?? 0;
+  const leadsBookedCount = leadsBooked.count ?? 0;
+  const leadConversionPercent =
+    leadsTotalCount > 0 ? Math.round((leadsBookedCount / leadsTotalCount) * 1000) / 10 : null;
 
   const sk = stripeSecrets.secretKey ?? '';
   const stripeMode: 'test' | 'live' | 'unknown' = sk.startsWith('sk_test') ? 'test' : sk.startsWith('sk_live') ? 'live' : 'unknown';
@@ -161,18 +232,30 @@ export async function GET() {
     paymentsMonthCount: monthRev.count,
     completedMonth: completedMonth.count ?? 0,
     techniciansRoster: techList.length,
+    openPoolLeads: openPoolLeads.count ?? 0,
+    assignedDispatchJobs: assignedDispatchJobs.count ?? 0,
+    timelineEvents24h: timelineLast24h.count ?? 0,
+    intakeSubmissionsMonth: intakeSubmissionsMonth.count ?? 0,
+    signedAgreementsMonth: signedAgreementsMonth.count ?? 0,
+    leadsTotal: leadsTotalCount,
+    leadsBooked: leadsBookedCount,
+    leadConversionPercent,
+    avgJobMinutesAll,
+    longestTimerSessions,
     latestAppointments: latestAppointments.data ?? [],
     latestCustomers: latestCustomers.data ?? [],
     latestPayments: latestPayments.data ?? [],
     latestReviews: [] as unknown[],
     latestMessages: latestMessages.data ?? [],
     technicianPerformance,
-    teamRoster: ((teamRoster.data ?? []) as Array<{ id: string; role: string; created_at: string }>).map((r) => ({
-      id: r.id,
-      full_name: null,
-      role: r.role,
-      created_at: r.created_at,
-    })),
+    teamRoster: ((teamRoster.data ?? []) as Array<{ id: string; role: string; full_name: string | null; created_at: string }>).map(
+      (r) => ({
+        id: r.id,
+        full_name: r.full_name,
+        role: r.role,
+        created_at: r.created_at,
+      }),
+    ),
     stripe: {
       connected: Boolean(stripeSecrets.secretKey),
       mode: stripeMode,

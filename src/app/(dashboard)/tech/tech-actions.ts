@@ -16,12 +16,15 @@ async function requireTechSupabase() {
   return { ok: true as const, supabase, userId: session.user.id };
 }
 
-export async function techStartJobAction(formData: FormData) {
+export async function techStartJobAction(
+  _prev: { error?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
-  if (!appointmentId) return;
+  if (!appointmentId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
-  if (!gate.ok) return;
+  if (!gate.ok) return { error: 'Session unavailable.' };
 
   const { data: appt, error: fetchErr } = await gate.supabase
     .from('appointments')
@@ -31,16 +34,70 @@ export async function techStartJobAction(formData: FormData) {
 
   if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) {
     console.warn('[tech] start job denied', appointmentId, fetchErr?.message);
-    return;
+    return { error: 'You cannot start this job.' };
   }
 
   if (appt.status === 'in_progress') {
-    return;
+    return null;
   }
 
   if (!['assigned', 'confirmed'].includes(appt.status)) {
     console.warn('[tech] start job invalid status', appt.status);
-    return;
+    return { error: `Job cannot start from status “${appt.status}”.` };
+  }
+
+  const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+  if (!sig) {
+    return {
+      error:
+        'Liability agreement must be on file before starting. Complete /agreement (customer) or use Walk-in workflow to capture a signature.',
+    };
+  }
+
+  const { count: beforeCount, error: bcErr } = await gate.supabase
+    .from('job_media')
+    .select('id', { count: 'exact', head: true })
+    .eq('appointment_id', appointmentId)
+    .eq('category', 'before');
+  if (bcErr) {
+    console.warn('[tech] before photo count', bcErr.message);
+    return { error: 'Could not verify before photos.' };
+  }
+  if ((beforeCount ?? 0) < 1) {
+    return {
+      error: 'Add at least one before photo (paste image URL under this job) before starting.',
+    };
+  }
+
+  const { data: openTimer } = await gate.supabase
+    .from('tech_job_timers')
+    .select('id')
+    .eq('appointment_id', appointmentId)
+    .is('ended_at', null)
+    .maybeSingle();
+
+  if (!openTimer) {
+    let ins = await gate.supabase.from('tech_job_timers').insert({
+      technician_id: gate.userId,
+      appointment_id: appointmentId,
+      label: 'Job start',
+    });
+    if (ins.error && isSchemaDriftError(ins.error.message)) {
+      ins = await gate.supabase.from('tech_job_timers').insert({
+        technician_id: gate.userId,
+        label: `Job ${appointmentId.slice(0, 8)}`,
+      });
+    }
+    if (ins.error) {
+      console.warn('[tech] timer insert', ins.error.message);
+      return { error: 'Could not start job timer. Confirm tech_job_timers exists and migration 000020 is applied.' };
+    }
+    await recordJobTimelineEvent(gate.supabase, {
+      appointmentId,
+      eventType: 'timer_started',
+      meta: { source: 'tech_start_job' },
+      createdBy: gate.userId,
+    });
   }
 
   const { error } = await gate.supabase
@@ -54,7 +111,7 @@ export async function techStartJobAction(formData: FormData) {
 
   if (error) {
     console.error('[tech] start job', error.message);
-    return;
+    return { error: error.message || 'Could not update job status.' };
   }
 
   await recordJobTimelineEvent(gate.supabase, {
@@ -71,6 +128,8 @@ export async function techStartJobAction(formData: FormData) {
     scheduledIso: appt.scheduled_start != null ? String(appt.scheduled_start) : undefined,
   });
   revalidatePath('/tech');
+  revalidatePath('/tech/workflow');
+  return null;
 }
 
 export async function techCompleteJobAction(
@@ -113,6 +172,32 @@ export async function techCompleteJobAction(
     if (!apptIntake?.intake_completed_at) {
       return { error: 'Customer intake must be submitted before marking this job complete.' };
     }
+  }
+
+  const { count: afterCount, error: acErr } = await gate.supabase
+    .from('job_media')
+    .select('id', { count: 'exact', head: true })
+    .eq('appointment_id', appointmentId)
+    .eq('category', 'after');
+  if (acErr) {
+    return { error: 'Could not verify after photos.' };
+  }
+  if ((afterCount ?? 0) < 1) {
+    return { error: 'Add at least one after photo to this job before marking complete.' };
+  }
+
+  const { data: checklistRow } = await gate.supabase
+    .from('job_timeline_events')
+    .select('id')
+    .eq('appointment_id', appointmentId)
+    .eq('event_type', 'checklist_saved')
+    .limit(1)
+    .maybeSingle();
+
+  if (!checklistRow) {
+    return {
+      error: 'Log the service checklist to the job timeline from the workspace below before completing.',
+    };
   }
 
   const { error } = await gate.supabase
