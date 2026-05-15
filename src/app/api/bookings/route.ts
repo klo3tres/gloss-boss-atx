@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { isBookingSlotAllowed } from '@/lib/booking-availability';
 import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
+import { parseDealConfig } from '@/lib/public-site-data';
 import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -18,6 +20,47 @@ async function loadBookingAvailabilityRules(admin: SupabaseClient) {
   } catch {
     return parseBookingAvailabilityConfig(null);
   }
+}
+
+async function loadDealConfigForBooking(admin: SupabaseClient) {
+  const { data } = await admin.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle();
+  return parseDealConfig(data?.value ?? null);
+}
+
+async function loadClaimedOffer(admin: SupabaseClient, offerId: string | undefined) {
+  const id = String(offerId ?? '').trim();
+  if (!id) return null;
+  const { data } = await admin
+    .from('offers')
+    .select('percent_off, discount_percent, active, stackable')
+    .eq('id', id)
+    .maybeSingle();
+  if (!data || !data.active) return null;
+  const pct = Number(
+    (data as { percent_off?: number; discount_percent?: number }).percent_off ??
+      (data as { discount_percent?: number }).discount_percent ??
+      0,
+  );
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  const stack = (data as { stackable?: boolean }).stackable;
+  return { percent: pct, stackableWithSitePromo: stack !== false };
+}
+
+async function sumSelectedAddonCents(admin: SupabaseClient, selections: string[]): Promise<number> {
+  if (selections.length === 0) return 0;
+  const { data } = await admin.from('addons').select('slug, label, price_cents').eq('active', true);
+  const rows = (data ?? []) as { slug?: string | null; label?: string | null; price_cents?: number | null }[];
+  let sum = 0;
+  for (const sel of selections) {
+    const key = sel.trim().toLowerCase();
+    const hit = rows.find(
+      (r) =>
+        (typeof r.slug === 'string' && r.slug.toLowerCase() === key) ||
+        (typeof r.label === 'string' && r.label.toLowerCase() === key),
+    );
+    if (hit && typeof hit.price_cents === 'number' && hit.price_cents > 0) sum += hit.price_cents;
+  }
+  return sum;
 }
 
 async function loadServicePricesForService(admin: SupabaseClient, serviceId: string): Promise<PriceRowInput[]> {
@@ -41,6 +84,7 @@ type Body = {
   vehicleClass?: string;
   vehicles?: VehicleLine[];
   addOns?: string[];
+  offerId?: string;
   scheduledStart: string;
   guestName: string;
   guestEmail: string;
@@ -109,7 +153,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let totalBaseCents = 0;
+    const vehicleLineCents: number[] = [];
     const resolved: { serviceSlug: string; vehicleClass: string; vehicleDescription: string; priceCents: number }[] = [];
 
     for (const line of lines) {
@@ -143,7 +187,7 @@ export async function POST(request: Request) {
         );
       }
 
-      totalBaseCents += priceCents;
+      vehicleLineCents.push(priceCents);
       resolved.push({
         serviceSlug: line.serviceSlug,
         vehicleClass,
@@ -152,9 +196,26 @@ export async function POST(request: Request) {
       });
     }
 
-    const primary = resolved[0]!;
+    const addOnCentsSum = await sumSelectedAddonCents(admin, addOns);
+    const deals = await loadDealConfigForBooking(admin);
+    const claimed = await loadClaimedOffer(admin, body.offerId);
     const depositPercent = 30;
-    const depositAmountCents = Math.round((totalBaseCents * depositPercent) / 100);
+    const breakdown = computeBookingPricing({
+      vehicleLineCents,
+      addOnCentsSum,
+      deals,
+      claimedOffer: claimed,
+      depositPercent,
+    });
+    if ('kind' in breakdown) {
+      return NextResponse.json({ error: 'Invalid pricing' }, { status: 400 });
+    }
+    const priced = breakdown as BookingPricingBreakdown;
+
+    const totalBaseCents = priced.finalTotalCents;
+    const depositAmountCents = priced.depositCents;
+    const primary = resolved[0]!;
+    const offerIdForRow = claimed && body.offerId ? String(body.offerId).trim() : null;
 
     const scheduled = new Date(scheduledStart);
     if (Number.isNaN(scheduled.getTime())) {
@@ -199,27 +260,34 @@ export async function POST(request: Request) {
       price_cents: r.priceCents,
     }));
 
-    const { data: appointment, error: apptErr } = await admin
-      .from('appointments')
-      .insert({
-        guest_email: emailNorm,
-        guest_phone: guestPhone,
-        guest_name: guestName,
-        customer_id: customerId,
-        vehicle_description: vehicleDescriptionJoined,
-        service_slug: primary.serviceSlug,
-        vehicle_class: primary.vehicleClass,
-        base_price_cents: totalBaseCents,
-        deposit_percent: depositPercent,
-        deposit_amount_cents: depositAmountCents,
-        scheduled_start: scheduled.toISOString(),
-        notes: notes ?? null,
-        status: 'awaiting_payment',
-        booking_vehicles: bookingVehicles,
-        booking_add_ons: addOns,
-      })
-      .select('id, access_token')
-      .single();
+    const insertPayload: Record<string, unknown> = {
+      guest_email: emailNorm,
+      guest_phone: guestPhone,
+      guest_name: guestName,
+      customer_id: customerId,
+      vehicle_description: vehicleDescriptionJoined,
+      service_slug: primary.serviceSlug,
+      vehicle_class: primary.vehicleClass,
+      base_price_cents: totalBaseCents,
+      deposit_percent: depositPercent,
+      deposit_amount_cents: depositAmountCents,
+      scheduled_start: scheduled.toISOString(),
+      notes: notes ?? null,
+      status: 'awaiting_payment',
+      booking_vehicles: bookingVehicles,
+      booking_add_ons: addOns,
+    };
+    if (offerIdForRow) insertPayload.offer_id = offerIdForRow;
+
+    let ins = await admin.from('appointments').insert(insertPayload).select('id, access_token').single();
+    if (ins.error && /offer_id|column/i.test(ins.error.message)) {
+      const rest = { ...insertPayload };
+      delete rest.offer_id;
+      ins = await admin.from('appointments').insert(rest).select('id, access_token').single();
+    }
+    const appointment = ins.data;
+    const apptErr = ins.error;
+
 
     if (apptErr || !appointment) {
       return NextResponse.json({ error: 'Could not create booking' }, { status: 500 });

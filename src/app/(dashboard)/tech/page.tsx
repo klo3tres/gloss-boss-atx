@@ -64,10 +64,28 @@ export default async function TechnicianDashboardPage() {
       subtitle='Assigned jobs — timers, photos, and field tools.'
       role='technician'
     >
-      <div className='mb-6 flex flex-wrap gap-3'>
-        <Link href='/tech/resources' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-gold-soft hover:bg-gold/10'>
+      <div className='mb-6 grid gap-3 rounded-2xl border border-gold/20 bg-zinc-950/80 p-4 sm:grid-cols-2 lg:grid-cols-4'>
+        <Link
+          href='/book'
+          className='rounded-xl border border-gold/35 bg-black/40 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/10'
+        >
+          Start new job (book)
+        </Link>
+        <Link
+          href='/admin/leads'
+          className='rounded-xl border border-white/15 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-zinc-200 hover:border-gold/40'
+        >
+          Open leads
+        </Link>
+        <Link
+          href='/tech/resources'
+          className='rounded-xl border border-gold/40 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-gold-soft hover:bg-gold/10'
+        >
           SOPs & documents
         </Link>
+        <div className='flex items-center justify-center rounded-xl border border-white/10 px-4 py-3 text-center text-[11px] text-zinc-500'>
+          Active jobs below — timers & photos per assignment
+        </div>
       </div>
 
       {todayJobs.length > 0 ? (

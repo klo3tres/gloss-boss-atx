@@ -11,6 +11,7 @@ const emptyDeals: DealConfig = {
   websitePromoLabel: "",
   websitePromoActive: false,
   multiCarSecondVehicleDiscountPercent: 0,
+  promoStacksWithMultiCar: true,
 };
 
 function fmtMoney(cents: number) {

@@ -3,18 +3,20 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { addGalleryImageAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
-import { saveBookingAvailabilityAction } from '@/lib/admin/booking-availability-actions';
 import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { DEFAULT_BOOKING_AVAILABILITY } from '@/lib/booking-availability';
 import { CmsDocumentDropzone } from '@/components/admin/cms-document-dropzone';
+import { CmsDocumentDeleteButton } from '@/components/admin/cms-document-delete-button';
+import { CmsDocumentManualForm } from '@/components/admin/cms-document-manual-form';
+import { CmsBookingAvailabilityClient } from '@/components/admin/cms-booking-availability-client';
+import { CmsOffersSectionClient } from '@/components/admin/cms-offers-section-client';
+import { CmsGoogleReviewClient } from '@/components/admin/cms-google-review-client';
 import { BrandingUploadDropzone } from '@/components/admin/branding-upload-dropzone';
 import { GalleryLocalUpload } from '@/components/admin/gallery-local-upload';
 import { GalleryAdminManager } from '@/components/admin/gallery-admin-manager';
 import { FeaturedShowcaseManager } from '@/components/admin/featured-showcase-manager';
 import { defaultFeaturedShowcaseSlides } from '@/lib/public-site-data';
 import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normalize';
-import { deleteCmsDocumentAction, saveCmsDocumentUrlAction } from '@/lib/admin/cms-documents-actions';
-import { upsertOfferAction } from '@/lib/admin/cms-offers-actions';
 import { submitHomepageLogoForm, submitNavbarLogoForm } from '@/lib/admin/site-branding-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -57,7 +59,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   const homepageRes = await supabase.from('homepage_content').select('*').order('key', { ascending: true });
 
   type GalleryRow = AdminGalleryRow;
-  type OfferRow = { id: string; label: string; percent_off: number | null; active: boolean; sort_order: number };
+  type OfferRow = { id: string; label: string; percent_off: number | null; active: boolean; sort_order: number; stackable: boolean };
   type HomeRow = { id: string; key: string; value: unknown; updated_at: string };
 
   const galleryRows: GalleryRow[] = galleryRes.error ? [] : mapAdminGalleryRows(galleryRes.data ?? []);
@@ -75,6 +77,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
               : null,
         active: Boolean(r.active),
         sort_order: Number(r.sort_order ?? 0),
+        stackable: typeof r.stackable === 'boolean' ? r.stackable : true,
       }))
     : [];
   const oErr = offersRes.error && offerRows.length === 0 ? offersRes.error : null;
@@ -131,6 +134,29 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     cmsDocs = [];
   }
 
+  let googleReviewUrl = '';
+  try {
+    const admReview = tryCreateAdminSupabase();
+    if (admReview) {
+      const rv = await admReview.from('review_settings').select('value').eq('key', 'google_business').maybeSingle();
+      const raw = rv.data?.value;
+      if (raw && typeof raw === 'object' && raw !== null && 'review_url' in raw) {
+        const u = (raw as { review_url?: unknown }).review_url;
+        if (typeof u === 'string') googleReviewUrl = u.trim();
+      }
+    }
+  } catch {
+    googleReviewUrl = '';
+  }
+
+  const offerEditorRows = offerRows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    percent_off: r.percent_off ?? 0,
+    active: r.active,
+    stackable: r.stackable,
+  }));
+
   const galleryAdminItems = galleryRows.map((r) => ({
     id: r.id,
     caption: r.caption,
@@ -180,45 +206,14 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
       <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>Online booking hours</h2>
-        <p className='mt-2 text-sm text-zinc-400'>Default: Friday after 5pm, all day Saturday and Sunday. Add blackout dates (YYYY-MM-DD, one per line).</p>
-        <form action={saveBookingAvailabilityAction} className='mt-4 space-y-4'>
-          <label className='flex items-center gap-2 text-sm text-zinc-300'>
-            <input type='checkbox' name='allowSaturday' defaultChecked={bookingAvail.allowSaturday} />
-            Allow Saturday
-          </label>
-          <label className='flex items-center gap-2 text-sm text-zinc-300'>
-            <input type='checkbox' name='allowSunday' defaultChecked={bookingAvail.allowSunday} />
-            Allow Sunday
-          </label>
-          <label className='flex items-center gap-2 text-sm text-zinc-300'>
-            <input type='checkbox' name='allowAllOtherDays' defaultChecked={bookingAvail.allowAllOtherDays} />
-            Allow Mon–Thu and Fri before cutoff (override)
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Friday — allow bookings after hour (24h, default 17 = 5pm)
-            <input
-              name='allowFridayAfterHour'
-              type='number'
-              min={0}
-              max={23}
-              defaultValue={bookingAvail.allowFridayAfterHour}
-              className='mt-1 w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-            />
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Blackout dates
-            <textarea
-              name='blackoutDates'
-              rows={3}
-              defaultValue={(bookingAvail.blackoutDates ?? []).join('\n')}
-              placeholder='2026-12-25'
-              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white'
-            />
-          </label>
-          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-            Save booking rules
-          </button>
-        </form>
+        <p className='mt-2 text-sm text-zinc-400'>Friday 5:00–9:00 PM, Saturday & Sunday 7:30 AM–7:00 PM (defaults). Add blackout dates below.</p>
+        <CmsBookingAvailabilityClient initial={bookingAvail} />
+      </section>
+
+      <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <h2 className='text-lg font-bold uppercase'>Google review link</h2>
+        <p className='mt-2 text-sm text-zinc-400'>Powers the “Leave us a Google Review” button on the homepage. Paste your public review URL.</p>
+        <CmsGoogleReviewClient initialUrl={googleReviewUrl} />
       </section>
 
       <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -270,35 +265,16 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
       <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>CMS documents</h2>
-        <p className='mt-2 text-sm text-zinc-400'>Upload PDFs and images for technicians and liability reference. URL paste still works below.</p>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Drag & drop uploads save automatically to Supabase Storage and the document list (PDF, images, HTML). Word (.doc/.docx): convert to PDF first.
+        </p>
         <div className='mt-4 grid gap-4 sm:grid-cols-2'>
           <CmsDocumentDropzone category='liability' label='Liability & waivers' />
           <CmsDocumentDropzone category='sop' label='SOPs' />
           <CmsDocumentDropzone category='intake' label='Intake form (HTML)' />
           <CmsDocumentDropzone category='other' label='Training & other' />
         </div>
-        <form action={saveCmsDocumentUrlAction} className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <label className='block text-xs text-zinc-400'>
-            Category
-            <select name='category' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
-              <option value='liability'>Liability</option>
-              <option value='sop'>SOP</option>
-              <option value='homepage_banner'>Homepage banner</option>
-              <option value='other'>Other</option>
-            </select>
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Title
-            <input name='title' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          </label>
-          <label className='block text-xs text-zinc-400 sm:col-span-2'>
-            File URL (PDF or HTML)
-            <input name='file_url' type='url' required className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          </label>
-          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black sm:col-span-2 lg:col-span-4 lg:justify-self-start'>
-            Add document
-          </button>
-        </form>
+        <CmsDocumentManualForm />
         <ul className='mt-4 space-y-2 text-sm'>
           {cmsDocs.length === 0 ? <li className='text-zinc-500'>No documents yet (run migration 000014).</li> : null}
           {cmsDocs.map((d) => (
@@ -307,12 +283,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
                 <span className='text-gold-soft'>{d.category}</span> — {d.title}
                 <span className='ml-2 block truncate text-xs text-zinc-500'>{d.file_url}</span>
               </span>
-              <form action={deleteCmsDocumentAction}>
-                <input type='hidden' name='id' value={d.id} />
-                <button type='submit' className='text-xs text-red-300'>
-                  Delete
-                </button>
-              </form>
+              <CmsDocumentDeleteButton id={d.id} />
             </li>
           ))}
         </ul>
@@ -349,52 +320,8 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         <GalleryAdminManager rows={galleryAdminItems} />
       </section>
 
-      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <h2 className='text-lg font-bold uppercase'>Offers</h2>
-        {oErr ? <p className='text-sm text-red-300'>{oErr.message}</p> : null}
-        <form action={upsertOfferAction} className='mt-4 grid gap-3 rounded-xl border border-gold/15 bg-black/40 p-4 sm:grid-cols-2 lg:grid-cols-4'>
-          <input type='hidden' name='id' value='' />
-          <label className='block text-xs text-zinc-400 lg:col-span-2'>
-            New offer title
-            <input name='label' required className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            % off
-            <input name='percent_off' type='number' min={0} max={100} defaultValue={15} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          </label>
-          <label className='flex items-end gap-2 text-xs text-zinc-400'>
-            <input type='checkbox' name='active' defaultChecked className='rounded' />
-            Active
-          </label>
-          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black lg:col-span-4 lg:justify-self-start'>
-            Create offer
-          </button>
-        </form>
-        <ul className='mt-4 space-y-3 text-sm'>
-          {offerRows.map((row) => (
-            <li key={row.id} className='rounded-lg border border-white/10 bg-black/40 p-3'>
-              <form action={upsertOfferAction} className='grid gap-2 sm:grid-cols-[1fr_80px_auto_auto] sm:items-end'>
-                <input type='hidden' name='id' value={row.id} />
-                <label className='text-xs text-zinc-400'>
-                  Title
-                  <input name='label' defaultValue={row.label} className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
-                </label>
-                <label className='text-xs text-zinc-400'>
-                  %
-                  <input name='percent_off' type='number' defaultValue={row.percent_off ?? 0} className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
-                </label>
-                <label className='flex items-center gap-2 text-xs text-zinc-400'>
-                  <input type='checkbox' name='active' defaultChecked={row.active} />
-                  Active
-                </label>
-                <button type='submit' className='rounded border border-gold/40 px-2 py-1 text-xs font-bold uppercase text-gold-soft'>
-                  Save
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {oErr ? <p className='mb-4 text-sm text-red-300'>{oErr.message}</p> : null}
+      <CmsOffersSectionClient initialRows={offerEditorRows} />
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>Homepage content keys</h2>

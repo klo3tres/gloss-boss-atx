@@ -25,6 +25,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     offers: defaultMarketingOffers(),
     multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
     featuredShowcase: defaultFeaturedShowcaseSlides(),
+    googleReviewUrl: '',
   };
 }
 
@@ -44,11 +45,12 @@ export async function GET() {
         offers: defaultMarketingOffers(),
         multiCar: computeMultiCarExample(getOfflineMarketingPackages(), parseDealConfig(null)),
         featuredShowcase: defaultFeaturedShowcaseSlides(),
+        googleReviewUrl: '',
       };
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -57,6 +59,7 @@ export async function GET() {
         .order('sort_order', { ascending: true }),
       client.from('homepage_content').select('value').eq('key', 'featured_showcase').maybeSingle(),
       loadActiveServicesResilient(client),
+      client.from('review_settings').select('value').eq('key', 'google_business').maybeSingle(),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -77,6 +80,7 @@ export async function GET() {
     }
     if (dErr) schemaWarnings.push(`homepage_content(deal_config): ${dErr.message}`);
     if (fErr) schemaWarnings.push(`homepage_content(featured_showcase): ${fErr.message}`);
+    if (reviewRes.error) schemaWarnings.push(`review_settings: ${reviewRes.error.message}`);
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
@@ -123,6 +127,7 @@ export async function GET() {
         discountPercent: pct,
         active: Boolean(r.active),
         sortOrder: Number(r.sort_order ?? 0),
+        stackable: typeof r.stackable === 'boolean' ? r.stackable : true,
       };
     });
     if (offers.length === 0) offers = defaultMarketingOffers();
@@ -130,6 +135,13 @@ export async function GET() {
     const multiCar = packages.length ? computeMultiCarExample(packages, deals) : null;
 
     const featuredShowcase = fErr ? defaultFeaturedShowcaseSlides() : parseFeaturedShowcase(featuredRes.data?.value ?? null);
+
+    let googleReviewUrl = '';
+    const rawRv = reviewRes.data?.value;
+    if (rawRv && typeof rawRv === 'object' && rawRv !== null && 'review_url' in rawRv) {
+      const u = (rawRv as { review_url?: unknown }).review_url;
+      if (typeof u === 'string') googleReviewUrl = u.trim();
+    }
 
     const payload: PublicSiteDataPayload = {
       ok: schemaWarnings.length === 0 && svcList.length > 0 && !sErr,
@@ -139,6 +151,7 @@ export async function GET() {
       offers,
       multiCar,
       featuredShowcase,
+      googleReviewUrl,
     };
 
     return NextResponse.json(payload);

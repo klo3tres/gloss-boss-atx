@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay } from '@/lib/safe-price-resolver';
@@ -7,6 +8,7 @@ import { UI_VEHICLE_CLASSES, UI_VEHICLE_LABELS, type UiVehicleClass } from '@/li
 
 type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
+type AddonOpt = { slug: string; label: string; price_cents: number };
 type VehicleClass = UiVehicleClass;
 
 const DEFAULT_CHECKLIST_LINES = ['Walk-around inspection', 'Pre-wash photos', 'Interior protection', 'Final QC'];
@@ -40,6 +42,8 @@ export function TechFieldTools() {
   const [beforeNotes, setBeforeNotes] = useState('');
   const [afterNotes, setAfterNotes] = useState('');
   const [upsell, setUpsell] = useState('');
+  const [addonOptions, setAddonOptions] = useState<AddonOpt[]>([]);
+  const [selectedAddonSlugs, setSelectedAddonSlugs] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +65,27 @@ export function TechFieldTools() {
       .catch(() => {
         if (!cancelled) setLoaded(true);
       });
+    void fetchWithTimeout('/api/public/addons', { cache: 'no-store', timeoutMs: 12000 })
+      .then(async (r) => {
+        try {
+          return (await r.json()) as { addons?: { slug?: string; label?: string; price_cents?: number }[] };
+        } catch {
+          return null;
+        }
+      })
+      .then((ad) => {
+        if (cancelled || !ad?.addons) return;
+        const opts: AddonOpt[] = [];
+        for (const a of ad.addons) {
+          const label = String(a.label ?? '').trim();
+          const slug = String(a.slug ?? '').trim().toLowerCase() || label.toLowerCase().replace(/\s+/g, '-');
+          const cents = typeof a.price_cents === 'number' && a.price_cents > 0 ? a.price_cents : 0;
+          if (label) opts.push({ slug, label, price_cents: cents });
+        }
+        setAddonOptions(opts);
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -80,24 +105,38 @@ export function TechFieldTools() {
 
   const priceCents = useMemo(() => {
     if (!selected) return null;
-    if (!selected) return null;
     return safePriceCentsForDisplay({ slug: selected.slug, serviceId: selected.id }, vehicleClass, prices);
   }, [selected, prices, vehicleClass]);
 
+  const addonSumCents = useMemo(() => {
+    let s = 0;
+    for (const slug of selectedAddonSlugs) {
+      const o = addonOptions.find((x) => x.slug === slug);
+      if (o?.price_cents) s += o.price_cents;
+    }
+    return s;
+  }, [selectedAddonSlugs, addonOptions]);
+
+  const invoiceTotalCents = priceCents != null ? priceCents + addonSumCents : null;
+
   const createInvoice = useCallback(async () => {
-    if (!selected || priceCents == null || priceCents < 500) {
-      setMsg('Pick a service with a valid price (minimum $5).');
+    if (!selected || invoiceTotalCents == null || invoiceTotalCents < 500) {
+      setMsg('Pick a service with a valid price (minimum $5 total).');
       return;
     }
     setBusy(true);
     setMsg(null);
     try {
+      const addonBit =
+        selectedAddonSlugs.length > 0
+          ? ` — ${selectedAddonSlugs.map((s) => addonOptions.find((a) => a.slug === s)?.label ?? s).join(', ')}`
+          : '';
       const res = await fetchWithTimeout('/api/tech/field-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amountCents: priceCents,
-          serviceTitle: selected.title,
+          amountCents: invoiceTotalCents,
+          serviceTitle: `${selected.title}${addonBit}`.slice(0, 120),
           serviceSlug: selected.slug,
           vehicleClass,
           customerEmail,
@@ -117,7 +156,7 @@ export function TechFieldTools() {
     } finally {
       setBusy(false);
     }
-  }, [selected, priceCents, vehicleClass, customerEmail, customerPhone]);
+  }, [selected, invoiceTotalCents, vehicleClass, customerEmail, customerPhone, selectedAddonSlugs, addonOptions]);
 
   const startTimer = useCallback(async () => {
     setTimerBusy(true);
@@ -259,6 +298,30 @@ export function TechFieldTools() {
               ))}
             </select>
           </label>
+          <div className='sm:col-span-2'>
+            <p className='text-xs font-bold uppercase text-zinc-500'>Add-ons</p>
+            <div className='mt-2 flex flex-wrap gap-2'>
+              {addonOptions.length === 0 ? <span className='text-xs text-zinc-600'>No active add-ons in catalog.</span> : null}
+              {addonOptions.map((o) => {
+                const on = selectedAddonSlugs.includes(o.slug);
+                return (
+                  <button
+                    key={o.slug}
+                    type='button'
+                    onClick={() =>
+                      setSelectedAddonSlugs((prev) => (prev.includes(o.slug) ? prev.filter((x) => x !== o.slug) : [...prev, o.slug]))
+                    }
+                    className={clsx(
+                      'rounded-full border px-3 py-1.5 text-[11px] font-semibold',
+                      on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400',
+                    )}
+                  >
+                    {o.label} {o.price_cents > 0 ? `+$${(o.price_cents / 100).toFixed(0)}` : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <label className='block text-xs text-zinc-400 sm:col-span-2'>
             Customer email (optional)
             <input
@@ -279,11 +342,22 @@ export function TechFieldTools() {
         </div>
         <p className='mt-3 text-sm text-gold-soft'>
           Quoted total:{' '}
-          {priceCents != null ? `$${(priceCents / 100).toFixed(2)}` : 'No price row for this vehicle class — pick another class or add prices in Admin.'}
+          {invoiceTotalCents != null ? (
+            <>
+              ${(invoiceTotalCents / 100).toFixed(2)}
+              {addonSumCents > 0 ? (
+                <span className='ml-2 text-xs text-zinc-500'>
+                  (service ${(priceCents! / 100).toFixed(2)} + add-ons ${(addonSumCents / 100).toFixed(2)})
+                </span>
+              ) : null}
+            </>
+          ) : (
+            'No price row for this vehicle class — pick another class or add prices in Admin.'
+          )}
         </p>
         <button
           type='button'
-          disabled={busy || priceCents == null}
+          disabled={busy || invoiceTotalCents == null}
           onClick={() => void createInvoice()}
           className='mt-4 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40'
         >

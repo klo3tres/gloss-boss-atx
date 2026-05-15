@@ -24,6 +24,7 @@ const emptyDeals: DealConfig = {
   websitePromoLabel: '',
   websitePromoActive: false,
   multiCarSecondVehicleDiscountPercent: 0,
+  promoStacksWithMultiCar: true,
 };
 
 const faqs = [
@@ -50,6 +51,7 @@ export default function HomePage() {
   const [multiCar, setMultiCar] = useState<SiteDataMultiCar | null>(null);
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [siteLoaded, setSiteLoaded] = useState(false);
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
 
   /** Stable layout while catalog loads; swap to live rows once `siteLoaded`. */
   const packagesForGrid = siteLoaded && services.length > 0 ? services : defaultServicePackages;
@@ -78,6 +80,7 @@ export default function HomePage() {
         setOffers(data.offers ?? []);
         setMultiCar(data.multiCar ?? null);
         setSchemaWarnings(data.schemaWarnings ?? []);
+        setGoogleReviewUrl(data.googleReviewUrl ?? '');
         setSiteLoaded(true);
       })
       .catch(() => {
@@ -119,7 +122,9 @@ export default function HomePage() {
             {displayDeals.websitePromoLabel || 'Website booking offer'}
           </p>
           <p className='mt-2 text-2xl font-black text-white'>{displayDeals.websitePromoPercent}% OFF Website Bookings</p>
-          <p className='mt-1 text-sm text-zinc-300'>Limited slots. Promo is applied at confirmation and cannot be combined with other offers.</p>
+          <p className='mt-1 text-sm text-zinc-300'>
+            Limited slots. Promo applies to eligible booking subtotals as shown at checkout. Combine with CMS offer links only when stacking is enabled for that offer.
+          </p>
           <div className='mt-3 flex flex-wrap gap-2'>
             <Link href='/book' className='rounded-lg bg-gold px-4 py-2 text-xs font-bold uppercase tracking-widest text-black'>
               Claim Offer
@@ -193,6 +198,18 @@ export default function HomePage() {
                   >
                     glossbossatx1@gmail.com
                   </a>
+                  {googleReviewUrl ? (
+                    <a
+                      href={googleReviewUrl}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      className='inline-flex min-h-[48px] items-center justify-center rounded-lg border border-gold/40 bg-black/50 px-4 py-3 text-base font-bold text-gold-soft transition hover:border-gold sm:text-lg'
+                    >
+                      Leave us a Google Review
+                    </a>
+                  ) : siteLoaded ? (
+                    <p className='text-xs text-zinc-500'>Add a Google review link in Admin → Website CMS to show the review button here.</p>
+                  ) : null}
                 </div>
                 <p className='mt-3 text-sm text-zinc-400 sm:mt-4'>Austin, Texas & surrounding areas</p>
               </div>
@@ -244,7 +261,10 @@ export default function HomePage() {
                 )}
                 {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
                   <p className='mt-3 text-sm text-gold-soft'>
-                    Limited time: {displayDeals.websitePromoPercent}% off web bookings (non-stackable with multi-car discount).
+                    Limited time: {displayDeals.websitePromoPercent}% off web bookings
+                    {displayDeals.promoStacksWithMultiCar === false && displayDeals.multiCarSecondVehicleDiscountPercent > 0
+                      ? ' (not combined with multi-car discount).'
+                      : '.'}
                   </p>
                 ) : null}
                 {multiCar ? (
@@ -263,6 +283,16 @@ export default function HomePage() {
                         <span className='font-semibold text-gold-soft'>{o.title}</span>
                         {o.discountPercent > 0 ? <span className='text-zinc-400'> — {o.discountPercent}%</span> : null}
                         {o.description ? <p className='mt-1 text-xs text-zinc-500'>{o.description}</p> : null}
+                        {o.active ? (
+                          <p className='mt-2'>
+                            <Link
+                              href={`/book?offer=${encodeURIComponent(o.id)}`}
+                              className='text-[10px] font-bold uppercase tracking-wider text-emerald-300 underline'
+                            >
+                              Book with this offer
+                            </Link>
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

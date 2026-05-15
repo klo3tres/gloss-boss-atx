@@ -9,6 +9,8 @@ export type SiteDataOfferCard = {
   discountPercent: number;
   active: boolean;
   sortOrder: number;
+  /** When true (default), offer % stacks with sitewide promo after offer is applied. */
+  stackable: boolean;
 };
 
 export type SiteDataMultiCar = {
@@ -34,6 +36,7 @@ export type PublicSiteDataPayload = {
   offers: SiteDataOfferCard[];
   multiCar: SiteDataMultiCar | null;
   featuredShowcase: SiteDataFeaturedSlide[];
+  googleReviewUrl: string;
 };
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */
@@ -42,6 +45,7 @@ const EMPTY_DEALS: DealConfig = {
   websitePromoLabel: '',
   websitePromoActive: false,
   multiCarSecondVehicleDiscountPercent: 0,
+  promoStacksWithMultiCar: true,
 };
 
 function subtitleToIncludes(subtitle: string | null): string[] {
@@ -97,6 +101,8 @@ export function parseDealConfig(raw: unknown): DealConfig {
       typeof o.multiCarSecondVehicleDiscountPercent === 'number' && !Number.isNaN(o.multiCarSecondVehicleDiscountPercent)
         ? o.multiCarSecondVehicleDiscountPercent
         : defaultDealConfig.multiCarSecondVehicleDiscountPercent,
+    promoStacksWithMultiCar:
+      typeof o.promoStacksWithMultiCar === 'boolean' ? o.promoStacksWithMultiCar : defaultDealConfig.promoStacksWithMultiCar,
   };
   const inert =
     !parsed.websitePromoActive &&
@@ -115,6 +121,7 @@ export function defaultMarketingOffers(): SiteDataOfferCard[] {
       discountPercent: defaultDealConfig.websitePromoPercent,
       active: defaultDealConfig.websitePromoActive,
       sortOrder: 0,
+      stackable: true,
     },
   ];
 }

@@ -13,6 +13,8 @@ export type DealConfig = {
   websitePromoLabel: string;
   websitePromoActive: boolean;
   multiCarSecondVehicleDiscountPercent: number;
+  /** When false, sitewide % promo does not stack with multi-car discount (multi-car wins). */
+  promoStacksWithMultiCar: boolean;
 };
 
 export const defaultServicePackages: ServicePackage[] = [
@@ -95,6 +97,7 @@ export const defaultDealConfig: DealConfig = {
   websitePromoLabel: "Limited Time Website Booking Offer",
   websitePromoActive: true,
   multiCarSecondVehicleDiscountPercent: 10,
+  promoStacksWithMultiCar: true,
 };
 
 export function formatStartingPrice(value: number | null): string {

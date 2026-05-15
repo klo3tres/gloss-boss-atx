@@ -22,7 +22,12 @@ export function mapMessageRow(raw: Record<string, unknown>): MessageRow | null {
   if (!id) return null;
 
   const from_name =
-    str(raw.from_name) || str(raw.name) || str(raw.sender_name) || str(raw.full_name) || 'Visitor';
+    str(raw.from_name) ||
+    str(raw.name) ||
+    str(raw.sender_name) ||
+    str(raw.full_name) ||
+    str(raw.email) ||
+    'Website visitor';
   const from_email = str(raw.from_email) || str(raw.email) || 'no-email@unknown.local';
   const from_phone = str(raw.from_phone) || str(raw.phone) || null;
   const body = str(raw.body) || str(raw.message) || str(raw.content) || '';
@@ -33,5 +38,6 @@ export function mapMessageRow(raw: Record<string, unknown>): MessageRow | null {
   return { id, from_name, from_email, from_phone, subject, body, status, created_at };
 }
 
-export const MESSAGE_SELECT_LEAN = 'id, from_name, from_email, subject, body, status, created_at';
+export const MESSAGE_SELECT_LEAN =
+  'id, from_name, name, from_email, subject, body, from_phone, status, created_at';
 export const MESSAGE_SELECT_FALLBACK = 'id, name, email, message, status, created_at';

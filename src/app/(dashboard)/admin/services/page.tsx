@@ -2,10 +2,12 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { updateServicePriceCentsAction } from '../service-pricing-actions';
 import { defaultServicePackages } from '@/lib/site-config';
 import { filterServicePriceRowsForAdminUi } from '@/lib/admin/filter-ui-price-rows';
 import { adminDisplayTitleForSlug, CERAMIC_COATING_SLUG } from '@/lib/admin/canonical-services';
+import { ensureCanonicalServiceCatalog } from '@/lib/admin/ensure-canonical-service-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +40,17 @@ export default async function AdminServicesPricingPage() {
     );
   }
 
-  const { data: rows, error } = await supabase
+  const admin = tryCreateAdminSupabase();
+  let seedMsg: string | null = null;
+  if (admin) {
+    const seed = await ensureCanonicalServiceCatalog(admin);
+    if (!seed.ok) {
+      seedMsg = seed.error ?? 'Could not seed canonical catalog.';
+    }
+  }
+
+  const priceClient = admin ?? supabase;
+  const { data: rows, error } = await priceClient
     .from('service_prices')
     .select('id, vehicle_class, price_cents, services ( title, slug )')
     .order('vehicle_class', { ascending: true });
@@ -51,6 +63,11 @@ export default async function AdminServicesPricingPage() {
       subtitle='Updates apply immediately to the booking page and /api/services.'
       role='admin'
     >
+      {seedMsg ? (
+        <p className='mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
+          Catalog seed note: {seedMsg} Check <code className='text-gold-soft'>SUPABASE_SERVICE_ROLE_KEY</code> for automatic seeding.
+        </p>
+      ) : null}
       {error ? (
         <p className='rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200'>
           Could not load service_prices: {error.message}. Run migrations in Supabase if tables are missing.

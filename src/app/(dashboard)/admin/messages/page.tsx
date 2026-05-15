@@ -17,7 +17,7 @@ export default async function AdminMessagesPage() {
 
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
     const full = await supabase.from('messages').select(MESSAGE_SELECT_LEAN).order('created_at', { ascending: false }).limit(100);
-    if (full.error && /from_name|column|schema cache|Could not find/i.test(full.error.message)) {
+    if (full.error && /from_name|\bname\b|column|schema cache|Could not find/i.test(full.error.message)) {
       const lean = await supabase.from('messages').select(MESSAGE_SELECT_FALLBACK).order('created_at', { ascending: false }).limit(100);
       if (lean.error) {
         if (/Could not find|schema cache|relation.*messages/i.test(lean.error.message)) {

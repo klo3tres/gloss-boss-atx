@@ -2,8 +2,11 @@
 
 import clsx from 'clsx';
 import { Car, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { getLocalFallbackCatalog, mergeServicesWithPricesStable, servicesHaveQuotesForBooking } from '@/lib/catalog-fallback';
+import type { SiteDataOfferCard } from '@/lib/public-site-data';
 import {
   bookingAvailabilityHint,
   DEFAULT_BOOKING_AVAILABILITY,
@@ -28,7 +31,6 @@ const CATALOG_LS_KEY = 'gb_booking_catalog_v1_ls';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const LS_CACHE_TTL_MS = 30 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 9000;
-const DEFAULT_ADDON_LABELS = ['Engine bay detail', 'Pet hair removal', 'Odor treatment', 'Clay bar treatment'] as const;
 
 type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
@@ -36,6 +38,8 @@ type PriceRow = { service_id: string; vehicle_class: string; price_cents: number
 type VehicleClass = UiVehicleClass;
 
 type ExtraLine = { serviceSlug: string; vehicleClass: VehicleClass; vehicleDescription: string };
+
+type AddonOption = { slug: string; label: string; price_cents: number };
 
 function serviceIcon(slug: string) {
   if (slug.includes('ceramic')) return <Sparkles className='h-6 w-6 text-gold-soft' />;
@@ -49,6 +53,8 @@ function classLabel(c: VehicleClass) {
 }
 
 export function BookingWizard() {
+  const searchParams = useSearchParams();
+  const offerFromUrl = String(searchParams?.get('offer') ?? '').trim();
   const liveCatalogAppliedRef = useRef(false);
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
   const [prices, setPrices] = useState<PriceRow[]>(() => consolidatePriceRowsForUi([...BOOKING_SEED.prices]));
@@ -68,8 +74,9 @@ export function BookingWizard() {
   const [vehicleDescription, setVehicleDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
-  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
-  const [addonLabels, setAddonLabels] = useState<string[]>(() => [...DEFAULT_ADDON_LABELS]);
+  const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
+  const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
+  const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
 
   useEffect(() => {
@@ -222,14 +229,26 @@ export function BookingWizard() {
         }
       }),
       fetchWithTimeout('/api/public/addons', { cache: 'no-store', timeoutMs: FETCH_TIMEOUT_MS }).then(async (r) =>
-        r.ok ? ((await r.json()) as { addons?: { label: string }[] }) : null,
+        r.ok
+          ? ((await r.json()) as {
+              addons?: { slug?: string | null; label?: string | null; price_cents?: number | null }[];
+            })
+          : null,
       ),
     ])
       .then(([data, addonsJson]) => {
         if (!alive) return;
         clearTimeout(failsafe);
-        const labels = (addonsJson?.addons ?? []).map((a) => a.label).filter(Boolean);
-        if (labels.length > 0) setAddonLabels(labels);
+        const rawAddons = addonsJson?.addons ?? [];
+        const opts: AddonOption[] = [];
+        for (const a of rawAddons) {
+          const label = String(a.label ?? '').trim();
+          const slug = String(a.slug ?? '').trim().toLowerCase() || label.toLowerCase().replace(/\s+/g, '-');
+          const cents = typeof a.price_cents === 'number' && a.price_cents > 0 ? a.price_cents : 0;
+          if (!label) continue;
+          opts.push({ slug: slug || label, label, price_cents: cents });
+        }
+        if (opts.length > 0) setAddonOptions(opts);
 
         const rawSvc = data.services ?? [];
         const rawPrice = data.prices ?? [];
@@ -286,8 +305,10 @@ export function BookingWizard() {
     let cancelled = false;
     void fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 })
       .then((r) => r.json())
-      .then((data: { deals?: DealConfig }) => {
-        if (!cancelled && data?.deals) setDeals(data.deals);
+      .then((data: { deals?: DealConfig; offers?: SiteDataOfferCard[] }) => {
+        if (cancelled) return;
+        if (data?.deals) setDeals(data.deals);
+        if (Array.isArray(data?.offers)) setOffers(data.offers);
       })
       .catch(() => {});
     return () => {
@@ -317,13 +338,20 @@ export function BookingWizard() {
 
   const selectedService = useMemo(() => services.find((s) => s.slug === serviceSlug), [services, serviceSlug]);
 
+  const claimedOfferSnap = useMemo(() => {
+    if (!offerFromUrl) return null;
+    const o = offers.find((x) => x.id === offerFromUrl && x.active);
+    if (!o || o.discountPercent <= 0) return null;
+    return { percent: o.discountPercent, stackableWithSitePromo: o.stackable !== false };
+  }, [offerFromUrl, offers]);
+
   const bookingLines = useMemo(
     () => [{ serviceSlug, vehicleClass, vehicleDescription }, ...extraVehicles],
     [serviceSlug, vehicleClass, vehicleDescription, extraVehicles],
   );
 
   const priceSummary = useMemo(() => {
-    let subtotal = 0;
+    const vehicleLineCents: number[] = [];
     const lines: { label: string; cents: number }[] = [];
     for (const line of bookingLines) {
       const svc = services.find((s) => s.slug === line.serviceSlug);
@@ -332,28 +360,44 @@ export function BookingWizard() {
       if (resolved.isQuote) return { kind: 'quote' as const };
       const cents = safePriceCentsForDisplay({ slug: svc.slug, serviceId: svc.id }, line.vehicleClass, prices);
       if (cents == null) return { kind: 'quote' as const };
-      subtotal += cents;
+      vehicleLineCents.push(cents);
       lines.push({ label: `${svc.title} (${classLabel(line.vehicleClass)})`, cents });
     }
     if (lines.length === 0) return null;
-    let discount = 0;
-    if (lines.length >= 2 && deals.multiCarSecondVehicleDiscountPercent > 0) {
-      discount = Math.round((lines[1]?.cents ?? 0) * (deals.multiCarSecondVehicleDiscountPercent / 100));
+
+    let addOnCentsSum = 0;
+    const addOnLines: { label: string; cents: number }[] = [];
+    for (const slug of selectedAddOnSlugs) {
+      const opt = addonOptions.find(
+        (a) => a.slug === slug || a.label.toLowerCase() === slug.toLowerCase() || a.slug.toLowerCase() === slug.toLowerCase(),
+      );
+      if (opt && opt.price_cents > 0) {
+        addOnCentsSum += opt.price_cents;
+        addOnLines.push({ label: opt.label, cents: opt.price_cents });
+      }
     }
-    const total = Math.max(0, subtotal - discount);
-    const deposit = Math.round(total * 0.3);
-    return { kind: 'ok' as const, lines, subtotal, discount, total, deposit };
-  }, [bookingLines, prices, services, deals.multiCarSecondVehicleDiscountPercent]);
+
+    const bd = computeBookingPricing({
+      vehicleLineCents,
+      addOnCentsSum,
+      deals,
+      claimedOffer: claimedOfferSnap,
+      depositPercent: 30,
+    });
+    if ('kind' in bd) return null;
+
+    return { kind: 'ok' as const, lines, addOnLines, breakdown: bd as BookingPricingBreakdown };
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, selectedAddOnSlugs, addonOptions]);
 
   const pricePreviewText =
     priceSummary?.kind === 'quote'
       ? 'Quote required for one or more vehicle lines'
       : priceSummary?.kind === 'ok'
-        ? `$${(priceSummary.total / 100).toFixed(2)} total · $${(priceSummary.deposit / 100).toFixed(2)} deposit`
+        ? `$${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)} total · $${(priceSummary.breakdown.depositCents / 100).toFixed(2)} deposit`
         : null;
 
-  const toggleAddOn = (label: string) => {
-    setSelectedAddOns((prev) => (prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]));
+  const toggleAddOn = (slug: string) => {
+    setSelectedAddOnSlugs((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
   };
 
   const addVehicleLine = () => {
@@ -412,7 +456,8 @@ export function BookingWizard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           vehicles,
-          addOns: selectedAddOns,
+          addOns: selectedAddOnSlugs,
+          offerId: claimedOfferSnap ? offerFromUrl : undefined,
           scheduledStart: startIso,
           guestName,
           guestEmail,
@@ -473,6 +518,16 @@ export function BookingWizard() {
           <span className='inline-block h-3 w-3 animate-spin rounded-full border border-gold/30 border-t-gold-soft' aria-hidden />
           Updating prices…
         </div>
+      ) : null}
+      {claimedOfferSnap ? (
+        <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
+          Offer applied: {claimedOfferSnap.percent}% off eligible services & add-ons after any multi-car discount
+          {claimedOfferSnap.stackableWithSitePromo ? ' (stacks with sitewide promo when configured).' : '.'}
+        </p>
+      ) : offerFromUrl ? (
+        <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100'>
+          That offer link is not active — continue without it or ask your detailer for a current code.
+        </p>
       ) : null}
       {error ? (
         <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
@@ -597,22 +652,27 @@ export function BookingWizard() {
           <section>
             <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Add-ons (optional)</p>
             <div className='mt-3 flex flex-wrap gap-2'>
-              {addonLabels.map((opt) => {
-                const on = selectedAddOns.includes(opt);
-                return (
-                  <button
-                    key={opt}
-                    type='button'
-                    onClick={() => toggleAddOn(opt)}
-                    className={clsx(
-                      'rounded-full border px-3 py-2 text-xs font-semibold transition',
-                      on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
-                    )}
-                  >
-                    {opt}
-                  </button>
-                );
-              })}
+              {addonOptions.length === 0 ? (
+                <span className='text-xs text-zinc-500'>Loading add-ons…</span>
+              ) : (
+                addonOptions.map((opt) => {
+                  const on = selectedAddOnSlugs.includes(opt.slug);
+                  const priceLabel = opt.price_cents > 0 ? `+$${(opt.price_cents / 100).toFixed(0)}` : '';
+                  return (
+                    <button
+                      key={opt.slug}
+                      type='button'
+                      onClick={() => toggleAddOn(opt.slug)}
+                      className={clsx(
+                        'rounded-full border px-3 py-2 text-xs font-semibold transition',
+                        on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                      )}
+                    >
+                      {opt.label} {priceLabel}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </section>
 
@@ -707,25 +767,54 @@ export function BookingWizard() {
                     <span>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
-                {priceSummary.discount > 0 ? (
+                {priceSummary.addOnLines.map((l, i) => (
+                  <p key={`a-${i}`} className='flex justify-between text-sm text-zinc-400'>
+                    <span>Add-on · {l.label}</span>
+                    <span>${(l.cents / 100).toFixed(2)}</span>
+                  </p>
+                ))}
+                {priceSummary.breakdown.multiCarDiscountCents > 0 ? (
                   <p className='flex justify-between text-sm text-emerald-300'>
                     <span>Multi-car discount</span>
-                    <span>-${(priceSummary.discount / 100).toFixed(2)}</span>
+                    <span>-${(priceSummary.breakdown.multiCarDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
+                {priceSummary.breakdown.offerDiscountCents > 0 ? (
+                  <p className='flex justify-between text-sm text-emerald-300'>
+                    <span>Offer discount</span>
+                    <span>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                {priceSummary.breakdown.websitePromoDiscountCents > 0 ? (
+                  <p className='flex justify-between text-sm text-emerald-300'>
+                    <span>Sitewide promo</span>
+                    <span>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                <p className='flex justify-between border-t border-white/10 pt-2 text-sm text-zinc-500'>
+                  <span>Subtotal before discounts</span>
+                  <span>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
+                </p>
                 <p className='flex justify-between text-2xl font-black text-white'>
-                  <span>Combined total</span>
-                  <span>${(priceSummary.total / 100).toFixed(2)}</span>
+                  <span>Total</span>
+                  <span>${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}</span>
                 </p>
                 <p className='flex justify-between rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm font-bold text-gold-soft'>
                   <span>Deposit due now (30%)</span>
-                  <span>${(priceSummary.deposit / 100).toFixed(2)}</span>
+                  <span>${(priceSummary.breakdown.depositCents / 100).toFixed(2)}</span>
                 </p>
               </div>
             ) : (
               <p className='text-gold-soft'>{pricePreviewText}</p>
             )}
-            {selectedAddOns.length > 0 ? <p className='text-xs text-zinc-500'>Add-ons: {selectedAddOns.join(', ')}</p> : null}
+            {selectedAddOnSlugs.length > 0 ? (
+              <p className='text-xs text-zinc-500'>
+                Add-ons:{' '}
+                {selectedAddOnSlugs
+                  .map((s) => addonOptions.find((a) => a.slug === s)?.label ?? s)
+                  .join(', ')}
+              </p>
+            ) : null}
           </div>
           <button
             type='submit'

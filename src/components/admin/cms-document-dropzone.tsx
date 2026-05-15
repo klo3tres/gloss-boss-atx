@@ -76,7 +76,7 @@ export function CmsDocumentDropzone({
         }`}
       >
         <Upload className='h-8 w-8 text-gold-soft' />
-        <p className='mt-2 text-xs text-zinc-400'>Drag & drop PDF or images — or click to browse</p>
+        <p className='mt-2 text-xs text-zinc-400'>PDF, images, or HTML. Word (.doc/.docx): convert to PDF first — uploads are rejected for Word formats.</p>
         <input
           ref={inputRef}
           type='file'

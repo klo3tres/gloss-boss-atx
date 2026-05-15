@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { BookingWizard } from '@/components/booking/booking-wizard';
 
 export const metadata = {
@@ -15,7 +16,9 @@ export default function BookPage() {
           Choose your package, reserve a time, pay your deposit, then sign the on-site liability agreement to confirm your appointment.
         </p>
         <div className='mt-8 rounded-2xl border border-gold/20 bg-zinc-950 p-6 sm:p-8'>
-          <BookingWizard />
+          <Suspense fallback={<p className='text-sm text-zinc-500'>Loading booking…</p>}>
+            <BookingWizard />
+          </Suspense>
         </div>
       </div>
     </main>
