@@ -211,7 +211,7 @@ export async function convertLeadToCustomerAction(formData: FormData) {
 export async function updateLeadStatusAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '').trim();
   const status = String(formData.get('status') ?? '').trim();
-  const allowed = new Set(['new', 'assigned', 'claimed', 'contacted', 'quoted', 'booked', 'lost']);
+  const allowed = new Set(['new', 'assigned', 'claimed', 'contacted', 'quoted', 'booked', 'no_response', 'lost']);
   if (!leadId || !allowed.has(status)) return { ok: false, error: 'Invalid' };
 
   const gate = await requireAdmin();
@@ -261,6 +261,43 @@ export async function incrementLeadContactAttemptsAction(formData: FormData) {
     })
     .eq('id', leadId);
   if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/leads');
+  revalidatePath('/tech');
+  return { ok: true as const };
+}
+
+export async function createLeadAction(formData: FormData) {
+  const name = String(formData.get('name') ?? '').trim();
+  const phone = String(formData.get('phone') ?? '').trim() || null;
+  const emailRaw = String(formData.get('email') ?? '').trim();
+  const email = emailRaw ? emailRaw.toLowerCase() : null;
+  const address = String(formData.get('address') ?? '').trim() || null;
+  const vehicle = String(formData.get('vehicle') ?? '').trim() || null;
+  const notes = String(formData.get('notes') ?? '').trim() || null;
+  const inPool = formData.get('inPool') === 'true';
+
+  if (!name) return { ok: false as const, error: 'Name required' };
+
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  const nowIso = new Date().toISOString();
+  const { error } = await gate.supabase.from('leads').insert({
+    name,
+    phone,
+    email,
+    address,
+    vehicle,
+    notes,
+    lead_source: 'admin',
+    status: 'new',
+    in_pool: inPool,
+    created_by: gate.userId,
+    updated_at: nowIso,
+  });
+
+  if (error) return { ok: false as const, error: error.message };
+
   revalidatePath('/admin/leads');
   revalidatePath('/tech');
   return { ok: true as const };

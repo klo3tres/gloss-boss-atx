@@ -8,21 +8,33 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       appointmentId?: string;
+      fallbackBookingId?: string;
       accessToken?: string;
       serviceId?: string;
     };
 
     const appointmentId = body.appointmentId?.trim();
+    const fallbackBookingId = body.fallbackBookingId?.trim();
     const accessToken = body.accessToken?.trim();
-    if (!appointmentId || !accessToken) {
-      return NextResponse.json({ error: 'Missing appointmentId or accessToken' }, { status: 400 });
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Missing accessToken' }, { status: 400 });
+    }
+    if (!appointmentId && !fallbackBookingId) {
+      return NextResponse.json({ error: 'Missing appointmentId or fallbackBookingId' }, { status: 400 });
     }
 
     const admin = tryCreateAdminSupabase();
     if (!admin) {
       return NextResponse.json(
-        { error: 'Supabase not configured', code: 'SUPABASE_NOT_READY', appointmentId, accessToken, skipPayment: true },
-        { status: 200 }
+        {
+          error: 'Supabase not configured',
+          code: 'SUPABASE_NOT_READY',
+          appointmentId,
+          fallbackBookingId,
+          accessToken,
+          skipPayment: true,
+        },
+        { status: 200 },
       );
     }
 
@@ -31,6 +43,7 @@ export async function POST(request: Request) {
     const result = await createDepositCheckoutSession({
       admin,
       appointmentId,
+      fallbackBookingId,
       accessToken,
       origin,
     });
@@ -42,17 +55,18 @@ export async function POST(request: Request) {
             error: 'STRIPE_NOT_CONFIGURED',
             code: 'STRIPE_NOT_CONFIGURED',
             appointmentId,
+            fallbackBookingId,
             accessToken,
             skipPayment: true,
             message: 'Booking saved. Stripe is not configured yet — we will follow up for deposit.',
           },
-          { status: 200 }
+          { status: 200 },
         );
       }
       if (result.code === 'SUPABASE_NOT_READY') {
         return NextResponse.json(
-          { error: result.error, code: result.code, appointmentId, accessToken, skipPayment: true },
-          { status: 200 }
+          { error: result.error, code: result.code, appointmentId, fallbackBookingId, accessToken, skipPayment: true },
+          { status: 200 },
         );
       }
       if (result.code === 'STRIPE_ERROR') {
@@ -62,9 +76,10 @@ export async function POST(request: Request) {
             code: result.code,
             message: result.error,
             appointmentId,
+            fallbackBookingId,
             accessToken,
           },
-          { status: 503 }
+          { status: 503 },
         );
       }
       return NextResponse.json({ error: result.error, code: result.code }, { status: 400 });

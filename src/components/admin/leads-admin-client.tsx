@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
   assignLeadTechnicianAction,
   convertLeadToCustomerAction,
+  createLeadAction,
   incrementLeadContactAttemptsAction,
   setLeadPoolAction,
   unassignLeadAction,
@@ -24,7 +26,23 @@ export type AssignmentEventRow = {
   note: string | null;
 };
 
-const STATUSES = ['new', 'assigned', 'claimed', 'contacted', 'quoted', 'booked', 'lost'] as const;
+const STATUSES = ['new', 'assigned', 'claimed', 'contacted', 'quoted', 'booked', 'no_response', 'lost'] as const;
+
+const PIPELINE_STAGES: { id: string; label: string; statuses: readonly string[] }[] = [
+  { id: 'new', label: 'New', statuses: ['new', 'assigned', 'claimed'] },
+  { id: 'contacted', label: 'Contacted', statuses: ['contacted'] },
+  { id: 'quoted', label: 'Quoted', statuses: ['quoted'] },
+  { id: 'booked', label: 'Booked', statuses: ['booked'] },
+  { id: 'no_response', label: 'No response', statuses: ['no_response'] },
+  { id: 'lost', label: 'Lost', statuses: ['lost'] },
+];
+
+function pipelineStageId(status: string): string {
+  for (const s of PIPELINE_STAGES) {
+    if (s.statuses.includes(status)) return s.id;
+  }
+  return 'new';
+}
 
 export function LeadsAdminClient({
   leads,
@@ -37,11 +55,23 @@ export function LeadsAdminClient({
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
+  const [view, setView] = useState<'pipeline' | 'list'>('pipeline');
 
   const techOptions = useMemo(
     () => [...technicians].sort((a, b) => (a.full_name ?? a.email ?? '').localeCompare(b.full_name ?? b.email ?? '')),
     [technicians],
   );
+
+  const pipelineGrouped = useMemo(() => {
+    const m: Record<string, LeadAdminRow[]> = {};
+    for (const s of PIPELINE_STAGES) m[s.id] = [];
+    for (const r of leads) {
+      const st = String(r.status ?? 'new');
+      const col = pipelineStageId(st);
+      m[col]?.push(r);
+    }
+    return m;
+  }, [leads]);
 
   return (
     <div className='space-y-4'>
@@ -50,7 +80,132 @@ export function LeadsAdminClient({
           {msg}
         </p>
       ) : null}
-      <ul className='space-y-4'>
+
+      <div className='flex flex-wrap items-center gap-2'>
+        <button
+          type='button'
+          className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${view === 'pipeline' ? 'bg-gold/20 text-gold-soft' : 'bg-zinc-900 text-zinc-400'}`}
+          onClick={() => setView('pipeline')}
+        >
+          Pipeline
+        </button>
+        <button
+          type='button'
+          className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${view === 'list' ? 'bg-gold/20 text-gold-soft' : 'bg-zinc-900 text-zinc-400'}`}
+          onClick={() => setView('list')}
+        >
+          Detail list
+        </button>
+        <Link href='/admin/dispatch' className='text-[10px] font-bold uppercase text-zinc-400 underline'>
+          Dispatch board →
+        </Link>
+      </div>
+
+      <section className='rounded-2xl border border-white/10 bg-zinc-950/80 p-4'>
+        <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>New lead</p>
+        <form
+          className='mt-3 grid gap-3 md:grid-cols-2'
+          action={async (fd) => {
+            setMsg(null);
+            const res = await createLeadAction(fd);
+            setMsg(res.ok ? 'Lead created.' : res.error ?? 'Failed');
+            router.refresh();
+          }}
+        >
+          <label className='text-[10px] text-zinc-500'>
+            Name *
+            <input name='name' required className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='text-[10px] text-zinc-500'>
+            Phone
+            <input name='phone' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='text-[10px] text-zinc-500'>
+            Email
+            <input name='email' type='email' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='text-[10px] text-zinc-500'>
+            Address
+            <input name='address' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='text-[10px] text-zinc-500 md:col-span-2'>
+            Vehicle
+            <input name='vehicle' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='text-[10px] text-zinc-500 md:col-span-2'>
+            Notes
+            <textarea name='notes' rows={2} className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-white' />
+          </label>
+          <label className='flex items-center gap-2 text-[10px] text-zinc-400 md:col-span-2'>
+            <input type='checkbox' name='inPool' value='true' />
+            Add to open pool (technicians can claim)
+          </label>
+          <button type='submit' className='md:col-span-2 rounded border border-gold/40 px-4 py-2 text-[10px] font-black uppercase text-gold-soft'>
+            Create lead
+          </button>
+        </form>
+      </section>
+
+      {view === 'pipeline' ? (
+        <div className='grid gap-3 lg:grid-cols-6'>
+          {PIPELINE_STAGES.map((stage) => (
+            <section key={stage.id} className='rounded-2xl border border-white/10 bg-zinc-950/60'>
+              <header className='border-b border-white/10 px-3 py-2'>
+                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>{stage.label}</p>
+                <p className='text-[10px] text-zinc-600'>{pipelineGrouped[stage.id]?.length ?? 0}</p>
+              </header>
+              <ul className='max-h-[68vh] space-y-2 overflow-y-auto p-2'>
+                {(pipelineGrouped[stage.id] ?? []).map((r) => {
+                  const id = String(r.id);
+                  const st = String(r.status ?? '');
+                  return (
+                    <li key={id} className='rounded-xl border border-white/10 bg-black/40 p-2 text-[11px] text-zinc-300'>
+                      <p className='font-bold text-white'>{String(r.name ?? '')}</p>
+                      {st === 'assigned' || st === 'claimed' ? (
+                        <p className='text-[9px] uppercase text-amber-200/90'>{st} · tech linked</p>
+                      ) : null}
+                      <p className='text-zinc-500'>Attempts {String(r.contact_attempts ?? 0)}</p>
+                      {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
+                      <form
+                        className='mt-2'
+                        action={async (fd) => {
+                          const res = await updateLeadStatusAction(fd);
+                          setMsg(res.ok ? 'Moved in pipeline.' : res.error ?? 'Failed');
+                          router.refresh();
+                        }}
+                      >
+                        <input type='hidden' name='leadId' value={id} />
+                        <label className='text-[9px] text-zinc-500'>
+                          Move to
+                          <select
+                            name='status'
+                            defaultValue={st}
+                            className='mt-0.5 w-full rounded border border-zinc-700 bg-black px-1 py-1 text-white'
+                          >
+                            {STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s.replace(/_/g, ' ')}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button type='submit' className='mt-1 w-full rounded border border-white/15 py-1 text-[9px] font-bold uppercase'>
+                          Apply
+                        </button>
+                      </form>
+                    </li>
+                  );
+                })}
+                {(pipelineGrouped[stage.id] ?? []).length === 0 ? (
+                  <li className='py-6 text-center text-[10px] text-zinc-600'>—</li>
+                ) : null}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      <ul className={`space-y-4 ${view === 'list' ? '' : 'hidden'}`}>
         {leads.map((r) => {
           const id = String(r.id);
           const name = String(r.name ?? '');

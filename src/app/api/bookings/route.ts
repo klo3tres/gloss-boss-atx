@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import {
+  logBookingError,
+  recordBookingFailure,
+  recordBookingSuccess,
+  saveBookingFallback,
+} from '@/lib/booking-diagnostics';
 import { isBookingSlotAllowed } from '@/lib/booking-availability';
 import {
   computeQuoteFromInputs,
@@ -191,7 +197,34 @@ export async function POST(request: Request) {
 
     if (apptErr || !appointment) {
       const detail = apptErr ?? 'unknown';
-      console.error('[api/bookings] appointment insert failed — internal detail for support', {
+      await logBookingError(admin, {
+        stage: 'insertAppointmentResilient',
+        error_message: String(detail),
+        payload: insertPayload,
+      });
+      await recordBookingFailure(admin, { stage: 'insertAppointmentResilient', message: String(detail) });
+
+      const fb = await saveBookingFallback(admin, {
+        payload: insertPayload,
+        guestEmail: emailNorm,
+        guestPhone: phoneDigits,
+        guestName: guestName.trim(),
+        depositAmountCents: depositAmountCents,
+        basePriceCents: totalBaseCents,
+        scheduledStartIso: scheduled.toISOString(),
+      });
+
+      if (fb) {
+        await recordBookingSuccess(admin);
+        return NextResponse.json({
+          usedFallback: true,
+          fallbackBookingId: fb.id,
+          accessToken: fb.access_token,
+          depositAmountCents: depositAmountCents,
+        });
+      }
+
+      console.error('[api/bookings] appointment insert failed — no fallback row', {
         detail,
         hadCustomerLink: Boolean(customerId),
         hadOffer: Boolean(offerRowId),
@@ -201,11 +234,10 @@ export async function POST(request: Request) {
         (detail.includes('database configuration issue') || detail.includes('Please call Gloss Boss'))
           ? detail
           : 'We could not save your booking right now. Please try again or call Gloss Boss ATX at (512) 481-2319.';
-      return NextResponse.json(
-        { error: friendly, code: 'BOOKING_INSERT_FAILED' },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: friendly, code: 'BOOKING_INSERT_FAILED' }, { status: 500 });
     }
+
+    await recordBookingSuccess(admin);
 
     void notifyBookingConfirmationQueued({
       toEmail: emailNorm,

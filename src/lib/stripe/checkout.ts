@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
+import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { sendPaymentReceivedEmailIfConfigured } from '@/lib/email-send';
 
@@ -19,17 +20,37 @@ function stripeErrorMessage(e: unknown): string {
 
 /**
  * Creates Stripe Checkout for appointment deposit. Updates appointment with session id on success.
+ * Pass either (appointmentId + accessToken) OR (fallbackBookingId + accessToken).
  */
 export async function createDepositCheckoutSession(params: {
   admin: SupabaseClient | null;
-  appointmentId: string;
-  accessToken: string;
+  appointmentId?: string;
+  accessToken?: string;
+  fallbackBookingId?: string;
   origin: string;
 }): Promise<CreateDepositCheckoutResult> {
-  const { admin, appointmentId, accessToken, origin } = params;
+  const { admin, accessToken, origin } = params;
+  const appointmentId = params.appointmentId?.trim();
+  const fallbackBookingId = params.fallbackBookingId?.trim();
 
   if (!admin) {
     return { ok: false, error: 'Database unavailable', code: 'SUPABASE_NOT_READY' };
+  }
+  if (!accessToken?.trim()) {
+    return { ok: false, error: 'Missing access token' };
+  }
+
+  if (fallbackBookingId) {
+    return createFallbackDepositCheckoutSession({
+      admin,
+      fallbackBookingId,
+      accessToken: accessToken.trim(),
+      origin,
+    });
+  }
+
+  if (!appointmentId) {
+    return { ok: false, error: 'Missing appointmentId or fallbackBookingId' };
   }
 
   const stripe = await getStripeSdk(admin);
@@ -48,7 +69,7 @@ export async function createDepositCheckoutSession(params: {
       return { ok: false, error: 'Booking not found' };
     }
 
-    if (appt.access_token !== accessToken) {
+    if (appt.access_token !== accessToken.trim()) {
       return { ok: false, error: 'Invalid access token' };
     }
 
@@ -72,11 +93,11 @@ export async function createDepositCheckoutSession(params: {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken}`,
+      success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
       cancel_url: `${origin}/book?cancelled=1`,
       metadata: {
         appointment_id: appt.id,
-        access_token: accessToken,
+        access_token: accessToken.trim(),
         stripe_checkout_kind: 'deposit',
       },
     });
@@ -90,6 +111,79 @@ export async function createDepositCheckoutSession(params: {
     return { ok: true, url: session.url };
   } catch (e) {
     console.warn('[checkout] createDepositCheckoutSession', e);
+    return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
+  }
+}
+
+async function createFallbackDepositCheckoutSession(params: {
+  admin: SupabaseClient;
+  fallbackBookingId: string;
+  accessToken: string;
+  origin: string;
+}): Promise<CreateDepositCheckoutResult> {
+  const { admin, fallbackBookingId, accessToken, origin } = params;
+  const stripe = await getStripeSdk(admin);
+  if (!stripe) {
+    return { ok: false, error: 'Stripe is not configured', code: 'STRIPE_NOT_CONFIGURED' };
+  }
+
+  const { data: row, error } = await admin
+    .from('booking_fallbacks')
+    .select('id, access_token, deposit_amount_cents, guest_email, status')
+    .eq('id', fallbackBookingId)
+    .maybeSingle();
+
+  if (error || !row || String(row.access_token) !== accessToken) {
+    return { ok: false, error: 'Invalid fallback booking' };
+  }
+  if (String(row.status) === 'converted') {
+    return { ok: false, error: 'Booking already converted' };
+  }
+
+  const amount =
+    typeof row.deposit_amount_cents === 'number' && row.deposit_amount_cents > 0 ? row.deposit_amount_cents : 0;
+  if (amount < 50) {
+    return { ok: false, error: 'Invalid deposit amount' };
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: typeof row.guest_email === 'string' ? row.guest_email : undefined,
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: amount,
+            product_data: {
+              name: 'Gloss Boss ATX — Service deposit (30%)',
+              description: `Booking (queued) ${row.id}`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${origin}/intake?session_id={CHECKOUT_SESSION_ID}&token=${encodeURIComponent(accessToken)}&fallback_booking_id=${row.id}`,
+      cancel_url: `${origin}/book?cancelled=1`,
+      metadata: {
+        fallback_booking_id: String(row.id),
+        access_token: accessToken,
+        stripe_checkout_kind: 'deposit',
+      },
+    });
+
+    await admin
+      .from('booking_fallbacks')
+      .update({ stripe_checkout_session_id: session.id, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+
+    if (!session.url) {
+      return { ok: false, error: 'No checkout URL returned' };
+    }
+
+    return { ok: true, url: session.url };
+  } catch (e) {
+    console.warn('[checkout] createFallbackDepositCheckoutSession', e);
     return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
   }
 }
@@ -309,10 +403,27 @@ export async function processCheckoutSessionCompleted(params: {
     return;
   }
 
-  const appointmentId = session.metadata?.appointment_id;
+  let appointmentId = session.metadata?.appointment_id as string | undefined;
+  const fallbackId = session.metadata?.fallback_booking_id;
+  const accessTok = session.metadata?.access_token;
+
+  if (!appointmentId && fallbackId && accessTok) {
+    const promoted = await promoteFallbackToAppointment(admin, fallbackId, accessTok);
+    if (promoted?.id) {
+      appointmentId = promoted.id;
+      await upsertSessionIdSafe(admin, appointmentId, session.id);
+    } else {
+      console.error('[checkout] fallback promotion failed for session', session.id, fallbackId);
+      return;
+    }
+  }
+
   const amount = session.amount_total ?? 0;
 
-  if (!appointmentId) return;
+  if (!appointmentId) {
+    console.warn('[checkout] checkout.session.completed missing appointment / fallback', session.id);
+    return;
+  }
 
   const isField = session.metadata?.tech_field_invoice === '1';
   const technicianId = session.metadata?.technician_id ?? null;

@@ -63,3 +63,57 @@ export async function techClaimLeadAction(formData: FormData): Promise<void> {
   revalidatePath('/tech');
   revalidatePath('/admin/leads');
 }
+
+const TECH_LEAD_STATUSES = new Set(['contacted', 'quoted', 'no_response', 'lost']);
+
+export async function techUpdateLeadStatusAction(formData: FormData): Promise<void> {
+  const leadId = String(formData.get('leadId') ?? '').trim();
+  const status = String(formData.get('status') ?? '').trim();
+  if (!leadId || !TECH_LEAD_STATUSES.has(status)) return;
+
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) return;
+
+  const { data: row } = await gate.supabase.from('leads').select('assigned_technician_id').eq('id', leadId).maybeSingle();
+  const assigned = (row as { assigned_technician_id?: string | null } | null)?.assigned_technician_id;
+  if (assigned !== gate.userId) return;
+
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', leadId);
+
+  if (error) {
+    console.warn('[tech] update lead status', error.message);
+    return;
+  }
+
+  revalidatePath('/tech');
+  revalidatePath('/admin/leads');
+}
+
+export async function techUpdateLeadNotesAction(formData: FormData): Promise<void> {
+  const leadId = String(formData.get('leadId') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
+  if (!leadId) return;
+
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) return;
+
+  const { data: row } = await gate.supabase.from('leads').select('assigned_technician_id').eq('id', leadId).maybeSingle();
+  const assigned = (row as { assigned_technician_id?: string | null } | null)?.assigned_technician_id;
+  if (assigned !== gate.userId) return;
+
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ notes: notes || null, updated_at: new Date().toISOString() })
+    .eq('id', leadId);
+
+  if (error) {
+    console.warn('[tech] update lead notes', error.message);
+    return;
+  }
+
+  revalidatePath('/tech');
+  revalidatePath('/admin/leads');
+}

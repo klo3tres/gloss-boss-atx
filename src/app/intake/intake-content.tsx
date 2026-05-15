@@ -13,6 +13,7 @@ export default function IntakeContent() {
   const appointmentId = searchParams.get('appointment_id');
   const token = searchParams.get('token');
   const sessionId = searchParams.get('session_id');
+  const fallbackBookingId = searchParams.get('fallback_booking_id');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,16 +26,23 @@ export default function IntakeContent() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (!appointmentId || !token) {
+    if (!token) {
+      setError('Missing booking link parameters.');
+      setLoading(false);
+      return;
+    }
+    if (!appointmentId && (!fallbackBookingId || !sessionId)) {
       setError('Missing booking link parameters.');
       setLoading(false);
       return;
     }
     let cancelled = false;
-    fetchWithTimeout(
-      `/api/intake/form?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}&session_id=${encodeURIComponent(sessionId ?? '')}`,
-      { timeoutMs: 12000 },
-    )
+    const qs = new URLSearchParams();
+    if (appointmentId) qs.set('appointment_id', appointmentId);
+    if (fallbackBookingId) qs.set('fallback_booking_id', fallbackBookingId);
+    qs.set('token', token);
+    if (sessionId) qs.set('session_id', sessionId);
+    fetchWithTimeout(`/api/intake/form?${qs.toString()}`, { timeoutMs: 12000 })
       .then((r) => r.json())
       .then(
         (data: {
@@ -44,10 +52,18 @@ export default function IntakeContent() {
           cmsHtmlRejected?: boolean;
           fields?: IntakeField[];
           alreadySubmitted?: boolean;
+          accessTokenRefresh?: string;
+          resolvedAppointmentId?: string;
         }) => {
           if (cancelled) return;
           if (!data.ok) {
             setError(data.error ?? 'Unable to load intake form');
+            return;
+          }
+          if (data.accessTokenRefresh && data.resolvedAppointmentId && sessionId) {
+            router.replace(
+              `/intake?appointment_id=${encodeURIComponent(data.resolvedAppointmentId)}&token=${encodeURIComponent(data.accessTokenRefresh)}&session_id=${encodeURIComponent(sessionId)}`,
+            );
             return;
           }
           if (data.alreadySubmitted) {
@@ -68,7 +84,7 @@ export default function IntakeContent() {
     return () => {
       cancelled = true;
     };
-  }, [appointmentId, token, sessionId]);
+  }, [appointmentId, fallbackBookingId, token, sessionId, router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

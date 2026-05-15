@@ -545,36 +545,50 @@ export function BookingWizard() {
           notes: notes || undefined,
         }),
       });
-      const bookingJson = await bookingRes.json();
+      const bookingJson = (await bookingRes.json()) as {
+        appointmentId?: string;
+        accessToken?: string;
+        depositAmountCents?: number;
+        usedFallback?: boolean;
+        fallbackBookingId?: string;
+      };
+
       if (!bookingRes.ok) {
-        setError(bookingJson.error ?? 'Booking failed');
+        setError((bookingJson as { error?: string }).error ?? 'Booking failed');
         setSubmitting(false);
         return;
       }
 
+      const checkoutBody = bookingJson.usedFallback
+        ? { fallbackBookingId: bookingJson.fallbackBookingId, accessToken: bookingJson.accessToken }
+        : { appointmentId: bookingJson.appointmentId, accessToken: bookingJson.accessToken };
+
       const checkoutRes = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appointmentId: bookingJson.appointmentId,
-          accessToken: bookingJson.accessToken,
-        }),
+        body: JSON.stringify(checkoutBody),
       });
       const checkoutJson = (await checkoutRes.json()) as {
         url?: string;
         skipPayment?: boolean;
         appointmentId?: string;
+        fallbackBookingId?: string;
         accessToken?: string;
         code?: string;
         error?: string;
         message?: string;
       };
 
-      if (checkoutJson.skipPayment && checkoutJson.appointmentId) {
+      if (checkoutJson.skipPayment && (checkoutJson.appointmentId || checkoutJson.fallbackBookingId)) {
         const q = new URLSearchParams({
-          appointment_id: checkoutJson.appointmentId,
-          token: checkoutJson.accessToken ?? bookingJson.accessToken,
+          token: checkoutJson.accessToken ?? bookingJson.accessToken ?? '',
         });
+        if (checkoutJson.fallbackBookingId || bookingJson.fallbackBookingId) {
+          q.set('fallback_booking_id', checkoutJson.fallbackBookingId ?? bookingJson.fallbackBookingId ?? '');
+        }
+        if (checkoutJson.appointmentId ?? bookingJson.appointmentId) {
+          q.set('appointment_id', checkoutJson.appointmentId ?? bookingJson.appointmentId ?? '');
+        }
         window.location.href = `/book/pending?${q.toString()}`;
         return;
       }

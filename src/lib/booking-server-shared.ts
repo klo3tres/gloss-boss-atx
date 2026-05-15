@@ -21,14 +21,13 @@ export function extractMissingColumnKey(message: string): string | null {
   return null;
 }
 
-/** True when stripping unknown columns or null-in-optional-column may fix the insert. */
+/**
+ * Strip optional columns / heal drift for almost every Postgres error except hard duplicates.
+ * Empty message still retries (strip cycle) so minimal row can be attempted.
+ */
 export function isRetriableAppointmentInsertError(message: string): boolean {
-  if (!message) return false;
-  if (isSchemaDriftError(message)) return true;
-  if (/foreign key constraint|violates foreign key constraint|\b23503\b/i.test(message)) return true;
-  if (/null value in column/i.test(message)) return true;
-  if (/invalid input syntax for type json/i.test(message)) return true;
-  return false;
+  if (isDefinitelyFatalAppointmentInsertError(message)) return false;
+  return true;
 }
 
 export function isDefinitelyFatalAppointmentInsertError(message: string): boolean {

@@ -15,6 +15,8 @@ export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'custo
 const adminLinks = [
   { href: '/admin', label: 'Home' },
   { href: '/admin', label: 'Overview' },
+  { href: '/admin/dispatch', label: 'Dispatch' },
+  { href: '/admin/leads', label: 'Leads' },
   { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/team', label: 'Team' },
   { href: '/admin/messages', label: 'Message center' },
@@ -29,7 +31,10 @@ const adminLinks = [
 const superLinks = [
   { href: '/admin/super', label: 'Home' },
   { href: '/admin/super', label: 'Command center' },
+  { href: '/admin/booking-health', label: 'Booking health' },
   { href: '/admin', label: 'Operations (admin)' },
+  { href: '/admin/dispatch', label: 'Dispatch' },
+  { href: '/admin/leads', label: 'Leads' },
   { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/team', label: 'Team' },
   { href: '/admin/messages', label: 'Message center' },

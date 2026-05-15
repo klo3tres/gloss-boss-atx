@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 import { intakeCmsMarkupToPlainText, sanitizeIntakeCmsHtml } from '@/lib/intake-html';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
@@ -12,7 +13,11 @@ const DEFAULT_FIELDS = [
   { name: 'special_requests', label: 'Special requests', required: false },
 ];
 
-async function verifyPaidSession(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, appointmentId: string, sessionId: string) {
+async function verifyPaidSession(
+  admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>,
+  appointmentId: string,
+  sessionId: string,
+) {
   const stripe = await getStripeSdk(admin);
   if (!stripe) return false;
   try {
@@ -25,11 +30,12 @@ async function verifyPaidSession(admin: NonNullable<ReturnType<typeof tryCreateA
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const appointmentId = url.searchParams.get('appointment_id')?.trim();
-  const token = url.searchParams.get('token')?.trim();
+  let appointmentId = url.searchParams.get('appointment_id')?.trim();
+  const tokenParam = url.searchParams.get('token')?.trim();
   const sessionId = url.searchParams.get('session_id')?.trim();
+  const fallbackBookingId = url.searchParams.get('fallback_booking_id')?.trim();
 
-  if (!appointmentId || !token) {
+  if (!tokenParam) {
     return NextResponse.json({ ok: false, error: 'Missing parameters' }, { status: 400 });
   }
 
@@ -38,13 +44,54 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: 'Server unavailable' }, { status: 503 });
   }
 
+  let effectiveToken = tokenParam;
+  let accessTokenRefresh: string | undefined;
+
+  if (!appointmentId && fallbackBookingId && sessionId) {
+    const stripe = await getStripeSdk(admin);
+    if (!stripe) {
+      return NextResponse.json({ ok: false, error: 'Server unavailable' }, { status: 503 });
+    }
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status !== 'paid') {
+        return NextResponse.json({ ok: false, error: 'Complete payment before intake' }, { status: 400 });
+      }
+      if (
+        session.metadata?.fallback_booking_id !== fallbackBookingId ||
+        session.metadata?.access_token !== tokenParam
+      ) {
+        return NextResponse.json({ ok: false, error: 'Invalid payment session' }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ ok: false, error: 'Could not verify payment' }, { status: 400 });
+    }
+
+    const promoted = await promoteFallbackToAppointment(admin, fallbackBookingId, tokenParam);
+    if (!promoted) {
+      return NextResponse.json(
+        { ok: false, error: 'Could not finalize booking — contact Gloss Boss ATX.' },
+        { status: 500 },
+      );
+    }
+    appointmentId = promoted.id;
+    effectiveToken = promoted.access_token;
+    if (effectiveToken !== tokenParam) {
+      accessTokenRefresh = effectiveToken;
+    }
+  }
+
+  if (!appointmentId) {
+    return NextResponse.json({ ok: false, error: 'Missing parameters' }, { status: 400 });
+  }
+
   const { data: appt, error: apptErr } = await admin
     .from('appointments')
     .select('id, access_token, status, stripe_checkout_session_id')
     .eq('id', appointmentId)
     .maybeSingle();
 
-  if (apptErr || !appt || appt.access_token !== token) {
+  if (apptErr || !appt || appt.access_token !== effectiveToken) {
     return NextResponse.json({ ok: false, error: 'Invalid booking link' }, { status: 403 });
   }
 
@@ -67,7 +114,13 @@ export async function GET(req: Request) {
 
   const { data: existing } = await admin.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
   if (existing) {
-    return NextResponse.json({ ok: true, alreadySubmitted: true, referencePlain: null, fields: DEFAULT_FIELDS });
+    return NextResponse.json({
+      ok: true,
+      alreadySubmitted: true,
+      referencePlain: null,
+      fields: DEFAULT_FIELDS,
+      accessTokenRefresh,
+    });
   }
 
   let referencePlain: string | null = null;
@@ -104,5 +157,13 @@ export async function GET(req: Request) {
     /* use defaults */
   }
 
-  return NextResponse.json({ ok: true, referencePlain, cmsHtmlRejected, fields, alreadySubmitted: false });
+  return NextResponse.json({
+    ok: true,
+    referencePlain,
+    cmsHtmlRejected,
+    fields,
+    alreadySubmitted: false,
+    accessTokenRefresh,
+    resolvedAppointmentId: accessTokenRefresh ? appointmentId : undefined,
+  });
 }

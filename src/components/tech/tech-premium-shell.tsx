@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
-import { techClaimLeadAction } from '@/app/(dashboard)/tech/tech-lead-actions';
+import { techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
   id: string;
@@ -246,9 +246,52 @@ export function TechPremiumShell({
                 className='rounded-2xl border border-white/10 bg-zinc-950/90 p-4 text-sm text-zinc-300 shadow-[0_0_24px_rgba(212,166,77,0.06)]'
               >
                 <p className='font-bold text-white'>{l.name}</p>
-                <p className='text-[10px] uppercase tracking-wider text-zinc-500'>{l.status} · {l.contact_attempts} attempts</p>
+                <p className='text-[10px] uppercase tracking-wider text-zinc-500'>
+                  {l.status} · {l.contact_attempts} attempts
+                </p>
                 {l.phone ? <p className='mt-1 text-xs'>{l.phone}</p> : null}
                 {l.notes ? <p className='mt-2 line-clamp-2 text-xs text-zinc-500'>{l.notes}</p> : null}
+                <form className='mt-3' action={techUpdateLeadStatusAction}>
+                  <input type='hidden' name='leadId' value={l.id} />
+                  <label className='text-[10px] text-zinc-500'>
+                    Update status
+                    <select
+                      name='status'
+                      defaultValue={
+                        l.status === 'contacted' || l.status === 'quoted' || l.status === 'no_response' || l.status === 'lost'
+                          ? l.status
+                          : 'contacted'
+                      }
+                      className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                    >
+                      <option value='contacted'>Contacted</option>
+                      <option value='quoted'>Quoted</option>
+                      <option value='no_response'>No response</option>
+                      <option value='lost'>Lost</option>
+                    </select>
+                  </label>
+                  <button
+                    type='submit'
+                    className='mt-2 w-full rounded border border-gold/35 py-1.5 text-[10px] font-black uppercase text-gold-soft'
+                  >
+                    Save status
+                  </button>
+                </form>
+                <form className='mt-3' action={techUpdateLeadNotesAction}>
+                  <input type='hidden' name='leadId' value={l.id} />
+                  <label className='text-[10px] text-zinc-500'>
+                    Notes
+                    <textarea
+                      name='notes'
+                      rows={2}
+                      defaultValue={l.notes ?? ''}
+                      className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                    />
+                  </label>
+                  <button type='submit' className='mt-1 text-[10px] font-bold uppercase text-zinc-400 underline'>
+                    Save notes
+                  </button>
+                </form>
               </li>
             ))}
           </ul>
