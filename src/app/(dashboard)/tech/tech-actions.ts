@@ -135,7 +135,7 @@ export async function techAddJobMediaAction(formData: FormData) {
   const fileUrl = String(formData.get('fileUrl') ?? '').trim();
   if (!appointmentId || !fileUrl) return;
 
-  const allowed = new Set(['inspection', 'before', 'after', 'other']);
+  const allowed = new Set(['inspection', 'before', 'after', 'damage', 'other']);
   const cat = allowed.has(category) ? category : 'other';
 
   const gate = await requireTechSupabase();

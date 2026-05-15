@@ -7,7 +7,8 @@ import { isAdminLevel } from '@/lib/auth/roles';
 
 export async function updateServicePriceCentsAction(formData: FormData) {
   const priceId = String(formData.get('priceId') ?? '').trim();
-  const raw = Number(formData.get('priceDollars') ?? NaN);
+  const rawStr = String(formData.get('priceDollars') ?? '').trim();
+  const raw = rawStr === '' ? 0 : Number(rawStr);
   if (!priceId || !Number.isFinite(raw) || raw < 0) return;
 
   const session = await getSessionWithProfile();

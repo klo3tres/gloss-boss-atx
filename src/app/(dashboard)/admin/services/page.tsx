@@ -5,6 +5,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { updateServicePriceCentsAction } from '../service-pricing-actions';
 import { defaultServicePackages } from '@/lib/site-config';
 import { filterServicePriceRowsForAdminUi } from '@/lib/admin/filter-ui-price-rows';
+import { adminDisplayTitleForSlug, CERAMIC_COATING_SLUG } from '@/lib/admin/canonical-services';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,8 +81,10 @@ export default async function AdminServicesPricingPage() {
       <div className='space-y-4'>
         {list.map((row) => {
           const svc = Array.isArray(row.services) ? row.services[0] : row.services;
-          const title = svc?.title ?? 'Service';
-          const slug = svc?.slug ?? '';
+          const slug = typeof svc?.slug === 'string' ? svc.slug : '';
+          const title = adminDisplayTitleForSlug(slug);
+          const isCeramic = slug === CERAMIC_COATING_SLUG;
+          const showQuote = isCeramic && row.price_cents <= 0;
           return (
             <article key={row.id} className='rounded-2xl border border-gold/20 bg-zinc-950 p-4 sm:p-5'>
               <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
@@ -89,17 +92,19 @@ export default async function AdminServicesPricingPage() {
                   <p className='text-xs uppercase tracking-widest text-gold-soft'>{slug}</p>
                   <p className='text-lg font-bold text-white'>{title}</p>
                   <p className='text-sm text-zinc-400'>{row.vehicle_class === 'suv_truck' ? 'SUV / Truck' : 'Sedan'}</p>
+                  {showQuote ? <p className='text-xs font-semibold text-amber-200/90'>Public price: Quote — set a custom amount below to publish a starting price.</p> : null}
                 </div>
                 <form action={updateServicePriceCentsAction} className='flex flex-wrap items-end gap-2'>
                   <input type='hidden' name='priceId' value={row.id} />
                   <label className='text-xs text-zinc-400'>
-                    Price (USD)
+                    Price (USD){showQuote ? ' (optional)' : ''}
                     <input
                       name='priceDollars'
                       type='number'
                       step='0.01'
                       min={0}
-                      defaultValue={(row.price_cents / 100).toFixed(2)}
+                      defaultValue={row.price_cents > 0 ? (row.price_cents / 100).toFixed(2) : ''}
+                      placeholder={showQuote ? 'Quote' : ''}
                       className='mt-1 block w-32 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
                     />
                   </label>

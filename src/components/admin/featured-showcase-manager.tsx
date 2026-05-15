@@ -30,13 +30,7 @@ function parseSlides(json: string): Slide[] {
   }
 }
 
-export function FeaturedShowcaseManager({
-  initialJson,
-  saveAction,
-}: {
-  initialJson: string;
-  saveAction: (formData: FormData) => Promise<void>;
-}) {
+export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [slides, setSlides] = useState<Slide[]>(() => parseSlides(initialJson));
@@ -99,14 +93,24 @@ export function FeaturedShowcaseManager({
 
   const save = async () => {
     setBusy(true);
-    const fd = new FormData();
-    fd.set('json', json);
+    setMsg(null);
     try {
-      await saveAction(fd);
+      const res = await fetchWithTimeout('/api/admin/featured-showcase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json }),
+        credentials: 'same-origin',
+        timeoutMs: 60000,
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setMsg(data.error ?? 'Save failed.');
+        return;
+      }
       setMsg('Featured showcase saved.');
       router.refresh();
     } catch {
-      setMsg('Save failed.');
+      setMsg('Network error.');
     } finally {
       setBusy(false);
     }

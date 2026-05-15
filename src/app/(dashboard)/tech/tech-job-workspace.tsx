@@ -60,6 +60,7 @@ export function TechJobWorkspace({ job }: { job: Job }) {
           <select name='category' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
             <option value='before'>Before</option>
             <option value='inspection'>During / inspection</option>
+            <option value='damage'>Damage / concern</option>
             <option value='after'>After</option>
             <option value='other'>Other</option>
           </select>

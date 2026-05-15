@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { addGalleryImageAction, saveFeaturedShowcaseAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { addGalleryImageAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
 import { saveBookingAvailabilityAction } from '@/lib/admin/booking-availability-actions';
 import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { DEFAULT_BOOKING_AVAILABILITY } from '@/lib/booking-availability';
@@ -323,7 +323,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         <p className='mt-2 text-sm text-zinc-400'>
           Controls the Before/After preview on the homepage. Use JSON: <code className='text-gold-soft'>{`{ "slides": [ { "id": "1", "label": "…", "image": "https://…" } ] }`}</code>
         </p>
-        <FeaturedShowcaseManager initialJson={featuredJson} saveAction={saveFeaturedShowcaseAction} />
+        <FeaturedShowcaseManager initialJson={featuredJson} />
       </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

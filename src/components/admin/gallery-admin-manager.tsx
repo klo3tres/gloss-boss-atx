@@ -2,12 +2,8 @@
 
 import Image from 'next/image';
 import { useCallback, useState } from 'react';
-import {
-  deleteGalleryImageAction,
-  reorderGalleryBulkAction,
-  toggleGalleryFeaturedAction,
-  toggleGalleryPublishedAction,
-} from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { useRouter } from 'next/navigation';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safeImageUrl } from '@/lib/gallery-normalize';
 
 export type GalleryAdminItem = {
@@ -19,10 +15,27 @@ export type GalleryAdminItem = {
   featured: boolean;
 };
 
+async function galleryMutate(body: object): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetchWithTimeout('/api/admin/gallery/mutate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+    timeoutMs: 60000,
+  });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  if (!res.ok || !data.ok) {
+    return { ok: false, error: data.error ?? `Request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
 export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
+  const router = useRouter();
   const [items, setItems] = useState(rows);
   const [dragId, setDragId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const onDragOver = (e: React.DragEvent, overId: string) => {
@@ -42,17 +55,57 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
   const saveOrder = useCallback(async () => {
     setSaving(true);
     setMsg(null);
-    const fd = new FormData();
-    fd.set('order', items.map((x) => x.id).join(','));
-    try {
-      await reorderGalleryBulkAction(fd);
+    const r = await galleryMutate({ op: 'reorder', order: items.map((x) => x.id) });
+    if (r.ok) {
       setMsg('Order saved.');
-    } catch {
-      setMsg('Could not save order.');
-    } finally {
-      setSaving(false);
+      router.refresh();
+    } else {
+      setMsg(r.error ?? 'Could not save order.');
     }
-  }, [items]);
+    setSaving(false);
+  }, [items, router]);
+
+  const togglePublished = async (row: GalleryAdminItem) => {
+    setBusyId(row.id);
+    setMsg(null);
+    const next = !row.published;
+    const r = await galleryMutate({ op: 'toggle-published', id: row.id, published: next });
+    if (r.ok) {
+      setItems((prev) => prev.map((x) => (x.id === row.id ? { ...x, published: next } : x)));
+      router.refresh();
+    } else {
+      setMsg(r.error ?? 'Publish toggle failed.');
+    }
+    setBusyId(null);
+  };
+
+  const toggleFeatured = async (row: GalleryAdminItem) => {
+    setBusyId(row.id);
+    setMsg(null);
+    const next = !row.featured;
+    const r = await galleryMutate({ op: 'toggle-featured', id: row.id, featured: next });
+    if (r.ok) {
+      setItems((prev) => prev.map((x) => (x.id === row.id ? { ...x, featured: next } : x)));
+      router.refresh();
+    } else {
+      setMsg(r.error ?? 'Feature toggle failed.');
+    }
+    setBusyId(null);
+  };
+
+  const remove = async (row: GalleryAdminItem) => {
+    if (!confirm('Remove this gallery image from the CMS?')) return;
+    setBusyId(row.id);
+    setMsg(null);
+    const r = await galleryMutate({ op: 'delete', id: row.id });
+    if (r.ok) {
+      setItems((prev) => prev.filter((x) => x.id !== row.id));
+      router.refresh();
+    } else {
+      setMsg(r.error ?? 'Delete failed.');
+    }
+    setBusyId(null);
+  };
 
   if (items.length === 0) {
     return <p className='text-sm text-zinc-500'>No gallery images yet. Upload above or paste a URL.</p>;
@@ -64,6 +117,7 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
       <ul className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
         {items.map((row, idx) => {
           const src = safeImageUrl({ url: row.url, image_url: row.url });
+          const pending = busyId === row.id;
           return (
             <li
               key={row.id}
@@ -91,26 +145,30 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
                   ) : null}
                 </div>
                 <div className='flex flex-wrap gap-1'>
-                  <form action={toggleGalleryPublishedAction}>
-                    <input type='hidden' name='id' value={row.id} />
-                    <input type='hidden' name='published' value={row.published ? 'false' : 'true'} />
-                    <button type='submit' className='rounded border border-gold/40 px-2 py-1 text-[10px] font-bold uppercase text-gold-soft'>
-                      {row.published ? 'Unpublish' : 'Publish'}
-                    </button>
-                  </form>
-                  <form action={toggleGalleryFeaturedAction}>
-                    <input type='hidden' name='id' value={row.id} />
-                    <input type='hidden' name='featured' value={row.featured ? 'false' : 'true'} />
-                    <button type='submit' className='rounded border border-white/20 px-2 py-1 text-[10px] font-bold uppercase text-zinc-200'>
-                      {row.featured ? 'Unfeature' : 'Feature'}
-                    </button>
-                  </form>
-                  <form action={deleteGalleryImageAction}>
-                    <input type='hidden' name='id' value={row.id} />
-                    <button type='submit' className='rounded border border-red-500/40 px-2 py-1 text-[10px] font-bold uppercase text-red-300'>
-                      Delete
-                    </button>
-                  </form>
+                  <button
+                    type='button'
+                    disabled={pending}
+                    onClick={() => void togglePublished(row)}
+                    className='rounded border border-gold/40 px-2 py-1 text-[10px] font-bold uppercase text-gold-soft disabled:opacity-40'
+                  >
+                    {row.published ? 'Unpublish' : 'Publish'}
+                  </button>
+                  <button
+                    type='button'
+                    disabled={pending}
+                    onClick={() => void toggleFeatured(row)}
+                    className='rounded border border-white/20 px-2 py-1 text-[10px] font-bold uppercase text-zinc-200 disabled:opacity-40'
+                  >
+                    {row.featured ? 'Unfeature' : 'Feature'}
+                  </button>
+                  <button
+                    type='button'
+                    disabled={pending}
+                    onClick={() => void remove(row)}
+                    className='rounded border border-red-500/40 px-2 py-1 text-[10px] font-bold uppercase text-red-300 disabled:opacity-40'
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             </li>
