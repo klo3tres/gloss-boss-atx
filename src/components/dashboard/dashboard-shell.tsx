@@ -1,0 +1,177 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { Menu, X } from 'lucide-react';
+import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
+import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
+
+export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
+export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
+
+export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'customer';
+
+const adminLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/admin', label: 'Overview' },
+  { href: '/admin/customers', label: 'Customers' },
+  { href: '/admin/team', label: 'Team' },
+  { href: '/admin/messages', label: 'Message center' },
+  { href: '/admin/services', label: 'Services & pricing' },
+  { href: '/admin/pricing', label: 'Deals & promos' },
+  { href: '/admin/cms', label: 'Website CMS' },
+  { href: '/admin/settings/stripe', label: 'Stripe' },
+  { href: '/admin/system-status', label: 'System status' },
+];
+
+const superLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/admin/super', label: 'Command center' },
+  { href: '/admin', label: 'Operations (admin)' },
+  { href: '/admin/customers', label: 'Customers' },
+  { href: '/admin/team', label: 'Team' },
+  { href: '/admin/messages', label: 'Message center' },
+  { href: '/admin/services', label: 'Services & pricing' },
+  { href: '/admin/pricing', label: 'Deals & promos' },
+  { href: '/admin/cms', label: 'Website & gallery CMS' },
+  { href: '/admin/settings/stripe', label: 'Stripe & billing' },
+  { href: '/admin/system-status', label: 'System status' },
+];
+
+const techLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/tech', label: 'My jobs' },
+  { href: '/book', label: 'Public booking' },
+];
+
+const customerLinks = [
+  { href: '/', label: 'Home' },
+  { href: '/dashboard', label: 'Overview' },
+  { href: '/book', label: 'Book again' },
+  { href: '/gift-cards', label: 'Gift cards' },
+  { href: '/services', label: 'Services' },
+];
+
+export function DashboardShell({
+  title,
+  subtitle,
+  role,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  role: DashboardShellRole;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const [navOpen, setNavOpen] = useState(false);
+  const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
+
+  useEffect(() => {
+    const read = () => {
+      if (role !== 'super_admin') {
+        setSimNav(null);
+        return;
+      }
+      try {
+        const raw = sessionStorage.getItem(GB_NAV_SIM_KEY)?.trim();
+        const allowed: DashboardShellRole[] = ['super_admin', 'admin', 'technician', 'customer'];
+        if (raw && (allowed as string[]).includes(raw)) setSimNav(raw as DashboardShellRole);
+        else setSimNav(null);
+      } catch {
+        setSimNav(null);
+      }
+    };
+    read();
+    window.addEventListener(GB_NAV_SIM_EVENT, read);
+    return () => window.removeEventListener(GB_NAV_SIM_EVENT, read);
+  }, [role]);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
+  const navRole: DashboardShellRole = role === 'super_admin' && simNav ? simNav : role;
+
+  const links =
+    navRole === 'super_admin'
+      ? superLinks
+      : navRole === 'admin'
+        ? adminLinks
+        : navRole === 'technician'
+          ? techLinks
+          : customerLinks;
+
+  const panelLabel: Record<DashboardShellRole, string> = {
+    super_admin: 'Super admin',
+    admin: 'Admin',
+    technician: 'Technician',
+    customer: 'Customer',
+  };
+
+  const panelTitle =
+    role === 'super_admin' && simNav && simNav !== 'super_admin'
+      ? `${panelLabel[simNav]} view (simulated)`
+      : `${panelLabel[role]} panel`;
+
+  const NavLinks = (
+    <nav className='mt-6 space-y-2'>
+      {links.map((link) => (
+        <Link
+          key={link.href}
+          href={link.href}
+          className={`block rounded-lg border px-3 py-2 text-sm transition ${
+            pathname === link.href || pathname.startsWith(`${link.href}/`)
+              ? 'border-gold/50 bg-gold/10 text-gold-soft'
+              : 'border-transparent text-zinc-300 hover:border-gold/30 hover:bg-black/40 hover:text-gold-soft'
+          }`}
+        >
+          {link.label}
+        </Link>
+      ))}
+    </nav>
+  );
+
+  return (
+    <main className='min-h-screen bg-background text-foreground'>
+      <div className='mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
+        <div className='flex items-center justify-between lg:hidden'>
+          <p className='text-xs font-bold uppercase tracking-widest text-gold-soft'>Menu</p>
+          <button
+            type='button'
+            onClick={() => setNavOpen((v) => !v)}
+            className='rounded-lg border border-gold/30 p-2 text-gold-soft'
+            aria-expanded={navOpen}
+            aria-label='Toggle navigation'
+          >
+            {navOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+
+        {navOpen ? (
+          <div className='fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden' onClick={() => setNavOpen(false)} aria-hidden />
+        ) : null}
+
+        <aside
+          className={`order-2 z-50 rounded-2xl border border-gold/20 bg-zinc-950 p-5 lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
+            navOpen ? 'fixed left-4 right-4 top-20 max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:max-h-none' : 'hidden lg:block'
+          }`}
+        >
+          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+          <h2 className='mt-3 text-lg font-black uppercase'>{panelTitle}</h2>
+          {NavLinks}
+        </aside>
+
+        <section className='order-1 min-w-0 flex-1 space-y-6 lg:order-2'>
+          <header className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+            <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
+            <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
+          </header>
+          <SafeRenderBoundary label='Dashboard content'>{children}</SafeRenderBoundary>
+          <DashboardAuthDebugFooter />
+        </section>
+      </div>
+    </main>
+  );
+}

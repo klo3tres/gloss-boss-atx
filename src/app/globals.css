@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --gb-bg: #000000;
+  --gb-fg: #ffffff;
+  --gb-gold: #d4af37;
+  --gb-gold-soft: #f1d28a;
+}
+
+html,
+body {
+  background: var(--gb-bg, #000000);
+  color: var(--gb-fg, #ffffff);
+  scroll-behavior: smooth;
+}
+
+.hero-gradient {
+  background: radial-gradient(circle at 20% 20%, rgba(212, 166, 77, 0.35), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(212, 166, 77, 0.18), transparent 45%),
+    #000000;
+}
+
+* {
+  border-color: rgba(255, 255, 255, 0.08);
+}

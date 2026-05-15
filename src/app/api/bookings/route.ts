@@ -1,0 +1,197 @@
+import { NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+
+async function resolveServicePriceCents(admin: SupabaseClient, serviceId: string, vehicleClass: string): Promise<number | null> {
+  const { data: direct } = await admin
+    .from('service_prices')
+    .select('price_cents')
+    .eq('service_id', serviceId)
+    .eq('vehicle_class', vehicleClass)
+    .maybeSingle();
+  if (direct?.price_cents != null) return direct.price_cents;
+  if (vehicleClass === 'suv' || vehicleClass === 'truck') {
+    const { data: legacy } = await admin
+      .from('service_prices')
+      .select('price_cents')
+      .eq('service_id', serviceId)
+      .eq('vehicle_class', 'suv_truck')
+      .maybeSingle();
+    if (legacy?.price_cents != null) return legacy.price_cents;
+  }
+  return null;
+}
+
+type VehicleLine = { serviceSlug: string; vehicleClass: string; vehicleDescription: string };
+
+type Body = {
+  serviceSlug?: string;
+  vehicleClass?: string;
+  vehicles?: VehicleLine[];
+  addOns?: string[];
+  scheduledStart: string;
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  vehicleDescription?: string;
+  notes?: string;
+};
+
+const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as Body;
+    const { scheduledStart, guestName, guestEmail, guestPhone, notes } = body;
+    const addOns = Array.isArray(body.addOns)
+      ? body.addOns
+          .map((a) => String(a ?? '').trim())
+          .filter(Boolean)
+          .slice(0, 12)
+          .map((s) => s.slice(0, 120))
+      : [];
+
+    let lines: VehicleLine[] = [];
+    if (Array.isArray(body.vehicles) && body.vehicles.length > 0) {
+      lines = body.vehicles.slice(0, 3).map((v) => ({
+        serviceSlug: String(v.serviceSlug ?? '').trim(),
+        vehicleClass: String(v.vehicleClass ?? '').trim(),
+        vehicleDescription: String(v.vehicleDescription ?? '').trim(),
+      }));
+    } else if (body.serviceSlug && body.vehicleClass && body.vehicleDescription) {
+      lines = [
+        {
+          serviceSlug: body.serviceSlug.trim(),
+          vehicleClass: body.vehicleClass.trim(),
+          vehicleDescription: body.vehicleDescription.trim(),
+        },
+      ];
+    }
+
+    if (
+      lines.length === 0 ||
+      !scheduledStart ||
+      !guestName ||
+      !guestEmail ||
+      !guestPhone ||
+      lines.some((l) => !l.serviceSlug || !l.vehicleClass || !l.vehicleDescription || !ALLOWED_CLASS.has(l.vehicleClass))
+    ) {
+      return NextResponse.json({ error: 'Missing required fields or invalid vehicle class' }, { status: 400 });
+    }
+
+    const admin = tryCreateAdminSupabase();
+    if (!admin) {
+      return NextResponse.json(
+        {
+          error: 'Database not configured',
+          code: 'MISSING_SUPABASE_SERVICE_ROLE',
+          hint: 'Add SUPABASE_SERVICE_ROLE_KEY and public Supabase URL/keys to .env.local',
+        },
+        { status: 503 },
+      );
+    }
+
+    let totalBaseCents = 0;
+    const resolved: { serviceSlug: string; vehicleClass: string; vehicleDescription: string; priceCents: number }[] = [];
+
+    for (const line of lines) {
+      const { data: service, error: svcErr } = await admin
+        .from('services')
+        .select('id, slug')
+        .eq('slug', line.serviceSlug)
+        .eq('active', true)
+        .maybeSingle();
+
+      if (svcErr || !service) {
+        return NextResponse.json({ error: `Invalid service: ${line.serviceSlug}` }, { status: 400 });
+      }
+
+      const priceCents = await resolveServicePriceCents(admin, service.id, line.vehicleClass);
+      if (priceCents == null) {
+        return NextResponse.json(
+          { error: `Pricing not available for ${line.serviceSlug} / ${line.vehicleClass}.` },
+          { status: 400 },
+        );
+      }
+
+      totalBaseCents += priceCents;
+      resolved.push({
+        serviceSlug: line.serviceSlug,
+        vehicleClass: line.vehicleClass,
+        vehicleDescription: line.vehicleDescription,
+        priceCents,
+      });
+    }
+
+    const primary = resolved[0]!;
+    const depositPercent = 30;
+    const depositAmountCents = Math.round((totalBaseCents * depositPercent) / 100);
+
+    const scheduled = new Date(scheduledStart);
+    if (Number.isNaN(scheduled.getTime())) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
+    const emailNorm = guestEmail.trim().toLowerCase();
+    let customerId: string | null = null;
+    const { data: existingCustomer } = await admin.from('customers').select('id').eq('email', emailNorm).maybeSingle();
+
+    if (existingCustomer) {
+      customerId = existingCustomer.id;
+      await admin.from('customers').update({ phone: guestPhone, full_name: guestName }).eq('id', customerId);
+    } else {
+      const { data: newCustomer, error: custErr } = await admin
+        .from('customers')
+        .insert({ email: emailNorm, phone: guestPhone, full_name: guestName })
+        .select('id')
+        .single();
+      if (custErr || !newCustomer) {
+        return NextResponse.json({ error: 'Could not create customer record' }, { status: 500 });
+      }
+      customerId = newCustomer.id;
+    }
+
+    const vehicleDescriptionJoined = resolved.map((r) => r.vehicleDescription).join(' · ');
+    const bookingVehicles = resolved.map((r) => ({
+      service_slug: r.serviceSlug,
+      vehicle_class: r.vehicleClass,
+      vehicle_description: r.vehicleDescription,
+      price_cents: r.priceCents,
+    }));
+
+    const { data: appointment, error: apptErr } = await admin
+      .from('appointments')
+      .insert({
+        guest_email: emailNorm,
+        guest_phone: guestPhone,
+        guest_name: guestName,
+        customer_id: customerId,
+        vehicle_description: vehicleDescriptionJoined,
+        service_slug: primary.serviceSlug,
+        vehicle_class: primary.vehicleClass,
+        base_price_cents: totalBaseCents,
+        deposit_percent: depositPercent,
+        deposit_amount_cents: depositAmountCents,
+        scheduled_start: scheduled.toISOString(),
+        notes: notes ?? null,
+        status: 'awaiting_payment',
+        booking_vehicles: bookingVehicles,
+        booking_add_ons: addOns,
+      })
+      .select('id, access_token')
+      .single();
+
+    if (apptErr || !appointment) {
+      return NextResponse.json({ error: 'Could not create booking' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      appointmentId: appointment.id,
+      accessToken: appointment.access_token,
+      depositAmountCents: depositAmountCents,
+    });
+  } catch (e) {
+    console.error('[api/bookings] unexpected', e);
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+}

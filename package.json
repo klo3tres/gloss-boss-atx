@@ -1,0 +1,42 @@
+{
+  "name": "gloss-boss-atx",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "clean": "node scripts/clean-build-artifacts.cjs",
+    "cache:clean": "node scripts/clean-build-artifacts.cjs",
+    "deep:clean": "npm run clean",
+    "free:port": "node scripts/free-default-port.cjs",
+    "predev": "node scripts/free-default-port.cjs",
+    "dev": "next dev -p 3000",
+    "dev:clean": "npm run clean && npm run dev",
+    "dev:fresh": "npm run clean && npm install && npm run dev",
+    "prestart": "node scripts/free-default-port.cjs",
+    "build": "next build",
+    "build:clean": "npm run clean && next build",
+    "postbuild": "node scripts/flatten-server-chunks.cjs && node scripts/publish-css-fallback.cjs",
+    "fix:chunks": "node scripts/flatten-server-chunks.cjs",
+    "css:fallback": "node scripts/publish-css-fallback.cjs",
+    "start": "next start -p 3000"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.14.0",
+    "next": "^15.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stripe": "^17.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3"
+  }
+}

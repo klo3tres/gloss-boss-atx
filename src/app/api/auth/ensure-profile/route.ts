@@ -1,0 +1,121 @@
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { OWNER_LOGIN_EMAIL } from '@/lib/auth/role-resolution';
+import { getPublicSupabaseEnv } from '@/lib/supabase/env';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+
+/**
+ * Service-role profile sync (browser calls after login/signup):
+ * - Missing row → insert (owner → super_admin, everyone else → customer).
+ * - Existing row → only promotes owner to super_admin when needed; never demotes staff or overwrites other roles.
+ */
+export async function POST() {
+  const env = getPublicSupabaseEnv();
+  if (!env) {
+    return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(env.url, env.anonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          /* ignore read-only cookie context */
+        }
+      },
+    },
+  });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr || !user?.id || !user.email) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Service role not configured', hint: 'Add SUPABASE_SERVICE_ROLE_KEY to .env.local' },
+      { status: 503 },
+    );
+  }
+
+  const emailNorm = user.email.trim().toLowerCase();
+  const isOwner = emailNorm === OWNER_LOGIN_EMAIL;
+  const metaName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : '';
+  const fullName = metaName || (isOwner ? 'Gloss Boss Owner' : null);
+  const now = new Date().toISOString();
+
+  const { data: existing, error: readErr } = await admin.from('profiles').select('id, role').eq('id', user.id).maybeSingle();
+
+  if (readErr) {
+    console.error('[ensure-profile] read', readErr);
+    return NextResponse.json({ error: readErr.message }, { status: 500 });
+  }
+
+  if (!existing) {
+    const role = isOwner ? 'super_admin' : 'customer';
+    const insertAttempts: Record<string, unknown>[] = [
+      { id: user.id, full_name: fullName, role, email: emailNorm, updated_at: now },
+      { id: user.id, full_name: fullName, role, email: emailNorm },
+      { id: user.id, full_name: fullName, role, updated_at: now },
+      { id: user.id, full_name: fullName, role },
+      { id: user.id, role, updated_at: now },
+      { id: user.id, role },
+    ];
+    let insErr = null as { message: string } | null;
+    for (const row of insertAttempts) {
+      const r = await admin.from('profiles').insert(row);
+      if (!r.error) {
+        insErr = null;
+        break;
+      }
+      insErr = r.error;
+      const msg = String(r.error.message ?? '');
+      if (!/column .* does not exist|schema cache|full_name|updated_at|email|Could not find/i.test(msg)) break;
+    }
+    if (insErr) {
+      console.error('[ensure-profile] insert', insErr);
+      return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, created: true });
+  }
+
+  if (isOwner && String(existing.role) !== 'super_admin') {
+    const updateAttempts: Record<string, unknown>[] = [
+      { role: 'super_admin', updated_at: now, email: emailNorm },
+      { role: 'super_admin', email: emailNorm },
+      { role: 'super_admin', updated_at: now },
+      { role: 'super_admin' },
+    ];
+    let upErr = null as { message: string } | null;
+    for (const patch of updateAttempts) {
+      const u = await admin.from('profiles').update(patch).eq('id', user.id);
+      if (!u.error) {
+        upErr = null;
+        break;
+      }
+      upErr = u.error;
+      const msg = String(u.error.message ?? '');
+      if (!/column .* does not exist|schema cache|updated_at|email|Could not find/i.test(msg)) break;
+    }
+    if (upErr) {
+      console.error('[ensure-profile] owner promote', upErr);
+      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, promoted: true });
+  }
+
+  return NextResponse.json({ ok: true, noop: true });
+}
