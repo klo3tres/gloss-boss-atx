@@ -39,6 +39,22 @@ export async function deleteGalleryImageAction(formData: FormData) {
   revalidatePath('/book');
 }
 
+export async function toggleGalleryPublishedAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const published = formData.get('published') === 'true';
+  if (!id) return;
+  const gate = await requireAdminSupabase();
+  if (!gate.ok) return;
+  try {
+    await gate.supabase.from('gallery_images').update({ published, active: published }).eq('id', id);
+  } catch {
+    await gate.supabase.from('gallery_images').update({ published }).eq('id', id);
+  }
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  revalidatePath('/gallery');
+}
+
 export async function reorderGalleryImageAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
   const direction = String(formData.get('direction') ?? '').trim();

@@ -69,12 +69,15 @@ export function mergeServicesWithPricesStable(
 
   const dedup = new Map<string, FallbackPriceRow>();
 
+  const hasLiveCatalog = dbServices.length > 0;
+
   for (const s of dbServices) {
     for (const cls of STABLE_VEHICLE_CLASSES) {
       const fromDb = pickDbPriceCents(dbPrices, s.id, cls);
-      const fromDef = fromDb ?? centsForSlugVehicleFromDefaults(s.slug, cls);
-      if (fromDef == null || Number.isNaN(fromDef) || fromDef <= 0) continue;
-      const row: FallbackPriceRow = { service_id: s.id, vehicle_class: cls, price_cents: Math.round(fromDef) };
+      const fromDef = hasLiveCatalog ? undefined : centsForSlugVehicleFromDefaults(s.slug, cls);
+      const merged = fromDb ?? fromDef;
+      if (merged == null || Number.isNaN(merged) || merged <= 0) continue;
+      const row: FallbackPriceRow = { service_id: s.id, vehicle_class: cls, price_cents: Math.round(merged) };
       dedup.set(`${row.service_id}|${row.vehicle_class}`, row);
     }
   }

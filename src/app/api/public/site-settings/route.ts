@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_BOOKING_AVAILABILITY, parseBookingAvailabilityRules } from '@/lib/booking-availability';
+import { DEFAULT_BOOKING_AVAILABILITY } from '@/lib/booking-availability';
+import { parseBookingAvailabilityConfig, type BookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -11,7 +12,7 @@ export async function GET() {
     if (!client) {
       return NextResponse.json({
         navbarLogo: null as string | null,
-        bookingAvailability: DEFAULT_BOOKING_AVAILABILITY,
+        bookingAvailability: { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] },
       });
     }
     const { data: rows, error } = await client.from('site_settings').select('key, value').in('key', ['navbar_logo', 'booking_availability']);
@@ -19,20 +20,20 @@ export async function GET() {
       console.warn('[site_settings]', error.message);
       return NextResponse.json({
         navbarLogo: null as string | null,
-        bookingAvailability: DEFAULT_BOOKING_AVAILABILITY,
+        bookingAvailability: { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] },
       });
     }
     let navbarLogo: string | null = null;
-    let bookingAvailability = DEFAULT_BOOKING_AVAILABILITY;
+    let bookingAvailability: BookingAvailabilityConfig = { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] };
     for (const row of rows ?? []) {
       const key = typeof row?.key === 'string' ? row.key : '';
       const val = typeof row?.value === 'string' ? row.value.trim() : '';
       if (key === 'navbar_logo' && val) navbarLogo = val;
       if (key === 'booking_availability' && val) {
         try {
-          bookingAvailability = parseBookingAvailabilityRules(JSON.parse(val));
+          bookingAvailability = parseBookingAvailabilityConfig(JSON.parse(val));
         } catch {
-          bookingAvailability = DEFAULT_BOOKING_AVAILABILITY;
+          bookingAvailability = { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] };
         }
       }
     }
@@ -44,7 +45,7 @@ export async function GET() {
     console.warn('[site_settings]', e);
     return NextResponse.json({
       navbarLogo: null as string | null,
-      bookingAvailability: DEFAULT_BOOKING_AVAILABILITY,
+      bookingAvailability: { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] },
     });
   }
 }

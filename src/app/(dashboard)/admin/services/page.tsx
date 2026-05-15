@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { updateServicePriceCentsAction } from '../service-pricing-actions';
 import { defaultServicePackages } from '@/lib/site-config';
+import { filterServicePriceRowsForAdminUi } from '@/lib/admin/filter-ui-price-rows';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export default async function AdminServicesPricingPage() {
     .select('id, vehicle_class, price_cents, services ( title, slug )')
     .order('vehicle_class', { ascending: true });
 
-  const list = (rows ?? []) as PriceRow[];
+  const list = filterServicePriceRowsForAdminUi((rows ?? []) as PriceRow[]);
 
   return (
     <DashboardShell

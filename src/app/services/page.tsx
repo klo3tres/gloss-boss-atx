@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { defaultDealConfig, defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
+import { defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
 import { defaultMarketingOffers, type PublicSiteDataPayload, type SiteDataMultiCar, type SiteDataOfferCard } from "@/lib/public-site-data";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
@@ -26,8 +26,8 @@ export default function ServicesPage() {
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  const packages = services.length > 0 ? services : defaultServicePackages;
-  const displayDeals = loaded ? deals : defaultDealConfig;
+  const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
+  const displayDeals = loaded ? deals : emptyDeals;
   const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
   const showCatalogFallbackNote = loaded && services.length === 0;
 
@@ -80,9 +80,8 @@ export default function ServicesPage() {
   }, [offers, loaded]);
 
   const showPromosBand =
-    (displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) ||
-    activeOfferCards.length > 0 ||
-    !loaded;
+    loaded &&
+    ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || activeOfferCards.length > 0);
 
   return (
     <main className="min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
@@ -164,7 +163,13 @@ export default function ServicesPage() {
           {multiCarLine ? <p className="mt-2 text-sm text-zinc-400">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
         </section>
 
-        {!loaded ? <p className="mt-4 text-xs text-zinc-500">Loading latest packages…</p> : null}
+        {!loaded ? (
+          <div className="mt-6 space-y-4" aria-busy="true">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-36 animate-pulse rounded-2xl border border-white/10 bg-zinc-900/80" />
+            ))}
+          </div>
+        ) : null}
 
         {showCatalogFallbackNote ? (
           <p className="mt-3 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
@@ -172,6 +177,7 @@ export default function ServicesPage() {
           </p>
         ) : null}
 
+        {loaded ? (
         <div className="mt-6 space-y-4">
           {packages.map((service) => (
                 <article
@@ -194,6 +200,7 @@ export default function ServicesPage() {
                 </article>
               ))}
         </div>
+        ) : null}
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/book" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">

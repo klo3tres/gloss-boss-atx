@@ -6,6 +6,8 @@ export type BookingAvailabilityRules = {
   allowSunday: boolean;
   /** When true, Mon–Thu and Fri before cutoff are also allowed (admin override). */
   allowAllOtherDays: boolean;
+  /** ISO date strings YYYY-MM-DD — blocked all day */
+  blackoutDates?: string[];
 };
 
 export const DEFAULT_BOOKING_AVAILABILITY: BookingAvailabilityRules = {
@@ -44,8 +46,19 @@ function isFridayAfterCutoff(date: Date, rules: BookingAvailabilityRules): boole
 }
 
 /** Returns whether the chosen local datetime is within allowed booking windows. */
+function dateKeyLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function isBookingSlotAllowed(date: Date, rules: BookingAvailabilityRules = DEFAULT_BOOKING_AVAILABILITY): boolean {
   if (Number.isNaN(date.getTime())) return false;
+
+  const blackouts = rules.blackoutDates ?? [];
+  if (blackouts.includes(dateKeyLocal(date))) return false;
+
   if (rules.allowAllOtherDays) return true;
 
   const day = date.getDay();

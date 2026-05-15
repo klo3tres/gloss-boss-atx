@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { submitCreateStaffForm } from '@/lib/admin/staff-create-actions';
@@ -79,6 +80,23 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
       staff = (full.data ?? [])
         .map((r) => mapProfileRow(r as Record<string, unknown>))
         .filter((x): x is ProfileRow => x != null);
+    }
+
+    if (staff.length <= 1 && isAdminLevel(session.profile?.role ?? null)) {
+      const adminClient = tryCreateAdminSupabase();
+      if (adminClient) {
+        const svc = await adminClient
+          .from('profiles')
+          .select('*')
+          .in('role', ['super_admin', 'admin', 'technician'])
+          .order('role', { ascending: true })
+          .limit(200);
+        if (!svc.error && (svc.data?.length ?? 0) > staff.length) {
+          staff = (svc.data ?? [])
+            .map((r) => mapProfileRow(r as Record<string, unknown>))
+            .filter((x): x is ProfileRow => x != null);
+        }
+      }
     }
   }
 

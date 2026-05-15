@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isBookingSlotAllowed, parseBookingAvailabilityRules } from '@/lib/booking-availability';
+import { isBookingSlotAllowed } from '@/lib/booking-availability';
+import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -8,14 +9,14 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 async function loadBookingAvailabilityRules(admin: SupabaseClient) {
   try {
     const { data } = await admin.from('site_settings').select('value').eq('key', 'booking_availability').maybeSingle();
-    if (!data?.value) return parseBookingAvailabilityRules(null);
+    if (!data?.value) return parseBookingAvailabilityConfig(null);
     try {
-      return parseBookingAvailabilityRules(JSON.parse(String(data.value)));
+      return parseBookingAvailabilityConfig(JSON.parse(String(data.value)));
     } catch {
-      return parseBookingAvailabilityRules(null);
+      return parseBookingAvailabilityConfig(null);
     }
   } catch {
-    return parseBookingAvailabilityRules(null);
+    return parseBookingAvailabilityConfig(null);
   }
 }
 
@@ -48,7 +49,7 @@ type Body = {
   notes?: string;
 };
 
-const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
+const ALLOWED_CLASS = new Set(['sedan', 'suv_truck']);
 
 export async function POST(request: Request) {
   try {
@@ -85,7 +86,13 @@ export async function POST(request: Request) {
       !guestName ||
       !guestEmail ||
       !guestPhone ||
-      lines.some((l) => !l.serviceSlug || !l.vehicleClass || !l.vehicleDescription || !ALLOWED_CLASS.has(l.vehicleClass))
+      lines.some(
+        (l) =>
+          !l.serviceSlug ||
+          !l.vehicleClass ||
+          !l.vehicleDescription ||
+          !ALLOWED_CLASS.has(normalizeVehicleClass(l.vehicleClass)),
+      )
     ) {
       return NextResponse.json({ error: 'Missing required fields or invalid vehicle class' }, { status: 400 });
     }

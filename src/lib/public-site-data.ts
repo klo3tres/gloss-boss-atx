@@ -1,4 +1,4 @@
-import { getLocalFallbackCatalog, centsForSlugVehicleFromDefaults } from '@/lib/catalog-fallback';
+import { getLocalFallbackCatalog } from '@/lib/catalog-fallback';
 import { pickSedanCents, pickSuvTruckCents } from '@/lib/vehicle-pricing';
 import { defaultDealConfig, type DealConfig, type ServicePackage } from '@/lib/site-config';
 
@@ -70,16 +70,8 @@ export function mapCatalogToServicePackages(
   return [...services]
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((s) => {
-      let sedanC = pickSedanCents(prices, s.id);
-      let suvTruckC = pickSuvTruckCents(prices, s.id);
-      if (sedanC == null) {
-        const fb = centsForSlugVehicleFromDefaults(s.slug, 'sedan');
-        if (fb != null) sedanC = fb;
-      }
-      if (suvTruckC == null) {
-        const fb = centsForSlugVehicleFromDefaults(s.slug, 'suv_truck');
-        if (fb != null) suvTruckC = fb;
-      }
+      const sedanC = pickSedanCents(prices, s.id);
+      const suvTruckC = pickSuvTruckCents(prices, s.id);
       return {
         id: s.slug,
         title: s.title,

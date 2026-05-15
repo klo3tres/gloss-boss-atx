@@ -287,6 +287,33 @@ export function SuperAdminDashboard() {
         </div>
       </div>
 
+      <section className='rounded-2xl border border-gold/30 bg-zinc-950/90 p-5'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>CRM control center</p>
+        <div className='mt-4 flex flex-wrap gap-2'>
+          <Link href='/admin/customers' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Customers
+          </Link>
+          <Link href='/admin/team' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Team
+          </Link>
+          <Link href='/admin/services' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Pricing
+          </Link>
+          <Link href='/admin/pricing' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Deals
+          </Link>
+          <Link href='/admin/cms' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            CMS
+          </Link>
+          <Link href='/admin/intake' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Intake
+          </Link>
+          <Link href='/admin/agreements' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Agreements
+          </Link>
+        </div>
+      </section>
+
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
         <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} />
         <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} />

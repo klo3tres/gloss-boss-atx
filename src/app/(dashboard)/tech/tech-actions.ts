@@ -78,6 +78,19 @@ export async function techCompleteJobAction(formData: FormData) {
     return;
   }
 
+  const { data: intake } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
+  if (!intake) {
+    const { data: apptIntake } = await gate.supabase
+      .from('appointments')
+      .select('intake_completed_at')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (!apptIntake?.intake_completed_at) {
+      console.warn('[tech] complete blocked — intake not submitted', appointmentId);
+      return;
+    }
+  }
+
   const { error } = await gate.supabase
     .from('appointments')
     .update({

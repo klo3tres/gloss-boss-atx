@@ -61,7 +61,7 @@ export async function createDepositCheckoutSession(params: {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/agreement?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken}`,
+      success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken}`,
       cancel_url: `${origin}/book?cancelled=1`,
       metadata: {
         appointment_id: appt.id,

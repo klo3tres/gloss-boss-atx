@@ -63,9 +63,9 @@ export async function createStaffMemberAction(formData: FormData): Promise<Creat
   }
 
   const now = new Date().toISOString();
-  const payload: Record<string, unknown> = { id: userId, full_name: displayName, role, updated_at: now };
+  const payload: Record<string, unknown> = { id: userId, full_name: displayName, role, email, updated_at: now };
   let up = await admin.from('profiles').upsert(payload, { onConflict: 'id' });
-  if (up.error && /updated_at|column .* does not exist|Could not find|schema cache/i.test(up.error.message)) {
+  if (up.error && /updated_at|email|column .* does not exist|Could not find|schema cache/i.test(up.error.message)) {
     up = await admin.from('profiles').upsert({ id: userId, full_name: displayName, role }, { onConflict: 'id' });
   }
 

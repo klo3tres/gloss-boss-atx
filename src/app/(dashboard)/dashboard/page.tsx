@@ -75,6 +75,9 @@ export default async function CustomerDashboardRootPage() {
         <Link href='/gift-cards' className='rounded-lg border border-gold/40 px-5 py-3 text-sm font-bold uppercase tracking-wider text-gold-soft'>
           Gift cards
         </Link>
+        <Link href='/agreement' className='rounded-lg border border-white/15 px-5 py-3 text-sm font-bold uppercase tracking-wider text-zinc-300'>
+          Liability acknowledgment
+        </Link>
       </div>
     </DashboardShell>
   );
