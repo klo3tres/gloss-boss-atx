@@ -27,4 +27,6 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   revalidatePath('/book');
   revalidatePath('/services');
   revalidatePath('/');
+  revalidatePath('/api/public/site-data');
+  revalidatePath('/api/services');
 }

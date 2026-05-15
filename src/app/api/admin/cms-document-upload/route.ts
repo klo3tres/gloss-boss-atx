@@ -24,6 +24,12 @@ function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120) || 'document';
 }
 
+function fileExtLower(name: string): string {
+  const base = safeFileName(name);
+  const i = base.lastIndexOf('.');
+  return i >= 0 ? base.slice(i + 1).toLowerCase() : '';
+}
+
 async function resolveBucket(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>) {
   const { data: buckets, error } = await admin.storage.listBuckets();
   if (error) return { bucket: null as string | null, err: error.message };
@@ -81,6 +87,8 @@ export async function POST(request: Request) {
     }
 
     const mime = file.type || 'application/octet-stream';
+    const ext = fileExtLower(file.name);
+    const isJsxTemplate = ext === 'jsx' || ext === 'tsx';
     const isDocx =
       mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       mime === 'application/msword';
@@ -90,8 +98,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!ALLOWED.has(mime) && !mime.startsWith('image/')) {
-      return NextResponse.json({ error: 'Unsupported file type. Use PDF, HTML, or images.' }, { status: 400 });
+    const mimeOk = ALLOWED.has(mime) || mime.startsWith('image/') || isJsxTemplate;
+    if (!mimeOk) {
+      return NextResponse.json({ error: 'Unsupported file type. Use PDF, HTML, images, or JSX/TSX as a template reference.' }, { status: 400 });
     }
 
     const categoryRaw = String(form.get('category') ?? 'other').trim();
@@ -99,10 +108,11 @@ export async function POST(request: Request) {
     const title = String(form.get('title') ?? file.name).trim().slice(0, 200) || file.name;
 
     const buf = Buffer.from(await file.arrayBuffer());
+    const storageMime = isJsxTemplate ? 'text/plain' : mime;
     const prefix = bucket === 'gallery' ? 'documents' : 'uploads';
     const path = `${prefix}/${user.id}/${randomUUID()}-${safeFileName(file.name)}`;
 
-    const { error: upErr } = await admin.storage.from(bucket).upload(path, buf, { contentType: mime, upsert: false });
+    const { error: upErr } = await admin.storage.from(bucket).upload(path, buf, { contentType: storageMime, upsert: false });
     if (upErr) {
       console.warn('[cms-document-upload]', upErr.message);
       return NextResponse.json({ error: upErr.message }, { status: 500 });
@@ -117,20 +127,32 @@ export async function POST(request: Request) {
         ? Number((maxQ.data[0] as { sort_order: number }).sort_order) + 10
         : 10;
 
-    const row = { category, title, file_url: publicUrl, mime_type: mime, sort_order: nextOrder };
-    let insErr = (await admin.from('cms_documents').insert(row)).error;
+    const meta =
+      isJsxTemplate ? { jsx_template_reference: true as const, original_extension: ext, note: 'Stored as plain text; never executed in-browser.' } : null;
+    const baseRow: Record<string, unknown> = { category, title, file_url: publicUrl, mime_type: storageMime, sort_order: nextOrder };
+    if (meta) baseRow.meta = meta;
+
+    let insErr = (await admin.from('cms_documents').insert(baseRow)).error;
+    if (insErr && /meta|jsonb|column/i.test(insErr.message)) {
+      insErr = (await admin.from('cms_documents').insert({ category, title, file_url: publicUrl, mime_type: storageMime, sort_order: nextOrder })).error;
+    }
     if (insErr && /category|check constraint|schema cache/i.test(insErr.message)) {
-      const fallback = { ...row, category: category === 'intake' || category === 'training' ? 'other' : category };
+      const fallbackCat = category === 'intake' || category === 'training' ? 'other' : category;
+      const fallback: Record<string, unknown> = { category: fallbackCat, title, file_url: publicUrl, mime_type: storageMime, sort_order: nextOrder };
+      if (meta) fallback.meta = meta;
       insErr = (await admin.from('cms_documents').insert(fallback)).error;
+      if (insErr && meta) {
+        insErr = (await admin.from('cms_documents').insert({ category: fallbackCat, title, file_url: publicUrl, mime_type: storageMime, sort_order: nextOrder })).error;
+      }
     }
     if (insErr && /mime_type|column/i.test(insErr.message)) {
-      insErr = (await admin.from('cms_documents').insert({ category: row.category, title, file_url: publicUrl, sort_order: nextOrder })).error;
+      insErr = (await admin.from('cms_documents').insert({ category, title, file_url: publicUrl, sort_order: nextOrder })).error;
     }
 
     if (insErr) {
       console.warn('[cms-document-upload] db', insErr.message);
       return NextResponse.json(
-        { error: `File uploaded but database row failed: ${insErr.message}. Run migrations 000014 and 000016.`, url: publicUrl },
+        { error: `File uploaded but database row failed: ${insErr.message}. Run migrations 000014+ (meta: 000021).`, url: publicUrl },
         { status: 503 },
       );
     }
@@ -139,7 +161,13 @@ export async function POST(request: Request) {
     revalidatePath('/tech');
     revalidatePath('/tech/resources');
 
-    return NextResponse.json({ ok: true, url: publicUrl, title, category });
+    return NextResponse.json({
+      ok: true,
+      url: publicUrl,
+      title,
+      category,
+      jsxTemplateReference: Boolean(isJsxTemplate),
+    });
   } catch (e) {
     console.warn('[cms-document-upload]', e);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });

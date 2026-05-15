@@ -95,7 +95,7 @@ export async function dbReorderGalleryStep(
   return { ok: true };
 }
 
-export async function dbSaveFeaturedShowcase(supabase: SupabaseClient, raw: string): Promise<{ ok: boolean; error?: string }> {
+export async function dbSaveFeaturedShowcase(supabase: SupabaseClient, raw: string): Promise<{ ok: boolean; error?: string; code?: string }> {
   const trimmed = raw.trim();
   if (!trimmed) return { ok: false, error: 'Empty JSON' };
   let parsed: unknown;
@@ -108,17 +108,44 @@ export async function dbSaveFeaturedShowcase(supabase: SupabaseClient, raw: stri
   const slides = (parsed as { slides?: unknown }).slides;
   if (!Array.isArray(slides)) return { ok: false, error: 'Missing slides array' };
   const value = { slides: slides.slice(0, 12) };
-  const { data: existing, error: selErr } = await supabase.from('homepage_content').select('id').eq('key', 'featured_showcase').maybeSingle();
-  if (selErr) return { ok: false, error: selErr.message };
-  if (existing?.id) {
-    const { error: upErr } = await supabase
-      .from('homepage_content')
-      .update({ value, updated_at: new Date().toISOString() })
-      .eq('id', existing.id);
-    if (upErr) return { ok: false, error: upErr.message };
-  } else {
-    const { error: insErr } = await supabase.from('homepage_content').insert({ key: 'featured_showcase', value });
-    if (insErr) return { ok: false, error: insErr.message };
+  const iso = new Date().toISOString();
+
+  const tryUpsert = async (row: Record<string, unknown>) =>
+    supabase.from('homepage_content').upsert(row, { onConflict: 'key' });
+
+  let row: Record<string, unknown> = { key: 'featured_showcase', value, updated_at: iso };
+  let { error } = await tryUpsert(row);
+  if (error && /updated_at|column .* does not exist|schema cache/i.test(error.message)) {
+    row = { key: 'featured_showcase', value };
+    ({ error } = await tryUpsert(row));
+  }
+  if (error && /homepage_content|relation .* does not exist|42501|permission denied/i.test(error.message)) {
+    return {
+      ok: false,
+      code: 'TABLE_OR_POLICY',
+      error:
+        'Could not save to homepage_content. Confirm the table exists (migration 000012) and your account has admin/staff access in profiles.',
+    };
+  }
+  if (error) {
+    const { data: existing, error: selErr } = await supabase.from('homepage_content').select('id').eq('key', 'featured_showcase').maybeSingle();
+    if (selErr) return { ok: false, error: selErr.message };
+    if (existing?.id) {
+      const up = await supabase
+        .from('homepage_content')
+        .update({ value, updated_at: iso })
+        .eq('id', existing.id);
+      if (up.error && /updated_at|column/i.test(up.error.message)) {
+        const up2 = await supabase.from('homepage_content').update({ value }).eq('id', existing.id);
+        if (up2.error) return { ok: false, error: up2.error.message };
+        return { ok: true };
+      }
+      if (up.error) return { ok: false, error: up.error.message };
+      return { ok: true };
+    }
+    const ins = await supabase.from('homepage_content').insert({ key: 'featured_showcase', value });
+    if (ins.error) return { ok: false, error: ins.error.message };
+    return { ok: true };
   }
   return { ok: true };
 }

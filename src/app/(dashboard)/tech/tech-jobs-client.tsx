@@ -18,6 +18,8 @@ type Job = {
   base_price_cents: number | null;
   notes?: string | null;
   hasIntake?: boolean;
+  beforePhotoCount?: number;
+  afterPhotoCount?: number;
 };
 
 function mapsUrl(address: string): string {

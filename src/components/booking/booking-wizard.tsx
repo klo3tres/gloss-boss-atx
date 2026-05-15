@@ -863,76 +863,83 @@ export function BookingWizard() {
           </button>
         </div>
 
-        <aside className='lg:sticky lg:top-28 h-fit space-y-4 rounded-2xl border border-gold/25 bg-zinc-950/90 p-5 shadow-[0_0_30px_rgba(0,0,0,0.45)]'>
+        <aside className='lg:sticky lg:top-28 h-fit space-y-4 rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-5 shadow-[0_0_36px_rgba(212,166,77,0.12)]'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Summary</p>
-          <div className='space-y-2 text-sm text-zinc-300'>
+          <div className='space-y-2.5 text-sm text-zinc-300'>
             {bookingLines.map((line, i) => {
               const svc = services.find((s) => s.slug === line.serviceSlug);
               return (
-                <div key={`${i}-${line.serviceSlug}`} className='border-b border-white/5 pb-2'>
+                <div key={`${i}-${line.serviceSlug}`} className='border-b border-white/5 pb-2.5 last:border-0'>
                   <p>
-                    <span className='text-zinc-500'>Vehicle {i + 1}:</span> <span className='font-semibold text-white'>{svc?.title ?? line.serviceSlug}</span>
+                    <span className='text-zinc-500'>Vehicle {i + 1}:</span>{' '}
+                    <span className='font-semibold text-white'>{svc?.title ?? line.serviceSlug}</span>
                   </p>
-                  <p>
-                    <span className='text-zinc-500'>Class:</span> <span className='text-white'>{classLabel(line.vehicleClass)}</span>
+                  <p className='mt-0.5'>
+                    <span className='text-zinc-500'>Class:</span> <span className='text-zinc-200'>{classLabel(line.vehicleClass)}</span>
                   </p>
                 </div>
               );
             })}
             {priceSummary?.kind === 'ok' ? (
-              <div className='mt-3 space-y-2 border-t border-white/10 pt-3'>
-                <p className='flex justify-between border-b border-white/10 pb-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500'>
+              <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
+                <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
                   <span>Vehicle services</span>
                   <span className='text-zinc-300'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>
                 </p>
                 {priceSummary.lines.map((l, i) => (
-                  <p key={i} className='flex justify-between text-xs text-zinc-400'>
-                    <span>{l.label}</span>
-                    <span>${(l.cents / 100).toFixed(2)}</span>
+                  <p key={i} className='flex justify-between gap-2 text-xs leading-snug text-zinc-400'>
+                    <span className='min-w-0 flex-1 break-words'>{l.label}</span>
+                    <span className='shrink-0 tabular-nums'>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
                 {priceSummary.breakdown.addOnSubtotalCents > 0 ? (
-                  <p className='flex justify-between text-sm text-zinc-300'>
+                  <p className='flex justify-between text-xs font-semibold text-zinc-300'>
                     <span>Add-ons</span>
-                    <span>${(priceSummary.breakdown.addOnSubtotalCents / 100).toFixed(2)}</span>
+                    <span className='tabular-nums'>${(priceSummary.breakdown.addOnSubtotalCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
                 {priceSummary.addOnLines.map((l, i) => (
-                  <p key={`a-${i}`} className='flex justify-between text-xs text-zinc-500'>
-                    <span>· {l.label}</span>
-                    <span>${(l.cents / 100).toFixed(2)}</span>
+                  <p key={`a-${i}`} className='flex justify-between gap-2 text-[11px] leading-snug text-zinc-500'>
+                    <span className='min-w-0 flex-1 break-words'>· {l.label}</span>
+                    <span className='shrink-0 tabular-nums'>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
                 {priceSummary.breakdown.multiCarDiscountCents > 0 ? (
-                  <p className='flex justify-between text-sm text-emerald-300'>
+                  <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Multi-car discount</span>
-                    <span>-${(priceSummary.breakdown.multiCarDiscountCents / 100).toFixed(2)}</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.multiCarDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
-                <p className='flex justify-between text-xs text-zinc-500'>
-                  <span>Eligible subtotal (after multi-car)</span>
-                  <span>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
+                <p className='flex justify-between text-[11px] text-zinc-500'>
+                  <span>Eligible subtotal</span>
+                  <span className='tabular-nums'>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
                 </p>
                 {priceSummary.breakdown.websitePromoDiscountCents > 0 ? (
-                  <p className='flex justify-between text-sm text-emerald-300'>
+                  <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Sitewide promo</span>
-                    <span>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
                 {priceSummary.breakdown.offerDiscountCents > 0 ? (
-                  <p className='flex justify-between text-sm text-emerald-300'>
+                  <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Offer discount</span>
-                    <span>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.offerDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
-                <p className='flex justify-between pt-2 text-3xl font-black tracking-tight text-white'>
-                  <span>Combined total</span>
-                  <span>${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}</span>
-                </p>
-                <p className='flex justify-between rounded-lg border border-gold/40 bg-gold/15 px-3 py-2.5 text-base font-black text-gold-soft shadow-[0_0_20px_rgba(212,166,77,0.2)]'>
-                  <span>Deposit due now ({priceSummary.breakdown.depositPercent}%)</span>
-                  <span>${(priceSummary.breakdown.depositCents / 100).toFixed(2)}</span>
-                </p>
+                <div className='border-t border-white/10 pt-3'>
+                  <p className='flex flex-wrap items-end justify-between gap-x-3 gap-y-1'>
+                    <span className='text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500'>Final total</span>
+                    <span className='text-xl font-black tabular-nums tracking-tight text-white sm:text-2xl'>
+                      ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
+                    </span>
+                  </p>
+                  <p className='mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gold/45 bg-gold/10 px-3 py-2.5 text-sm font-bold text-gold-soft shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'>
+                    <span className='max-w-[62%] text-[11px] font-black uppercase leading-tight tracking-wide text-gold-soft'>
+                      Deposit ({priceSummary.breakdown.depositPercent}%)
+                    </span>
+                    <span className='tabular-nums text-base font-black tracking-tight'>${(priceSummary.breakdown.depositCents / 100).toFixed(2)}</span>
+                  </p>
+                </div>
               </div>
             ) : (
               <p className='text-gold-soft'>{pricePreviewText}</p>

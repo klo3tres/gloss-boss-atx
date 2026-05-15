@@ -1,6 +1,8 @@
 import {
   sendAppointmentReminderIfConfigured,
   sendBookingConfirmationEmailIfConfigured,
+  sendJobCompletedEmailIfConfigured,
+  sendJobStartedEmailIfConfigured,
   sendTwilioSms,
 } from '@/lib/email-send';
 
@@ -30,35 +32,62 @@ export async function notifyBookingConfirmationQueued(params: {
   }
 }
 
-export async function notifyJobStartedPlaceholder(customerPhone: string | null | undefined, apptId: string): Promise<void> {
+export async function notifyJobStartedPlaceholder(
+  customerPhone: string | null | undefined,
+  apptId: string,
+  opts?: { guestEmail?: string | null; guestName?: string | null; serviceLabel?: string; scheduledIso?: string },
+): Promise<void> {
   try {
     const digits = String(customerPhone ?? '').replace(/\D/g, '');
-    if (digits.length < 10) {
-      console.info('[notify] job_started skipped (no valid phone)', apptId.slice(0, 8));
-      return;
+    if (digits.length >= 10) {
+      await sendTwilioSms({
+        to: digits,
+        body: `Gloss Boss ATX: Your detail has started. Reference ${apptId.slice(0, 8)}… We’ll update you when it wraps.`,
+      });
+    } else {
+      console.info('[notify] job_started SMS skipped (no valid phone)', apptId.slice(0, 8));
     }
-    await sendTwilioSms({
-      to: digits,
-      body: `Gloss Boss ATX: Your detail has started. Reference ${apptId.slice(0, 8)}… We’ll update you when it wraps.`,
+  } catch (e) {
+    console.warn('[notify] job_started SMS', e);
+  }
+  try {
+    await sendJobStartedEmailIfConfigured({
+      to: opts?.guestEmail,
+      guestName: (opts?.guestName ?? 'there').trim() || 'there',
+      serviceLabel: (opts?.serviceLabel ?? 'Mobile detailing').trim() || 'Mobile detailing',
+      whenIso: opts?.scheduledIso ?? new Date().toISOString(),
     });
   } catch (e) {
-    console.warn('[notify] job_started', e);
+    console.warn('[notify] job_started email', e);
   }
 }
 
-export async function notifyJobCompletedPlaceholder(customerPhone: string | null | undefined, apptId: string): Promise<void> {
+export async function notifyJobCompletedPlaceholder(
+  customerPhone: string | null | undefined,
+  apptId: string,
+  opts?: { guestEmail?: string | null; guestName?: string | null; serviceLabel?: string },
+): Promise<void> {
   try {
     const digits = String(customerPhone ?? '').replace(/\D/g, '');
-    if (digits.length < 10) {
-      console.info('[notify] job_completed skipped (no valid phone)', apptId.slice(0, 8));
-      return;
+    if (digits.length >= 10) {
+      await sendTwilioSms({
+        to: digits,
+        body: `Gloss Boss ATX: Your detail is complete. Thanks for choosing us — reference ${apptId.slice(0, 8)}… Photos may be available in your dashboard.`,
+      });
+    } else {
+      console.info('[notify] job_completed SMS skipped (no valid phone)', apptId.slice(0, 8));
     }
-    await sendTwilioSms({
-      to: digits,
-      body: `Gloss Boss ATX: Your detail is complete. Thanks for choosing us — reference ${apptId.slice(0, 8)}… Photos may be available in your dashboard.`,
+  } catch (e) {
+    console.warn('[notify] job_completed SMS', e);
+  }
+  try {
+    await sendJobCompletedEmailIfConfigured({
+      to: opts?.guestEmail,
+      guestName: (opts?.guestName ?? 'there').trim() || 'there',
+      serviceLabel: (opts?.serviceLabel ?? 'Mobile detailing').trim() || 'Mobile detailing',
     });
   } catch (e) {
-    console.warn('[notify] job_completed', e);
+    console.warn('[notify] job_completed email', e);
   }
 }
 

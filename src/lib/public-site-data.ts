@@ -153,21 +153,29 @@ export function defaultFeaturedShowcaseSlides(): SiteDataFeaturedSlide[] {
   return DEFAULT_FEATURED_SLIDES.map((s) => ({ ...s }));
 }
 
-/** When CMS JSON is empty or invalid — automotive stock placeholders with clear CMS hint. */
-export function featuredShowcasePlaceholders(): SiteDataFeaturedSlide[] {
-  return [
-    { id: 'ph-1', label: 'Upload first transformation in Admin → Site content', image: DEFAULT_FEATURED_SLIDES[0].image },
-    { id: 'ph-2', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[1].image },
-    { id: 'ph-3', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[2].image },
-  ];
+/** `jsonb` values are usually objects; tolerate double-encoded JSON strings from older imports. */
+function coerceHomepageJson(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return null;
+    try {
+      const inner = JSON.parse(t) as unknown;
+      return inner && typeof inner === 'object' && !Array.isArray(inner) ? (inner as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return null;
 }
 
-/** Parses `homepage_content.featured_showcase` JSON: `{ "slides": [ { "image": "url", "label": "..." } ] }`. */
+/** Parses `homepage_content.featured_showcase` value. Returns only valid slides — empty array if none (no stock filler). */
 export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
-  if (!raw || typeof raw !== 'object') return featuredShowcasePlaceholders();
-  const o = raw as Record<string, unknown>;
+  const o = coerceHomepageJson(raw);
+  if (!o) return [];
   const slides = o.slides;
-  if (!Array.isArray(slides) || slides.length === 0) return featuredShowcasePlaceholders();
+  if (!Array.isArray(slides) || slides.length === 0) return [];
   const out: SiteDataFeaturedSlide[] = [];
   slides.forEach((item, i) => {
     if (!item || typeof item !== 'object') return;
@@ -179,7 +187,16 @@ export function parseFeaturedShowcase(raw: unknown): SiteDataFeaturedSlide[] {
     const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : `slide-${i}`;
     out.push({ id, label, image });
   });
-  return out.length > 0 ? out : featuredShowcasePlaceholders();
+  return out;
+}
+
+/** Admin UI hint slides (not used for public homepage defaults). */
+export function featuredShowcasePlaceholders(): SiteDataFeaturedSlide[] {
+  return [
+    { id: 'ph-1', label: 'Upload first transformation in Admin → Site content', image: DEFAULT_FEATURED_SLIDES[0].image },
+    { id: 'ph-2', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[1].image },
+    { id: 'ph-3', label: 'Featured Transformation', image: DEFAULT_FEATURED_SLIDES[2].image },
+  ];
 }
 
 /**

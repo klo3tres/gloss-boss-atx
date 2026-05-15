@@ -43,8 +43,8 @@ const superLinks = [
 
 const techLinks = [
   { href: '/tech', label: 'Home' },
-  { href: '/tech', label: 'My jobs' },
-  { href: '/book', label: 'Public booking' },
+  { href: '/tech#field-invoice', label: 'Field tools' },
+  { href: '/tech/resources', label: 'SOPs' },
 ];
 
 const customerLinks = [

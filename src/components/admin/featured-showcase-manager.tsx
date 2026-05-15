@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
@@ -37,7 +37,13 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
   const [json, setJson] = useState(initialJson);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSlides(parseSlides(initialJson));
+    setJson(initialJson);
+  }, [initialJson]);
 
   const syncJson = useCallback((next: Slide[]) => {
     setSlides(next);
@@ -48,6 +54,7 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
     async (file: File) => {
       setBusy(true);
       setMsg(null);
+      setSaveFeedback(null);
       const fd = new FormData();
       fd.set('file', file);
       fd.set('caption', file.name.replace(/\.[^.]+$/, ''));
@@ -93,7 +100,7 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
 
   const save = async () => {
     setBusy(true);
-    setMsg(null);
+    setSaveFeedback(null);
     try {
       const res = await fetchWithTimeout('/api/admin/featured-showcase', {
         method: 'POST',
@@ -102,15 +109,22 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
         credentials: 'same-origin',
         timeoutMs: 60000,
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; code?: string };
       if (!res.ok || !data.ok) {
-        setMsg(data.error ?? 'Save failed.');
+        const detail = data.error ?? `Save failed (${res.status})`;
+        setSaveFeedback({
+          kind: 'err',
+          text: data.code === 'TABLE_OR_POLICY' ? `${detail} Set SUPABASE_SERVICE_ROLE_KEY on the server for reliable CMS writes.` : detail,
+        });
         return;
       }
-      setMsg('Featured showcase saved.');
+      setSaveFeedback({
+        kind: 'ok',
+        text: 'Featured showcase saved. Homepage reads key `featured_showcase` in `homepage_content` — refresh the home page to confirm.',
+      });
       router.refresh();
     } catch {
-      setMsg('Network error.');
+      setSaveFeedback({ kind: 'err', text: 'Network error — could not reach the server.' });
     } finally {
       setBusy(false);
     }
@@ -208,7 +222,15 @@ export function FeaturedShowcaseManager({ initialJson }: { initialJson: string }
       >
         {busy ? 'Saving…' : 'Save featured showcase'}
       </button>
-      {msg ? <p className='text-xs text-emerald-300'>{msg}</p> : null}
+      {saveFeedback ? (
+        <p
+          role={saveFeedback.kind === 'err' ? 'alert' : 'status'}
+          className={`text-sm font-medium ${saveFeedback.kind === 'err' ? 'text-rose-300' : 'text-emerald-300'}`}
+        >
+          {saveFeedback.text}
+        </p>
+      ) : null}
+      {msg ? <p className='text-xs text-zinc-400'>{msg}</p> : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safeImageUrl } from '@/lib/gallery-normalize';
@@ -36,7 +36,11 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    setItems(rows);
+  }, [rows]);
 
   const onDragOver = (e: React.DragEvent, overId: string) => {
     e.preventDefault();
@@ -54,41 +58,43 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
 
   const saveOrder = useCallback(async () => {
     setSaving(true);
-    setMsg(null);
+    setFeedback(null);
     const r = await galleryMutate({ op: 'reorder', order: items.map((x) => x.id) });
     if (r.ok) {
-      setMsg('Order saved.');
+      setFeedback({ kind: 'ok', text: 'Gallery order saved. Public site will refresh on next visit.' });
       router.refresh();
     } else {
-      setMsg(r.error ?? 'Could not save order.');
+      setFeedback({ kind: 'err', text: r.error ?? 'Could not save order.' });
     }
     setSaving(false);
   }, [items, router]);
 
   const togglePublished = async (row: GalleryAdminItem) => {
     setBusyId(row.id);
-    setMsg(null);
+    setFeedback(null);
     const next = !row.published;
     const r = await galleryMutate({ op: 'toggle-published', id: row.id, published: next });
     if (r.ok) {
       setItems((prev) => prev.map((x) => (x.id === row.id ? { ...x, published: next } : x)));
+      setFeedback({ kind: 'ok', text: next ? 'Image published.' : 'Image unpublished.' });
       router.refresh();
     } else {
-      setMsg(r.error ?? 'Publish toggle failed.');
+      setFeedback({ kind: 'err', text: r.error ?? 'Publish toggle failed.' });
     }
     setBusyId(null);
   };
 
   const toggleFeatured = async (row: GalleryAdminItem) => {
     setBusyId(row.id);
-    setMsg(null);
+    setFeedback(null);
     const next = !row.featured;
     const r = await galleryMutate({ op: 'toggle-featured', id: row.id, featured: next });
     if (r.ok) {
       setItems((prev) => prev.map((x) => (x.id === row.id ? { ...x, featured: next } : x)));
+      setFeedback({ kind: 'ok', text: next ? 'Marked as featured.' : 'Removed from featured.' });
       router.refresh();
     } else {
-      setMsg(r.error ?? 'Feature toggle failed.');
+      setFeedback({ kind: 'err', text: r.error ?? 'Feature toggle failed.' });
     }
     setBusyId(null);
   };
@@ -96,13 +102,14 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
   const remove = async (row: GalleryAdminItem) => {
     if (!confirm('Remove this gallery image from the CMS?')) return;
     setBusyId(row.id);
-    setMsg(null);
+    setFeedback(null);
     const r = await galleryMutate({ op: 'delete', id: row.id });
     if (r.ok) {
       setItems((prev) => prev.filter((x) => x.id !== row.id));
+      setFeedback({ kind: 'ok', text: 'Image removed.' });
       router.refresh();
     } else {
-      setMsg(r.error ?? 'Delete failed.');
+      setFeedback({ kind: 'err', text: r.error ?? 'Delete failed.' });
     }
     setBusyId(null);
   };
@@ -113,8 +120,15 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
 
   return (
     <div className='mt-6 space-y-3'>
-      <p className='text-xs text-zinc-500'>Drag thumbnails to reorder. Order numbers update when you save.</p>
-      <ul className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+      <p className='text-xs text-zinc-500'>Drag thumbnails to reorder, then save. Featured items sort first on the public gallery.</p>
+      <div
+        className={
+          items.length > 6
+            ? 'max-h-[min(70vh,56rem)] overflow-y-auto rounded-xl border border-white/10 bg-black/20 py-2 pl-2 pr-1'
+            : ''
+        }
+      >
+        <ul className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
         {items.map((row, idx) => {
           const src = safeImageUrl({ url: row.url, image_url: row.url });
           const pending = busyId === row.id;
@@ -175,6 +189,7 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
           );
         })}
       </ul>
+      </div>
       <button
         type='button'
         disabled={saving}
@@ -183,7 +198,14 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
       >
         {saving ? 'Saving…' : 'Save gallery order'}
       </button>
-      {msg ? <p className='text-xs text-emerald-300'>{msg}</p> : null}
+      {feedback ? (
+        <p
+          role={feedback.kind === 'err' ? 'alert' : 'status'}
+          className={`text-sm font-medium ${feedback.kind === 'err' ? 'text-rose-300' : 'text-emerald-300'}`}
+        >
+          {feedback.text}
+        </p>
+      ) : null}
     </div>
   );
 }

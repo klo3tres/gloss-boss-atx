@@ -115,20 +115,25 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     /* site_settings may be missing */
   }
 
-  let cmsDocs: { id: string; category: string; title: string; file_url: string; sort_order: number }[] = [];
+  let cmsDocs: { id: string; category: string; title: string; file_url: string; sort_order: number; jsxTemplate?: boolean }[] = [];
   try {
     const admin = tryCreateAdminSupabase();
     const docRes = admin
       ? await admin.from('cms_documents').select('*').order('sort_order', { ascending: true })
       : { data: null, error: { message: 'no admin' } };
     if (!docRes.error && docRes.data) {
-      cmsDocs = (docRes.data as Record<string, unknown>[]).map((r) => ({
-        id: String(r.id),
-        category: String(r.category ?? 'other'),
-        title: String(r.title ?? ''),
-        file_url: String(r.file_url ?? ''),
-        sort_order: Number(r.sort_order ?? 0),
-      }));
+      cmsDocs = (docRes.data as Record<string, unknown>[]).map((r) => {
+        const meta = r.meta && typeof r.meta === 'object' && r.meta !== null ? (r.meta as Record<string, unknown>) : null;
+        const jsxTemplate = Boolean(meta?.jsx_template_reference);
+        return {
+          id: String(r.id),
+          category: String(r.category ?? 'other'),
+          title: String(r.title ?? ''),
+          file_url: String(r.file_url ?? ''),
+          sort_order: Number(r.sort_order ?? 0),
+          jsxTemplate,
+        };
+      });
     }
   } catch {
     cmsDocs = [];
@@ -266,7 +271,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>CMS documents</h2>
         <p className='mt-2 text-sm text-zinc-400'>
-          Drag & drop uploads save automatically to Supabase Storage and the document list (PDF, images, HTML). Word (.doc/.docx): convert to PDF first.
+          Drag & drop uploads save automatically to Supabase Storage and the document list (PDF, images, HTML, JSX/TSX as a non-executed template reference). Word (.doc/.docx): convert to PDF first.
         </p>
         <div className='mt-4 grid gap-4 sm:grid-cols-2'>
           <CmsDocumentDropzone category='liability' label='Liability & waivers' />
@@ -281,6 +286,11 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
             <li key={d.id} className='flex flex-wrap items-center justify-between gap-2 rounded border border-white/10 bg-black/40 px-3 py-2'>
               <span>
                 <span className='text-gold-soft'>{d.category}</span> — {d.title}
+                {d.jsxTemplate ? (
+                  <span className='mt-1 block text-[11px] font-medium text-amber-200/95'>
+                    JSX uploaded as template reference. Use the generated intake form for live signing — we never execute uploaded JSX in the browser.
+                  </span>
+                ) : null}
                 <span className='ml-2 block truncate text-xs text-zinc-500'>{d.file_url}</span>
               </span>
               <CmsDocumentDeleteButton id={d.id} />

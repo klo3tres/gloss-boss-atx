@@ -10,6 +10,8 @@ export type NormalizedGalleryImage = {
   sort_order: number;
   order_index: number | null;
   published?: boolean;
+  /** When true, show before non-featured in marketing carousels */
+  featured?: boolean;
 };
 
 function str(v: unknown): string {
@@ -63,6 +65,7 @@ export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGal
         ? row.sort_order
         : null;
   const published = (row.published ?? row.active ?? true) as boolean | undefined;
+  const featured = typeof row.featured === 'boolean' ? row.featured : false;
   return {
     id,
     url,
@@ -71,6 +74,7 @@ export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGal
     sort_order,
     order_index: order_index ?? null,
     published: typeof published === 'boolean' ? published : true,
+    featured,
   };
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
+import { normalizeAddonForPublic } from '@/lib/addons-shared';
 
 export const runtime = 'nodejs';
 
@@ -13,20 +14,38 @@ export async function GET() {
       return NextResponse.json({ addons: [] });
     }
 
-    const { data, error } = await client
+    let { data, error } = await client
       .from('addons')
-      .select('id, slug, label, price_cents, sort_order')
+      .select('*')
       .eq('active', true)
       .order('sort_order', { ascending: true });
+
+    if (error && /schema cache|Could not find|column/i.test(error.message)) {
+      ({ data, error } = await client
+        .from('addons')
+        .select('id, slug, name, price_cents, sort_order, active')
+        .eq('active', true)
+        .order('sort_order', { ascending: true }));
+    }
+    if (error && /schema cache|Could not find|column/i.test(error.message)) {
+      ({ data, error } = await client
+        .from('addons')
+        .select('id, slug, price_cents, sort_order, active')
+        .eq('active', true)
+        .order('sort_order', { ascending: true }));
+    }
 
     if (error) {
       console.warn('[CRM_DEBUG]', 'addons_public_get', error.message);
       return NextResponse.json({ addons: [] });
     }
 
+    const raw = (data ?? []) as Record<string, unknown>[];
+    const addons = raw.map((r) => normalizeAddonForPublic(r));
+
     return NextResponse.json(
-      { addons: data ?? [] },
-      { headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' } },
+      { addons },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' } },
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -25,7 +25,7 @@ export async function techStartJobAction(formData: FormData) {
 
   const { data: appt, error: fetchErr } = await gate.supabase
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -64,7 +64,12 @@ export async function techStartJobAction(formData: FormData) {
     createdBy: gate.userId,
   });
 
-  void notifyJobStartedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId);
+  void notifyJobStartedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
+    guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
+    guestName: appt.guest_name != null ? String(appt.guest_name) : null,
+    serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',
+    scheduledIso: appt.scheduled_start != null ? String(appt.scheduled_start) : undefined,
+  });
   revalidatePath('/tech');
 }
 
@@ -80,7 +85,7 @@ export async function techCompleteJobAction(
 
   const { data: appt, error: fetchErr } = await gate.supabase
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -143,7 +148,11 @@ export async function techCompleteJobAction(
     createdBy: gate.userId,
   });
 
-  void notifyJobCompletedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId);
+  void notifyJobCompletedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
+    guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
+    guestName: appt.guest_name != null ? String(appt.guest_name) : null,
+    serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',
+  });
 
   revalidatePath('/tech');
   return null;

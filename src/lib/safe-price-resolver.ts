@@ -32,11 +32,14 @@ export function safePriceResolver(
   vehicleClass: string,
   dbPrices: PriceRowInput[],
 ): SafePriceResult {
+  const uiClass = normalizeVehicleClass(vehicleClass);
+
+  /** Ceramic / quote-first slugs: use published DB price when present, else consultation quote. */
   if (QUOTE_ONLY_SLUGS.has(service.slug)) {
+    const fromDb = pickDbCents(dbPrices, service.serviceId, uiClass);
+    if (fromDb != null && fromDb > 0) return { ok: true, cents: fromDb, isQuote: false };
     return { ok: true, isQuote: true, cents: null };
   }
-
-  const uiClass = normalizeVehicleClass(vehicleClass);
 
   const fromDb = pickDbCents(dbPrices, service.serviceId, uiClass);
   if (fromDb != null) return { ok: true, cents: fromDb, isQuote: false };

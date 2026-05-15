@@ -1,6 +1,7 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
+import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -33,8 +34,14 @@ export async function POST(request: Request) {
   const active = body.active !== false;
   const sort_order = typeof body.sort_order === 'number' && !Number.isNaN(body.sort_order) ? body.sort_order : 100;
 
-  const { error } = await admin.from('addons').insert({ slug, label, price_cents, active, sort_order });
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  let ins = await admin.from('addons').insert({ slug, label, name: label, price_cents, active, sort_order });
+  if (ins.error && isSchemaDriftError(ins.error.message)) {
+    ins = await admin.from('addons').insert({ slug, label, price_cents, active, sort_order });
+  }
+  if (ins.error && isSchemaDriftError(ins.error.message)) {
+    ins = await admin.from('addons').insert({ slug, name: label, price_cents, active, sort_order });
+  }
+  if (ins.error) return NextResponse.json({ ok: false, error: ins.error.message }, { status: 400 });
   revalidatePath('/admin/addons');
   revalidatePath('/book');
   return NextResponse.json({ ok: true });
@@ -63,7 +70,11 @@ export async function PATCH(request: Request) {
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
 
   const patch: Record<string, unknown> = {};
-  if (typeof body.label === 'string') patch.label = body.label.trim().slice(0, 160);
+  if (typeof body.label === 'string') {
+    const L = body.label.trim().slice(0, 160);
+    patch.label = L;
+    patch.name = L;
+  }
   if (typeof body.slug === 'string' && body.slug.trim()) patch.slug = slugify(body.slug);
   if (typeof body.price_cents === 'number' && !Number.isNaN(body.price_cents)) patch.price_cents = Math.max(0, Math.round(body.price_cents));
   if (typeof body.active === 'boolean') patch.active = body.active;
@@ -73,8 +84,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, error: 'No changes' }, { status: 400 });
   }
 
-  const { error } = await admin.from('addons').update(patch).eq('id', id);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  let u = await admin.from('addons').update(patch).eq('id', id);
+  if (u.error && isSchemaDriftError(u.error.message)) {
+    const { name: _n, ...noName } = patch;
+    u = await admin.from('addons').update(noName).eq('id', id);
+  }
+  if (u.error && isSchemaDriftError(u.error.message)) {
+    const { label: _l, ...noLabel } = patch;
+    u = await admin.from('addons').update(noLabel).eq('id', id);
+  }
+  if (u.error) return NextResponse.json({ ok: false, error: u.error.message }, { status: 400 });
   revalidatePath('/admin/addons');
   revalidatePath('/book');
   return NextResponse.json({ ok: true });

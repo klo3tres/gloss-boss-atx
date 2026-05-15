@@ -9,6 +9,16 @@ export function isSchemaDriftError(message: string): boolean {
   return /column|does not exist|schema cache|Could not find|undefined column/i.test(message);
 }
 
+export function extractMissingColumnKey(message: string): string | null {
+  const m1 = /Could not find the '([^']+)' column/i.exec(message);
+  if (m1?.[1]) return m1[1];
+  const m3 = /column\s+["']?([\w]+)["']?\s+does not exist/i.exec(message);
+  if (m3?.[1]) return m3[1];
+  const m4 = /undefined column:?\s*([\w]+)/i.exec(message);
+  if (m4?.[1]) return m4[1];
+  return null;
+}
+
 export async function loadBookingAvailabilityRules(admin: SupabaseClient) {
   try {
     const { data } = await admin.from('site_settings').select('value').eq('key', 'booking_availability').maybeSingle();
@@ -90,21 +100,29 @@ export async function loadClaimedOffer(admin: SupabaseClient, offerRef: string |
 export async function sumSelectedAddonCents(admin: SupabaseClient, selections: string[]): Promise<number> {
   if (selections.length === 0) return 0;
   try {
-    const { data, error } = await admin.from('addons').select('slug, label, price_cents').eq('active', true);
+    let { data, error } = await admin.from('addons').select('*').eq('active', true);
+    if (error && isSchemaDriftError(error.message)) {
+      ({ data, error } = await admin.from('addons').select('slug, name, price_cents').eq('active', true));
+    }
+    if (error && isSchemaDriftError(error.message)) {
+      ({ data, error } = await admin.from('addons').select('slug, price_cents').eq('active', true));
+    }
     if (error) {
       console.warn('[booking-shared] addons unavailable; 0 add-on cents', error.message);
       return 0;
     }
-    const rows = (data ?? []) as { slug?: string | null; label?: string | null; price_cents?: number | null }[];
+    const rows = (data ?? []) as Record<string, unknown>[];
     let sum = 0;
     for (const sel of selections) {
       const key = sel.trim().toLowerCase();
-      const hit = rows.find(
-        (r) =>
-          (typeof r.slug === 'string' && r.slug.toLowerCase() === key) ||
-          (typeof r.label === 'string' && r.label.toLowerCase() === key),
-      );
-      if (hit && typeof hit.price_cents === 'number' && hit.price_cents > 0) sum += hit.price_cents;
+      const hit = rows.find((r) => {
+        const slug = typeof r.slug === 'string' ? r.slug.toLowerCase() : '';
+        const lab = r.label != null ? String(r.label).trim().toLowerCase() : '';
+        const nam = r.name != null ? String(r.name).trim().toLowerCase() : '';
+        return slug === key || lab === key || nam === key;
+      });
+      const cents = hit && typeof hit.price_cents === 'number' && !Number.isNaN(hit.price_cents) ? hit.price_cents : 0;
+      if (cents > 0) sum += cents;
     }
     return sum;
   } catch (e) {
@@ -127,21 +145,46 @@ export async function loadServicePricesForService(admin: SupabaseClient, service
   return rows;
 }
 
+/** Columns we try hard to keep; others may be stripped on drift (deposit_percent has DB default). */
+const APPOINTMENT_CORE_KEYS = new Set([
+  'guest_email',
+  'guest_phone',
+  'guest_name',
+  'vehicle_description',
+  'service_slug',
+  'vehicle_class',
+  'base_price_cents',
+  'deposit_amount_cents',
+  'scheduled_start',
+  'status',
+]);
+
+const APPOINTMENT_STRIP_ORDER: string[] = [
+  'offer_id',
+  'booking_source',
+  'booking_add_ons',
+  'booking_vehicles',
+  'notes',
+  'customer_id',
+  'deposit_percent',
+  'assigned_technician_id',
+  'stripe_checkout_session_id',
+  'created_by',
+  'stripe_checkout_kind',
+  'field_invoice_paid_at',
+  'intake_completed_at',
+  'job_started_at',
+  'job_completed_at',
+];
+
 export async function insertAppointmentResilient(
   admin: SupabaseClient,
   payload: Record<string, unknown>,
 ): Promise<{ data: { id: string; access_token: string } | null; error: string | null }> {
-  const stripSequences: string[][] = [
-    [],
-    ['offer_id'],
-    ['offer_id', 'booking_add_ons'],
-    ['offer_id', 'booking_add_ons', 'booking_vehicles'],
-    ['offer_id', 'booking_add_ons', 'booking_vehicles', 'notes'],
-    ['offer_id', 'booking_add_ons', 'booking_vehicles', 'notes', 'booking_source'],
-  ];
-  for (const strip of stripSequences) {
-    const row: Record<string, unknown> = { ...payload };
-    for (const k of strip) delete row[k];
+  let row: Record<string, unknown> = { ...payload };
+  const maxAttempts = 48;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await admin.from('appointments').insert(row).select('id, access_token').single();
     if (!res.error && res.data) {
       return { data: res.data as { id: string; access_token: string }, error: null };
@@ -150,8 +193,35 @@ export async function insertAppointmentResilient(
     if (!isSchemaDriftError(msg)) {
       return { data: null, error: msg || 'Could not create booking' };
     }
+
+    const badCol = extractMissingColumnKey(msg);
+    if (badCol && badCol in row && !APPOINTMENT_CORE_KEYS.has(badCol)) {
+      delete row[badCol];
+      continue;
+    }
+
+    const nextStrip = APPOINTMENT_STRIP_ORDER.find((k) => k in row);
+    if (nextStrip) {
+      delete row[nextStrip];
+      continue;
+    }
+
+    const extras = Object.keys(row).filter((k) => !APPOINTMENT_CORE_KEYS.has(k));
+    if (extras.length > 0) {
+      extras.sort();
+      delete row[extras[0]!];
+      continue;
+    }
+
+    break;
   }
-  return { data: null, error: 'We could not save this booking due to a database configuration issue. Please call Gloss Boss ATX.' };
+
+  console.error('[booking-shared] insertAppointmentResilient exhausted retries', payload);
+  return {
+    data: null,
+    error:
+      'We could not save this booking due to a database configuration issue. Please call Gloss Boss ATX.',
+  };
 }
 
 export type VehicleLineInput = { serviceSlug: string; vehicleClass: string; vehicleDescription: string };

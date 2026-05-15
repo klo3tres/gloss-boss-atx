@@ -146,6 +146,60 @@ export async function sendAccountWelcomeEmailIfConfigured(params: { to: string; 
   await sendResendHtml({ to: params.to, subject: 'Welcome to Gloss Boss ATX', html });
 }
 
+export async function sendJobStartedEmailIfConfigured(params: {
+  to: string | null | undefined;
+  guestName: string;
+  serviceLabel: string;
+  whenIso: string;
+}): Promise<void> {
+  const to = String(params.to ?? '').trim().toLowerCase();
+  if (!to.includes('@')) {
+    console.info('[email] job_started skipped (no customer email)', params.serviceLabel.slice(0, 24));
+    return;
+  }
+  const whenLabel = new Date(params.whenIso).toLocaleString();
+  const inner = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">Hi ${params.guestName},</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Your Gloss Boss ATX service has <strong style="color:#fcd34d;">started</strong>.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:#a1a1aa;">Service: <strong style="color:#fafafa;">${params.serviceLabel}</strong><br/>Scheduled: ${whenLabel}</p>
+    <p style="margin:0;font-size:14px;color:#a1a1aa;">Track live milestones in your customer dashboard anytime.</p>`;
+  const html = glossBossEmailShell({
+    title: 'Service in progress',
+    bodyHtml: inner + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? ''),
+  });
+  if (!resendConfigured()) {
+    console.info('[email] job_started skipped (no Resend)', to);
+    return;
+  }
+  await sendResendHtml({ to, subject: 'Gloss Boss ATX — Your service has started', html });
+}
+
+export async function sendJobCompletedEmailIfConfigured(params: {
+  to: string | null | undefined;
+  guestName: string;
+  serviceLabel: string;
+}): Promise<void> {
+  const to = String(params.to ?? '').trim().toLowerCase();
+  if (!to.includes('@')) {
+    console.info('[email] job_completed skipped (no customer email)');
+    return;
+  }
+  const inner = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">Hi ${params.guestName},</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Your detail is <strong style="color:#6ee7b7;">complete</strong>. Thank you for choosing Gloss Boss ATX.</p>
+    <p style="margin:0;font-size:14px;color:#a1a1aa;">Service: <strong style="color:#fafafa;">${params.serviceLabel}</strong></p>
+    <p style="margin:16px 0 0;font-size:14px;color:#a1a1aa;">Approved after photos may appear in your dashboard when published.</p>`;
+  const html = glossBossEmailShell({
+    title: 'Service complete',
+    bodyHtml: inner + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? ''),
+  });
+  if (!resendConfigured()) {
+    console.info('[email] job_completed skipped (no Resend)', to);
+    return;
+  }
+  await sendResendHtml({ to, subject: 'Gloss Boss ATX — Service complete', html });
+}
+
 export async function sendAppointmentReminderIfConfigured(params: { to: string; whenIso: string }): Promise<void> {
   const whenLabel = new Date(params.whenIso).toLocaleString();
   const inner = `

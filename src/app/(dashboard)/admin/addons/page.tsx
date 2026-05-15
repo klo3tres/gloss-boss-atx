@@ -4,6 +4,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { AddonsAdminClient, type AddonRow } from '@/components/admin/addons-admin-client';
+import { normalizeAddonForPublic } from '@/lib/addons-shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,15 +21,28 @@ export default async function AdminAddonsPage() {
   const admin = tryCreateAdminSupabase();
   let rows: AddonRow[] = [];
   if (admin) {
-    const { data } = await admin.from('addons').select('id, slug, label, price_cents, active, sort_order').order('sort_order', { ascending: true });
-    rows = (data ?? []).map((r: Record<string, unknown>) => ({
-      id: String(r.id),
-      slug: String(r.slug ?? ''),
-      label: String(r.label ?? ''),
-      price_cents: typeof r.price_cents === 'number' ? r.price_cents : 0,
-      active: Boolean(r.active),
-      sort_order: typeof r.sort_order === 'number' ? r.sort_order : 0,
-    }));
+    let raw: Record<string, unknown>[] | null = null;
+    const full = await admin.from('addons').select('*').order('sort_order', { ascending: true });
+    if (!full.error && full.data) {
+      raw = full.data as Record<string, unknown>[];
+    } else if (full.error && /label|name|schema cache|Could not find|column/i.test(full.error.message)) {
+      const slim = await admin
+        .from('addons')
+        .select('id, slug, name, price_cents, active, sort_order')
+        .order('sort_order', { ascending: true });
+      raw = slim.error ? null : ((slim.data ?? []) as Record<string, unknown>[]);
+    }
+    rows = (raw ?? []).map((r) => {
+      const n = normalizeAddonForPublic(r);
+      return {
+        id: n.id,
+        slug: n.slug,
+        label: n.label,
+        price_cents: n.price_cents,
+        active: Boolean(r.active),
+        sort_order: typeof r.sort_order === 'number' ? r.sort_order : n.sort_order,
+      };
+    });
   }
 
   return (

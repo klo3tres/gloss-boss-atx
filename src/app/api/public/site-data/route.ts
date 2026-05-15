@@ -136,7 +136,8 @@ export async function GET() {
 
     const multiCar = packages.length ? computeMultiCarExample(packages, deals) : null;
 
-    const featuredShowcase = fErr ? defaultFeaturedShowcaseSlides() : parseFeaturedShowcase(featuredRes.data?.value ?? null);
+    const cmsFeatured = fErr ? [] : parseFeaturedShowcase(featuredRes.data?.value ?? null);
+    const featuredShowcase = cmsFeatured.length > 0 ? cmsFeatured : defaultFeaturedShowcaseSlides();
 
     let googleReviewUrl = '';
     const rawRv = reviewRes.data?.value;

@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server';
+import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notifyBusinessOfContactMessage } from '@/lib/email/contact-notify';
 
+function cleanPhone(raw: string | undefined): string | null {
+  const d = String(raw ?? '').replace(/\D/g, '');
+  if (d.length >= 10) return d.length === 10 ? d : d.slice(-10);
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
-    const { fromName, fromEmail, subject, body, appointmentId } = (await request.json()) as {
+    const { fromName, fromEmail, fromPhone, subject, body, appointmentId } = (await request.json()) as {
       fromName?: string;
       fromEmail?: string;
+      fromPhone?: string;
       subject?: string;
       body?: string;
       appointmentId?: string | null;
@@ -18,38 +26,79 @@ export async function POST(request: Request) {
 
     const admin = tryCreateAdminSupabase();
     if (!admin) {
-      console.error('[api/messages] Supabase admin not configured');
+      console.warn('[api/messages] admin unavailable');
       return NextResponse.json(
         {
           error: 'Server not configured for messages',
           code: 'MISSING_SUPABASE_SERVICE_ROLE',
         },
-        { status: 503 }
+        { status: 503 },
       );
     }
 
-    const { error } = await admin.from('messages').insert({
-      from_name: fromName,
-      from_email: fromEmail.trim().toLowerCase(),
-      subject: subject ?? null,
-      body,
-      appointment_id: appointmentId ?? null,
-      status: 'new',
-    });
+    const phone = cleanPhone(fromPhone);
+    const email = fromEmail.trim().toLowerCase();
 
-    if (error) {
-      console.error(error);
-      return NextResponse.json({ error: 'Could not save message' }, { status: 500 });
+    const attempts: Record<string, unknown>[] = [
+      {
+        from_name: fromName.trim(),
+        from_email: email,
+        from_phone: phone,
+        subject: subject ?? null,
+        body: body.trim(),
+        appointment_id: appointmentId ?? null,
+        status: 'new',
+      },
+      {
+        from_name: fromName.trim(),
+        from_email: email,
+        subject: subject ?? null,
+        body: body.trim(),
+        appointment_id: appointmentId ?? null,
+        status: 'new',
+      },
+      {
+        from_name: fromName.trim(),
+        from_email: email,
+        subject: subject ?? null,
+        body: body.trim(),
+        status: 'new',
+      },
+      {
+        name: fromName.trim(),
+        email,
+        message: body.trim(),
+        status: 'new',
+      },
+    ];
+
+    let lastErr: string | null = null;
+    for (const row of attempts) {
+      const { error } = await admin.from('messages').insert(row);
+      if (!error) {
+        const notify = await notifyBusinessOfContactMessage({
+          fromName: fromName.trim(),
+          fromEmail: email,
+          subject: subject ?? null,
+          body: body.trim(),
+        });
+        return NextResponse.json({ ok: true, emailSent: notify.sent, emailError: notify.error ?? null });
+      }
+      lastErr = error.message;
+      if (!isSchemaDriftError(error.message)) {
+        console.error('[api/messages] insert', error.message);
+        return NextResponse.json(
+          { error: 'We could not save your message. Please call or email the shop directly.' },
+          { status: 500 },
+        );
+      }
     }
 
-    const notify = await notifyBusinessOfContactMessage({
-      fromName,
-      fromEmail: fromEmail.trim().toLowerCase(),
-      subject: subject ?? null,
-      body,
-    });
-
-    return NextResponse.json({ ok: true, emailSent: notify.sent, emailError: notify.error ?? null });
+    console.error('[api/messages] all insert attempts failed', lastErr);
+    return NextResponse.json(
+      { error: 'We could not save your message. Please call or email the shop directly.' },
+      { status: 500 },
+    );
   } catch (e) {
     console.error('[api/messages]', e);
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });

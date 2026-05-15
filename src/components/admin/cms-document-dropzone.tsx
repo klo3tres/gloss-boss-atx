@@ -37,9 +37,15 @@ export function CmsDocumentDropzone({
             credentials: 'same-origin',
             timeoutMs: 120000,
           });
-          const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-          if (res.ok && j.ok) ok += 1;
-          else setMsg(j.error ?? 'Upload failed');
+          const j = (await res.json().catch(() => ({}))) as {
+            ok?: boolean;
+            error?: string;
+            jsxTemplateReference?: boolean;
+          };
+          if (res.ok && j.ok) {
+            ok += 1;
+            if (j.jsxTemplateReference) setMsg('Uploaded as JSX template reference (stored safely). Use live intake for signing.');
+          } else setMsg(j.error ?? 'Upload failed');
         } catch {
           setMsg('Network error');
         }
@@ -76,12 +82,12 @@ export function CmsDocumentDropzone({
         }`}
       >
         <Upload className='h-8 w-8 text-gold-soft' />
-        <p className='mt-2 text-xs text-zinc-400'>PDF, images, or HTML. Word (.doc/.docx): convert to PDF first — uploads are rejected for Word formats.</p>
+        <p className='mt-2 text-xs text-zinc-400'>PDF, images, HTML, or JSX/TSX (saved as plain text reference; not executed). Word: convert to PDF first.</p>
         <input
           ref={inputRef}
           type='file'
           className='hidden'
-          accept='.pdf,image/*,.html,.txt'
+          accept='.pdf,image/*,.html,.htm,.txt,.jsx,.tsx'
           multiple
           onChange={(e) => {
             if (e.target.files?.length) void upload(e.target.files);

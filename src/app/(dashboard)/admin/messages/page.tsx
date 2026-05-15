@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { setMessageStatusAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
-import { mapMessageRow, MESSAGE_SELECT_FALLBACK, MESSAGE_SELECT_LEAN, type MessageRow } from '@/lib/messages-map';
+import { mapMessageRow, MESSAGE_SELECT_FALLBACK, MESSAGE_SELECT_LEAN, MESSAGE_SELECT_WITH_PHONE, type MessageRow } from '@/lib/messages-map';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,24 +16,27 @@ export default async function AdminMessagesPage() {
   let messagesError: string | null = null;
 
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
-    const full = await supabase.from('messages').select(MESSAGE_SELECT_LEAN).order('created_at', { ascending: false }).limit(100);
-    if (full.error && /from_name|\bname\b|column|schema cache|Could not find/i.test(full.error.message)) {
-      const lean = await supabase.from('messages').select(MESSAGE_SELECT_FALLBACK).order('created_at', { ascending: false }).limit(100);
-      if (lean.error) {
-        if (/Could not find|schema cache|relation.*messages/i.test(lean.error.message)) {
-          messagesError = 'Messages table not found — run migrations in Supabase.';
-        } else {
-          messagesError = lean.error.message;
-        }
+    const qPhone = await supabase.from('messages').select(MESSAGE_SELECT_WITH_PHONE).order('created_at', { ascending: false }).limit(100);
+    let data: unknown[] | null = qPhone.data as unknown[] | null;
+    let err = qPhone.error;
+    if (err && /from_phone|column|schema cache|Could not find/i.test(err.message)) {
+      const qLean = await supabase.from('messages').select(MESSAGE_SELECT_LEAN).order('created_at', { ascending: false }).limit(100);
+      data = qLean.data as unknown[] | null;
+      err = qLean.error;
+    }
+    if (err && /from_name|\bname\b|column|schema cache|Could not find/i.test(err.message)) {
+      const qFb = await supabase.from('messages').select(MESSAGE_SELECT_FALLBACK).order('created_at', { ascending: false }).limit(100);
+      data = qFb.data as unknown[] | null;
+      err = qFb.error;
+    }
+    if (err) {
+      if (/Could not find|schema cache|relation.*messages/i.test(err.message)) {
+        messagesError = 'Messages table not found — run migrations in Supabase.';
       } else {
-        rows = (lean.data ?? [])
-          .map((r) => mapMessageRow(r as Record<string, unknown>))
-          .filter((x): x is MessageRow => x != null);
+        messagesError = err.message;
       }
-    } else if (full.error) {
-      messagesError = full.error.message;
     } else {
-      rows = (full.data ?? [])
+      rows = (data ?? [])
         .map((r) => mapMessageRow(r as Record<string, unknown>))
         .filter((x): x is MessageRow => x != null);
     }

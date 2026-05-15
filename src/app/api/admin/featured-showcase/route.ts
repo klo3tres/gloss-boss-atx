@@ -2,6 +2,7 @@ import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { dbSaveFeaturedShowcase } from '@/lib/admin/gallery-db-mutations';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
 
@@ -20,12 +21,17 @@ export async function POST(request: Request) {
   if (!json.trim()) {
     return NextResponse.json({ ok: false, error: 'Missing json' }, { status: 400 });
   }
-  const res = await dbSaveFeaturedShowcase(gate.supabase, json);
+
+  const writeClient = tryCreateAdminSupabase() ?? gate.supabase;
+  const res = await dbSaveFeaturedShowcase(writeClient, json);
   if (!res.ok) {
-    return NextResponse.json({ ok: false, error: res.error ?? 'Save failed' }, { status: 400 });
+    const status = res.code === 'TABLE_OR_POLICY' ? 503 : 400;
+    return NextResponse.json({ ok: false, error: res.error ?? 'Save failed', code: res.code }, { status });
   }
+
   revalidatePath('/');
   revalidatePath('/admin/cms');
   revalidatePath('/services');
+  revalidatePath('/gallery');
   return NextResponse.json({ ok: true });
 }

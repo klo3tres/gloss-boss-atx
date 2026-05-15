@@ -13,6 +13,7 @@ import {
   dbToggleGalleryFeatured,
   dbToggleGalleryPublished,
 } from '@/lib/admin/gallery-db-mutations';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function requireAdminSupabase() {
   const session = await getSessionWithProfile();
@@ -126,7 +127,7 @@ export async function saveFeaturedShowcaseAction(formData: FormData) {
   if (!raw) return;
   const gate = await requireAdminSupabase();
   if (!gate.ok) return;
-  const r = await dbSaveFeaturedShowcase(gate.supabase, raw);
+  const r = await dbSaveFeaturedShowcase(tryCreateAdminSupabase() ?? gate.supabase, raw);
   if (!r.ok) {
     console.warn('[CRM_DEBUG_DB]', 'featured_showcase_save', r.error);
     return;
@@ -134,4 +135,5 @@ export async function saveFeaturedShowcaseAction(formData: FormData) {
   revalidatePath('/');
   revalidatePath('/admin/cms');
   revalidatePath('/services');
+  revalidatePath('/gallery');
 }
