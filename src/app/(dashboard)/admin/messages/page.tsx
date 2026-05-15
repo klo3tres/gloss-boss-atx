@@ -1,112 +1,86 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getSessionWithProfile } from '@/lib/auth/session';
+import { isAdminLevel } from '@/lib/auth/roles';
 import { setMessageStatusAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { mapMessageRow, MESSAGE_SELECT_FALLBACK, MESSAGE_SELECT_LEAN, type MessageRow } from '@/lib/messages-map';
 
 export const dynamic = 'force-dynamic';
-
-type Msg = {
-  id: string;
-  from_name: string;
-  from_email: string;
-  subject: string | null;
-  body: string;
-  status: string;
-  created_at: string;
-};
 
 export default async function AdminMessagesPage() {
   const session = await getSessionWithProfile();
   const supabase = await createSupabaseServerClient();
 
-  let rows: Msg[] = [];
+  let rows: MessageRow[] = [];
   let messagesError: string | null = null;
-  if (supabase && session.user) {
-    const { data, error } = await supabase.from('messages').select('id, from_name, from_email, subject, body, status, created_at').order('created_at', { ascending: false }).limit(100);
-    if (error) {
-      messagesError = error.message;
+
+  if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
+    const full = await supabase.from('messages').select(MESSAGE_SELECT_LEAN).order('created_at', { ascending: false }).limit(100);
+    if (full.error && /from_name|column|schema cache|Could not find/i.test(full.error.message)) {
+      const lean = await supabase.from('messages').select(MESSAGE_SELECT_FALLBACK).order('created_at', { ascending: false }).limit(100);
+      if (lean.error) {
+        if (/Could not find|schema cache|relation.*messages/i.test(lean.error.message)) {
+          messagesError = 'Messages table not found — run migrations in Supabase.';
+        } else {
+          messagesError = lean.error.message;
+        }
+      } else {
+        rows = (lean.data ?? [])
+          .map((r) => mapMessageRow(r as Record<string, unknown>))
+          .filter((x): x is MessageRow => x != null);
+      }
+    } else if (full.error) {
+      messagesError = full.error.message;
     } else {
-      rows = (data ?? []) as Msg[];
+      rows = (full.data ?? [])
+        .map((r) => mapMessageRow(r as Record<string, unknown>))
+        .filter((x): x is MessageRow => x != null);
     }
   }
 
   return (
-    <DashboardShell
-      title='Message center'
-      subtitle='Customer inquiries from the website contact form — mark read, reply by email, archive when done.'
-      role='admin'
-    >
-      <div className='space-y-4'>
-        {messagesError ? (
-          <p role='alert' className='rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
-            Could not load messages: {messagesError}. Check the <code className='text-gold-soft'>messages</code> table and RLS policies.
-          </p>
-        ) : null}
-        {rows.length === 0 && !messagesError ? (
-          <p className='rounded-2xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400'>No messages yet. They appear here when visitors submit the homepage contact form.</p>
-        ) : null}
-        {rows.map((m) => (
-          <article
-            key={m.id}
-            className={`rounded-2xl border p-5 transition hover:shadow-[0_0_28px_rgba(212,166,77,0.12)] ${
-              m.status === 'new' ? 'border-gold/50 bg-black/50' : 'border-gold/15 bg-zinc-950'
-            }`}
-          >
-            <div className='flex flex-wrap items-start justify-between gap-4'>
-              <div>
-                <span
-                  className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                    m.status === 'new' ? 'bg-gold/20 text-gold-soft' : 'bg-white/10 text-zinc-400'
-                  }`}
-                >
-                  {m.status}
-                </span>
-                <p className='mt-2 text-lg font-bold text-white'>{m.from_name}</p>
-                <p className='text-sm text-gold-soft'>{m.from_email}</p>
-                {m.subject ? <p className='mt-1 text-sm text-zinc-400'>Subject: {m.subject}</p> : null}
-                <p className='mt-3 whitespace-pre-wrap text-sm text-zinc-200'>{m.body}</p>
-                <p className='mt-2 text-xs text-zinc-600'>{new Date(m.created_at).toLocaleString()}</p>
+    <DashboardShell title='Message center' subtitle='Contact form submissions from the homepage.' role='admin'>
+      {messagesError ? (
+        <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
+          {messagesError}
+        </p>
+      ) : null}
+      {rows.length === 0 && !messagesError ? (
+        <p className='rounded-2xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400'>No messages yet.</p>
+      ) : (
+        <ul className='space-y-4'>
+          {rows.map((m) => (
+            <li key={m.id} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+              <div className='flex flex-wrap items-start justify-between gap-3'>
+                <div>
+                  <p className='text-xs text-zinc-500'>{new Date(m.created_at).toLocaleString()}</p>
+                  <p className='mt-2 text-lg font-bold text-white'>{m.from_name}</p>
+                  <p className='text-sm text-gold-soft'>{m.from_email}</p>
+                  {m.from_phone ? <p className='text-sm text-zinc-400'>{m.from_phone}</p> : null}
+                  {m.subject ? <p className='mt-2 text-sm text-zinc-300'>{m.subject}</p> : null}
+                </div>
+                <span className='rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase text-zinc-400'>{m.status}</span>
               </div>
-              <div className='flex flex-col gap-2'>
-                <a
-                  href={`mailto:${encodeURIComponent(m.from_email)}?subject=${encodeURIComponent(`Re: ${m.subject ?? 'Gloss Boss ATX'}`)}`}
-                  className='rounded-lg bg-gold px-4 py-2 text-center text-xs font-black uppercase tracking-wider text-black transition hover:brightness-110'
-                >
-                  Reply by email
-                </a>
-                {m.status === 'new' ? (
-                  <form action={setMessageStatusAction}>
-                    <input type='hidden' name='id' value={m.id} />
-                    <input type='hidden' name='status' value='read' />
-                    <button type='submit' className='w-full rounded-lg border border-gold/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-gold-soft'>
-                      Mark read
-                    </button>
-                  </form>
-                ) : (
-                  <form action={setMessageStatusAction}>
-                    <input type='hidden' name='id' value={m.id} />
-                    <input type='hidden' name='status' value='new' />
-                    <button type='submit' className='w-full rounded-lg border border-white/15 px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300'>
-                      Mark unread
-                    </button>
-                  </form>
-                )}
-                <form action={setMessageStatusAction}>
-                  <input type='hidden' name='id' value={m.id} />
-                  <input type='hidden' name='status' value='archived' />
-                  <button type='submit' className='w-full rounded-lg border border-white/10 px-4 py-2 text-xs text-zinc-500'>
-                    Archive
-                  </button>
-                </form>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <Link href='/admin' className='mt-8 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
-        ← Admin overview
+              <p className='mt-4 whitespace-pre-wrap text-sm text-zinc-300'>{m.body || '(no message body)'}</p>
+              <form action={setMessageStatusAction} className='mt-4 flex flex-wrap gap-2'>
+                <input type='hidden' name='id' value={m.id} />
+                <button type='submit' name='status' value='read' className='rounded border border-white/20 px-2 py-1 text-xs text-zinc-300'>
+                  Mark read
+                </button>
+                <button type='submit' name='status' value='replied' className='rounded border border-emerald-500/40 px-2 py-1 text-xs text-emerald-300'>
+                  Mark replied
+                </button>
+                <button type='submit' name='status' value='archived' className='rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-500'>
+                  Archive
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link href='/admin' className='mt-8 inline-block text-xs font-bold uppercase text-gold-soft underline'>
+        ← Admin
       </Link>
     </DashboardShell>
   );

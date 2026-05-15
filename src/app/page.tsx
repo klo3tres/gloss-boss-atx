@@ -329,6 +329,32 @@ export default function HomePage() {
         ))}
       </section>
 
+      <section className='mx-auto w-full max-w-5xl px-4 py-12 sm:px-6'>
+        <MotionFade>
+          <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-3xl'>Hours & service area</h2>
+          <div className='mt-6 grid gap-4 sm:grid-cols-2'>
+            <article className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+              <p className='text-xs uppercase tracking-wider text-gold-soft'>Operating hours</p>
+              <ul className='mt-3 space-y-2 text-sm text-zinc-300'>
+                <li><span className='font-semibold text-white'>Friday</span> — 5:00 PM to 9:00 PM</li>
+                <li><span className='font-semibold text-white'>Saturday</span> — 7:30 AM to 7:00 PM</li>
+                <li><span className='font-semibold text-white'>Sunday</span> — 7:30 AM to 7:00 PM</li>
+              </ul>
+            </article>
+            <article className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+              <p className='text-xs uppercase tracking-wider text-gold-soft'>Contact</p>
+              <p className='mt-3 text-sm text-zinc-300'>
+                <a href='tel:+15124812319' className='font-bold text-gold-soft hover:text-white'>(512) 481-2319</a>
+              </p>
+              <p className='mt-2 text-sm text-zinc-300'>
+                <a href='mailto:glossbossatx1@gmail.com' className='text-gold-soft hover:text-white'>glossbossatx1@gmail.com</a>
+              </p>
+              <p className='mt-2 text-sm text-zinc-400'>Austin, Texas & surrounding areas</p>
+            </article>
+          </div>
+        </MotionFade>
+      </section>
+
       <section id='faq' className='mx-auto w-full max-w-5xl px-4 py-16 sm:px-6'>
         <MotionFade>
           <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>FAQ</h2>

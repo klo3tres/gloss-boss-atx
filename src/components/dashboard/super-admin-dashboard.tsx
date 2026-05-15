@@ -308,6 +308,9 @@ export function SuperAdminDashboard() {
           <Link href='/admin/intake' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
             Intake
           </Link>
+          <Link href='/admin/leads' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Leads
+          </Link>
           <Link href='/admin/agreements' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
             Agreements
           </Link>

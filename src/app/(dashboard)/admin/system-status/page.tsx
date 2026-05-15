@@ -111,6 +111,10 @@ export default function SystemStatusPage() {
             <div className='mt-4 space-y-2'>
               <Row label='RESEND_API_KEY' ok={data.resend.apiKeyConfigured} />
               <Row label='RESEND_FROM_EMAIL' ok={data.resend.fromEmailConfigured} />
+              <p className='rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-400'>
+                Messages still save without Resend. Add <code className='text-gold-soft'>RESEND_API_KEY</code> and{' '}
+                <code className='text-gold-soft'>RESEND_FROM_EMAIL</code> in Vercel to email the shop on new contact form submissions.
+              </p>
             </div>
           </section>
 

@@ -18,7 +18,7 @@ const ALLOWED = new Set([
   'text/plain',
 ]);
 
-const DOC_CATEGORIES = new Set(['liability', 'sop', 'homepage_banner', 'other']);
+const DOC_CATEGORIES = new Set(['liability', 'sop', 'intake', 'homepage_banner', 'training', 'other']);
 
 function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120) || 'document';
@@ -81,8 +81,17 @@ export async function POST(request: Request) {
     }
 
     const mime = file.type || 'application/octet-stream';
+    const isDocx =
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mime === 'application/msword';
+    if (isDocx) {
+      return NextResponse.json(
+        { error: 'Word documents are not supported in-browser. Please upload PDF or HTML.' },
+        { status: 400 },
+      );
+    }
     if (!ALLOWED.has(mime) && !mime.startsWith('image/')) {
-      return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
+      return NextResponse.json({ error: 'Unsupported file type. Use PDF, HTML, or images.' }, { status: 400 });
     }
 
     const categoryRaw = String(form.get('category') ?? 'other').trim();
@@ -108,18 +117,20 @@ export async function POST(request: Request) {
         ? Number((maxQ.data[0] as { sort_order: number }).sort_order) + 10
         : 10;
 
-    const { error: insErr } = await admin.from('cms_documents').insert({
-      category,
-      title,
-      file_url: publicUrl,
-      mime_type: mime,
-      sort_order: nextOrder,
-    });
+    const row = { category, title, file_url: publicUrl, mime_type: mime, sort_order: nextOrder };
+    let insErr = (await admin.from('cms_documents').insert(row)).error;
+    if (insErr && /category|check constraint|schema cache/i.test(insErr.message)) {
+      const fallback = { ...row, category: category === 'intake' || category === 'training' ? 'other' : category };
+      insErr = (await admin.from('cms_documents').insert(fallback)).error;
+    }
+    if (insErr && /mime_type|column/i.test(insErr.message)) {
+      insErr = (await admin.from('cms_documents').insert({ category: row.category, title, file_url: publicUrl, sort_order: nextOrder })).error;
+    }
 
     if (insErr) {
       console.warn('[cms-document-upload] db', insErr.message);
       return NextResponse.json(
-        { error: 'File uploaded but database row failed. Run migration 000014.', url: publicUrl },
+        { error: `File uploaded but database row failed: ${insErr.message}. Run migrations 000014 and 000016.`, url: publicUrl },
         { status: 503 },
       );
     }

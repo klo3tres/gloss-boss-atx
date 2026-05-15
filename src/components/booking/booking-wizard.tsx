@@ -10,6 +10,7 @@ import {
   isBookingSlotAllowed,
   type BookingAvailabilityRules,
 } from '@/lib/booking-availability';
+import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
 import {
@@ -69,6 +70,7 @@ export function BookingWizard() {
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [addonLabels, setAddonLabels] = useState<string[]>(() => [...DEFAULT_ADDON_LABELS]);
+  const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
 
   useEffect(() => {
     type CatalogPayload = {
@@ -282,6 +284,19 @@ export function BookingWizard() {
 
   useEffect(() => {
     let cancelled = false;
+    void fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 })
+      .then((r) => r.json())
+      .then((data: { deals?: DealConfig }) => {
+        if (!cancelled && data?.deals) setDeals(data.deals);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     void fetchWithTimeout('/api/public/site-settings', { cache: 'no-store', timeoutMs: 8000 })
       .then(async (r) => {
         try {
@@ -307,23 +322,35 @@ export function BookingWizard() {
     [serviceSlug, vehicleClass, vehicleDescription, extraVehicles],
   );
 
-  const pricePreviewText = useMemo(() => {
-    let total = 0;
-    const parts: string[] = [];
+  const priceSummary = useMemo(() => {
+    let subtotal = 0;
+    const lines: { label: string; cents: number }[] = [];
     for (const line of bookingLines) {
       const svc = services.find((s) => s.slug === line.serviceSlug);
       if (!svc) continue;
       const resolved = safePriceResolver({ slug: svc.slug, serviceId: svc.id }, line.vehicleClass, prices);
-      if (resolved.isQuote) return 'Quote required for one or more vehicle lines (e.g. ceramic coating)';
+      if (resolved.isQuote) return { kind: 'quote' as const };
       const cents = safePriceCentsForDisplay({ slug: svc.slug, serviceId: svc.id }, line.vehicleClass, prices);
-      if (cents == null) return 'Quote required for one or more vehicle lines';
-      total += cents;
-      parts.push(`${classLabel(line.vehicleClass)} · $${(cents / 100).toFixed(2)}`);
+      if (cents == null) return { kind: 'quote' as const };
+      subtotal += cents;
+      lines.push({ label: `${svc.title} (${classLabel(line.vehicleClass)})`, cents });
     }
-    if (parts.length === 0) return null;
+    if (lines.length === 0) return null;
+    let discount = 0;
+    if (lines.length >= 2 && deals.multiCarSecondVehicleDiscountPercent > 0) {
+      discount = Math.round((lines[1]?.cents ?? 0) * (deals.multiCarSecondVehicleDiscountPercent / 100));
+    }
+    const total = Math.max(0, subtotal - discount);
     const deposit = Math.round(total * 0.3);
-    return `${parts.join(' + ')} = $${(total / 100).toFixed(2)} combined · $${(deposit / 100).toFixed(2)} deposit (30%)`;
-  }, [bookingLines, prices, services]);
+    return { kind: 'ok' as const, lines, subtotal, discount, total, deposit };
+  }, [bookingLines, prices, services, deals.multiCarSecondVehicleDiscountPercent]);
+
+  const pricePreviewText =
+    priceSummary?.kind === 'quote'
+      ? 'Quote required for one or more vehicle lines'
+      : priceSummary?.kind === 'ok'
+        ? `$${(priceSummary.total / 100).toFixed(2)} total · $${(priceSummary.deposit / 100).toFixed(2)} deposit`
+        : null;
 
   const toggleAddOn = (label: string) => {
     setSelectedAddOns((prev) => (prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]));
@@ -672,7 +699,32 @@ export function BookingWizard() {
                 </div>
               );
             })}
-            <p className='text-gold-soft'>{pricePreviewText}</p>
+            {priceSummary?.kind === 'ok' ? (
+              <div className='mt-3 space-y-2 border-t border-white/10 pt-3'>
+                {priceSummary.lines.map((l, i) => (
+                  <p key={i} className='flex justify-between text-sm text-zinc-400'>
+                    <span>{l.label}</span>
+                    <span>${(l.cents / 100).toFixed(2)}</span>
+                  </p>
+                ))}
+                {priceSummary.discount > 0 ? (
+                  <p className='flex justify-between text-sm text-emerald-300'>
+                    <span>Multi-car discount</span>
+                    <span>-${(priceSummary.discount / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                <p className='flex justify-between text-2xl font-black text-white'>
+                  <span>Combined total</span>
+                  <span>${(priceSummary.total / 100).toFixed(2)}</span>
+                </p>
+                <p className='flex justify-between rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm font-bold text-gold-soft'>
+                  <span>Deposit due now (30%)</span>
+                  <span>${(priceSummary.deposit / 100).toFixed(2)}</span>
+                </p>
+              </div>
+            ) : (
+              <p className='text-gold-soft'>{pricePreviewText}</p>
+            )}
             {selectedAddOns.length > 0 ? <p className='text-xs text-zinc-500'>Add-ons: {selectedAddOns.join(', ')}</p> : null}
           </div>
           <button

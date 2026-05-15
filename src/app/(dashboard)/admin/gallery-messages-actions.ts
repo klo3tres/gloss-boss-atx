@@ -39,6 +39,22 @@ export async function deleteGalleryImageAction(formData: FormData) {
   revalidatePath('/book');
 }
 
+export async function toggleGalleryFeaturedAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const featured = formData.get('featured') === 'true';
+  if (!id) return;
+  const gate = await requireAdminSupabase();
+  if (!gate.ok) return;
+  try {
+    await gate.supabase.from('gallery_images').update({ featured }).eq('id', id);
+  } catch {
+    /* column may be missing until migration 000016 */
+  }
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  revalidatePath('/gallery');
+}
+
 export async function toggleGalleryPublishedAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
   const published = formData.get('published') === 'true';

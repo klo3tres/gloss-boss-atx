@@ -2,20 +2,15 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import {
-  addGalleryImageAction,
-  deleteGalleryImageAction,
-  reorderGalleryImageAction,
-  saveFeaturedShowcaseAction,
-  toggleGalleryPublishedAction,
-} from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { addGalleryImageAction, saveFeaturedShowcaseAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
 import { saveBookingAvailabilityAction } from '@/lib/admin/booking-availability-actions';
 import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { DEFAULT_BOOKING_AVAILABILITY } from '@/lib/booking-availability';
 import { CmsDocumentDropzone } from '@/components/admin/cms-document-dropzone';
 import { BrandingUploadDropzone } from '@/components/admin/branding-upload-dropzone';
 import { GalleryLocalUpload } from '@/components/admin/gallery-local-upload';
-import { GalleryDragReorder } from '@/components/admin/gallery-drag-reorder';
+import { GalleryAdminManager } from '@/components/admin/gallery-admin-manager';
+import { FeaturedShowcaseManager } from '@/components/admin/featured-showcase-manager';
 import { defaultFeaturedShowcaseSlides } from '@/lib/public-site-data';
 import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normalize';
 import { deleteCmsDocumentAction, saveCmsDocumentUrlAction } from '@/lib/admin/cms-documents-actions';
@@ -136,11 +131,13 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     cmsDocs = [];
   }
 
-  const galleryDragItems = galleryRows.map((r) => ({
+  const galleryAdminItems = galleryRows.map((r) => ({
     id: r.id,
     caption: r.caption,
     url: r.url?.trim() || r.image_url,
-    sort_order: r.sort_order,
+    sort_order: r.order_index ?? r.sort_order,
+    published: r.published,
+    featured: r.featured,
   }));
 
   return (
@@ -326,18 +323,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         <p className='mt-2 text-sm text-zinc-400'>
           Controls the Before/After preview on the homepage. Use JSON: <code className='text-gold-soft'>{`{ "slides": [ { "id": "1", "label": "…", "image": "https://…" } ] }`}</code>
         </p>
-        <form action={saveFeaturedShowcaseAction} className='mt-4 space-y-3'>
-          <textarea
-            name='json'
-            rows={12}
-            defaultValue={featuredJson}
-            className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white'
-            spellCheck={false}
-          />
-          <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-            Save featured showcase
-          </button>
-        </form>
+        <FeaturedShowcaseManager initialJson={featuredJson} saveAction={saveFeaturedShowcaseAction} />
       </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -360,59 +346,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           </button>
         </form>
 
-        <GalleryDragReorder rows={galleryDragItems} />
-
-        <ul className='mt-6 space-y-2 text-sm text-zinc-200'>
-          {galleryRows.length === 0 ? <li className='text-zinc-500'>No gallery rows yet.</li> : null}
-          {galleryRows.map((row, idx) => (
-            <li key={row.id} className='flex flex-col gap-2 rounded-lg border border-white/10 bg-black/40 p-3 sm:flex-row sm:items-center sm:justify-between'>
-              <div className='min-w-0 flex-1'>
-                <span className='text-xs text-zinc-500'>
-                  {row.published ? 'Published' : 'Draft'} · order {row.order_index ?? row.sort_order}
-                </span>
-                <p className='mt-1 break-all text-gold-soft'>{row.url?.trim() || row.image_url}</p>
-                {row.caption ? <p className='mt-1 text-zinc-400'>{row.caption}</p> : null}
-              </div>
-              <div className='flex flex-wrap items-center gap-2'>
-                <form action={toggleGalleryPublishedAction}>
-                  <input type='hidden' name='id' value={row.id} />
-                  <input type='hidden' name='published' value={row.published ? 'false' : 'true'} />
-                  <button type='submit' className='rounded-lg border border-gold/40 px-3 py-1.5 text-xs font-bold uppercase text-gold-soft'>
-                    {row.published ? 'Unpublish' : 'Publish'}
-                  </button>
-                </form>
-                <form action={reorderGalleryImageAction}>
-                  <input type='hidden' name='id' value={row.id} />
-                  <input type='hidden' name='direction' value='up' />
-                  <button
-                    type='submit'
-                    disabled={idx === 0}
-                    className='rounded-lg border border-white/15 px-2 py-1 text-xs text-zinc-300 hover:border-gold/40 disabled:opacity-30'
-                  >
-                    Up
-                  </button>
-                </form>
-                <form action={reorderGalleryImageAction}>
-                  <input type='hidden' name='id' value={row.id} />
-                  <input type='hidden' name='direction' value='down' />
-                  <button
-                    type='submit'
-                    disabled={idx >= galleryRows.length - 1}
-                    className='rounded-lg border border-white/15 px-2 py-1 text-xs text-zinc-300 hover:border-gold/40 disabled:opacity-30'
-                  >
-                    Down
-                  </button>
-                </form>
-                <form action={deleteGalleryImageAction}>
-                  <input type='hidden' name='id' value={row.id} />
-                  <button type='submit' className='rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/10'>
-                    Delete
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <GalleryAdminManager rows={galleryAdminItems} />
       </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

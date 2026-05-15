@@ -108,6 +108,7 @@ export type AdminGalleryRow = {
   sort_order: number;
   order_index: number | null;
   published: boolean;
+  featured: boolean;
   created_at: string;
 };
 
@@ -122,6 +123,7 @@ export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGall
       sort_order: n.sort_order,
       order_index: n.order_index,
       published: Boolean(raw.published ?? raw.active ?? true),
+      featured: Boolean(raw.featured),
       created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
     };
   }
@@ -138,6 +140,7 @@ export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGall
     sort_order: sortEx.sort_order,
     order_index: sortEx.order_index,
     published: Boolean(raw.published ?? raw.active ?? true),
+    featured: Boolean(raw.featured),
     created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
   };
 }

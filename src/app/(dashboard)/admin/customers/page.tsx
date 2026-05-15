@@ -113,6 +113,9 @@ export default async function AdminCustomersPage() {
                         <button type='submit' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft'>
                           Save
                         </button>
+                        <Link href={`/admin/customers/${c.id}`} className='rounded-lg border border-white/15 px-3 py-2 text-xs font-bold uppercase text-zinc-300 hover:border-gold/40'>
+                          View detail
+                        </Link>
                       </form>
                       {isSuper ? (
                         <form action={deleteCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>

@@ -13,7 +13,7 @@ export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
 export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'customer';
 
 const adminLinks = [
-  { href: '/', label: 'Home' },
+  { href: '/admin', label: 'Home' },
   { href: '/admin', label: 'Overview' },
   { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/team', label: 'Team' },
@@ -26,7 +26,7 @@ const adminLinks = [
 ];
 
 const superLinks = [
-  { href: '/', label: 'Home' },
+  { href: '/admin/super', label: 'Home' },
   { href: '/admin/super', label: 'Command center' },
   { href: '/admin', label: 'Operations (admin)' },
   { href: '/admin/customers', label: 'Customers' },
@@ -40,13 +40,13 @@ const superLinks = [
 ];
 
 const techLinks = [
-  { href: '/', label: 'Home' },
+  { href: '/tech', label: 'Home' },
   { href: '/tech', label: 'My jobs' },
   { href: '/book', label: 'Public booking' },
 ];
 
 const customerLinks = [
-  { href: '/', label: 'Home' },
+  { href: '/dashboard', label: 'Home' },
   { href: '/dashboard', label: 'Overview' },
   { href: '/book', label: 'Book again' },
   { href: '/gift-cards', label: 'Gift cards' },

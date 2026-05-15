@@ -28,7 +28,7 @@ function allowedRolesForVariant(variant: RoleGateVariant): readonly AppRole[] {
     case 'tech':
       return ['technician', 'admin', 'super_admin'];
     case 'customer':
-      return ['customer'];
+      return ['customer', 'super_admin', 'admin'];
     default:
       return ['customer'];
   }
