@@ -26,7 +26,7 @@ const PHOTO_CATEGORIES = [
   { value: 'other', label: 'Other' },
 ] as const;
 type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]['value'];
-type PhotoPreview = { src: string; uploadedAt: string; savedTo?: string };
+type PhotoPreview = { src: string; uploadedAt: string; savedTo?: string; label?: string };
 type StoredWalkInJob = {
   appointmentId?: string | null;
   fallbackBookingId?: string | null;
@@ -88,6 +88,10 @@ function formatRoleLabel(role: string | null | undefined): string {
 
 function isQualifyingBeforePhotoCategory(cat: PhotoCategory): boolean {
   return cat !== 'damage' && cat !== 'other';
+}
+
+function photoCategoryLabel(value: PhotoCategory): string {
+  return PHOTO_CATEGORIES.find((cat) => cat.value === value)?.label ?? value.replace(/_/g, ' ');
 }
 
 export function TechWorkflowWizard({
@@ -510,6 +514,7 @@ export function TechWorkflowWizard({
           src: URL.createObjectURL(file),
           uploadedAt: j.uploadedAt ?? new Date().toISOString(),
           savedTo: j.savedTo,
+          label: photoCategoryLabel(photoCat),
         };
         if (j.appointmentId) {
           setAppointmentId(j.appointmentId);
@@ -1097,6 +1102,7 @@ export function TechWorkflowWizard({
                     {beforePreviewByCategory[cat.value].map((src) => (
                       <div key={src.src} className='space-y-1'>
                         <img src={src.src} alt={`${cat.label} before upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                        <p className='text-[9px] font-bold uppercase tracking-wider text-zinc-300'>{src.label ?? cat.label}</p>
                         <p className='text-[9px] text-emerald-300'>Uploaded {new Date(src.uploadedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
                         {src.savedTo === 'fallback' ? <p className='text-[9px] text-amber-200'>Saved to fallback job record</p> : null}
                       </div>
@@ -1268,6 +1274,7 @@ export function TechWorkflowWizard({
                       {afterPreviewByCategory[cat.value].map((src) => (
                         <div key={src.src} className='space-y-1'>
                           <img src={src.src} alt={`${cat.label} after upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <p className='text-[9px] font-bold uppercase tracking-wider text-zinc-300'>{src.label ?? cat.label}</p>
                           <p className='text-[9px] text-emerald-300'>Uploaded {new Date(src.uploadedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
                           {src.savedTo === 'fallback' ? <p className='text-[9px] text-amber-200'>Saved to fallback job record</p> : null}
                         </div>

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { notifyJobCompletedPlaceholder, notifyJobStartedPlaceholder } from '@/lib/notifications-placeholder';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
@@ -18,7 +19,7 @@ async function requireTechSupabase() {
 }
 
 async function writeNotificationOutbox(
-  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  db: SupabaseClient | null,
   row: Record<string, unknown>,
 ): Promise<void> {
   if (!db) return;
@@ -29,7 +30,7 @@ async function writeNotificationOutbox(
   if (error) console.warn('[tech] notification_outbox', error.message);
 }
 
-async function hasSmsConsent(db: Awaited<ReturnType<typeof createSupabaseServerClient>>, appointmentId: string): Promise<boolean> {
+async function hasSmsConsent(db: SupabaseClient | null, appointmentId: string): Promise<boolean> {
   if (!db) return false;
   const { data: agreement } = await db.from('signed_agreements').select('sms_consent').eq('appointment_id', appointmentId).maybeSingle();
   if ((agreement as { sms_consent?: boolean } | null)?.sms_consent === true) return true;
@@ -65,11 +66,12 @@ function photoMatchesPhase(row: Record<string, unknown>, phase: 'before' | 'afte
 }
 
 async function resolveFallbackForPhotoGate(
-  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  refs: { fallbackBookingId?: string; workflowSessionId?: string; accessToken?: string; jobReference?: string },
-): Promise<string> {
-  if (!db) return refs.fallbackBookingId ?? '';
-  if (refs.fallbackBookingId) return refs.fallbackBookingId;
+  db: SupabaseClient | null,
+  refs: { appointmentId?: string; fallbackBookingId?: string; workflowSessionId?: string; accessToken?: string; jobReference?: string; technicianId?: string },
+): Promise<string[]> {
+  const ids = new Set<string>();
+  if (refs.fallbackBookingId) ids.add(refs.fallbackBookingId);
+  if (!db) return Array.from(ids);
   if (refs.workflowSessionId) {
     const { data } = await db
       .from('tech_workflow_sessions')
@@ -77,30 +79,58 @@ async function resolveFallbackForPhotoGate(
       .eq('id', refs.workflowSessionId)
       .maybeSingle();
     const id = (data as { fallback_booking_id?: string | null } | null)?.fallback_booking_id;
-    if (id) return id;
+    if (id) ids.add(id);
+  }
+  if (refs.appointmentId) {
+    const { data } = await db
+      .from('tech_workflow_sessions')
+      .select('fallback_booking_id')
+      .eq('appointment_id', refs.appointmentId)
+      .order('updated_at', { ascending: false })
+      .limit(5);
+    for (const row of data ?? []) {
+      const id = (row as { fallback_booking_id?: string | null }).fallback_booking_id;
+      if (id) ids.add(id);
+    }
   }
   const token = refs.accessToken || refs.jobReference || '';
   if (token) {
     const { data } = await db.from('booking_fallbacks').select('id').eq('access_token', token).maybeSingle();
     const id = (data as { id?: string | null } | null)?.id;
-    if (id) return id;
+    if (id) ids.add(id);
   }
-  return '';
+  if (refs.technicianId) {
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { data } = await db
+      .from('tech_workflow_sessions')
+      .select('fallback_booking_id')
+      .eq('technician_id', refs.technicianId)
+      .eq('status', 'active')
+      .gte('created_at', since)
+      .order('updated_at', { ascending: false })
+      .limit(3);
+    for (const row of data ?? []) {
+      const id = (row as { fallback_booking_id?: string | null }).fallback_booking_id;
+      if (id) ids.add(id);
+    }
+  }
+  return Array.from(ids);
 }
 
 async function countWorkflowPhotos(
-  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  db: SupabaseClient | null,
   refs: {
     appointmentId?: string;
     fallbackBookingId?: string;
     workflowSessionId?: string;
     accessToken?: string;
     jobReference?: string;
+    technicianId?: string;
     phase: 'before' | 'after';
   },
 ): Promise<{ count: number; checked: string[]; error?: string }> {
   if (!db) return { count: 0, checked: [], error: 'Database unavailable' };
-  const fallbackBookingId = await resolveFallbackForPhotoGate(db, refs);
+  const fallbackBookingIds = await resolveFallbackForPhotoGate(db, refs);
   const checked: string[] = [];
   const rows: Record<string, unknown>[] = [];
 
@@ -120,7 +150,7 @@ async function countWorkflowPhotos(
         rows.push(...((data ?? []) as Record<string, unknown>[]));
       }
     }
-    if (fallbackBookingId) {
+    for (const fallbackBookingId of fallbackBookingIds) {
       checked.push(`${table}.fallback_booking_id=${fallbackBookingId.slice(0, 8)}`);
       const { data, error } = await db
         .from(table)
@@ -207,12 +237,13 @@ export async function techStartJobAction(
     };
   }
 
-  const beforeGate = await countWorkflowPhotos(gate.supabase, {
+  const beforeGate = await countWorkflowPhotos(db, {
     appointmentId,
     fallbackBookingId,
     workflowSessionId,
     accessToken,
     jobReference,
+    technicianId: gate.userId,
     phase: 'before',
   });
   if (beforeGate.error) {
@@ -375,12 +406,13 @@ export async function techCompleteJobAction(
     }
   }
 
-  const afterGate = await countWorkflowPhotos(gate.supabase, {
+  const afterGate = await countWorkflowPhotos(db, {
     appointmentId,
     fallbackBookingId,
     workflowSessionId,
     accessToken,
     jobReference,
+    technicianId: gate.userId,
     phase: 'after',
   });
   if (afterGate.error) {
