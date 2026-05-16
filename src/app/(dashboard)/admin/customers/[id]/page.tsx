@@ -8,6 +8,15 @@ import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-action
 
 export const dynamic = 'force-dynamic';
 
+function chicago(value: string | null | undefined) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const admin = tryCreateAdminSupabase();
@@ -18,20 +27,42 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const c = customer as Record<string, unknown>;
 
-  const [apptsRes, vehiclesRes, notesRes] = await Promise.all([
+  const custEmailRaw = String(c.email ?? '').trim().toLowerCase();
+  const custPhoneRaw = String(c.phone ?? '').replace(/\D/g, '');
+
+  const [apptsRes, vehiclesRes, notesRes, apptsByEmailRes, apptsByPhoneRes] = await Promise.all([
     admin
       .from('appointments')
       .select(
-        'id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, guest_name',
+        'id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone',
       )
       .eq('customer_id', id)
       .order('scheduled_start', { ascending: false })
       .limit(80),
     admin.from('vehicles').select('id, description, notes, created_at').eq('customer_id', id).order('created_at', { ascending: false }),
     admin.from('customer_notes').select('id, body, created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(40),
+    custEmailRaw
+      ? admin
+          .from('appointments')
+          .select('id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
+          .eq('guest_email', custEmailRaw)
+          .limit(80)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    custPhoneRaw
+      ? admin
+          .from('appointments')
+          .select('id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
+          .eq('guest_phone', custPhoneRaw)
+          .limit(80)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 
-  const apptRows = (apptsRes.data ?? []) as {
+  const apptMap = new Map<string, Record<string, unknown>>();
+  for (const row of [...(apptsRes.data ?? []), ...(apptsByEmailRes.data ?? []), ...(apptsByPhoneRes.data ?? [])]) {
+    const r = row as Record<string, unknown>;
+    if (r.id) apptMap.set(String(r.id), r);
+  }
+  const apptRows = [...apptMap.values()] as unknown as {
     id: string;
     status: string;
     scheduled_start: string;
@@ -42,6 +73,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     created_at?: string;
     assigned_technician_id?: string | null;
     vehicle_description?: string | null;
+    booking_vehicles?: unknown;
+    service_address?: string | null;
+    service_city?: string | null;
+    service_state?: string | null;
+    service_zip?: string | null;
     guest_name?: string | null;
   }[];
 
@@ -55,10 +91,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const paymentsQ =
     apptIds.length > 0
-      ? await admin.from('payments').select('amount_cents, status, created_at, appointment_id').in('appointment_id', apptIds)
+      ? await admin.from('payments').select('amount_cents, status, created_at, appointment_id, stripe_checkout_session_id, stripe_payment_intent_id').in('appointment_id', apptIds)
       : { data: [] as { amount_cents: number; status: string; created_at: string; appointment_id: string }[] };
 
-  const paymentRows = (paymentsQ.data ?? []) as { amount_cents: number; status: string; created_at: string; appointment_id: string }[];
+  const paymentRows = (paymentsQ.data ?? []) as { amount_cents: number; status: string; created_at: string; appointment_id: string; stripe_checkout_session_id?: string | null; stripe_payment_intent_id?: string | null }[];
   const paySucceeded = paymentRows.filter((p) => p.status === 'succeeded');
   const paymentsTotalCents = paySucceeded.reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
 
@@ -98,6 +134,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const vehicles = (vehiclesRes.data ?? []) as { id: string; description: string; notes: string | null; created_at: string }[];
   const notes = (notesRes.data ?? []) as { id: string; body: string; created_at: string }[];
+  const apptVehicles = apptRows
+    .flatMap((a) => {
+      if (Array.isArray(a.booking_vehicles)) {
+        return a.booking_vehicles
+          .map((v) => (v && typeof v === 'object' ? String((v as Record<string, unknown>).vehicle_description ?? '') : ''))
+          .filter(Boolean);
+      }
+      return a.vehicle_description ? [a.vehicle_description] : [];
+    })
+    .filter(Boolean);
 
   const custEmail = String(c.email ?? '')
     .trim()
@@ -162,6 +208,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <br />
             {[city, state, postal].filter(Boolean).join(', ')}
           </div>
+          {apptRows.some((a) => a.service_address) ? (
+            <p className='mt-3 text-xs text-zinc-500'>
+              Latest service address:{' '}
+              {[apptRows.find((a) => a.service_address)?.service_address, apptRows.find((a) => a.service_address)?.service_city, apptRows.find((a) => a.service_address)?.service_state, apptRows.find((a) => a.service_address)?.service_zip]
+                .filter(Boolean)
+                .join(', ')}
+            </p>
+          ) : null}
           <p className='mt-2 text-xs text-zinc-500'>Created {c.created_at ? new Date(String(c.created_at)).toLocaleString() : '—'}</p>
         </section>
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -207,13 +261,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <ul className='mt-3 space-y-2 text-sm'>
           {vehicles.length === 0 ? (
             <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
-              No vehicles on file
+              {apptVehicles.length ? 'Vehicles found on appointments below.' : 'No vehicles on file'}
             </li>
           ) : null}
           {vehicles.map((v) => (
             <li key={v.id} className='rounded border border-white/10 px-3 py-2'>
               <p className='text-white'>{v.description}</p>
               {v.notes ? <p className='text-xs text-zinc-500'>{v.notes}</p> : null}
+            </li>
+          ))}
+          {apptVehicles.slice(0, 12).map((description, i) => (
+            <li key={`appt-vehicle-${i}`} className='rounded border border-white/10 bg-black/20 px-3 py-2'>
+              <p className='text-white'>{description}</p>
+              <p className='text-xs text-zinc-500'>Captured from appointment/work order</p>
             </li>
           ))}
         </ul>
@@ -230,7 +290,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {upcoming.length === 0 ? <li className='text-zinc-500'>None scheduled.</li> : null}
           {upcoming.map((a) => (
             <li key={a.id} className='rounded border border-white/10 px-3 py-2'>
-              {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()} · {a.status}
+              {a.service_slug} · {chicago(a.scheduled_start)} · {a.status}
               {a.assigned_technician_id ? (
                 <span className='ml-2 text-xs text-gold-soft'>Tech: {techName.get(a.assigned_technician_id) ?? a.assigned_technician_id.slice(0, 8)}</span>
               ) : (
@@ -254,7 +314,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
           {past.map((a) => (
             <li key={a.id} className='rounded border border-white/10 px-3 py-2'>
-              {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()} · {a.status}
+              {a.service_slug} · {chicago(a.scheduled_start)} · {a.status}
               {a.assigned_technician_id ? (
                 <span className='ml-2 text-xs text-gold-soft'>Tech: {techName.get(a.assigned_technician_id) ?? a.assigned_technician_id.slice(0, 8)}</span>
               ) : null}
@@ -278,7 +338,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <li key={`${p.appointment_id}-${p.created_at}-${i}`} className='rounded border border-white/10 px-3 py-2'>
               <span className='text-white'>${(p.amount_cents / 100).toFixed(2)}</span>
               <span className='ml-2 text-xs text-zinc-500'>{p.status}</span>
-              <span className='ml-2 text-xs text-zinc-600'>{new Date(p.created_at).toLocaleString()}</span>
+              <span className='ml-2 text-xs text-zinc-600'>{chicago(p.created_at)}</span>
             </li>
           ))}
         </ul>
@@ -294,7 +354,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
           {(signedQ.data ?? []).map((s) => (
             <li key={s.id} className='rounded border border-white/10 px-3 py-2'>
-              Appt {String(s.appointment_id).slice(0, 8)}… · Signed {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}
+              Appt {String(s.appointment_id).slice(0, 8)}… · Signed {chicago(s.signed_at)}
             </li>
           ))}
         </ul>
@@ -310,7 +370,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
           {intakeRows.map((r) => (
             <li key={r.id} className='rounded border border-white/10 px-3 py-2'>
-              {new Date(r.created_at).toLocaleString()}
+              {chicago(r.created_at)}
               {r.appointment_id ? (
                 <span className='ml-2 text-xs text-zinc-500'>Appt {String(r.appointment_id).slice(0, 8)}…</span>
               ) : null}
@@ -338,7 +398,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             return (
               <li key={String(r.id)} className='rounded border border-white/10 px-3 py-2 whitespace-pre-wrap text-zinc-300'>
                 <span className='text-xs text-zinc-500'>
-                  {r.created_at ? new Date(String(r.created_at)).toLocaleString() : '—'} · Appt {String(r.appointment_id).slice(0, 8)}…
+                  {chicago(String(r.created_at ?? ''))} · Appt {String(r.appointment_id).slice(0, 8)}…
                 </span>
                 <p className='mt-1 text-xs'>{body || '—'}</p>
               </li>
@@ -357,7 +417,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {fallbackRows.map((r) => (
             <li key={String(r.id)} className='rounded border border-white/10 px-3 py-2 text-xs text-zinc-300'>
               <span className='font-mono text-[10px] text-zinc-500'>{String(r.status)}</span> ·{' '}
-              {r.created_at ? new Date(String(r.created_at)).toLocaleString() : '—'}
+              {chicago(String(r.created_at ?? ''))}
               {r.promotion_error ? <p className='mt-1 text-rose-200/90'>{String(r.promotion_error)}</p> : null}
               {r.converted_appointment_id ? (
                 <p className='mt-1 text-emerald-300/90'>Converted to appointment {String(r.converted_appointment_id).slice(0, 8)}…</p>
@@ -396,7 +456,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
           {notes.map((n) => (
             <li key={n.id} className='rounded border border-white/10 px-3 py-2 whitespace-pre-wrap text-zinc-300'>
-              <span className='text-xs text-zinc-500'>{new Date(n.created_at).toLocaleString()}</span>
+              <span className='text-xs text-zinc-500'>{chicago(n.created_at)}</span>
               <p className='mt-1'>{n.body}</p>
             </li>
           ))}

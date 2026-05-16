@@ -338,6 +338,24 @@ export function SuperAdminDashboard() {
           <Link href='/admin/agreements' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
             Agreements
           </Link>
+          <Link href='/admin/payments' className='rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-bold uppercase text-emerald-200 hover:bg-emerald-500/15'>
+            Payments / Receipts
+          </Link>
+          <Link href='/admin/work-orders' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Work Orders
+          </Link>
+          <Link href='/admin/dispatch' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Dispatch
+          </Link>
+          <Link href='/admin/booking-health' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Booking Health
+          </Link>
+          <Link href='/admin/messages' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            Messages
+          </Link>
+          <Link href='/admin/system-status' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
+            System Status
+          </Link>
         </div>
       </section>
 

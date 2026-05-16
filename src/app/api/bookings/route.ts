@@ -33,6 +33,7 @@ type Body = {
   serviceState?: string;
   serviceZip?: string;
   serviceAddressNotes?: string;
+  promoCode?: string;
   notes?: string;
 };
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     const serviceState = String(body.serviceState ?? 'TX').trim().toUpperCase();
     const serviceZip = String(body.serviceZip ?? '').replace(/\D/g, '').slice(0, 5);
     const serviceAddressNotes = String(body.serviceAddressNotes ?? '').trim();
+    const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
     const addOns = Array.isArray(body.addOns)
       ? body.addOns
           .map((a) => String(a ?? '').trim())
@@ -112,7 +114,7 @@ export async function POST(request: Request) {
 
     const { data: siteSettings } = await admin
       .from('site_settings')
-      .select('accept_public_bookings')
+      .select('accept_public_bookings, allow_free_test_promo')
       .limit(1)
       .maybeSingle();
     if ((siteSettings as { accept_public_bookings?: boolean } | null)?.accept_public_bookings === false) {
@@ -129,9 +131,15 @@ export async function POST(request: Request) {
     const priced = quote.breakdown;
     const resolved = quote.resolved;
     const claimed = quote.claimed;
+    const allowFreeTestPromo = (siteSettings as { allow_free_test_promo?: boolean } | null)?.allow_free_test_promo === true;
+    const freePromoApplied =
+      promoCode === 'FREE' &&
+      allowFreeTestPromo &&
+      resolved.length > 0 &&
+      resolved.every((r) => r.serviceSlug === 'exterior-wash');
 
-    const totalBaseCents = priced.finalTotalCents;
-    const depositAmountCents = priced.depositCents;
+    const totalBaseCents = freePromoApplied ? 0 : priced.finalTotalCents;
+    const depositAmountCents = freePromoApplied ? 0 : priced.depositCents;
     const primary = resolved[0]!;
     const offerRowId = claimed?.offerId ?? null;
 
@@ -165,7 +173,14 @@ export async function POST(request: Request) {
         customerId = existingCustomer.id;
         const { error: upErr } = await admin
           .from('customers')
-          .update({ phone: phoneDigits, full_name: guestName })
+          .update({
+            phone: phoneDigits,
+            full_name: guestName,
+            address_line1: serviceAddress,
+            city: serviceCity,
+            state: serviceState,
+            postal_code: serviceZip,
+          })
           .eq('id', customerId);
         if (upErr) {
           console.error('[api/bookings] customer update failed — appointment still links to customer', upErr.message);
@@ -173,7 +188,15 @@ export async function POST(request: Request) {
       } else {
         const { data: newCustomer, error: custErr } = await admin
           .from('customers')
-          .insert({ email: emailNorm, phone: phoneDigits, full_name: guestName })
+          .insert({
+            email: emailNorm,
+            phone: phoneDigits,
+            full_name: guestName,
+            address_line1: serviceAddress,
+            city: serviceCity,
+            state: serviceState,
+            postal_code: serviceZip,
+          })
           .select('id')
           .single();
         if (custErr || !newCustomer?.id) {
@@ -216,7 +239,10 @@ export async function POST(request: Request) {
       service_state: serviceState,
       service_zip: serviceZip,
       service_address_notes: serviceAddressNotes || null,
-      status: 'awaiting_payment',
+      status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
+      payment_status: freePromoApplied ? 'manual_comped' : 'awaiting_deposit',
+      promo_code: promoCode || null,
+      comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
       booking_vehicles: bookingVehicles,
       booking_add_ons: addOns,
       booking_source: 'online',
@@ -269,6 +295,34 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    if (freePromoApplied) {
+      await admin
+        .from('payments')
+        .insert({
+          appointment_id: appointment.id,
+          customer_id: customerId,
+          amount_cents: 0,
+          status: 'manual_comped',
+          payment_kind: 'test_comp',
+          metadata: {
+            promo_code: 'FREE',
+            service_address: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
+            vehicles: bookingVehicles,
+          },
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[api/bookings] FREE promo payment marker skipped', error.message);
+        });
+
+      return NextResponse.json({
+        appointmentId: appointment.id,
+        accessToken: appointment.access_token,
+        depositAmountCents: 0,
+        skipPayment: true,
+        compStatus: 'test_comped',
+      });
+    }
 
     void notifyBookingConfirmationQueued({
       toEmail: emailNorm,

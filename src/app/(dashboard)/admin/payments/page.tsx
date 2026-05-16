@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
@@ -16,6 +17,15 @@ function str(v: unknown) {
   return v == null ? '' : String(v);
 }
 
+function chicago(v: unknown) {
+  if (!v) return '—';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(str(v)));
+}
+
 export default async function AdminPaymentsPage() {
   const session = await getSessionWithProfile();
   const canView = Boolean(session.user && isAdminLevel(session.profile?.role ?? null));
@@ -27,12 +37,12 @@ export default async function AdminPaymentsPage() {
       admin.from('payments').select('*').order('created_at', { ascending: false }).limit(120),
       admin
         .from('appointments')
-        .select('id, guest_name, guest_email, guest_phone, vehicle_description, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, final_payment_checkout_session_id, scheduled_start, created_at')
+        .select('id, customer_id, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, final_payment_checkout_session_id, scheduled_start, created_at')
         .order('created_at', { ascending: false })
         .limit(120),
       admin
         .from('booking_fallbacks')
-        .select('id, guest_name, guest_email, guest_phone, vehicle_description, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, created_at')
+        .select('id, guest_name, guest_email, guest_phone, vehicle_description, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, created_at')
         .order('created_at', { ascending: false })
         .limit(80),
     ]);
@@ -69,6 +79,7 @@ export default async function AdminPaymentsPage() {
               <tr>
                 <th className='p-2'>Customer</th>
                 <th className='p-2'>Service / vehicle</th>
+                <th className='p-2'>Address</th>
                 <th className='p-2'>Deposit</th>
                 <th className='p-2'>Total</th>
                 <th className='p-2'>Status</th>
@@ -89,18 +100,20 @@ export default async function AdminPaymentsPage() {
                       <p className='font-semibold text-white'>{str(r.guest_name) || str(r.customer_name) || 'Customer'}</p>
                       <p>{str(r.guest_email) || str(r.email)}</p>
                       <p>{str(r.guest_phone) || str(r.phone)}</p>
+                      {str(r.customer_id) ? <Link href={`/admin/customers/${str(r.customer_id)}`} className='text-gold-soft underline'>Customer record</Link> : null}
                     </td>
                     <td className='p-2'>
                       <p>{str(r.service_slug).replace(/-/g, ' ') || str(r.payment_kind)}</p>
-                      <p className='text-zinc-500'>{str(r.vehicle_description)}</p>
+                      <p className='text-zinc-500'>{Array.isArray(r.booking_vehicles) ? `${r.booking_vehicles.length} vehicle(s)` : str(r.vehicle_description)}</p>
                     </td>
+                    <td className='p-2'>{[r.service_address, r.service_city, r.service_state, r.service_zip].map(str).filter(Boolean).join(', ') || '—'}</td>
                     <td className='p-2'>{money(r.deposit_amount_cents ?? r.amount_cents)}</td>
                     <td className='p-2'>{money(r.base_price_cents)}</td>
                     <td className='p-2'>{str(r.payment_status) || str(r.status) || 'unknown'}</td>
                     <td className='p-2 font-mono'>{sid || '—'}</td>
                     <td className='p-2 font-mono'>{pi || '—'}</td>
                     <td className='p-2 font-mono'>{str(r.appointment_id) ? `appt ${str(r.appointment_id).slice(0, 8)}` : str(r.fallback_booking_id) ? `fb ${str(r.fallback_booking_id).slice(0, 8)}` : '—'}</td>
-                    <td className='p-2'>{r.created_at ? new Date(str(r.created_at)).toLocaleString() : '—'}</td>
+                    <td className='p-2'>{chicago(r.created_at)}</td>
                     <td className='space-y-2 p-2'>
                       {sid ? (
                         <form action={reconcileStripeSessionAction}>

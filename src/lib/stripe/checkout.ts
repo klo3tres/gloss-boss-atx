@@ -61,7 +61,7 @@ export async function createDepositCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, deposit_amount_cents, guest_email')
+      .select('id, access_token, status, deposit_amount_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -77,6 +77,9 @@ export async function createDepositCheckoutSession(params: {
       return { ok: false, error: 'Booking is not awaiting payment' };
     }
 
+    const serviceName = String(appt.service_slug ?? 'Service').replace(/-/g, ' ');
+    const vehicleSummary = String(appt.vehicle_description ?? 'Vehicle');
+    const serviceAddress = [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', ');
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: appt.guest_email ?? undefined,
@@ -87,7 +90,7 @@ export async function createDepositCheckoutSession(params: {
             unit_amount: appt.deposit_amount_cents,
             product_data: {
               name: 'Gloss Boss ATX — Service deposit (30%)',
-              description: `Booking ${appt.id}`,
+              description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },
           quantity: 1,
@@ -99,6 +102,10 @@ export async function createDepositCheckoutSession(params: {
         appointment_id: appt.id,
         access_token: accessToken.trim(),
         stripe_checkout_kind: 'deposit',
+        customer_name: String(appt.guest_name ?? ''),
+        service_name: serviceName,
+        vehicle_summary: vehicleSummary.slice(0, 500),
+        service_address: serviceAddress.slice(0, 500),
       },
     });
 
@@ -129,7 +136,7 @@ async function createFallbackDepositCheckoutSession(params: {
 
   const { data: row, error } = await admin
     .from('booking_fallbacks')
-    .select('id, access_token, deposit_amount_cents, guest_email, status')
+    .select('id, access_token, deposit_amount_cents, guest_email, guest_name, status, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
     .eq('id', fallbackBookingId)
     .maybeSingle();
 
@@ -147,6 +154,9 @@ async function createFallbackDepositCheckoutSession(params: {
   }
 
   try {
+    const serviceName = String(row.service_slug ?? 'Service').replace(/-/g, ' ');
+    const vehicleSummary = String(row.vehicle_description ?? 'Vehicle');
+    const serviceAddress = [row.service_address, row.service_city, row.service_state, row.service_zip].filter(Boolean).join(', ');
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: typeof row.guest_email === 'string' ? row.guest_email : undefined,
@@ -157,7 +167,7 @@ async function createFallbackDepositCheckoutSession(params: {
             unit_amount: amount,
             product_data: {
               name: 'Gloss Boss ATX — Service deposit (30%)',
-              description: `Booking (queued) ${row.id}`,
+              description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },
           quantity: 1,
@@ -169,6 +179,10 @@ async function createFallbackDepositCheckoutSession(params: {
         fallback_booking_id: String(row.id),
         access_token: accessToken,
         stripe_checkout_kind: 'deposit',
+        customer_name: String(row.guest_name ?? ''),
+        service_name: serviceName,
+        vehicle_summary: vehicleSummary.slice(0, 500),
+        service_address: serviceAddress.slice(0, 500),
       },
     });
 

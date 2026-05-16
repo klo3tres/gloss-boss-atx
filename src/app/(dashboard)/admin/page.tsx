@@ -133,6 +133,30 @@ export default async function AdminDashboardPage() {
         <Link href='/admin/payments' className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-emerald-200'>
           Payments
         </Link>
+        <Link href='/admin/work-orders' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Work Orders
+        </Link>
+        <Link href='/admin/customers' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Customers
+        </Link>
+        <Link href='/admin/agreements' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Agreements
+        </Link>
+        <Link href='/admin/intake' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Intake
+        </Link>
+        <Link href='/admin/booking-health' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Booking Health
+        </Link>
+        <Link href='/admin/services' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Services & Pricing
+        </Link>
+        <Link href='/admin/pricing' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          Promotions
+        </Link>
+        <Link href='/admin/system-status' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
+          System Status
+        </Link>
       </div>
 
       {pendingFb.length > 0 ? (

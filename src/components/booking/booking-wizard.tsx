@@ -85,6 +85,7 @@ export function BookingWizard() {
   const [serviceZip, setServiceZip] = useState('');
   const [serviceAddressNotes, setServiceAddressNotes] = useState('');
   const [notes, setNotes] = useState('');
+  const [promoCode, setPromoCode] = useState('');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
@@ -571,6 +572,7 @@ export function BookingWizard() {
           serviceState: serviceState.trim().toUpperCase(),
           serviceZip: serviceZip.replace(/\D/g, '').slice(0, 5),
           serviceAddressNotes: serviceAddressNotes.trim() || undefined,
+          promoCode: promoCode.trim() || undefined,
           notes: notes || undefined,
         }),
       });
@@ -580,11 +582,21 @@ export function BookingWizard() {
         depositAmountCents?: number;
         usedFallback?: boolean;
         fallbackBookingId?: string;
+        skipPayment?: boolean;
       };
 
       if (!bookingRes.ok) {
         setError((bookingJson as { error?: string }).error ?? 'Booking failed');
         setSubmitting(false);
+        return;
+      }
+
+      if (bookingJson.skipPayment && bookingJson.appointmentId) {
+        const q = new URLSearchParams({
+          appointment_id: bookingJson.appointmentId,
+          token: bookingJson.accessToken ?? '',
+        });
+        window.location.href = `/book/complete?${q.toString()}`;
         return;
       }
 
@@ -949,6 +961,20 @@ export function BookingWizard() {
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Notes (optional)</span>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} />
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Promo code (optional)</span>
+              <input
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                placeholder='Enter code'
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
+              />
+              {promoCode.trim().toUpperCase() === 'FREE' ? (
+                <p className='mt-2 text-xs text-amber-200'>
+                  FREE is a gated staff/test comp. It only applies when enabled by admin settings and only for Exterior Wash tests.
+                </p>
+              ) : null}
             </label>
           </section>
 
