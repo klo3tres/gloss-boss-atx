@@ -48,10 +48,12 @@ export function LeadsAdminClient({
   leads,
   technicians,
   eventsByLead,
+  techById = {},
 }: {
   leads: LeadAdminRow[];
   technicians: TechOption[];
   eventsByLead: Record<string, AssignmentEventRow[]>;
+  techById?: Record<string, string>;
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
@@ -158,12 +160,22 @@ export function LeadsAdminClient({
                 {(pipelineGrouped[stage.id] ?? []).map((r) => {
                   const id = String(r.id);
                   const st = String(r.status ?? '');
+                  const tid = r.assigned_technician_id != null ? String(r.assigned_technician_id) : '';
+                  const techLabel = tid ? techById[tid] ?? tid.slice(0, 8) : '';
                   return (
-                    <li key={id} className='rounded-xl border border-white/10 bg-black/40 p-2 text-[11px] text-zinc-300'>
+                    <li
+                      key={id}
+                      className='rounded-xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/50 p-2.5 text-[11px] text-zinc-300 shadow-sm transition hover:border-gold/25 hover:shadow-[0_0_12px_rgba(212,175,55,0.08)]'
+                    >
                       <p className='font-bold text-white'>{String(r.name ?? '')}</p>
-                      {st === 'assigned' || st === 'claimed' ? (
-                        <p className='text-[9px] uppercase text-amber-200/90'>{st} · tech linked</p>
-                      ) : null}
+                      <p className='mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-gold-soft/90'>{st.replace(/_/g, ' ')}</p>
+                      {tid ? (
+                        <p className='text-[9px] text-zinc-400'>
+                          Tech: <span className='text-amber-100/90'>{techLabel}</span>
+                        </p>
+                      ) : (
+                        <p className='text-[9px] text-zinc-600'>Unassigned · open pool if enabled</p>
+                      )}
                       <p className='text-zinc-500'>Attempts {String(r.contact_attempts ?? 0)}</p>
                       {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
                       <form
@@ -197,7 +209,7 @@ export function LeadsAdminClient({
                   );
                 })}
                 {(pipelineGrouped[stage.id] ?? []).length === 0 ? (
-                  <li className='py-6 text-center text-[10px] text-zinc-600'>—</li>
+                  <li className='py-8 text-center text-[10px] text-zinc-600'>No leads in this stage.</li>
                 ) : null}
               </ul>
             </section>
@@ -225,7 +237,8 @@ export function LeadsAdminClient({
                   {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
                   {r.vehicle ? <p className='text-xs text-zinc-500'>Vehicle: {String(r.vehicle)}</p> : null}
                   <p className='mt-2 text-xs text-zinc-500'>
-                    Pool: {inPool ? 'open' : 'closed'} · Assigned tech: {assigned ? `${assigned.slice(0, 8)}…` : '—'}
+                    Pool: {inPool ? 'open (techs can claim)' : 'closed'} · Assigned:{' '}
+                    {assigned ? <span className='text-amber-100/90'>{techById[assigned] ?? `${assigned.slice(0, 8)}…`}</span> : '—'}
                   </p>
                 </div>
                 <div className='flex flex-col gap-2'>
@@ -241,9 +254,13 @@ export function LeadsAdminClient({
                     <input type='hidden' name='leadId' value={id} />
                     <label className='text-[10px] text-zinc-500'>
                       Assign to
-                      <select name='technicianId' className='ml-1 rounded border border-zinc-700 bg-black px-2 py-1 text-white' defaultValue=''>
+                      <select
+                        name='technicianId'
+                        className='ml-1 rounded border border-zinc-700 bg-black px-2 py-1 text-white'
+                        defaultValue={assigned || ''}
+                      >
                         <option value='' disabled>
-                          Select…
+                          {assigned ? 'Reassign to…' : 'Select technician…'}
                         </option>
                         {techOptions.map((t) => (
                           <option key={t.id} value={t.id}>
@@ -390,7 +407,7 @@ export function LeadsAdminClient({
                     {evs.map((e) => (
                       <li key={e.id} className='font-mono text-[10px]'>
                         {new Date(e.created_at).toLocaleString()} — {e.action}{' '}
-                        {e.technician_id ? `→ ${e.technician_id.slice(0, 8)}…` : ''}
+                        {e.technician_id ? `→ ${techById[e.technician_id] ?? e.technician_id.slice(0, 8)}…` : ''}
                       </li>
                     ))}
                   </ul>

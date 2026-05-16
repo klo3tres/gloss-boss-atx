@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export async function updateServicePriceCentsAction(formData: FormData) {
   const priceId = String(formData.get('priceId') ?? '').trim();
@@ -18,7 +19,9 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   }
 
   const cents = Math.round(raw * 100);
-  const { error } = await supabase.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? supabase;
+  const { error } = await client.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
   if (error) console.error('[admin/services] price update', error.message);
 
   revalidatePath('/admin/services');

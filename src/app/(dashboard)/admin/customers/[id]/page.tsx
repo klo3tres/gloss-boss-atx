@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerEditForm } from '@/components/admin/customer-edit-form';
+import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       ? await admin.from('payments').select('amount_cents, status, created_at, appointment_id').in('appointment_id', apptIds)
       : { data: [] as { amount_cents: number; status: string; created_at: string; appointment_id: string }[] };
 
-  const paySucceeded = (paymentsQ.data ?? []).filter((p) => p.status === 'succeeded');
+  const paymentRows = (paymentsQ.data ?? []) as { amount_cents: number; status: string; created_at: string; appointment_id: string }[];
+  const paySucceeded = paymentRows.filter((p) => p.status === 'succeeded');
   const paymentsTotalCents = paySucceeded.reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
 
   const now = new Date();
@@ -144,7 +146,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Vehicles on file</h2>
         <ul className='mt-3 space-y-2 text-sm'>
-          {vehicles.length === 0 ? <li className='text-zinc-500'>No vehicles linked.</li> : null}
+          {vehicles.length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No vehicles on file
+            </li>
+          ) : null}
           {vehicles.map((v) => (
             <li key={v.id} className='rounded border border-white/10 px-3 py-2'>
               <p className='text-white'>{v.description}</p>
@@ -198,9 +204,31 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <h2 className='text-sm font-bold uppercase text-gold-soft'>Payments</h2>
+        <ul className='mt-3 space-y-2 text-sm'>
+          {paymentRows.length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No payments yet
+            </li>
+          ) : null}
+          {paymentRows.map((p, i) => (
+            <li key={`${p.appointment_id}-${p.created_at}-${i}`} className='rounded border border-white/10 px-3 py-2'>
+              <span className='text-white'>${(p.amount_cents / 100).toFixed(2)}</span>
+              <span className='ml-2 text-xs text-zinc-500'>{p.status}</span>
+              <span className='ml-2 text-xs text-zinc-600'>{new Date(p.created_at).toLocaleString()}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Signed agreements</h2>
         <ul className='mt-3 space-y-2 text-sm'>
-          {(signedQ.data ?? []).length === 0 ? <li className='text-zinc-500'>None on file.</li> : null}
+          {(signedQ.data ?? []).length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No signed agreements yet
+            </li>
+          ) : null}
           {(signedQ.data ?? []).map((s) => (
             <li key={s.id} className='rounded border border-white/10 px-3 py-2'>
               Appt {String(s.appointment_id).slice(0, 8)}… · Signed {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}
@@ -212,7 +240,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Intake submissions</h2>
         <ul className='mt-3 space-y-2 text-sm'>
-          {intakeRows.length === 0 ? <li className='text-zinc-500'>No intake rows.</li> : null}
+          {intakeRows.length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No intake submissions yet
+            </li>
+          ) : null}
           {intakeRows.map((r) => (
             <li key={r.id} className='rounded border border-white/10 px-3 py-2'>
               {new Date(r.created_at).toLocaleString()}
@@ -226,8 +258,31 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Internal notes</h2>
-        <ul className='mt-3 space-y-2 text-sm'>
-          {notes.length === 0 ? <li className='text-zinc-500'>No notes yet.</li> : null}
+        <form action={addCustomerNoteAction} className='mt-3 space-y-2 rounded-lg border border-white/10 bg-black/30 p-3'>
+          <input type='hidden' name='customerId' value={id} />
+          <label className='block text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+            Add note
+            <textarea
+              name='body'
+              rows={3}
+              required
+              placeholder='Staff-only note…'
+              className='mt-1 w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white placeholder:text-zinc-600'
+            />
+          </label>
+          <button
+            type='submit'
+            className='rounded border border-gold/40 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'
+          >
+            Save note
+          </button>
+        </form>
+        <ul className='mt-4 space-y-2 text-sm'>
+          {notes.length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No notes yet — add one above.
+            </li>
+          ) : null}
           {notes.map((n) => (
             <li key={n.id} className='rounded border border-white/10 px-3 py-2 whitespace-pre-wrap text-zinc-300'>
               <span className='text-xs text-zinc-500'>{new Date(n.created_at).toLocaleString()}</span>

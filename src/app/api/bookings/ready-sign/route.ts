@@ -32,7 +32,9 @@ export async function GET(request: Request) {
 
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, guest_name, service_slug')
+      .select(
+        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, assigned_technician_id, customer_id, vehicle_id',
+      )
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -48,15 +50,12 @@ export async function GET(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    if (!template) {
-      return NextResponse.json({ error: 'No agreement template' }, { status: 500 });
-    }
-
     const { data: existingSign } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
 
     return NextResponse.json({
       appointment: appt,
-      template,
+      template: template ?? null,
+      useNativeAgreementFallback: !template,
       paymentVerified: true,
       alreadySigned: Boolean(existingSign),
     });

@@ -20,6 +20,7 @@ function normalizeSlug(raw: string): string {
 
 type Body = {
   id?: string;
+  restore?: boolean;
   archive?: boolean;
   /** Alias for archive (soft deactivate) */
   delete?: boolean;
@@ -58,6 +59,23 @@ export async function POST(request: Request) {
   }
 
   const id = String(body.id ?? '').trim();
+
+  if (id && body.restore === true) {
+    const payloads = [
+      { archived: false, active: true },
+      { archived: false },
+    ];
+    let lastErr: string | null = null;
+    for (const p of payloads) {
+      const { error } = await admin.from('offers').update(p).eq('id', id);
+      if (!error) {
+        revalidateOfferSurfaces();
+        return NextResponse.json({ ok: true });
+      }
+      lastErr = error.message;
+    }
+    return NextResponse.json({ ok: false, error: lastErr ?? 'Restore failed' }, { status: 400 });
+  }
 
   if (id && (body.archive === true || body.delete === true)) {
     const payloads = [

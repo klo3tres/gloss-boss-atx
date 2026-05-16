@@ -13,7 +13,7 @@ import {
   isBookingSlotAllowed,
 } from '@/lib/booking-availability';
 import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
-import { getBookableDateKeys, getTimeSlotsForDate } from '@/lib/booking-schedule-slots';
+import { getBookableDateKeys, getTimeSlotsForDate, dateKeyLocal } from '@/lib/booking-schedule-slots';
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
@@ -363,14 +363,26 @@ export function BookingWizard() {
     [bookingDateKey, bookingRules],
   );
 
+  const filteredSlotOpts = useMemo(() => {
+    if (!bookingDateKey) return [];
+    const now = new Date();
+    const todayKey = dateKeyLocal(now);
+    return slotOpts.filter((s) => {
+      const d = new Date(`${bookingDateKey}T${s.value}:00`);
+      if (Number.isNaN(d.getTime())) return false;
+      if (bookingDateKey === todayKey && d.getTime() < now.getTime() - 60_000) return false;
+      return isBookingSlotAllowed(d, bookingRules);
+    });
+  }, [bookingDateKey, slotOpts, bookingRules]);
+
   useEffect(() => {
-    if (!bookingDateKey || slotOpts.length === 0) {
+    if (!bookingDateKey || filteredSlotOpts.length === 0) {
       setBookingTimeValue('');
       return;
     }
     const now = Date.now();
     const pickFirst = () => {
-      const hit = slotOpts.find((s) => {
+      const hit = filteredSlotOpts.find((s) => {
         const d = new Date(`${bookingDateKey}T${s.value}:00`);
         return !Number.isNaN(d.getTime()) && d.getTime() >= now - 60_000 && isBookingSlotAllowed(d, bookingRules);
       });
@@ -385,7 +397,7 @@ export function BookingWizard() {
       }
       return pickFirst();
     });
-  }, [bookingDateKey, bookingRules, slotOpts]);
+  }, [bookingDateKey, bookingRules, filteredSlotOpts]);
 
   const claimedOfferSnap = useMemo(() => {
     if (!offerFromUrl) return null;
@@ -816,12 +828,32 @@ export function BookingWizard() {
                 required
               >
                 <option value=''>Select a time</option>
-                {slotOpts.map((s) => (
+                {filteredSlotOpts.map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label}
                   </option>
                 ))}
               </select>
+              {filteredSlotOpts.length > 0 && filteredSlotOpts.length <= 24 ? (
+                <div className='mt-3 flex flex-wrap gap-2'>
+                  {filteredSlotOpts.map((s) => (
+                    <button
+                      key={`btn-${s.value}`}
+                      type='button'
+                      onClick={() => {
+                        setBookingTimeValue(s.value);
+                        setScheduleError(null);
+                      }}
+                      className={clsx(
+                        'rounded-lg border px-3 py-2 text-xs font-semibold transition',
+                        bookingTimeValue === s.value ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
             </label>
             <label className='text-sm md:col-span-2'>

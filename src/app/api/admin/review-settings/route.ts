@@ -30,7 +30,22 @@ export async function POST(request: Request) {
     const { error } = await admin.from('review_settings').insert({ key: 'google_business', value });
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }
+
+  const ssPayload = { url: reviewUrl };
+  const { error: ssErr } = await admin.from('site_settings').upsert(
+    {
+      key: 'google_review_url',
+      value: JSON.stringify(ssPayload),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  );
+  if (ssErr) {
+    console.warn('[review-settings] site_settings google_review_url', ssErr.message);
+  }
+
   revalidatePath('/admin/cms');
   revalidatePath('/');
+  revalidatePath('/api/public/site-data');
   return NextResponse.json({ ok: true });
 }

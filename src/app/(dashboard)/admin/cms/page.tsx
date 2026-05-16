@@ -137,6 +137,19 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         const u = (raw as { review_url?: unknown }).review_url;
         if (typeof u === 'string') googleReviewUrl = u.trim();
       }
+      if (!googleReviewUrl) {
+        const ss = await admReview.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
+        const s = ss.data?.value != null ? String(ss.data.value).trim() : '';
+        if (s.startsWith('http')) googleReviewUrl = s;
+        else if (s) {
+          try {
+            const o = JSON.parse(s) as { url?: string };
+            if (typeof o?.url === 'string') googleReviewUrl = o.url.trim();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     }
   } catch {
     googleReviewUrl = '';

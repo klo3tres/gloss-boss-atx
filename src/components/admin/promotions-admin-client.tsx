@@ -55,7 +55,8 @@ export function PromotionsAdminClient({
       <p className='mt-2 text-sm text-zinc-400'>
         Live promotions sync to the homepage, services page, and booking. Customers claim with{' '}
         <code className='text-gold-soft'>/book?offer=&#123;slug-or-id&#125;</code>
-        . Archiving removes them from the public site (soft delete).
+        . Archiving removes them from the public site (soft delete). Restore brings an archived offer back without duplicating on the
+        site (same slug/title key).
       </p>
 
       <div className='mt-4 grid gap-3 rounded-xl border border-gold/15 bg-black/40 p-4 md:grid-cols-2 lg:grid-cols-3'>
@@ -207,6 +208,7 @@ export function PromotionsAdminClient({
       </div>
 
       <ul className='mt-6 space-y-3 text-sm'>
+        <li className='text-[10px] font-black uppercase tracking-widest text-gold-soft'>Active promotions ({activeRows.length})</li>
         {activeRows.length === 0 ? (
           <li className='text-zinc-500'>No active promotions yet — create one above.</li>
         ) : null}
@@ -222,10 +224,11 @@ export function PromotionsAdminClient({
       </ul>
 
       {archivedRows.length > 0 ? (
-        <details className='mt-6 rounded-xl border border-white/10 bg-black/25 p-3'>
-          <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-400'>
+        <details open={false} className='mt-6 rounded-xl border border-white/10 bg-black/25 p-3'>
+          <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-300'>
             Archived promotions ({archivedRows.length})
           </summary>
+          <p className='mt-2 text-[11px] text-zinc-500'>Archived offers are hidden from the public site. Use Restore to reactivate.</p>
           <ul className='mt-4 space-y-3'>
             {archivedRows.map((row) => (
               <PromotionRowEditor
@@ -488,6 +491,28 @@ function PromotionRowEditor({
           className='rounded border border-rose-500/40 px-3 py-1.5 text-xs font-bold uppercase text-rose-300 disabled:opacity-40'
         >
           Archive
+        </button>
+        <button
+          type='button'
+          disabled={busy || !archived}
+          onClick={() => {
+            void (async () => {
+              setBusy(true);
+              const r = await postOffer({ id: row.id, restore: true });
+              setBusy(false);
+              if (!r.ok) {
+                onError(r.error);
+                return;
+              }
+              setArchived(false);
+              setActive(true);
+              onSaved?.();
+              onOk('Restored.');
+            })();
+          }}
+          className='rounded border border-emerald-500/40 px-3 py-1.5 text-xs font-bold uppercase text-emerald-300 disabled:opacity-40'
+        >
+          Restore
         </button>
       </div>
     </li>

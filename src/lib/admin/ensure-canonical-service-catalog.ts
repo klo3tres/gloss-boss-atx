@@ -95,6 +95,10 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
           .eq('vehicle_class', tier.vehicle_class)
           .maybeSingle();
         if (pr?.id) {
+          if (row.slug === 'ceramic-coating') {
+            /* Preserve admin-set ceramic prices — seed defaults are 0 (quote). */
+            continue;
+          }
           await admin.from('service_prices').update({ price_cents: tier.cents }).eq('id', pr.id);
         } else {
           await admin.from('service_prices').insert({

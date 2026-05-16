@@ -6,6 +6,7 @@ import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { computeQuoteFromInputs, insertAppointmentResilient, type VehicleLineInput } from '@/lib/booking-server-shared';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
+import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 
 export type WalkInVehicleInput = {
   serviceSlug: string;
@@ -163,11 +164,26 @@ export async function techSignWalkInAgreementAction(input: {
 
   const { data: appt, error: apErr } = await admin
     .from('appointments')
-    .select('id, assigned_technician_id')
+    .select(
+      'id, assigned_technician_id, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id',
+    )
     .eq('id', appointmentId)
     .maybeSingle();
   if (apErr || !appt) return { ok: false, error: 'Job not found' };
-  if ((appt as { assigned_technician_id?: string | null }).assigned_technician_id !== session.user.id) {
+  const A = appt as {
+    assigned_technician_id?: string | null;
+    guest_name?: string | null;
+    guest_email?: string | null;
+    guest_phone?: string | null;
+    vehicle_description?: string | null;
+    service_slug?: string | null;
+    vehicle_class?: string | null;
+    base_price_cents?: number | null;
+    deposit_amount_cents?: number | null;
+    customer_id?: string | null;
+    vehicle_id?: string | null;
+  };
+  if (A.assigned_technician_id !== session.user.id) {
     return { ok: false, error: 'This job is not assigned to you' };
   }
 
@@ -190,21 +206,76 @@ export async function techSignWalkInAgreementAction(input: {
     .limit(1)
     .maybeSingle();
 
-  if (!template) return { ok: false, error: 'No agreement template configured' };
+  let techName: string | null = null;
+  const { data: techProf } = await admin.from('profiles').select('full_name').eq('id', session.user.id).maybeSingle();
+  if (techProf && typeof (techProf as { full_name?: string }).full_name === 'string') {
+    techName = (techProf as { full_name: string }).full_name.trim() || null;
+  }
 
-  const { error: signErr } = await admin.from('signed_agreements').insert({
+  const totalCents = typeof A.base_price_cents === 'number' ? A.base_price_cents : 0;
+  const depCents = typeof A.deposit_amount_cents === 'number' ? A.deposit_amount_cents : 0;
+  const depositNote =
+    depCents > 0
+      ? `Deposit collected or due: $${(depCents / 100).toFixed(2)} (see booking / Stripe).`
+      : 'Walk-in / field job: deposit may be $0 unless otherwise collected.';
+
+  const classLabel = A.vehicle_class === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+  const serviceLabel = (A.service_slug ?? 'service').replace(/-/g, ' ');
+
+  const snapshot = template?.body?.trim()
+    ? String(template.body)
+    : buildNativeAgreementSnapshot({
+        customerName: String(A.guest_name ?? signerLegalName).trim() || signerLegalName,
+        customerEmail: A.guest_email,
+        customerPhone: A.guest_phone,
+        vehicleDescription: String(A.vehicle_description ?? '').trim() || 'See job notes.',
+        serviceLabel,
+        vehicleClassLabel: classLabel,
+        totalDollars: (totalCents / 100).toFixed(2),
+        depositNote,
+        technicianName: techName,
+      });
+
+  const insertRow: Record<string, unknown> = {
     appointment_id: appointmentId,
-    template_id: template.id,
-    template_version: template.version,
-    agreement_snapshot: template.body,
+    template_id: template?.id ?? null,
+    template_version: template?.version ?? 1,
+    agreement_snapshot: snapshot,
     signer_legal_name: signerLegalName,
     signature_type: input.signatureType,
     signature_data: input.signatureData ?? null,
     ip_address: null,
     user_agent: 'tech_workflow',
-  });
+    customer_id: A.customer_id ?? null,
+    vehicle_id: A.vehicle_id ?? null,
+    technician_id: session.user.id,
+  };
+
+  let signErr = (await admin.from('signed_agreements').insert(insertRow)).error;
+  if (signErr && /column|does not exist|schema cache/i.test(signErr.message)) {
+    const lean = { ...insertRow };
+    delete lean.customer_id;
+    delete lean.vehicle_id;
+    delete lean.technician_id;
+    signErr = (await admin.from('signed_agreements').insert(lean)).error;
+  }
 
   if (signErr) return { ok: false, error: signErr.message };
+
+  try {
+    await admin.from('job_agreements').insert({
+      appointment_id: appointmentId,
+      signer_legal_name: signerLegalName,
+      agreement_snapshot: snapshot,
+      signature_type: input.signatureType,
+      signature_data: input.signatureData ?? null,
+      template_id: template?.id ?? null,
+      template_version: template?.version ?? 1,
+      signed_at: new Date().toISOString(),
+    });
+  } catch {
+    /* optional mirror */
+  }
 
   await admin
     .from('appointments')

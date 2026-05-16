@@ -1,9 +1,21 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AgreementSign, getCanvasSignatureDataUrl } from '@/components/booking/agreement-sign';
+import { buildNativeAgreementSnapshot, DEFAULT_AGREEMENT_TITLE } from '@/lib/default-gloss-boss-agreement';
+
+type ApptLite = {
+  guest_name?: string | null;
+  guest_email?: string | null;
+  guest_phone?: string | null;
+  vehicle_description?: string | null;
+  service_slug?: string | null;
+  vehicle_class?: string | null;
+  base_price_cents?: number | null;
+  deposit_amount_cents?: number | null;
+};
 
 export default function CompleteContent() {
   const searchParams = useSearchParams();
@@ -13,6 +25,7 @@ export default function CompleteContent() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appointment, setAppointment] = useState<ApptLite | null>(null);
   const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
   const [alreadySigned, setAlreadySigned] = useState(false);
   const [legalName, setLegalName] = useState('');
@@ -21,6 +34,33 @@ export default function CompleteContent() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const agreementBody = useMemo(() => {
+    if (template?.body?.trim()) return template.body;
+    const a = appointment;
+    if (!a) return '';
+    const totalCents = typeof a.base_price_cents === 'number' ? a.base_price_cents : 0;
+    const depCents = typeof a.deposit_amount_cents === 'number' ? a.deposit_amount_cents : 0;
+    const depositNote =
+      depCents > 0
+        ? `Deposit paid: $${(depCents / 100).toFixed(2)} (Stripe checkout).`
+        : 'Deposit per booking configuration.';
+    const vc = String(a.vehicle_class ?? 'sedan');
+    const classLabel = vc === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    return buildNativeAgreementSnapshot({
+      customerName: String(a.guest_name ?? '').trim() || 'Customer',
+      customerEmail: a.guest_email,
+      customerPhone: a.guest_phone,
+      vehicleDescription: String(a.vehicle_description ?? '').trim() || 'See booking.',
+      serviceLabel: String(a.service_slug ?? 'service').replace(/-/g, ' '),
+      vehicleClassLabel: classLabel,
+      totalDollars: (totalCents / 100).toFixed(2),
+      depositNote,
+      technicianName: null,
+    });
+  }, [template, appointment]);
+
+  const agreementTitle = template?.title?.trim() ? template.title : DEFAULT_AGREEMENT_TITLE;
 
   useEffect(() => {
     if (!sessionId || !token || !appointmentId) {
@@ -34,15 +74,25 @@ export default function CompleteContent() {
       `/api/bookings/ready-sign?session_id=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&appointmentId=${encodeURIComponent(appointmentId)}`,
     )
       .then((r) => r.json())
-      .then((data) => {
+      .then((data: {
+        error?: string;
+        appointment?: ApptLite;
+        template?: { id: string; title: string; body: string; version: number } | null;
+        alreadySigned?: boolean;
+      }) => {
         if (cancelled) return;
-        if (!data.template) {
-          setError(data.error ?? 'Unable to load agreement');
-        } else {
-          setTemplate(data.template);
-          setAlreadySigned(Boolean(data.alreadySigned));
-          if (data.alreadySigned) setDone(true);
+        if (data.error) {
+          setError(data.error);
+          return;
         }
+        if (!data.appointment) {
+          setError('Unable to load booking.');
+          return;
+        }
+        setAppointment(data.appointment);
+        setTemplate(data.template ?? null);
+        setAlreadySigned(Boolean(data.alreadySigned));
+        if (data.alreadySigned) setDone(true);
       })
       .catch(() => {
         if (!cancelled) setError('Could not verify payment');
@@ -57,7 +107,7 @@ export default function CompleteContent() {
   }, [sessionId, token, appointmentId]);
 
   const handleSign = async () => {
-    if (!sessionId || !token || !appointmentId || !template) return;
+    if (!sessionId || !token || !appointmentId || !agreementBody.trim()) return;
     if (!legalName.trim()) {
       setError('Enter your full legal name.');
       return;
@@ -86,11 +136,11 @@ export default function CompleteContent() {
         appointmentId,
         accessToken: token,
         sessionId,
-        templateId: template.id,
+        templateId: template?.id,
         signerLegalName: legalName.trim(),
         signatureType: signatureMode,
         signatureData,
-        agreementSnapshot: template.body,
+        agreementSnapshot: agreementBody,
         acknowledged: true,
       }),
     });
@@ -108,7 +158,7 @@ export default function CompleteContent() {
     return <p className='text-zinc-400'>Verifying payment…</p>;
   }
 
-  if (error && !template) {
+  if (error && !appointment) {
     return (
       <div>
         <p className='text-red-300'>{error}</p>
@@ -131,10 +181,10 @@ export default function CompleteContent() {
     );
   }
 
-  if (!template) {
+  if (!agreementBody.trim()) {
     return (
       <div className='rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6'>
-        <p className='text-sm text-zinc-300'>Agreement could not be loaded. Please return to booking and try again.</p>
+        <p className='text-sm text-zinc-300'>Agreement could not be prepared. Please return to booking and try again.</p>
         <Link href='/book' className='mt-4 inline-block text-sm font-bold uppercase tracking-wider text-gold-soft'>
           Back to booking
         </Link>
@@ -146,8 +196,8 @@ export default function CompleteContent() {
     <div className='space-y-6'>
       {error ? <p className='text-sm text-red-300'>{error}</p> : null}
       <AgreementSign
-        title={template.title}
-        body={template.body}
+        title={agreementTitle}
+        body={agreementBody}
         legalName={legalName}
         onLegalNameChange={setLegalName}
         signatureMode={signatureMode}

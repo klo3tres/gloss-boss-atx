@@ -54,7 +54,7 @@ export async function GET() {
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -64,6 +64,7 @@ export async function GET() {
       client.from('homepage_content').select('value').eq('key', 'featured_showcase').maybeSingle(),
       loadActiveServicesResilient(client),
       client.from('review_settings').select('value').eq('key', 'google_business').maybeSingle(),
+      client.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -85,6 +86,7 @@ export async function GET() {
     if (dErr) schemaWarnings.push(`homepage_content(deal_config): ${dErr.message}`);
     if (fErr) schemaWarnings.push(`homepage_content(featured_showcase): ${fErr.message}`);
     if (reviewRes.error) schemaWarnings.push(`review_settings: ${reviewRes.error.message}`);
+    if (ssGoogle.error) schemaWarnings.push(`site_settings(google_review_url): ${ssGoogle.error.message}`);
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
@@ -138,6 +140,19 @@ export async function GET() {
     if (rawRv && typeof rawRv === 'object' && rawRv !== null && 'review_url' in rawRv) {
       const u = (rawRv as { review_url?: unknown }).review_url;
       if (typeof u === 'string') googleReviewUrl = u.trim();
+    }
+    if (!googleReviewUrl && ssGoogle.data?.value != null) {
+      const rawG = String(ssGoogle.data.value).trim();
+      if (rawG.startsWith('http')) {
+        googleReviewUrl = rawG;
+      } else {
+        try {
+          const o = JSON.parse(rawG) as { url?: string };
+          if (typeof o?.url === 'string' && o.url.trim()) googleReviewUrl = o.url.trim();
+        } catch {
+          /* ignore */
+        }
+      }
     }
 
     const payload: PublicSiteDataPayload = {

@@ -249,7 +249,16 @@ export function SuperAdminDashboard() {
     stats.stripe.mode === 'live' ? 'Live' : stats.stripe.mode === 'test' ? 'Test' : 'Unknown';
 
   return (
-    <div className='space-y-10'>
+    <div className='relative min-h-[420px]'>
+      <div
+        className='pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden'
+        aria-hidden
+      >
+        <span className='text-center text-[clamp(3rem,14vw,11rem)] font-black uppercase leading-none tracking-[0.14em] text-white/[0.05]'>
+          Gloss Boss ATX
+        </span>
+      </div>
+      <div className='relative z-10 space-y-10'>
       <div className='rounded-2xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm text-zinc-200'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-amber-200/90'>Navigation preview (UI only)</p>
         <p className='mt-1 text-xs text-zinc-500'>Does not change your database role — only the sidebar link set while you navigate.</p>
@@ -569,6 +578,7 @@ export function SuperAdminDashboard() {
           </div>
           <p className='mt-4 text-xs text-zinc-500'>Staff accounts on file: {stats.staffProfiles}</p>
         </div>
+      </div>
       </div>
     </div>
   );

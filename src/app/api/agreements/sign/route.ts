@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
+import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 
 export async function POST(request: Request) {
   try {
@@ -52,7 +53,9 @@ export async function POST(request: Request) {
 
     const { data: appt, error: apptErr } = await admin
       .from('appointments')
-      .select('id, access_token, status')
+      .select(
+        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id, assigned_technician_id',
+      )
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -94,26 +97,72 @@ export async function POST(request: Request) {
       template = t;
     }
 
-    if (!template) {
-      return NextResponse.json({ error: 'No agreement template configured' }, { status: 500 });
+    const Ap = appt as Record<string, unknown>;
+    let techName: string | null = null;
+    const techId = typeof Ap.assigned_technician_id === 'string' ? Ap.assigned_technician_id : null;
+    if (techId) {
+      const { data: tp } = await admin.from('profiles').select('full_name').eq('id', techId).maybeSingle();
+      if (tp && typeof (tp as { full_name?: string }).full_name === 'string') {
+        techName = (tp as { full_name: string }).full_name.trim() || null;
+      }
     }
 
-    const snapshot = agreementSnapshot ?? template.body;
+    const totalCents = typeof Ap.base_price_cents === 'number' ? Ap.base_price_cents : 0;
+    const depCents = typeof Ap.deposit_amount_cents === 'number' ? Ap.deposit_amount_cents : 0;
+    const depositNote =
+      depCents > 0
+        ? `Deposit paid or due: $${(depCents / 100).toFixed(2)} per booking checkout.`
+        : 'Deposit per shop policy at time of booking.';
+
+    const vc = String(Ap.vehicle_class ?? 'sedan');
+    const classLabel = vc === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    const serviceLabel = String(Ap.service_slug ?? 'service').replace(/-/g, ' ');
+
+    const nativeSnap = buildNativeAgreementSnapshot({
+      customerName: String(Ap.guest_name ?? signerLegalName).trim() || signerLegalName.trim(),
+      customerEmail: typeof Ap.guest_email === 'string' ? Ap.guest_email : null,
+      customerPhone: typeof Ap.guest_phone === 'string' ? Ap.guest_phone : null,
+      vehicleDescription: String(Ap.vehicle_description ?? '').trim() || 'See booking.',
+      serviceLabel,
+      vehicleClassLabel: classLabel,
+      totalDollars: (totalCents / 100).toFixed(2),
+      depositNote,
+      technicianName: techName,
+    });
+
+    const snapshot =
+      (typeof agreementSnapshot === 'string' && agreementSnapshot.trim().length > 2
+        ? agreementSnapshot
+        : null) ??
+      (template?.body?.trim() ? String(template.body) : null) ??
+      nativeSnap;
     const forwarded = request.headers.get('x-forwarded-for');
     const ip = forwarded?.split(',')[0]?.trim() ?? request.headers.get('x-real-ip') ?? null;
     const ua = request.headers.get('user-agent') ?? null;
 
-    const { error: signErr } = await admin.from('signed_agreements').insert({
+    const signPayload: Record<string, unknown> = {
       appointment_id: appointmentId,
-      template_id: template.id,
-      template_version: template.version,
+      template_id: template?.id ?? null,
+      template_version: template?.version ?? 1,
       agreement_snapshot: snapshot,
       signer_legal_name: signerLegalName.trim(),
       signature_type: signatureType,
       signature_data: signatureData ?? null,
       ip_address: ip,
       user_agent: ua,
-    });
+      customer_id: typeof Ap.customer_id === 'string' ? Ap.customer_id : null,
+      vehicle_id: typeof Ap.vehicle_id === 'string' ? Ap.vehicle_id : null,
+      technician_id: techId,
+    };
+
+    let signErr = (await admin.from('signed_agreements').insert(signPayload)).error;
+    if (signErr && /column|does not exist|schema cache/i.test(signErr.message)) {
+      const lean = { ...signPayload };
+      delete lean.customer_id;
+      delete lean.vehicle_id;
+      delete lean.technician_id;
+      signErr = (await admin.from('signed_agreements').insert(lean)).error;
+    }
 
     if (signErr) {
       console.error(signErr);
@@ -127,8 +176,8 @@ export async function POST(request: Request) {
         agreement_snapshot: snapshot,
         signature_type: signatureType,
         signature_data: signatureData ?? null,
-        template_id: template.id,
-        template_version: template.version,
+        template_id: template?.id ?? null,
+        template_version: template?.version ?? 1,
         signed_at: new Date().toISOString(),
       });
       if (jaErr && !/duplicate|unique|already exists/i.test(jaErr.message)) {

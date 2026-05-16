@@ -23,6 +23,10 @@ export default async function AdminLeadsPage() {
 
   const rows = (leadsRes.data ?? []) as Record<string, unknown>[];
   const technicians = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
+  const techById: Record<string, string> = {};
+  for (const t of technicians) {
+    techById[t.id] = t.full_name?.trim() || t.email?.trim() || t.id.slice(0, 8);
+  }
   const eventsByLead: Record<string, AssignmentEventRow[]> = {};
   for (const e of evRes.data ?? []) {
     const row = e as AssignmentEventRow & { entity_id?: string };
@@ -51,7 +55,7 @@ export default async function AdminLeadsPage() {
         <p className='mb-4 text-sm text-amber-200'>Leads query: {leadsRes.error.message}. Run migration 000023 if columns are missing.</p>
       ) : null}
       {techRes.error ? <p className='mb-4 text-xs text-amber-200'>Technician list: {techRes.error.message}</p> : null}
-      <LeadsAdminClient leads={rows} technicians={technicians} eventsByLead={eventsByLead} />
+      <LeadsAdminClient leads={rows} technicians={technicians} eventsByLead={eventsByLead} techById={techById} />
     </DashboardShell>
   );
 }

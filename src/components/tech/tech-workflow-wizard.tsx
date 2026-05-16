@@ -7,6 +7,7 @@ import { techSearchCustomersAction } from '@/app/(dashboard)/tech/tech-customer-
 import { techAddJobMediaAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techCreateWalkInJobAction, techSignWalkInAgreementAction } from '@/app/(dashboard)/tech/tech-workflow-actions';
 import { normalizeVehicleClass, UI_VEHICLE_CLASSES, type UiVehicleClass } from '@/lib/vehicle-pricing';
+import { buildNativeAgreementSnapshot, DEFAULT_AGREEMENT_TITLE } from '@/lib/default-gloss-boss-agreement';
 
 type CatalogService = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
@@ -54,6 +55,7 @@ export function TechWorkflowWizard() {
   const [lockedTotalCents, setLockedTotalCents] = useState<number | null>(null);
 
   const [signerName, setSignerName] = useState('');
+  const [agreementAck, setAgreementAck] = useState(false);
   const [beforeUrlDraft, setBeforeUrlDraft] = useState('');
   const [beforeCount, setBeforeCount] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
@@ -122,6 +124,33 @@ export function TechWorkflowWizard() {
     return estimatedLineCents + estimatedAddonCents;
   }, [estimatedLineCents, estimatedAddonCents]);
 
+  const walkInAgreementPreview = useMemo(() => {
+    if (!selectedService) return '';
+    const line = lockedTotalCents ?? estimatedTotalCents ?? estimatedLineCents ?? 0;
+    const classLabel = vehicleClass === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    return buildNativeAgreementSnapshot({
+      customerName: guestName.trim() || 'Customer',
+      customerEmail: guestEmail.trim(),
+      customerPhone: guestPhone.replace(/\D/g, ''),
+      vehicleDescription: vehicleDescription.trim() || '—',
+      serviceLabel: selectedService.title || selectedService.slug.replace(/-/g, ' '),
+      vehicleClassLabel: classLabel,
+      totalDollars: (line / 100).toFixed(2),
+      depositNote: 'Walk-in field job — deposit $0 unless collected separately.',
+      technicianName: null,
+    });
+  }, [
+    selectedService,
+    lockedTotalCents,
+    estimatedTotalCents,
+    estimatedLineCents,
+    vehicleClass,
+    guestName,
+    guestEmail,
+    guestPhone,
+    vehicleDescription,
+  ]);
+
   const runSearch = useCallback(() => {
     startTransition(() => {
       void techSearchCustomersAction(searchQ).then((r) => {
@@ -159,11 +188,16 @@ export function TechWorkflowWizard() {
 
   const canProceed2 = vehicleDescription.trim().length > 3;
 
-  const canProceed3 = Boolean(selectedService && selectedService.slug !== 'ceramic-coating' && estimatedLineCents != null);
+  const ceramicNeedsQuote = selectedService?.slug === 'ceramic-coating' && estimatedLineCents == null;
+  const canProceed3 = Boolean(selectedService && !ceramicNeedsQuote && estimatedLineCents != null);
 
   const createJob = () => {
     if (!selectedService || estimatedLineCents == null) {
-      setError('Choose a priced service (ceramic coating is consultation-only from the app).');
+      setError(
+        selectedService?.slug === 'ceramic-coating'
+          ? 'Ceramic coating is set to Quote — add sedan/SUV prices in Admin → Services & pricing first, or choose another package.'
+          : 'Choose a priced service.',
+      );
       return;
     }
     setError(null);
@@ -197,6 +231,10 @@ export function TechWorkflowWizard() {
 
   const signAgreement = () => {
     if (!appointmentId) return;
+    if (!agreementAck) {
+      setError('Review the acknowledgement and check the box to continue.');
+      return;
+    }
     setError(null);
     startTransition(() => {
       void techSignWalkInAgreementAction({
@@ -427,7 +465,7 @@ export function TechWorkflowWizard() {
             <ul className='space-y-2'>
               {services.map((s) => {
                 const cents = pickLineCents(prices, s.id, vehicleClass);
-                const disabled = s.slug === 'ceramic-coating' || cents == null;
+                const disabled = cents == null;
                 return (
                   <li key={s.id}>
                     <button
@@ -441,7 +479,7 @@ export function TechWorkflowWizard() {
                       <span className='font-bold text-white'>{s.title}</span>
                       <span className='block text-xs text-zinc-500'>{s.subtitle}</span>
                       <span className='mt-1 block text-xs text-gold-soft'>
-                        {disabled ? 'Consultation / no auto quote' : `$${(cents / 100).toFixed(0)} (${vehicleClass.replace('_', ' ')})`}
+                        {disabled ? 'Quote — set price in Admin → Services' : `$${(cents / 100).toFixed(0)} (${vehicleClass.replace('_', ' ')})`}
                       </span>
                     </button>
                   </li>
@@ -551,7 +589,7 @@ export function TechWorkflowWizard() {
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>6 · Acknowledgement</h2>
           <p className='text-sm text-zinc-400'>
-            Customer signs liability acknowledgment. Typed name is stored as the signature for this walk-in job.
+            Review the Gloss Boss ATX acknowledgement below. The customer must provide their full legal name; a drawn signature is optional.
           </p>
           {lockedTotalCents != null ? (
             <p className='text-xs text-emerald-300'>
@@ -563,8 +601,23 @@ export function TechWorkflowWizard() {
             <p className='text-sm text-red-300'>No job id — go back to quote step.</p>
           ) : (
             <>
+              <div className='max-h-[min(55vh,28rem)] overflow-y-auto rounded-xl border border-white/10 bg-black/50 p-4'>
+                <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{DEFAULT_AGREEMENT_TITLE}</p>
+                <pre className='mt-3 whitespace-pre-wrap font-sans text-xs leading-relaxed text-zinc-300'>{walkInAgreementPreview}</pre>
+              </div>
+              <label className='flex items-start gap-2 text-sm text-zinc-300'>
+                <input
+                  type='checkbox'
+                  checked={agreementAck}
+                  onChange={(e) => setAgreementAck(e.target.checked)}
+                  className='mt-1 h-4 w-4 rounded border-zinc-600 bg-black'
+                />
+                <span>
+                  Customer has read the acknowledgement and agrees to its terms. I confirm the information above matches this job.
+                </span>
+              </label>
               <label className='block text-xs text-zinc-400'>
-                Signer legal name
+                Signer legal name (must match ID)
                 <input
                   value={signerName}
                   onChange={(e) => setSignerName(e.target.value)}
@@ -577,11 +630,11 @@ export function TechWorkflowWizard() {
                 </button>
                 <button
                   type='button'
-                  disabled={busy || signerName.trim().length < 2}
+                  disabled={busy || signerName.trim().length < 2 || !agreementAck}
                   onClick={signAgreement}
                   className='rounded-lg bg-gold px-5 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40'
                 >
-                  {busy ? 'Saving…' : 'Record signature'}
+                  {busy ? 'Saving…' : 'Accept & record signature'}
                 </button>
               </div>
             </>
