@@ -131,6 +131,7 @@ export function TechPremiumShell({
   goalLabel,
   goalTargetCents,
   justStarted = false,
+  activeDebug,
 }: {
   techName: string;
   roleLabel: string | null;
@@ -144,6 +145,7 @@ export function TechPremiumShell({
   goalLabel: string | null;
   goalTargetCents: number | null;
   justStarted?: boolean;
+  activeDebug?: { userId: string | null; checked: string[]; adminRead: boolean } | null;
 }) {
   const todayJobs = jobs.filter((j) => isToday(j.scheduled_start));
   const activeJob = jobs.find((j) => j.status === 'in_progress');
@@ -186,9 +188,23 @@ export function TechPremiumShell({
         </div>
       </header>
 
-      {justStarted ? (
+      {justStarted && activeJob ? (
         <div className='mb-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.12)]'>
           Job started. Your active work order is ready below.
+        </div>
+      ) : null}
+
+      {justStarted && !activeJob ? (
+        <div className='mb-6 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100 shadow-[0_0_30px_rgba(245,158,11,0.12)]'>
+          <p className='font-black uppercase tracking-wider'>Job started, but no active work order was found.</p>
+          <p className='mt-1 text-xs text-amber-100/80'>The start action succeeded, but the dashboard could not find an open timer, in-progress appointment/fallback, or active workflow session for this technician.</p>
+          <dl className='mt-3 grid gap-1 rounded-xl border border-amber-500/20 bg-black/30 p-3 font-mono text-[11px] text-amber-50/80'>
+            <div>userId: {activeDebug?.userId ?? 'unknown'}</div>
+            <div>admin read: {activeDebug?.adminRead ? 'yes' : 'no'}</div>
+            {(activeDebug?.checked ?? ['no debug rows collected']).map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </dl>
         </div>
       ) : null}
 
@@ -272,23 +288,50 @@ export function TechPremiumShell({
         <section className='mb-10 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
           <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
             <div>
-              <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Active job live now</p>
+              <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Live Work Order</p>
               <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
                 {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
               </h2>
               <p className='mt-1 text-sm text-zinc-400'>
                 {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
               </p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
+                {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
+                {activeJob.payment_status ?? 'payment pending'}
+              </p>
             </div>
             <div className='flex flex-wrap items-center gap-3'>
               <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
-                <span className='mr-2 text-zinc-500'>Timer</span>
+                <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
                 <LiveTimer startedAt={activeJob.timerStartedAt} />
               </div>
               <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
                 Open Work Order
               </a>
             </div>
+          </div>
+          <div className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
+            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Agreement: <span className={activeJob.hasIntake ? 'text-emerald-300' : 'text-amber-300'}>{activeJob.hasIntake ? 'signed/on file' : 'needs review'}</span></div>
+            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Notes: <span className={activeJob.fieldNotesPreview ? 'text-emerald-300' : 'text-zinc-500'}>{activeJob.fieldNotesPreview ? 'saved' : 'ready'}</span></div>
+            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
+            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
+          </div>
+          <div className='mt-4 flex flex-wrap gap-2'>
+            <a href='#field-invoice' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</a>
+            <Link href='/tech/workflow' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
+            <a href='#field-invoice' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</a>
+            {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+              <form key={`top-${kind}`} action={techSendActiveJobNotificationAction}>
+                <input type='hidden' name='kind' value={kind} />
+                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                <button type='submit' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110'>
+                  {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+                </button>
+              </form>
+            ))}
+            <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</a>
           </div>
         </section>
       ) : null}

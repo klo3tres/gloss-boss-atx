@@ -8,6 +8,7 @@ import {
 } from '@/components/tech/tech-premium-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,8 +41,11 @@ export default async function TechnicianDashboardPage({
   const justStarted = resolvedSearchParams.jobStarted === '1';
   const session = await getSessionWithProfile();
   const supabase = await createSupabaseServerClient();
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? supabase;
 
   let jobs: TechJob[] = [];
+  let activeDebug: { userId: string | null; checked: string[]; adminRead: boolean } | null = null;
   let revenueTodayCents = 0;
   let revenueWeekCents = 0;
   const analytics: TechAnalytics = { completedCount: 0, avgJobMinutes: null, revenueMonthCents: 0 };
@@ -62,21 +66,23 @@ export default async function TechnicianDashboardPage({
   const techName = session.profile?.full_name?.trim() || session.user?.email?.split('@')[0] || 'Technician';
   const roleLabel = session.profile?.role ?? null;
 
-  if (supabase && session.user) {
+  if (db && session.user) {
     const uid = session.user.id;
+    activeDebug = { userId: uid, checked: [], adminRead: Boolean(admin) };
     const selectCols =
       'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents';
-    const { data } = await supabase
+    const { data } = await db
       .from('appointments')
       .select(selectCols)
       .eq('assigned_technician_id', uid)
       .in('status', ['assigned', 'confirmed', 'in_progress'])
       .order('scheduled_start', { ascending: true });
-    const rawRows = (data ?? []) as Record<string, unknown>[];
-    const ids = rawRows.map((row) => String(row.id));
+    let rawRows = (data ?? []) as Record<string, unknown>[];
+    activeDebug.checked.push(`appointments.assigned=${rawRows.length}`);
+    let ids = rawRows.map((row) => String(row.id));
     const openTimerByAppt = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
     const openTimerByFallback = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
-    const timerQuery = await supabase
+    const timerQuery = await db
       .from('tech_job_timers')
       .select('id, appointment_id, fallback_booking_id, workflow_session_id, started_at, created_at')
       .eq('technician_id', uid)
@@ -85,6 +91,7 @@ export default async function TechnicianDashboardPage({
       .limit(20);
     const timerRows = !timerQuery.error ? (timerQuery.data ?? []) : [];
     if (timerQuery.error) console.warn('[tech dashboard] open timers select', timerQuery.error.message);
+    activeDebug.checked.push(`tech_job_timers.open=${timerRows.length}${timerQuery.error ? ` error:${timerQuery.error.message}` : ''}`);
     for (const timer of timerRows) {
       const row = timer as Record<string, unknown>;
       const t = {
@@ -98,15 +105,51 @@ export default async function TechnicianDashboardPage({
       if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
     }
 
+    const workflowQuery = await db
+      .from('tech_workflow_sessions')
+      .select('id, appointment_id, fallback_booking_id, status, updated_at, created_at')
+      .eq('technician_id', uid)
+      .in('status', ['active', 'in_progress'])
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    const workflowRows = !workflowQuery.error ? (workflowQuery.data ?? []) : [];
+    if (workflowQuery.error) console.warn('[tech dashboard] workflow sessions select', workflowQuery.error.message);
+    activeDebug.checked.push(`tech_workflow_sessions.active=${workflowRows.length}${workflowQuery.error ? ` error:${workflowQuery.error.message}` : ''}`);
+    for (const sessionRow of workflowRows) {
+      const row = sessionRow as Record<string, unknown>;
+      const t = {
+        id: `workflow-${String(row.id ?? '')}`,
+        startedAt: row.updated_at != null ? String(row.updated_at) : row.created_at != null ? String(row.created_at) : null,
+        workflowSessionId: row.id != null ? String(row.id) : null,
+      };
+      const aid = row.appointment_id != null ? String(row.appointment_id) : '';
+      const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
+      if (aid && !openTimerByAppt.has(aid)) openTimerByAppt.set(aid, t);
+      if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
+    }
+
+    const missingActiveAppointmentIds = Array.from(openTimerByAppt.keys()).filter((id) => !ids.includes(id));
+    if (missingActiveAppointmentIds.length > 0) {
+      const extra = await db
+        .from('appointments')
+        .select(selectCols)
+        .in('id', missingActiveAppointmentIds);
+      if (extra.error) console.warn('[tech dashboard] active appointment backfill', extra.error.message);
+      const extraRows = !extra.error ? ((extra.data ?? []) as Record<string, unknown>[]) : [];
+      activeDebug.checked.push(`appointments.timer_backfill=${extraRows.length}${extra.error ? ` error:${extra.error.message}` : ''}`);
+      rawRows = [...rawRows, ...extraRows.filter((row) => !ids.includes(String(row.id)))];
+      ids = rawRows.map((row) => String(row.id));
+    }
+
     let intakeIds = new Set<string>();
     if (ids.length > 0) {
-      const { data: subs } = await supabase.from('intake_submissions').select('appointment_id').in('appointment_id', ids);
+      const { data: subs } = await db.from('intake_submissions').select('appointment_id').in('appointment_id', ids);
       intakeIds = new Set((subs ?? []).map((s) => String((s as { appointment_id: string }).appointment_id)));
     }
 
     const mediaByAppt = new Map<string, { before: number; after: number }>();
     if (ids.length > 0) {
-      const { data: med } = await supabase.from('job_media').select('appointment_id, category, photo_category').in('appointment_id', ids);
+      const { data: med } = await db.from('job_media').select('appointment_id, category, photo_category').in('appointment_id', ids);
       for (const m of med ?? []) {
         const row = m as { appointment_id?: string; category?: string; photo_category?: string };
         const aid = String(row.appointment_id ?? '');
@@ -115,7 +158,7 @@ export default async function TechnicianDashboardPage({
         else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
         mediaByAppt.set(aid, cur);
       }
-      const { data: photos } = await supabase.from('job_photos').select('appointment_id, category, photo_category').in('appointment_id', ids);
+      const { data: photos } = await db.from('job_photos').select('appointment_id, category, photo_category').in('appointment_id', ids);
       for (const p of photos ?? []) {
         const row = p as { appointment_id?: string; category?: string; photo_category?: string };
         const aid = String(row.appointment_id ?? '');
@@ -128,7 +171,7 @@ export default async function TechnicianDashboardPage({
 
     const fieldPreviewByAppt = new Map<string, string>();
     if (ids.length > 0) {
-      const nq = await supabase
+      const nq = await db
         .from('tech_job_notes')
         .select(
           'appointment_id, before_notes, after_notes, upsell_suggestions, internal_notes, damage_notes, customer_visible, created_at',
@@ -184,15 +227,32 @@ export default async function TechnicianDashboardPage({
       };
     });
 
+    const inProgressFallbackQuery = await db
+      .from('booking_fallbacks')
+      .select('id')
+      .eq('assigned_technician_id', uid)
+      .eq('status', 'in_progress')
+      .limit(20);
+    const inProgressFallbackIds = !inProgressFallbackQuery.error
+      ? (inProgressFallbackQuery.data ?? []).map((row) => String((row as { id?: string }).id ?? '')).filter(Boolean)
+      : [];
+    if (inProgressFallbackQuery.error) console.warn('[tech dashboard] in-progress fallback select', inProgressFallbackQuery.error.message);
+    activeDebug.checked.push(`booking_fallbacks.in_progress=${inProgressFallbackIds.length}${inProgressFallbackQuery.error ? ` error:${inProgressFallbackQuery.error.message}` : ''}`);
+    for (const id of inProgressFallbackIds) {
+      if (!openTimerByFallback.has(id)) {
+        openTimerByFallback.set(id, { id: `fallback-${id}`, startedAt: null, workflowSessionId: null });
+      }
+    }
+
     const fallbackIds = Array.from(openTimerByFallback.keys());
     if (fallbackIds.length > 0) {
-      const { data: fallbackRows, error: fallbackErr } = await supabase
+      const { data: fallbackRows, error: fallbackErr } = await db
         .from('booking_fallbacks')
         .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, payload, created_at')
         .in('id', fallbackIds);
       if (fallbackErr) console.warn('[tech dashboard] fallback active select', fallbackErr.message);
       const mediaByFallback = new Map<string, { before: number; after: number }>();
-      const { data: fallbackMedia } = await supabase.from('job_media').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      const { data: fallbackMedia } = await db.from('job_media').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
       for (const m of fallbackMedia ?? []) {
         const row = m as { fallback_booking_id?: string; category?: string; photo_category?: string };
         const fid = String(row.fallback_booking_id ?? '');
@@ -201,7 +261,7 @@ export default async function TechnicianDashboardPage({
         else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
         mediaByFallback.set(fid, cur);
       }
-      const { data: fallbackPhotos } = await supabase.from('job_photos').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      const { data: fallbackPhotos } = await db.from('job_photos').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
       for (const p of fallbackPhotos ?? []) {
         const row = p as { fallback_booking_id?: string; category?: string; photo_category?: string };
         const fid = String(row.fallback_booking_id ?? '');
@@ -243,7 +303,7 @@ export default async function TechnicianDashboardPage({
       }
     }
 
-    const { data: done } = await supabase
+    const { data: done } = await db
       .from('appointments')
       .select('id, base_price_cents, job_completed_at, updated_at, booking_add_ons, service_slug')
       .eq('assigned_technician_id', uid)
@@ -290,7 +350,7 @@ export default async function TechnicianDashboardPage({
       .slice(0, 8);
 
     if (completedIds.length > 0) {
-      const { data: pays } = await supabase
+      const { data: pays } = await db
         .from('payments')
         .select('amount_cents, status, created_at, appointment_id')
         .in('appointment_id', completedIds)
@@ -307,7 +367,7 @@ export default async function TechnicianDashboardPage({
     }
 
     const monthIso = new Date(monthAgo).toISOString();
-    const { data: timers } = await supabase
+    const { data: timers } = await db
       .from('tech_job_timers')
       .select('duration_seconds, appointment_id, started_at')
       .eq('technician_id', uid)
@@ -323,7 +383,7 @@ export default async function TechnicianDashboardPage({
       performance.avgCompletionMinutes = Math.round(avgSec / 60);
     }
 
-    const { data: longest } = await supabase
+    const { data: longest } = await db
       .from('tech_job_timers')
       .select('duration_seconds, appointment_id, started_at')
       .eq('technician_id', uid)
@@ -339,7 +399,7 @@ export default async function TechnicianDashboardPage({
         };
       }) ?? [];
 
-    const { data: goalRow } = await supabase
+    const { data: goalRow } = await db
       .from('business_goals')
       .select('target_cents, label')
       .eq('goal_key', 'tech_revenue_week')
@@ -349,7 +409,7 @@ export default async function TechnicianDashboardPage({
       goalLabel = typeof (goalRow as { label?: string }).label === 'string' ? (goalRow as { label: string }).label : 'Weekly revenue goal';
     }
 
-    const { data: leadsMine } = await supabase
+    const { data: leadsMine } = await db
       .from('leads')
       .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
       .eq('assigned_technician_id', uid)
@@ -369,7 +429,7 @@ export default async function TechnicianDashboardPage({
         in_pool: Boolean(r.in_pool),
       })) ?? [];
 
-    const { data: pool } = await supabase
+    const { data: pool } = await db
       .from('leads')
       .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
       .eq('in_pool', true)
@@ -406,6 +466,7 @@ export default async function TechnicianDashboardPage({
         goalLabel={goalLabel}
         goalTargetCents={goalTargetCents}
         justStarted={justStarted}
+        activeDebug={activeDebug}
       />
     </DashboardShell>
   );

@@ -152,6 +152,19 @@ export default function SystemStatusPage() {
             </section>
           ) : null}
 
+          <section className='rounded-2xl border border-gold/25 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
+            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Supabase Auth Email Branding</h2>
+            <p className='mt-2 text-sm text-zinc-400'>
+              Branded confirm signup, reset password, and magic link templates live in <code className='text-zinc-200'>docs/email-templates</code>.
+              Paste them into Supabase Authentication email templates and keep production redirects on <code className='text-zinc-200'>NEXT_PUBLIC_APP_URL</code>.
+              Remove localhost URLs from production Supabase settings.
+            </p>
+            <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+              <Row label='Confirm subject' ok detail='Gloss Boss ATX — Confirm Your Account' />
+              <Row label='Reset subject' ok detail='Gloss Boss ATX — Reset Your Password' />
+            </div>
+          </section>
+
           <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
             <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Supabase</h2>
             <div className='mt-4 space-y-2'>
