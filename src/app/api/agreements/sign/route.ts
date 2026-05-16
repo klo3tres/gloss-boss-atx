@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
+import { insertJobAgreementFlexible, insertSignedAgreementFlexible } from '@/lib/signed-agreement-insert';
 
 export async function POST(request: Request) {
   try {
@@ -155,36 +156,47 @@ export async function POST(request: Request) {
       technician_id: techId,
     };
 
-    let signErr = (await admin.from('signed_agreements').insert(signPayload)).error;
-    if (signErr && /column|does not exist|schema cache/i.test(signErr.message)) {
-      const lean = { ...signPayload };
-      delete lean.customer_id;
-      delete lean.vehicle_id;
-      delete lean.technician_id;
-      signErr = (await admin.from('signed_agreements').insert(lean)).error;
-    }
-
-    if (signErr) {
-      console.error(signErr);
-      return NextResponse.json({ error: 'Could not save agreement' }, { status: 500 });
-    }
-
-    try {
-      const { error: jaErr } = await admin.from('job_agreements').insert({
+    const signRes = await insertSignedAgreementFlexible(admin, signPayload);
+    if (signRes.error) {
+      console.error('[agreements/sign] signed_agreements', signRes.error.message);
+      const { data: intakeRow } = await admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+      const prevForm = (intakeRow?.form_data as Record<string, unknown>) ?? {};
+      const backupForm = {
+        ...prevForm,
+        deposit_legal_ack: {
+          signer_legal_name: signerLegalName.trim(),
+          signature_type: signatureType,
+          signature_data: signatureData ?? null,
+          agreement_snapshot: snapshot,
+          stored_at: new Date().toISOString(),
+        },
+      };
+      const intakeUpsert: Record<string, unknown> = {
         appointment_id: appointmentId,
-        signer_legal_name: signerLegalName.trim(),
-        agreement_snapshot: snapshot,
-        signature_type: signatureType,
-        signature_data: signatureData ?? null,
-        template_id: template?.id ?? null,
-        template_version: template?.version ?? 1,
-        signed_at: new Date().toISOString(),
-      });
-      if (jaErr && !/duplicate|unique|already exists/i.test(jaErr.message)) {
-        console.warn('[agreements/sign] job_agreements', jaErr.message);
+        form_data: backupForm,
+      };
+      if (typeof Ap.customer_id === 'string' && Ap.customer_id) intakeUpsert.customer_id = Ap.customer_id;
+      let iu = await admin.from('intake_submissions').upsert(intakeUpsert, { onConflict: 'appointment_id' });
+      if (iu.error && /agreement_snapshot|column|schema cache/i.test(iu.error.message)) {
+        iu = await admin.from('intake_submissions').upsert({ ...intakeUpsert, agreement_snapshot: snapshot }, { onConflict: 'appointment_id' });
       }
-    } catch (jobAgErr) {
-      console.warn('[agreements/sign] job_agreements insert skipped', jobAgErr);
+      if (iu.error) {
+        return NextResponse.json({ error: 'Could not save agreement' }, { status: 500 });
+      }
+    }
+
+    const ja = await insertJobAgreementFlexible(admin, {
+      appointment_id: appointmentId,
+      signer_legal_name: signerLegalName.trim(),
+      agreement_snapshot: snapshot,
+      signature_type: signatureType,
+      signature_data: signatureData ?? null,
+      template_id: template?.id ?? null,
+      template_version: template?.version ?? 1,
+      signed_at: new Date().toISOString(),
+    });
+    if (ja.error && !/duplicate|unique|already exists/i.test(ja.error.message)) {
+      console.warn('[agreements/sign] job_agreements', ja.error.message);
     }
 
     await admin

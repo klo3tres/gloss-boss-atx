@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function requireAdminGate() {
   const session = await getSessionWithProfile();
@@ -28,7 +29,12 @@ export async function createCustomerAction(formData: FormData) {
   const gate = await requireAdminGate();
   if (!gate.ok) return;
 
-  const { error } = await gate.supabase.from('customers').insert({ email, full_name: fullName, phone });
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  let { error } = await client.from('customers').insert({ email, full_name: fullName, phone, archived: false });
+  if (error && /archived|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('customers').insert({ email, full_name: fullName, phone }));
+  }
   if (error) {
     console.warn('[CRM_DEBUG_DB]', 'create_customer_failed', error.message);
     return;
@@ -59,6 +65,53 @@ export async function updateCustomerAction(formData: FormData) {
   revalidatePath('/admin');
 }
 
+/** Soft-archive: hides from default directory; reversible. */
+export async function archiveCustomerAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const confirm = String(formData.get('archive_confirm') ?? '').trim();
+  if (!id || confirm !== 'ARCHIVE') return;
+
+  const gate = await requireAdminGate();
+  if (!gate.ok) return;
+
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  const now = new Date().toISOString();
+  let { error } = await client.from('customers').update({ archived: true, archived_at: now }).eq('id', id);
+  if (error && /archived|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('customers').update({ archived: true }).eq('id', id));
+  }
+  if (error) {
+    console.warn('[CRM_DEBUG_DB]', 'archive_customer_failed', error.message);
+    return;
+  }
+  revalidatePath('/admin/customers');
+  revalidatePath('/admin');
+  revalidatePath(`/admin/customers/${id}`);
+}
+
+export async function unarchiveCustomerAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  if (!id) return;
+  const gate = await requireAdminGate();
+  if (!gate.ok) return;
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  let { error } = await client.from('customers').update({ archived: false, archived_at: null }).eq('id', id);
+  if (error && /archived_at|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('customers').update({ archived: false }).eq('id', id));
+  }
+  if (error && /archived|column|schema cache|Could not find/i.test(error.message)) {
+    return;
+  }
+  if (error) {
+    console.warn('[CRM_DEBUG_DB]', 'unarchive_customer_failed', error.message);
+    return;
+  }
+  revalidatePath('/admin/customers');
+  revalidatePath(`/admin/customers/${id}`);
+}
+
 /** Permanent delete: **super_admin only** and requires typed confirmation `DELETE`. */
 export async function deleteCustomerAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
@@ -71,7 +124,9 @@ export async function deleteCustomerAction(formData: FormData) {
     return;
   }
 
-  const { error } = await gate.supabase.from('customers').delete().eq('id', id);
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  const { error } = await client.from('customers').delete().eq('id', id);
   if (error) {
     console.warn('[CRM_DEBUG_DB]', 'delete_customer_failed', error.message);
     return;

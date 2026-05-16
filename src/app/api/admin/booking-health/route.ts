@@ -30,6 +30,9 @@ export async function GET() {
       twilio,
       snapshot: null,
       pendingFallbacks: null,
+      activeFallbacks: null,
+      expiredFallbacks: null,
+      lastFallbackError: null,
       recentFallbacks: [],
       lastBookingError: null,
     });
@@ -37,12 +40,67 @@ export async function GET() {
 
   const snap = await getBookingHealthSnapshot(admin);
 
+  const tenAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+  try {
+    await admin
+      .from('booking_fallbacks')
+      .update({ status: 'expired', updated_at: nowIso })
+      .eq('status', 'pending')
+      .is('converted_appointment_id', null)
+      .lt('created_at', tenAgo);
+  } catch {
+    /* non-fatal */
+  }
+
   let pendingFallbacks: number | null = null;
+  let expiredFallbacks: number | null = null;
+  let activeFallbacks: number | null = null;
   try {
     const c = await admin.from('booking_fallbacks').select('id', { count: 'exact', head: true }).eq('status', 'pending');
     pendingFallbacks = typeof c.count === 'number' ? c.count : null;
   } catch {
     pendingFallbacks = null;
+  }
+  try {
+    const e = await admin.from('booking_fallbacks').select('id', { count: 'exact', head: true }).eq('status', 'expired');
+    expiredFallbacks = typeof e.count === 'number' ? e.count : null;
+  } catch {
+    expiredFallbacks = null;
+  }
+  try {
+    const a = await admin
+      .from('booking_fallbacks')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['pending', 'open', 'needs_review']);
+    activeFallbacks = typeof a.count === 'number' ? a.count : null;
+  } catch {
+    activeFallbacks = null;
+  }
+
+  let lastFallbackError: { message: string | null; created_at: string | null } | null = null;
+  try {
+    const { data } = await admin
+      .from('booking_fallbacks')
+      .select('promotion_error, last_failure_detail, created_at')
+      .order('created_at', { ascending: false })
+      .limit(15);
+    for (const raw of data ?? []) {
+      const r = raw as Record<string, unknown>;
+      const msg =
+        (r.last_failure_detail != null && String(r.last_failure_detail).trim()) ||
+        (r.promotion_error != null && String(r.promotion_error).trim()) ||
+        '';
+      if (msg) {
+        lastFallbackError = {
+          message: msg,
+          created_at: r.created_at != null ? String(r.created_at) : null,
+        };
+        break;
+      }
+    }
+  } catch {
+    lastFallbackError = null;
   }
 
   let lastBookingError: { message: string | null; created_at: string | null; stage: string | null } | null = null;
@@ -74,12 +132,15 @@ export async function GET() {
     deposit_amount_cents: number | null;
     created_at: string | null;
     converted_appointment_id: string | null;
+    reviewed_at: string | null;
+    archived_at: string | null;
+    promotion_error: string | null;
   }[] = [];
   try {
     const { data } = await admin
       .from('booking_fallbacks')
       .select(
-        'id, guest_name, guest_email, guest_phone, status, deposit_amount_cents, created_at, converted_appointment_id',
+        'id, guest_name, guest_email, guest_phone, status, deposit_amount_cents, created_at, converted_appointment_id, reviewed_at, archived_at, promotion_error, last_failure_detail',
       )
       .order('created_at', { ascending: false })
       .limit(20);
@@ -94,6 +155,11 @@ export async function GET() {
         deposit_amount_cents: typeof r.deposit_amount_cents === 'number' ? r.deposit_amount_cents : null,
         created_at: r.created_at != null ? String(r.created_at) : null,
         converted_appointment_id: r.converted_appointment_id != null ? String(r.converted_appointment_id) : null,
+        reviewed_at: r.reviewed_at != null ? String(r.reviewed_at) : null,
+        archived_at: r.archived_at != null ? String(r.archived_at) : null,
+        promotion_error:
+          (r.last_failure_detail != null && String(r.last_failure_detail)) ||
+          (r.promotion_error != null ? String(r.promotion_error) : null),
       };
     });
   } catch {
@@ -109,6 +175,9 @@ export async function GET() {
     twilio,
     snapshot: snap,
     pendingFallbacks,
+    activeFallbacks,
+    expiredFallbacks,
+    lastFallbackError,
     recentFallbacks,
     lastBookingError,
   });

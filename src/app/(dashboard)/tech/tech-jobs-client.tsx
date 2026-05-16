@@ -17,6 +17,7 @@ type Job = {
   vehicle_class: string;
   base_price_cents: number | null;
   notes?: string | null;
+  fieldNotesPreview?: string | null;
   hasIntake?: boolean;
   beforePhotoCount?: number;
   afterPhotoCount?: number;
@@ -69,6 +70,11 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   <p className='mt-1 text-xs font-semibold text-emerald-300/90'>Job value · ${price.toFixed(0)}</p>
                 ) : null}
                 {locationHint ? <p className='mt-2 text-xs text-zinc-400'>{locationHint}</p> : null}
+                {job.fieldNotesPreview ? (
+                  <p className='mt-2 rounded-lg border border-gold/20 bg-black/40 px-2 py-1.5 text-[11px] text-gold-soft/90'>
+                    Field notes: {job.fieldNotesPreview}
+                  </p>
+                ) : null}
                 {job.hasIntake === false ? (
                   <p className='mt-2 text-xs font-semibold text-amber-200'>
                     Intake not on file yet — customer must complete `/intake` after paying before you can close this job.

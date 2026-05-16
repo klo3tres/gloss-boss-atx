@@ -8,6 +8,7 @@ import { computeQuoteFromInputs, insertAppointmentResilient, type VehicleLineInp
 import { fetchAppointmentForTechSign } from '@/lib/appointments-fetch-resilient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
+import { insertJobAgreementFlexible, insertSignedAgreementFlexible } from '@/lib/signed-agreement-insert';
 
 export type WalkInVehicleInput = {
   serviceSlug: string;
@@ -262,30 +263,48 @@ export async function techSignWalkInAgreementAction(input: {
     technician_id: session.user.id,
   };
 
-  let signErr = (await admin.from('signed_agreements').insert(insertRow)).error;
-  if (signErr && /column|does not exist|schema cache/i.test(signErr.message)) {
-    const lean = { ...insertRow };
-    delete lean.customer_id;
-    delete lean.vehicle_id;
-    delete lean.technician_id;
-    signErr = (await admin.from('signed_agreements').insert(lean)).error;
+  const signRes = await insertSignedAgreementFlexible(admin, insertRow);
+  if (signRes.error) {
+    console.warn('[techSignWalkIn] signed_agreements', signRes.error.message);
+    const { data: intakeRow } = await admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+    const prevForm = (intakeRow?.form_data as Record<string, unknown>) ?? {};
+    const backupForm = {
+      ...prevForm,
+      walk_in_legal_ack: {
+        signer_legal_name: signerLegalName,
+        signature_type: input.signatureType,
+        signature_data: input.signatureData ?? null,
+        agreement_snapshot: snapshot,
+        stored_at: new Date().toISOString(),
+      },
+    };
+    const intakeUpsert: Record<string, unknown> = {
+      appointment_id: appointmentId,
+      form_data: backupForm,
+    };
+    if (typeof A.customer_id === 'string' && A.customer_id) intakeUpsert.customer_id = A.customer_id;
+    let iu = await admin.from('intake_submissions').upsert(intakeUpsert, { onConflict: 'appointment_id' });
+    if (iu.error && /agreement_snapshot|column|schema cache/i.test(iu.error.message)) {
+      const withSnap = { ...intakeUpsert, agreement_snapshot: snapshot };
+      iu = await admin.from('intake_submissions').upsert(withSnap, { onConflict: 'appointment_id' });
+    }
+    if (iu.error) {
+      console.warn('[techSignWalkIn] intake legal backup failed', iu.error.message);
+    }
   }
 
-  if (signErr) return { ok: false, error: signErr.message };
-
-  try {
-    await admin.from('job_agreements').insert({
-      appointment_id: appointmentId,
-      signer_legal_name: signerLegalName,
-      agreement_snapshot: snapshot,
-      signature_type: input.signatureType,
-      signature_data: input.signatureData ?? null,
-      template_id: template?.id ?? null,
-      template_version: template?.version ?? 1,
-      signed_at: new Date().toISOString(),
-    });
-  } catch {
-    /* optional mirror */
+  const ja = await insertJobAgreementFlexible(admin, {
+    appointment_id: appointmentId,
+    signer_legal_name: signerLegalName,
+    agreement_snapshot: snapshot,
+    signature_type: input.signatureType,
+    signature_data: input.signatureData ?? null,
+    template_id: template?.id ?? null,
+    template_version: template?.version ?? 1,
+    signed_at: new Date().toISOString(),
+  });
+  if (ja.error && !/duplicate|unique/i.test(ja.error.message)) {
+    console.warn('[techSignWalkIn] job_agreements', ja.error.message);
   }
 
   await admin

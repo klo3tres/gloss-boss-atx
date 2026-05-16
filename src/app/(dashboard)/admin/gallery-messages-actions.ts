@@ -34,7 +34,21 @@ export async function setMessageStatusAction(formData: FormData) {
 
   const admin = tryCreateAdminSupabase();
   const client = admin ?? gate.supabase;
-  const { error } = await client.from('messages').update({ status }).eq('id', id);
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = { status };
+  if (status === 'read') patch.read_at = now;
+  if (status === 'replied') patch.replied_at = now;
+  if (status === 'archived') patch.archived_at = now;
+  if (status === 'new') {
+    patch.read_at = null;
+    patch.replied_at = null;
+    patch.archived_at = null;
+  }
+
+  let { error } = await client.from('messages').update(patch).eq('id', id);
+  if (error && /read_at|replied_at|archived_at|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('messages').update({ status }).eq('id', id));
+  }
   if (error) console.error('[setMessageStatusAction]', error.message);
   revalidatePath('/admin/messages');
 }

@@ -3,7 +3,8 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
-import { createCustomerAction, deleteCustomerAction, updateCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
+import { createCustomerAction, deleteCustomerAction, updateCustomerAction, archiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ type CustomerRow = {
   full_name: string | null;
   phone: string | null;
   created_at: string;
+  archived?: boolean | null;
 };
 
 export default async function AdminCustomersPage() {
@@ -22,18 +24,36 @@ export default async function AdminCustomersPage() {
   let rows: CustomerRow[] = [];
   let qErr: string | null = null;
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
-    const full = await supabase.from('customers').select('id, email, full_name, phone, created_at').order('created_at', { ascending: false }).limit(200);
-    if (full.error && /phone|full_name|column .* does not exist|Could not find|schema cache/i.test(full.error.message)) {
-      const lean = await supabase.from('customers').select('id, email, created_at').order('created_at', { ascending: false }).limit(200);
-      if (lean.error) {
-        qErr = lean.error.message;
-        console.warn('[CRM_DEBUG_DB]', 'customers_list', lean.error.message);
+    const client = tryCreateAdminSupabase() ?? supabase;
+    const full = await client
+      .from('customers')
+      .select('id, email, full_name, phone, created_at, archived')
+      .or('archived.is.null,archived.eq.false')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (full.error && /archived|column|schema cache|Could not find/i.test(full.error.message)) {
+      const noArch = await client
+        .from('customers')
+        .select('id, email, full_name, phone, created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (noArch.error && /phone|full_name|column .* does not exist|Could not find|schema cache/i.test(noArch.error.message)) {
+        const lean = await client.from('customers').select('id, email, created_at').order('created_at', { ascending: false }).limit(200);
+        if (lean.error) {
+          qErr = lean.error.message;
+          console.warn('[CRM_DEBUG_DB]', 'customers_list', lean.error.message);
+        } else {
+          rows = (lean.data ?? []).map((r) => ({
+            ...r,
+            full_name: null,
+            phone: null,
+          })) as CustomerRow[];
+        }
+      } else if (noArch.error) {
+        qErr = noArch.error.message;
+        console.warn('[CRM_DEBUG_DB]', 'customers_list', noArch.error.message);
       } else {
-        rows = (lean.data ?? []).map((r) => ({
-          ...r,
-          full_name: null,
-          phone: null,
-        })) as CustomerRow[];
+        rows = (noArch.data ?? []) as CustomerRow[];
       }
     } else if (full.error) {
       qErr = full.error.message;
@@ -116,6 +136,18 @@ export default async function AdminCustomersPage() {
                         <Link href={`/admin/customers/${c.id}`} className='rounded-lg border border-white/15 px-3 py-2 text-xs font-bold uppercase text-zinc-300 hover:border-gold/40'>
                           View detail
                         </Link>
+                      </form>
+                      <form action={archiveCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>
+                        <input type='hidden' name='id' value={c.id} />
+                        <input
+                          name='archive_confirm'
+                          placeholder='ARCHIVE'
+                          className='w-28 rounded border border-amber-500/30 bg-black px-2 py-1.5 text-xs text-amber-100'
+                          aria-label='Type ARCHIVE to confirm archive'
+                        />
+                        <button type='submit' className='rounded-lg border border-amber-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-amber-200 hover:bg-amber-500/10'>
+                          Archive
+                        </button>
                       </form>
                       {isSuper ? (
                         <form action={deleteCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>

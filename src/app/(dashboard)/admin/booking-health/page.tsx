@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
-
+import { clearExpiredFallbacksAction } from '@/app/(dashboard)/admin/booking-fallback-actions';
 type Api = {
   ok: boolean;
   supabase?: boolean;
@@ -19,6 +20,9 @@ type Api = {
     last_failure_stage: string | null;
   } | null;
   pendingFallbacks?: number | null;
+  activeFallbacks?: number | null;
+  expiredFallbacks?: number | null;
+  lastFallbackError?: { message: string | null; created_at: string | null } | null;
   recentFallbacks?: {
     id: string;
     guest_name: string | null;
@@ -28,11 +32,13 @@ type Api = {
     deposit_amount_cents: number | null;
     created_at: string | null;
     converted_appointment_id: string | null;
+    reviewed_at?: string | null;
+    archived_at?: string | null;
+    promotion_error?: string | null;
   }[];
   lastBookingError?: { message: string | null; created_at: string | null; stage: string | null } | null;
   error?: string;
 };
-
 function Badge({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
@@ -46,8 +52,9 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export default function BookingHealthPage() {
+  const router = useRouter();
   const [data, setData] = useState<Api | null>(null);
-
+  const [localMsg, setLocalMsg] = useState<string | null>(null);
   useEffect(() => {
     void fetchWithTimeout('/api/admin/booking-health', { credentials: 'same-origin', timeoutMs: 15000 })
       .then((r) => r.json() as Promise<Api>)
@@ -67,6 +74,9 @@ export default function BookingHealthPage() {
         ← Command center
       </Link>
 
+      {localMsg ? (
+        <p className='mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-100'>{localMsg}</p>
+      ) : null}
       {!data ? (
         <p className='text-sm text-zinc-400'>Loading…</p>
       ) : !data.ok ? (
@@ -119,18 +129,52 @@ export default function BookingHealthPage() {
                 {snap?.last_failure_stage ?? '—'}
               </li>
               <li>
-                <span className='text-zinc-500'>Queued fallback bookings (pending): </span>
+                <span className='text-zinc-500'>Pending fallbacks: </span>
                 {data.pendingFallbacks != null ? data.pendingFallbacks : '—'}
               </li>
-            </ul>
+              <li>
+                <span className='text-zinc-500'>Active / needs review: </span>
+                {data.activeFallbacks != null ? data.activeFallbacks : '—'}
+              </li>
+              <li>
+                <span className='text-zinc-500'>Expired fallbacks: </span>
+                {data.expiredFallbacks != null ? data.expiredFallbacks : '—'}
+              </li>
+              <li>
+                <span className='text-zinc-500'>Last fallback error: </span>
+                {data.lastFallbackError?.message ?? '—'}
+              </li>            </ul>
           </section>
 
           <section className='md:col-span-2 rounded-2xl border border-amber-500/20 bg-black/40 p-5'>
-            <p className='text-xs font-bold uppercase tracking-[0.2em] text-amber-200'>Recent fallback bookings</p>
-            <p className='mt-1 text-[11px] text-zinc-500'>
-              Stored when the primary appointments insert could not complete; Stripe deposit checkout can still run.
-            </p>
-            {!data.recentFallbacks || data.recentFallbacks.length === 0 ? (
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <p className='text-xs font-bold uppercase tracking-[0.2em] text-amber-200'>Recent fallback bookings</p>
+                <p className='mt-1 text-[11px] text-zinc-500'>
+                  Stored when the primary appointments insert could not complete; Stripe deposit checkout can still run. Stale pending rows
+                  auto-expire after 10 minutes on this page load.
+                </p>
+              </div>
+              <form
+                action={async () => {
+                  setLocalMsg(null);
+                  const r = await clearExpiredFallbacksAction();
+                  setLocalMsg(r.ok ? `Expired ${r.count ?? 0} stale fallback row(s).` : r.error ?? 'Clear failed');
+                  const next = await fetchWithTimeout('/api/admin/booking-health', { credentials: 'same-origin', timeoutMs: 15000 }).then(
+                    (x) => x.json() as Promise<Api>,
+                  );
+                  setData(next);
+                  router.refresh();
+                }}
+              >
+                <button
+                  type='submit'
+                  className='rounded-lg border border-amber-500/50 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-amber-100 hover:bg-amber-500/10'
+                >
+                  Clear expired fallbacks
+                </button>
+              </form>
+            </div>            {!data.recentFallbacks || data.recentFallbacks.length === 0 ? (
               <p className='mt-3 text-sm text-zinc-500'>None returned (or table not migrated).</p>
             ) : (
               <div className='mt-4 overflow-x-auto'>
@@ -142,8 +186,8 @@ export default function BookingHealthPage() {
                       <th className='py-2 pr-3'>Contact</th>
                       <th className='py-2 pr-3'>Deposit</th>
                       <th className='py-2 pr-3'>Status</th>
-                      <th className='py-2'>Converted appt</th>
-                    </tr>
+                      <th className='py-2 pr-3'>Error</th>
+                      <th className='py-2'>Converted appt</th>                    </tr>
                   </thead>
                   <tbody>
                     {data.recentFallbacks.map((r) => (
@@ -161,8 +205,8 @@ export default function BookingHealthPage() {
                           {r.deposit_amount_cents != null ? `$${(r.deposit_amount_cents / 100).toFixed(2)}` : '—'}
                         </td>
                         <td className='py-2 pr-3'>{r.status ?? '—'}</td>
-                        <td className='py-2 font-mono text-[10px] text-zinc-500'>
-                          {r.converted_appointment_id ? `${r.converted_appointment_id.slice(0, 8)}…` : '—'}
+                        <td className='max-w-[200px] py-2 pr-3 break-words text-rose-200/90'>{r.promotion_error ?? '—'}</td>
+                        <td className='py-2 font-mono text-[10px] text-zinc-500'>                          {r.converted_appointment_id ? `${r.converted_appointment_id.slice(0, 8)}…` : '—'}
                         </td>
                       </tr>
                     ))}

@@ -4,6 +4,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
+import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,23 +92,65 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     0,
   );
   const paidViaStripeCents = paymentsTotalCents;
-  const lifetimeDisplayCents = paidViaStripeCents > 0 ? paidViaStripeCents : completedJobValueCents;
+  const headlineSpendCents = paidViaStripeCents;
+  const pendingBookings = apptRows.filter((a) => !['completed', 'cancelled'].includes(a.status));
   const serviceSlugs = [...new Set(apptRows.map((a) => a.service_slug).filter(Boolean))];
 
   const vehicles = (vehiclesRes.data ?? []) as { id: string; description: string; notes: string | null; created_at: string }[];
   const notes = (notesRes.data ?? []) as { id: string; body: string; created_at: string }[];
 
+  const custEmail = String(c.email ?? '')
+    .trim()
+    .toLowerCase();
+
+  const [fieldNotesRes, fallbackRes] = await Promise.all([
+    apptIds.length
+      ? admin
+          .from('tech_job_notes')
+          .select(
+            'id, appointment_id, before_notes, after_notes, damage_notes, internal_notes, upsell_suggestions, customer_visible, created_at',
+          )
+          .in('appointment_id', apptIds)
+          .order('created_at', { ascending: false })
+          .limit(40)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    custEmail
+      ? admin
+          .from('booking_fallbacks')
+          .select('id, status, guest_email, created_at, promotion_error, converted_appointment_id')
+          .eq('guest_email', custEmail)
+          .order('created_at', { ascending: false })
+          .limit(25)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
+
+  const fieldNoteRows = (fieldNotesRes.data ?? []) as Record<string, unknown>[];
+  const fallbackRows = (fallbackRes.data ?? []) as Record<string, unknown>[];
   const addr1 = typeof c.address_line1 === 'string' ? c.address_line1 : '';
   const addr2 = typeof c.address_line2 === 'string' ? c.address_line2 : '';
   const city = typeof c.city === 'string' ? c.city : '';
   const state = typeof c.state === 'string' ? c.state : '';
   const postal = typeof c.postal_code === 'string' ? c.postal_code : '';
 
+  const isArchived = Boolean(c.archived);
+
   return (
     <DashboardShell title={String(c.full_name ?? c.email ?? 'Customer')} subtitle='Customer CRM detail' role='admin'>
       <Link href='/admin/customers' className='mb-4 inline-block text-xs font-bold uppercase text-gold-soft underline'>
         ← Customers
       </Link>
+
+      {isArchived ? (
+        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
+          <span className='font-bold uppercase'>Archived customer</span>
+          <form action={unarchiveCustomerAction} className='inline'>
+            <input type='hidden' name='id' value={id} />
+            <button type='submit' className='rounded-lg border border-gold/40 px-3 py-1 text-xs font-bold uppercase text-gold-soft'>
+              Restore to directory
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <div className='grid gap-4 lg:grid-cols-2'>
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -123,23 +166,22 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </section>
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
           <h2 className='text-sm font-bold uppercase text-gold-soft'>Lifetime stats</h2>
-          <p className='mt-2 text-3xl font-black text-white'>${(lifetimeDisplayCents / 100).toFixed(0)}</p>
-          <p className='text-xs text-zinc-500'>
-            {paidViaStripeCents > 0
-              ? 'Paid total (Stripe succeeded on linked appointments).'
-              : 'Completed job booked value (no Stripe payouts on file — deposit-only or off-platform).'}
-          </p>
-          {paidViaStripeCents > 0 && completedJobValueCents > 0 ? (
-            <p className='mt-1 text-xs text-zinc-600'>Completed jobs (booked value): ${(completedJobValueCents / 100).toFixed(0)} reference</p>
+          <p className='mt-2 text-3xl font-black text-white'>${(headlineSpendCents / 100).toFixed(0)}</p>
+          <p className='text-xs text-zinc-500'>Paid through Stripe (succeeded) on linked appointments — failed or unpaid checkouts are excluded.</p>
+          {completedJobValueCents > 0 ? (
+            <p className='mt-2 text-xs text-zinc-600'>
+              Completed job booked subtotal (reference, may include non-captured balances): ${(completedJobValueCents / 100).toFixed(0)}
+            </p>
           ) : null}
-          <p className='mt-2 text-xs text-zinc-500'>
-            Pending / non-completed: {apptRows.filter((a) => a.status !== 'completed' && a.status !== 'cancelled').length} open row(s) ·{' '}
-            {past.filter((a) => a.status !== 'completed').length} past row(s) not counted as completed revenue
+          <p className='mt-3 text-sm text-zinc-300'>
+            Pending / in-flight bookings: <span className='font-semibold text-amber-200'>{pendingBookings.length}</span>
           </p>
           <p className='mt-2 text-sm text-zinc-400'>
             Stripe (succeeded payments): <span className='font-semibold text-emerald-300'>${(paymentsTotalCents / 100).toFixed(2)}</span>
           </p>
-          {paySucceeded.length === 0 ? <p className='mt-1 text-xs text-zinc-600'>No succeeded payments linked to these appointments yet.</p> : null}
+          {paySucceeded.length === 0 ? (
+            <p className='mt-1 text-xs text-zinc-600'>No succeeded Stripe payments linked to these appointments yet.</p>
+          ) : null}
         </section>
       </div>
 
@@ -271,6 +313,54 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               {new Date(r.created_at).toLocaleString()}
               {r.appointment_id ? (
                 <span className='ml-2 text-xs text-zinc-500'>Appt {String(r.appointment_id).slice(0, 8)}…</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <h2 className='text-sm font-bold uppercase text-gold-soft'>Field job notes</h2>
+        <p className='mt-1 text-xs text-zinc-500'>Latest technician notes tied to appointments (internal lines are staff-only).</p>
+        <ul className='mt-3 space-y-2 text-sm'>
+          {fieldNoteRows.length === 0 ? (
+            <li className='text-zinc-500'>No field notes yet.</li>
+          ) : null}
+          {fieldNoteRows.map((r) => {
+            const vis = Boolean(r.customer_visible);
+            const bits: string[] = [];
+            if (r.before_notes) bits.push(`Before: ${String(r.before_notes)}`);
+            if (r.after_notes) bits.push(`After: ${String(r.after_notes)}`);
+            if (r.damage_notes) bits.push(`Damage: ${String(r.damage_notes)}`);
+            if (r.upsell_suggestions) bits.push(`Upsell: ${String(r.upsell_suggestions)}`);
+            if (r.internal_notes) bits.push(`Internal: ${String(r.internal_notes)}`);
+            const body = (vis ? bits : bits.filter((b) => !b.startsWith('Internal:'))).join('\n');
+            return (
+              <li key={String(r.id)} className='rounded border border-white/10 px-3 py-2 whitespace-pre-wrap text-zinc-300'>
+                <span className='text-xs text-zinc-500'>
+                  {r.created_at ? new Date(String(r.created_at)).toLocaleString() : '—'} · Appt {String(r.appointment_id).slice(0, 8)}…
+                </span>
+                <p className='mt-1 text-xs'>{body || '—'}</p>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <section className='mt-6 rounded-2xl border border-amber-500/25 bg-zinc-950 p-5'>
+        <h2 className='text-sm font-bold uppercase text-amber-200'>Fallback / failed booking attempts</h2>
+        <p className='mt-1 text-xs text-zinc-500'>Rows when checkout could not create a live appointment — not counted as spend.</p>
+        <ul className='mt-3 space-y-2 text-sm'>
+          {fallbackRows.length === 0 ? (
+            <li className='text-zinc-500'>No fallback rows for this email.</li>
+          ) : null}
+          {fallbackRows.map((r) => (
+            <li key={String(r.id)} className='rounded border border-white/10 px-3 py-2 text-xs text-zinc-300'>
+              <span className='font-mono text-[10px] text-zinc-500'>{String(r.status)}</span> ·{' '}
+              {r.created_at ? new Date(String(r.created_at)).toLocaleString() : '—'}
+              {r.promotion_error ? <p className='mt-1 text-rose-200/90'>{String(r.promotion_error)}</p> : null}
+              {r.converted_appointment_id ? (
+                <p className='mt-1 text-emerald-300/90'>Converted to appointment {String(r.converted_appointment_id).slice(0, 8)}…</p>
               ) : null}
             </li>
           ))}

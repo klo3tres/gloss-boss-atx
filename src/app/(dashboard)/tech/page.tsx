@@ -80,6 +80,35 @@ export default async function TechnicianDashboardPage() {
       }
     }
 
+    const fieldPreviewByAppt = new Map<string, string>();
+    if (ids.length > 0) {
+      const nq = await supabase
+        .from('tech_job_notes')
+        .select(
+          'appointment_id, before_notes, after_notes, upsell_suggestions, internal_notes, damage_notes, customer_visible, created_at',
+        )
+        .eq('technician_id', uid)
+        .in('appointment_id', ids)
+        .order('created_at', { ascending: false });
+      const noteRows = !nq.error ? (nq.data ?? []) : [];
+      if (nq.error) {
+        console.warn('[tech dashboard] tech_job_notes select', nq.error.message);
+      }
+      for (const row of noteRows) {
+        const r = row as Record<string, unknown>;
+        const aid = String(r.appointment_id ?? '');
+        if (!aid || fieldPreviewByAppt.has(aid)) continue;
+        const parts: string[] = [];
+        if (r.before_notes) parts.push(`Before: ${String(r.before_notes).slice(0, 80)}`);
+        if (r.after_notes) parts.push(`After: ${String(r.after_notes).slice(0, 80)}`);
+        if (r.damage_notes) parts.push(`Damage: ${String(r.damage_notes).slice(0, 80)}`);
+        if (r.upsell_suggestions) parts.push(`Upsell: ${String(r.upsell_suggestions).slice(0, 80)}`);
+        if (r.internal_notes) parts.push(`Internal: ${String(r.internal_notes).slice(0, 80)}`);
+        const preview = parts.join(' · ');
+        if (preview) fieldPreviewByAppt.set(aid, preview.slice(0, 220));
+      }
+    }
+
     jobs = rawRows.map((row) => {
       const id = String(row.id);
       const intakeCompleted = row.intake_completed_at != null && String(row.intake_completed_at).length > 0;
@@ -96,6 +125,7 @@ export default async function TechnicianDashboardPage() {
         vehicle_class: String(row.vehicle_class ?? 'sedan'),
         base_price_cents: typeof row.base_price_cents === 'number' ? row.base_price_cents : null,
         notes: row.notes != null ? String(row.notes) : null,
+        fieldNotesPreview: fieldPreviewByAppt.get(id) ?? null,
         hasIntake: intakeIds.has(id) || intakeCompleted,
         beforePhotoCount: counts?.before,
         afterPhotoCount: counts?.after,

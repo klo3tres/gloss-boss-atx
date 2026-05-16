@@ -51,6 +51,25 @@ export default async function AdminDispatchPage() {
   ]);
 
   const jobs = (jobsRes.data ?? []) as DispatchJobRow[];
+  const jobIds = jobs.map((j) => j.id);
+  const jobNotes: Record<string, string> = {};
+  if (jobIds.length) {
+    const nq = await admin
+      .from('tech_job_notes')
+      .select('appointment_id, before_notes, after_notes, damage_notes, upsell_suggestions, created_at')
+      .in('appointment_id', jobIds)
+      .order('created_at', { ascending: false });
+    if (!nq.error) {
+      for (const row of nq.data ?? []) {
+        const r = row as Record<string, unknown>;
+        const aid = String(r.appointment_id ?? '');
+        if (!aid || jobNotes[aid]) continue;
+        const bits = [r.before_notes, r.after_notes, r.damage_notes, r.upsell_suggestions].filter(Boolean).map(String);
+        if (bits.length) jobNotes[aid] = bits.join(' · ').slice(0, 220);
+      }
+    }
+  }
+
   const techRows = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null; active?: boolean | null }[];
   const technicians = techRows.filter((t) => t.active !== false).map(({ id, full_name, email }) => ({ id, full_name, email }));
 
@@ -86,7 +105,7 @@ export default async function AdminDispatchPage() {
       ) : null}
       {techRes.error ? <p className='mb-4 text-xs text-amber-200'>Technicians: {techRes.error.message}</p> : null}
       {fbRes.error ? <p className='mb-4 text-xs text-amber-200'>Fallback queue: {fbRes.error.message}</p> : null}
-      <DispatchBoardClient jobs={jobs} technicians={technicians} fallbacks={fallbacks} />
+      <DispatchBoardClient jobs={jobs} technicians={technicians} fallbacks={fallbacks} jobNotes={jobNotes} />
     </DashboardShell>
   );
 }

@@ -29,6 +29,7 @@ export type TechJob = {
   vehicle_class: string;
   base_price_cents: number | null;
   notes?: string | null;
+  fieldNotesPreview?: string | null;
   hasIntake?: boolean;
   beforePhotoCount?: number;
   afterPhotoCount?: number;

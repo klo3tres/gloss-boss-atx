@@ -65,6 +65,9 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
   const [beforeNotes, setBeforeNotes] = useState('');
   const [afterNotes, setAfterNotes] = useState('');
   const [upsell, setUpsell] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
+  const [damageNotes, setDamageNotes] = useState('');
+  const [customerVisibleNotes, setCustomerVisibleNotes] = useState(false);
   const [addonOptions, setAddonOptions] = useState<AddonOpt[]>([]);
   const [selectedAddonSlugs, setSelectedAddonSlugs] = useState<string[]>([]);
 
@@ -350,6 +353,9 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
           beforeNotes,
           afterNotes,
           upsellSuggestions: upsell,
+          internalNotes,
+          damageNotes,
+          customerVisible: customerVisibleNotes,
         }),
         credentials: 'same-origin',
         timeoutMs: 20000,
@@ -365,7 +371,7 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
     } finally {
       setBusy(false);
     }
-  }, [checklistText, beforeNotes, afterNotes, upsell, linkAppointmentId]);
+  }, [checklistText, beforeNotes, afterNotes, upsell, internalNotes, damageNotes, customerVisibleNotes, linkAppointmentId]);
 
   if (!loaded) {
     return <p className='text-sm text-zinc-500'>Loading field tools…</p>;
@@ -631,6 +637,28 @@ export function TechFieldTools({ linkAppointmentId }: { linkAppointmentId?: stri
             rows={2}
             className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
           />
+        </label>
+        <label className='mt-2 block text-xs text-rose-300/90'>
+          Damage notes (condition / paint)
+          <textarea
+            value={damageNotes}
+            onChange={(e) => setDamageNotes(e.target.value)}
+            rows={2}
+            className='mt-1 w-full rounded-lg border border-rose-900/40 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='mt-2 block text-xs text-amber-200/90'>
+          Internal notes (shop only)
+          <textarea
+            value={internalNotes}
+            onChange={(e) => setInternalNotes(e.target.value)}
+            rows={2}
+            className='mt-1 w-full rounded-lg border border-amber-900/40 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='mt-2 flex items-center gap-2 text-xs text-zinc-400'>
+          <input type='checkbox' checked={customerVisibleNotes} onChange={(e) => setCustomerVisibleNotes(e.target.checked)} />
+          Share before/after/upsell/damage summary with customer-facing views when supported
         </label>
         <button
           type='button'

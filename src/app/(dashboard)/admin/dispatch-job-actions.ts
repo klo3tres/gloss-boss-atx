@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { recordAssignmentEvent } from '@/lib/assignment-events';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -15,7 +16,8 @@ async function requireAdmin() {
   if (!isAdminLevel(session.profile?.role ?? null)) {
     return { ok: false as const, error: 'Forbidden' };
   }
-  return { ok: true as const, supabase, userId: session.user.id };
+  const admin = tryCreateAdminSupabase();
+  return { ok: true as const, supabase: admin ?? supabase, userId: session.user.id };
 }
 
 export async function assignAppointmentTechnicianAction(formData: FormData) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { PromotionAdminRow } from '@/lib/promotion-admin';
 
@@ -29,8 +29,19 @@ export function PromotionsAdminClient({
   heading?: string;
 }) {
   const router = useRouter();
-  const activeRows = initialRows.filter((r) => !r.archived);
-  const archivedRows = initialRows.filter((r) => r.archived);
+  const deduped = useMemo(() => {
+    const m = new Map<string, PromotionAdminRow>();
+    for (const r of initialRows) {
+      const key = (r.slug?.trim() || r.title.trim() || r.id).toLowerCase();
+      if (!m.has(key)) m.set(key, r);
+    }
+    return [...m.values()];
+  }, [initialRows]);
+
+  const archivedRows = deduped.filter((r) => r.archived);
+  const nonArchived = deduped.filter((r) => !r.archived);
+  const activeMarketingRows = nonArchived.filter((r) => r.active);
+  const inactiveRows = nonArchived.filter((r) => !r.active);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -208,11 +219,13 @@ export function PromotionsAdminClient({
       </div>
 
       <ul className='mt-6 space-y-3 text-sm'>
-        <li className='text-[10px] font-black uppercase tracking-widest text-gold-soft'>Active promotions ({activeRows.length})</li>
-        {activeRows.length === 0 ? (
-          <li className='text-zinc-500'>No active promotions yet — create one above.</li>
+        <li className='text-[10px] font-black uppercase tracking-widest text-gold-soft'>
+          Active for marketing ({activeMarketingRows.length})
+        </li>
+        {activeMarketingRows.length === 0 ? (
+          <li className='text-zinc-500'>No active promotions — toggle &quot;Active&quot; on a row below or create one.</li>
         ) : null}
-        {activeRows.map((row) => (
+        {activeMarketingRows.map((row) => (
           <PromotionRowEditor
             key={row.id}
             row={row}
@@ -222,6 +235,25 @@ export function PromotionsAdminClient({
           />
         ))}
       </ul>
+
+      {inactiveRows.length > 0 ? (
+        <details className='mt-6 rounded-xl border border-white/10 bg-black/25 p-3'>
+          <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-400'>
+            Inactive (not archived) ({inactiveRows.length})
+          </summary>
+          <ul className='mt-4 space-y-3'>
+            {inactiveRows.map((row) => (
+              <PromotionRowEditor
+                key={row.id}
+                row={row}
+                onSaved={() => router.refresh()}
+                onError={(text) => setMsg({ type: 'err', text })}
+                onOk={(text) => setMsg({ type: 'ok', text })}
+              />
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {archivedRows.length > 0 ? (
         <details open={false} className='mt-6 rounded-xl border border-white/10 bg-black/25 p-3'>

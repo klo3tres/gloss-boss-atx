@@ -3,13 +3,15 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { PromotionsAdminClient } from '@/components/admin/promotions-admin-client';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { parsePromotionAdminRow } from '@/lib/promotion-admin';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPricingPage() {
   const supabase = await createSupabaseServerClient();
-  const promotionRows = supabase
-    ? (await supabase.from('offers').select('*').order('sort_order', { ascending: true })).data?.map((r) =>
+  const db = tryCreateAdminSupabase() ?? supabase;
+  const promotionRows = db
+    ? (await db.from('offers').select('*').order('sort_order', { ascending: true })).data?.map((r) =>
         parsePromotionAdminRow(r as Record<string, unknown>),
       ) ?? []
     : [];
