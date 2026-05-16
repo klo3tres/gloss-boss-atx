@@ -15,6 +15,11 @@ type ApptLite = {
   vehicle_class?: string | null;
   base_price_cents?: number | null;
   deposit_amount_cents?: number | null;
+  scheduled_start?: string | null;
+  service_address?: string | null;
+  service_city?: string | null;
+  service_state?: string | null;
+  service_zip?: string | null;
 };
 
 export default function CompleteContent() {
@@ -174,6 +179,17 @@ export default function CompleteContent() {
       <div className='rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6'>
         <h2 className='text-xl font-bold text-emerald-200'>Booking confirmed</h2>
         <p className='mt-2 text-sm text-zinc-300'>Thank you. Gloss Boss ATX will follow up with appointment details.</p>
+        {appointment ? (
+          <dl className='mt-4 grid gap-2 rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-300 sm:grid-cols-2'>
+            <div><dt className='text-xs uppercase text-zinc-500'>Customer</dt><dd>{appointment.guest_name ?? 'Customer'}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Service</dt><dd>{String(appointment.service_slug ?? '').replace(/-/g, ' ')}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Vehicle</dt><dd>{appointment.vehicle_description ?? 'Vehicle'}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Appointment</dt><dd>{appointment.scheduled_start ? new Date(appointment.scheduled_start).toLocaleString() : 'Scheduling pending'}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Deposit paid</dt><dd>${((appointment.deposit_amount_cents ?? 0) / 100).toFixed(2)}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Total</dt><dd>${((appointment.base_price_cents ?? 0) / 100).toFixed(2)}</dd></div>
+            <div className='sm:col-span-2'><dt className='text-xs uppercase text-zinc-500'>Service address</dt><dd>{[appointment.service_address, appointment.service_city, appointment.service_state, appointment.service_zip].filter(Boolean).join(', ') || 'On file'}</dd></div>
+          </dl>
+        ) : null}
         <Link href='/' className='mt-4 inline-block text-gold-soft'>
           Return home
         </Link>

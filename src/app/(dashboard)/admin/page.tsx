@@ -130,6 +130,9 @@ export default async function AdminDashboardPage() {
         <Link href='/admin/leads' className='rounded-lg border border-white/15 px-4 py-2 text-zinc-300'>
           Leads
         </Link>
+        <Link href='/admin/payments' className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-emerald-200'>
+          Payments
+        </Link>
       </div>
 
       {pendingFb.length > 0 ? (

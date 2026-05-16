@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const { data: appt, error } = await admin
       .from('appointments')
       .select(
-        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, assigned_technician_id, customer_id, vehicle_id',
+        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id',
       )
       .eq('id', appointmentId)
       .maybeSingle();

@@ -28,6 +28,11 @@ type Body = {
   guestEmail: string;
   guestPhone: string;
   vehicleDescription?: string;
+  serviceAddress?: string;
+  serviceCity?: string;
+  serviceState?: string;
+  serviceZip?: string;
+  serviceAddressNotes?: string;
   notes?: string;
 };
 
@@ -37,6 +42,11 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Body;
     const { scheduledStart, guestName, guestEmail, guestPhone, notes } = body;
+    const serviceAddress = String(body.serviceAddress ?? '').trim();
+    const serviceCity = String(body.serviceCity ?? '').trim();
+    const serviceState = String(body.serviceState ?? 'TX').trim().toUpperCase();
+    const serviceZip = String(body.serviceZip ?? '').replace(/\D/g, '').slice(0, 5);
+    const serviceAddressNotes = String(body.serviceAddressNotes ?? '').trim();
     const addOns = Array.isArray(body.addOns)
       ? body.addOns
           .map((a) => String(a ?? '').trim())
@@ -73,6 +83,10 @@ export async function POST(request: Request) {
       !scheduledStart ||
       !guestName ||
       !guestEmail ||
+      !serviceAddress ||
+      !serviceCity ||
+      serviceState.length < 2 ||
+      serviceZip.length !== 5 ||
       lines.some(
         (l) =>
           !l.serviceSlug ||
@@ -92,6 +106,18 @@ export async function POST(request: Request) {
           code: 'MISSING_SUPABASE_SERVICE_ROLE',
           hint: 'Add SUPABASE_SERVICE_ROLE_KEY and public Supabase URL/keys to .env.local',
         },
+        { status: 503 },
+      );
+    }
+
+    const { data: siteSettings } = await admin
+      .from('site_settings')
+      .select('accept_public_bookings')
+      .limit(1)
+      .maybeSingle();
+    if ((siteSettings as { accept_public_bookings?: boolean } | null)?.accept_public_bookings === false) {
+      return NextResponse.json(
+        { error: 'Online booking is temporarily paused. Please call Gloss Boss ATX to schedule.' },
         { status: 503 },
       );
     }
@@ -185,6 +211,11 @@ export async function POST(request: Request) {
       deposit_amount_cents: depositAmountCents,
       scheduled_start: scheduled.toISOString(),
       notes: notes ?? null,
+      service_address: serviceAddress,
+      service_city: serviceCity,
+      service_state: serviceState,
+      service_zip: serviceZip,
+      service_address_notes: serviceAddressNotes || null,
       status: 'awaiting_payment',
       booking_vehicles: bookingVehicles,
       booking_add_ons: addOns,

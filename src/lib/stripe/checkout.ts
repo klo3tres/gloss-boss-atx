@@ -93,7 +93,7 @@ export async function createDepositCheckoutSession(params: {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
+      success_url: `${origin}/book/complete?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
       cancel_url: `${origin}/book?cancelled=1`,
       metadata: {
         appointment_id: appt.id,
@@ -463,13 +463,16 @@ async function updateAppointmentPaidSafe(
   appointmentId: string,
   extras: Record<string, unknown>,
 ): Promise<void> {
-  const base = { status: 'deposit_paid', updated_at: new Date().toISOString(), ...extras };
+  const base = { status: 'deposit_paid', payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...extras };
   let u = await admin.from('appointments').update(base).eq('id', appointmentId);
   if (u.error && isSchemaDriftError(u.error.message)) {
     u = await admin
       .from('appointments')
-      .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
+      .update({ status: 'deposit_paid', payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', appointmentId);
+  }
+  if (u.error && isSchemaDriftError(u.error.message)) {
+    u = await admin.from('appointments').update({ status: 'deposit_paid' }).eq('id', appointmentId);
   }
   if (u.error) {
     console.warn('[checkout] appointment paid update', u.error.message);

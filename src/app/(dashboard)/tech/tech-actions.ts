@@ -76,6 +76,134 @@ async function fetchAppointmentForStart(db: SupabaseClient | null, appointmentId
   return { data: null, error: lastError || 'Could not load appointment.' };
 }
 
+async function ensureOpenTechTimer(
+  db: SupabaseClient | null,
+  refs: {
+    technicianId: string;
+    appointmentId?: string;
+    fallbackBookingId?: string;
+    workflowSessionId?: string;
+    label?: string;
+  },
+): Promise<{ ok: boolean; id?: string | null; startedAt?: string | null; error?: string }> {
+  if (!db) return { ok: false, error: 'Database unavailable' };
+  const startedAt = new Date().toISOString();
+  const selectCols = 'id, started_at, created_at';
+  const existingQueries = [];
+  if (refs.appointmentId) {
+    existingQueries.push(db.from('tech_job_timers').select(selectCols).eq('appointment_id', refs.appointmentId).is('ended_at', null).limit(1));
+  }
+  if (refs.fallbackBookingId) {
+    existingQueries.push(db.from('tech_job_timers').select(selectCols).eq('fallback_booking_id', refs.fallbackBookingId).is('ended_at', null).limit(1));
+  }
+  if (refs.workflowSessionId) {
+    existingQueries.push(db.from('tech_job_timers').select(selectCols).eq('workflow_session_id', refs.workflowSessionId).is('ended_at', null).limit(1));
+  }
+  for (const query of existingQueries) {
+    const { data, error } = await query;
+    if (error) {
+      if (isSchemaDriftError(error.message)) continue;
+      console.warn('[tech] open timer lookup', error.message);
+      continue;
+    }
+    const row = ((data ?? [])[0] ?? null) as Record<string, unknown> | null;
+    if (row?.id) {
+      return {
+        ok: true,
+        id: String(row.id),
+        startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null,
+      };
+    }
+  }
+  const label = refs.label || 'Job start';
+  const variants: Record<string, unknown>[] = [
+    {
+      technician_id: refs.technicianId,
+      appointment_id: refs.appointmentId || null,
+      fallback_booking_id: refs.fallbackBookingId || null,
+      workflow_session_id: refs.workflowSessionId || null,
+      started_at: startedAt,
+      status: 'running',
+      running: true,
+      label,
+    },
+    {
+      technician_id: refs.technicianId,
+      appointment_id: refs.appointmentId || null,
+      fallback_booking_id: refs.fallbackBookingId || null,
+      workflow_session_id: refs.workflowSessionId || null,
+      started_at: startedAt,
+      label,
+    },
+    {
+      technician_id: refs.technicianId,
+      appointment_id: refs.appointmentId || null,
+      fallback_booking_id: refs.fallbackBookingId || null,
+      label,
+    },
+    {
+      technician_id: refs.technicianId,
+      appointment_id: refs.appointmentId || null,
+      label,
+    },
+    {
+      technician_id: refs.technicianId,
+      label,
+    },
+  ];
+  let lastError = '';
+  for (const payload of variants) {
+    let query = db.from('tech_job_timers').insert(payload).select('id, started_at, created_at').maybeSingle();
+    const { data, error } = await query;
+    if (!error) {
+      const row = (data ?? {}) as Record<string, unknown>;
+      return {
+        ok: true,
+        id: row.id != null ? String(row.id) : null,
+        startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : startedAt,
+      };
+    }
+    lastError = error.message;
+    if (!isSchemaDriftError(error.message)) return { ok: false, error: error.message };
+    console.warn('[tech] timer insert schema drift retry', error.message, Object.keys(payload));
+  }
+  return { ok: false, error: lastError || 'Could not start timer.' };
+}
+
+async function updateFallbackSafely(db: SupabaseClient | null, fallbackBookingId: string, status: string): Promise<void> {
+  if (!db || !fallbackBookingId) return;
+  const nowIso = new Date().toISOString();
+  const variants = [
+    { status, updated_at: nowIso },
+    { status },
+  ];
+  for (const patch of variants) {
+    const { error } = await db.from('booking_fallbacks').update(patch).eq('id', fallbackBookingId);
+    if (!error) return;
+    if (!isSchemaDriftError(error.message)) {
+      console.warn('[tech] fallback status update', error.message);
+      return;
+    }
+  }
+}
+
+async function updateWorkflowSessionSafely(db: SupabaseClient | null, workflowSessionId: string, status: string): Promise<void> {
+  if (!db || !workflowSessionId) return;
+  const nowIso = new Date().toISOString();
+  const variants = [
+    { status, updated_at: nowIso },
+    { status },
+  ];
+  for (const patch of variants) {
+    const { error } = await db.from('tech_workflow_sessions').update(patch).eq('id', workflowSessionId);
+    if (!error) return;
+    if (!isSchemaDriftError(error.message)) {
+      console.warn('[tech] workflow session status update', error.message);
+      return;
+    }
+  }
+}
+
 function normalizePhotoCategory(input: unknown): string {
   return String(input ?? '')
     .trim()
@@ -381,49 +509,6 @@ export async function techStartJobAction(
     };
   }
 
-  const { data: openTimer } = await gate.supabase
-    .from('tech_job_timers')
-    .select('id')
-    .eq('appointment_id', appointmentId)
-    .is('ended_at', null)
-    .maybeSingle();
-
-  if (!openTimer) {
-    const timerFull: Record<string, unknown> = {
-      technician_id: gate.userId,
-      appointment_id: appointmentId,
-      fallback_booking_id: fallbackBookingId || null,
-      workflow_session_id: workflowSessionId || null,
-      label: 'Job start',
-    };
-    let ins = await gate.supabase.from('tech_job_timers').insert(timerFull);
-    if (ins.error && isSchemaDriftError(ins.error.message)) {
-      ins = await gate.supabase.from('tech_job_timers').insert({
-        technician_id: gate.userId,
-        appointment_id: appointmentId,
-        fallback_booking_id: fallbackBookingId || null,
-        label: `Job ${appointmentId.slice(0, 8)}`,
-      });
-    }
-    if (ins.error && isSchemaDriftError(ins.error.message)) {
-      ins = await gate.supabase.from('tech_job_timers').insert({
-        technician_id: gate.userId,
-        appointment_id: appointmentId,
-        label: `Job ${appointmentId.slice(0, 8)}`,
-      });
-    }
-    if (ins.error) {
-      console.warn('[tech] timer insert', ins.error.message);
-      return { error: 'Could not start job timer. Confirm tech_job_timers exists and migration 000020 is applied.' };
-    }
-    await recordJobTimelineEvent(gate.supabase, {
-      appointmentId,
-      eventType: 'timer_started',
-      meta: { source: 'tech_start_job' },
-      createdBy: gate.userId,
-    });
-  }
-
   const startedAt = new Date().toISOString();
   const statusUpdate = await updateAppointmentSafely(gate.supabase, appointmentId, [
     {
@@ -448,6 +533,28 @@ export async function techStartJobAction(
     console.error('[tech] start job', statusUpdate.error);
     return { error: statusUpdate.error || 'Could not update job status.' };
   }
+
+  await updateFallbackSafely(db, fallbackBookingId, 'in_progress');
+  await updateWorkflowSessionSafely(db, workflowSessionId, 'in_progress');
+
+  const timer = await ensureOpenTechTimer(db, {
+    technicianId: gate.userId,
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    label: `Active work order ${appointmentId.slice(0, 8)}`,
+  });
+  if (!timer.ok) {
+    console.warn('[tech] ensure active timer failed', timer.error);
+    return { error: timer.error || 'Could not create the active work order timer.' };
+  }
+
+  await recordJobTimelineEvent(gate.supabase, {
+    appointmentId,
+    eventType: 'timer_started',
+    meta: { source: 'tech_start_job', timer_id: timer.id, started_at: timer.startedAt },
+    createdBy: gate.userId,
+  });
 
   await recordJobTimelineEvent(gate.supabase, {
     appointmentId,
@@ -532,6 +639,37 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
       meta: { notification_kind: kind, message, channel: guestEmail || guestPhone ? 'queued' : 'skipped' },
       createdBy: gate.userId,
     });
+  }
+  revalidatePath('/tech');
+}
+
+export async function techArchiveTestWorkOrderAction(formData: FormData): Promise<void> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return;
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const confirm = String(formData.get('confirm') ?? '').trim().toUpperCase();
+  if (confirm !== 'ARCHIVE' || (!appointmentId && !fallbackBookingId)) return;
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const nowIso = new Date().toISOString();
+  if (appointmentId) {
+    const { data } = await db
+      .from('appointments')
+      .select('id, assigned_technician_id, payment_status, status')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    const row = (data ?? {}) as Record<string, unknown>;
+    const paymentStatus = String(row.payment_status ?? '').toLowerCase();
+    if (row.assigned_technician_id !== gate.userId || ['paid', 'succeeded'].includes(paymentStatus)) return;
+    await updateAppointmentSafely(db, appointmentId, [
+      { archived: true, archived_at: nowIso, status: 'archived', updated_at: nowIso },
+      { archived: true, archived_at: nowIso, status: 'archived' },
+      { status: 'archived' },
+    ]);
+  }
+  if (fallbackBookingId) {
+    await updateFallbackSafely(db, fallbackBookingId, 'archived');
   }
   revalidatePath('/tech');
 }

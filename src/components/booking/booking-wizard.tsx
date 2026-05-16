@@ -79,6 +79,11 @@ export function BookingWizard() {
   const [guestPhone, setGuestPhone] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [vehicleDescription, setVehicleDescription] = useState('');
+  const [serviceAddress, setServiceAddress] = useState('');
+  const [serviceCity, setServiceCity] = useState('');
+  const [serviceState, setServiceState] = useState('TX');
+  const [serviceZip, setServiceZip] = useState('');
+  const [serviceAddressNotes, setServiceAddressNotes] = useState('');
   const [notes, setNotes] = useState('');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
@@ -542,6 +547,13 @@ export function BookingWizard() {
       }
       setScheduleError(null);
 
+      if (!serviceAddress.trim() || !serviceCity.trim() || serviceState.trim().length < 2 || serviceZip.replace(/\D/g, '').length !== 5) {
+        setError('Enter the service address before continuing to the Stripe deposit.');
+        document.getElementById('service-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setSubmitting(false);
+        return;
+      }
+
       const startIso = scheduled.toISOString();
       const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
@@ -554,6 +566,11 @@ export function BookingWizard() {
           guestName,
           guestEmail,
           guestPhone: p10.digits10,
+          serviceAddress: serviceAddress.trim(),
+          serviceCity: serviceCity.trim(),
+          serviceState: serviceState.trim().toUpperCase(),
+          serviceZip: serviceZip.replace(/\D/g, '').slice(0, 5),
+          serviceAddressNotes: serviceAddressNotes.trim() || undefined,
           notes: notes || undefined,
         }),
       });
@@ -788,6 +805,33 @@ export function BookingWizard() {
                 })
               )}
             </div>
+          </section>
+
+          <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-black/45 p-4 md:grid-cols-2'>
+            <div className='md:col-span-2'>
+              <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Service address</p>
+              <p className='mt-1 text-xs text-zinc-500'>Required before payment so we can confirm drive distance and arrival details.</p>
+            </div>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Street address</span>
+              <input value={serviceAddress} onChange={(e) => setServiceAddress(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' placeholder='123 Main St' required />
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>City</span>
+              <input value={serviceCity} onChange={(e) => setServiceCity(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>State</span>
+              <input value={serviceState} onChange={(e) => setServiceState(e.target.value.toUpperCase().slice(0, 2))} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>ZIP</span>
+              <input inputMode='numeric' value={serviceZip} onChange={(e) => setServiceZip(digitsOnly(e.target.value).slice(0, 5))} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>Gate / apartment notes</span>
+              <input value={serviceAddressNotes} onChange={(e) => setServiceAddressNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' placeholder='Optional' />
+            </label>
           </section>
 
           <section className='grid gap-4 md:grid-cols-2'>

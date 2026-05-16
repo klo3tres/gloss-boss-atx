@@ -69,29 +69,56 @@ export default async function TechnicianDashboardPage({
   if (db && session.user) {
     const uid = session.user.id;
     activeDebug = { userId: uid, checked: [], adminRead: Boolean(admin) };
-    const selectCols =
-      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents';
-    const { data } = await db
+    let selectCols =
+      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_address, address, booking_add_ons, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents, archived';
+    let appointmentQuery = await db
       .from('appointments')
       .select(selectCols)
       .eq('assigned_technician_id', uid)
       .in('status', ['assigned', 'confirmed', 'in_progress'])
       .order('scheduled_start', { ascending: true });
-    let rawRows = (data ?? []) as Record<string, unknown>[];
-    activeDebug.checked.push(`appointments.assigned=${rawRows.length}`);
+    if (appointmentQuery.error) {
+      selectCols =
+        'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents';
+      appointmentQuery = await db
+        .from('appointments')
+        .select(selectCols)
+        .eq('assigned_technician_id', uid)
+        .in('status', ['assigned', 'confirmed', 'in_progress'])
+        .order('scheduled_start', { ascending: true });
+    }
+    let rawRows = (((appointmentQuery.data ?? []) as unknown) as Record<string, unknown>[]).filter((row) => row.archived !== true && row.status !== 'archived');
+    activeDebug.checked.push(`appointments.assigned=${rawRows.length}${appointmentQuery.error ? ` error:${appointmentQuery.error.message}` : ''}`);
     let ids = rawRows.map((row) => String(row.id));
     const openTimerByAppt = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
     const openTimerByFallback = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
-    const timerQuery = await db
+    const timerQueryPrimary = await db
       .from('tech_job_timers')
       .select('id, appointment_id, fallback_booking_id, workflow_session_id, started_at, created_at')
       .eq('technician_id', uid)
       .is('ended_at', null)
       .order('started_at', { ascending: false })
       .limit(20);
-    const timerRows = !timerQuery.error ? (timerQuery.data ?? []) : [];
-    if (timerQuery.error) console.warn('[tech dashboard] open timers select', timerQuery.error.message);
-    activeDebug.checked.push(`tech_job_timers.open=${timerRows.length}${timerQuery.error ? ` error:${timerQuery.error.message}` : ''}`);
+    const timerQuerySecondary = timerQueryPrimary.error
+      ? await db
+        .from('tech_job_timers')
+        .select('id, appointment_id, fallback_booking_id, workflow_session_id, created_at')
+        .eq('technician_id', uid)
+        .is('ended_at', null)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      : null;
+    const timerQueryMinimal = timerQuerySecondary?.error
+      ? await db
+        .from('tech_job_timers')
+        .select('id, appointment_id, created_at')
+        .eq('technician_id', uid)
+        .limit(20)
+      : null;
+    const timerFinal = timerQueryMinimal ?? timerQuerySecondary ?? timerQueryPrimary;
+    const timerRows = !timerFinal.error ? (((timerFinal.data ?? []) as unknown) as Record<string, unknown>[]) : [];
+    if (timerFinal.error) console.warn('[tech dashboard] open timers select', timerFinal.error.message);
+    activeDebug.checked.push(`tech_job_timers.open=${timerRows.length}${timerFinal.error ? ` error:${timerFinal.error.message}` : ''}`);
     for (const timer of timerRows) {
       const row = timer as Record<string, unknown>;
       const t = {
@@ -105,16 +132,26 @@ export default async function TechnicianDashboardPage({
       if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
     }
 
-    const workflowQuery = await db
+    const workflowQueryPrimary = await db
       .from('tech_workflow_sessions')
       .select('id, appointment_id, fallback_booking_id, status, updated_at, created_at')
       .eq('technician_id', uid)
       .in('status', ['active', 'in_progress'])
       .order('updated_at', { ascending: false })
       .limit(10);
-    const workflowRows = !workflowQuery.error ? (workflowQuery.data ?? []) : [];
-    if (workflowQuery.error) console.warn('[tech dashboard] workflow sessions select', workflowQuery.error.message);
-    activeDebug.checked.push(`tech_workflow_sessions.active=${workflowRows.length}${workflowQuery.error ? ` error:${workflowQuery.error.message}` : ''}`);
+    const workflowQueryFallback = workflowQueryPrimary.error
+      ? await db
+        .from('tech_workflow_sessions')
+        .select('id, appointment_id, fallback_booking_id, status, created_at')
+        .eq('technician_id', uid)
+        .in('status', ['active', 'in_progress'])
+        .order('created_at', { ascending: false })
+        .limit(10)
+      : null;
+    const workflowFinal = workflowQueryFallback ?? workflowQueryPrimary;
+    const workflowRows = !workflowFinal.error ? (((workflowFinal.data ?? []) as unknown) as Record<string, unknown>[]) : [];
+    if (workflowFinal.error) console.warn('[tech dashboard] workflow sessions select', workflowFinal.error.message);
+    activeDebug.checked.push(`tech_workflow_sessions.active=${workflowRows.length}${workflowFinal.error ? ` error:${workflowFinal.error.message}` : ''}`);
     for (const sessionRow of workflowRows) {
       const row = sessionRow as Record<string, unknown>;
       const t = {
@@ -135,7 +172,7 @@ export default async function TechnicianDashboardPage({
         .select(selectCols)
         .in('id', missingActiveAppointmentIds);
       if (extra.error) console.warn('[tech dashboard] active appointment backfill', extra.error.message);
-      const extraRows = !extra.error ? ((extra.data ?? []) as Record<string, unknown>[]) : [];
+      const extraRows = !extra.error ? (((extra.data ?? []) as unknown) as Record<string, unknown>[]) : [];
       activeDebug.checked.push(`appointments.timer_backfill=${extraRows.length}${extra.error ? ` error:${extra.error.message}` : ''}`);
       rawRows = [...rawRows, ...extraRows.filter((row) => !ids.includes(String(row.id)))];
       ids = rawRows.map((row) => String(row.id));
@@ -147,24 +184,38 @@ export default async function TechnicianDashboardPage({
       intakeIds = new Set((subs ?? []).map((s) => String((s as { appointment_id: string }).appointment_id)));
     }
 
-    const mediaByAppt = new Map<string, { before: number; after: number }>();
+    const mediaByAppt = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
     if (ids.length > 0) {
-      const { data: med } = await db.from('job_media').select('appointment_id, category, photo_category').in('appointment_id', ids);
+      const { data: med } = await db.from('job_media').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
       for (const m of med ?? []) {
-        const row = m as { appointment_id?: string; category?: string; photo_category?: string };
+        const row = m as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const aid = String(row.appointment_id ?? '');
-        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0 };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
-        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
+        const url = row.public_url || row.media_url || row.file_url || '';
+        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
+          cur.before += 1;
+          if (url) cur.beforePhotos.push(photo);
+        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
+          cur.after += 1;
+          if (url) cur.afterPhotos.push(photo);
+        }
         mediaByAppt.set(aid, cur);
       }
-      const { data: photos } = await db.from('job_photos').select('appointment_id, category, photo_category').in('appointment_id', ids);
+      const { data: photos } = await db.from('job_photos').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
       for (const p of photos ?? []) {
-        const row = p as { appointment_id?: string; category?: string; photo_category?: string };
+        const row = p as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const aid = String(row.appointment_id ?? '');
-        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0 };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
-        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
+        const url = row.public_url || row.media_url || row.file_url || '';
+        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
+          cur.before += 1;
+          if (url) cur.beforePhotos.push(photo);
+        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
+          cur.after += 1;
+          if (url) cur.afterPhotos.push(photo);
+        }
         mediaByAppt.set(aid, cur);
       }
     }
@@ -210,6 +261,7 @@ export default async function TechnicianDashboardPage({
         guest_phone: row.guest_phone != null ? String(row.guest_phone) : null,
         guest_email: row.guest_email != null ? String(row.guest_email) : null,
         vehicle_description: row.vehicle_description != null ? String(row.vehicle_description) : null,
+        service_address: row.service_address != null ? String(row.service_address) : row.address != null ? String(row.address) : null,
         service_slug: String(row.service_slug ?? ''),
         vehicle_class: String(row.vehicle_class ?? 'sedan'),
         base_price_cents: typeof row.base_price_cents === 'number' ? row.base_price_cents : null,
@@ -218,6 +270,8 @@ export default async function TechnicianDashboardPage({
         hasIntake: intakeIds.has(id) || intakeCompleted,
         beforePhotoCount: counts?.before,
         afterPhotoCount: counts?.after,
+        beforePhotos: counts?.beforePhotos.slice(0, 8) ?? [],
+        afterPhotos: counts?.afterPhotos.slice(0, 8) ?? [],
         payment_status: row.payment_status != null ? String(row.payment_status) : null,
         balance_due_cents: typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null,
         timerId: openTimerByAppt.get(id)?.id ?? null,
@@ -248,26 +302,40 @@ export default async function TechnicianDashboardPage({
     if (fallbackIds.length > 0) {
       const { data: fallbackRows, error: fallbackErr } = await db
         .from('booking_fallbacks')
-        .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, payload, created_at')
+      .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, payload, created_at')
         .in('id', fallbackIds);
       if (fallbackErr) console.warn('[tech dashboard] fallback active select', fallbackErr.message);
-      const mediaByFallback = new Map<string, { before: number; after: number }>();
-      const { data: fallbackMedia } = await db.from('job_media').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      const mediaByFallback = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
+      const { data: fallbackMedia } = await db.from('job_media').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds);
       for (const m of fallbackMedia ?? []) {
-        const row = m as { fallback_booking_id?: string; category?: string; photo_category?: string };
+        const row = m as { fallback_booking_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const fid = String(row.fallback_booking_id ?? '');
-        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0 };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
-        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
+        const url = row.public_url || row.media_url || row.file_url || '';
+        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
+          cur.before += 1;
+          if (url) cur.beforePhotos.push(photo);
+        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
+          cur.after += 1;
+          if (url) cur.afterPhotos.push(photo);
+        }
         mediaByFallback.set(fid, cur);
       }
-      const { data: fallbackPhotos } = await db.from('job_photos').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      const { data: fallbackPhotos } = await db.from('job_photos').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds);
       for (const p of fallbackPhotos ?? []) {
-        const row = p as { fallback_booking_id?: string; category?: string; photo_category?: string };
+        const row = p as { fallback_booking_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const fid = String(row.fallback_booking_id ?? '');
-        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0 };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
-        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
+        const url = row.public_url || row.media_url || row.file_url || '';
+        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
+          cur.before += 1;
+          if (url) cur.beforePhotos.push(photo);
+        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
+          cur.after += 1;
+          if (url) cur.afterPhotos.push(photo);
+        }
         mediaByFallback.set(fid, cur);
       }
       for (const row of fallbackRows ?? []) {
@@ -285,6 +353,14 @@ export default async function TechnicianDashboardPage({
           guest_phone: r.guest_phone != null ? String(r.guest_phone) : payload.customer_phone != null ? String(payload.customer_phone) : null,
           guest_email: r.guest_email != null ? String(r.guest_email) : null,
           vehicle_description: r.vehicle_description != null ? String(r.vehicle_description) : payload.vehicle_summary != null ? String(payload.vehicle_summary) : null,
+          service_address:
+            payload.service_address != null
+              ? String(payload.service_address)
+              : payload.address != null
+                ? String(payload.address)
+                : payload.customer_address != null
+                  ? String(payload.customer_address)
+                  : null,
           service_slug: String(r.service_slug ?? payload.service_slug ?? 'walk-in-service'),
           vehicle_class: String(r.vehicle_class ?? 'sedan'),
           base_price_cents: null,
@@ -293,6 +369,8 @@ export default async function TechnicianDashboardPage({
           hasIntake: true,
           beforePhotoCount: counts?.before ?? 0,
           afterPhotoCount: counts?.after ?? 0,
+          beforePhotos: counts?.beforePhotos.slice(0, 8) ?? [],
+          afterPhotos: counts?.afterPhotos.slice(0, 8) ?? [],
           payment_status: 'pending',
           balance_due_cents: null,
           timerId: timer?.id ?? null,

@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { processCheckoutSessionCompleted } from '@/lib/stripe/checkout';
+import { isSchemaDriftError } from '@/lib/booking-server-shared';
 
 export const runtime = 'nodejs';
 
@@ -30,14 +31,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
-    try {
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as Stripe.Checkout.Session;
       await processCheckoutSessionCompleted({ admin, session });
       console.info('[stripe/webhook] checkout.session.completed processed', session.id, session.metadata?.appointment_id ?? 'gift');
-    } catch (e) {
-      console.error('[stripe/webhook] processCheckoutSessionCompleted failed — logged only, returning 200', session.id, e);
+    } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const status = event.type === 'payment_intent.succeeded' ? 'succeeded' : 'failed';
+      const sid = typeof pi.metadata?.checkout_session_id === 'string' ? pi.metadata.checkout_session_id : null;
+      if (admin) {
+        const row = {
+          stripe_payment_intent_id: pi.id,
+          stripe_checkout_session_id: sid,
+          amount_cents: pi.amount_received || pi.amount,
+          status,
+          payment_kind: pi.metadata?.stripe_checkout_kind ?? 'stripe_payment_intent',
+        };
+        let up = await admin.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
+        if (up.error && isSchemaDriftError(up.error.message)) {
+          up = await admin.from('payments').upsert({
+            stripe_payment_intent_id: pi.id,
+            amount_cents: pi.amount_received || pi.amount,
+            status,
+          }, { onConflict: 'stripe_payment_intent_id' });
+        }
+        if (up.error) console.warn('[stripe/webhook] payment_intent upsert', up.error.message);
+      }
+    } else if (event.type === 'charge.refunded' || event.type === 'refund.updated') {
+      const obj = event.data.object as Stripe.Charge | Stripe.Refund;
+      if (admin) {
+        await admin.from('payment_reconciliation_events').insert({
+          action: event.type,
+          status: 'received',
+          stripe_payment_intent_id: typeof obj.payment_intent === 'string' ? obj.payment_intent : null,
+          payload: obj as unknown as Record<string, unknown>,
+        });
+      }
     }
+  } catch (e) {
+    console.error('[stripe/webhook] event processing failed — logged only, returning 200', event.type, e);
   }
 
   return NextResponse.json({ received: true });

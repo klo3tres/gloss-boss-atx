@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
-import { techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techArchiveTestWorkOrderAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
@@ -27,6 +27,7 @@ export type TechJob = {
   guest_phone: string | null;
   guest_email: string | null;
   vehicle_description: string | null;
+  service_address?: string | null;
   service_slug: string;
   vehicle_class: string;
   base_price_cents: number | null;
@@ -35,6 +36,8 @@ export type TechJob = {
   hasIntake?: boolean;
   beforePhotoCount?: number;
   afterPhotoCount?: number;
+  beforePhotos?: { url: string; category: string; uploadedAt: string | null }[];
+  afterPhotos?: { url: string; category: string; uploadedAt: string | null }[];
   payment_status?: string | null;
   balance_due_cents?: number | null;
   fallback_booking_id?: string | null;
@@ -300,6 +303,21 @@ export function TechPremiumShell({
                 {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
                 {activeJob.payment_status ?? 'payment pending'}
               </p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                Directions:{' '}
+                {activeJob.service_address ? (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeJob.service_address)}`}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-gold-soft underline underline-offset-4'
+                  >
+                    {activeJob.service_address}
+                  </a>
+                ) : (
+                  'No address on file.'
+                )}
+              </p>
             </div>
             <div className='flex flex-wrap items-center gap-3'>
               <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
@@ -317,6 +335,38 @@ export function TechPremiumShell({
             <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
             <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
           </div>
+          <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+            <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Before Photos</p>
+              {activeJob.beforePhotos?.length ? (
+                <div className='mt-3 grid grid-cols-4 gap-2'>
+                  {activeJob.beforePhotos.map((photo) => (
+                    <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                      <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                      <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className='mt-2 text-xs text-zinc-500'>No before thumbnails found yet.</p>
+              )}
+            </div>
+            <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>After Photos</p>
+              {activeJob.afterPhotos?.length ? (
+                <div className='mt-3 grid grid-cols-4 gap-2'>
+                  {activeJob.afterPhotos.map((photo) => (
+                    <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                      <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                      <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className='mt-2 text-xs text-zinc-500'>Use Upload After Photos when the job is ready for closeout.</p>
+              )}
+            </div>
+          </div>
           <div className='mt-4 flex flex-wrap gap-2'>
             <a href='#field-invoice' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</a>
             <Link href='/tech/workflow' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
@@ -332,6 +382,18 @@ export function TechPremiumShell({
               </form>
             ))}
             <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</a>
+            <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
+              {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+              {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+              <input
+                name='confirm'
+                placeholder='type ARCHIVE'
+                className='w-28 rounded border border-red-500/20 bg-black px-2 py-1 text-[10px] text-red-100 placeholder:text-red-200/40'
+              />
+              <button type='submit' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
+                Archive Test Job
+              </button>
+            </form>
           </div>
         </section>
       ) : null}
@@ -478,6 +540,20 @@ export function TechPremiumShell({
               </div>
               <p className='mt-4 text-sm text-zinc-400'>{activeJob.vehicle_description ?? 'Vehicle TBD'}</p>
               <p className='mt-2 text-sm font-semibold text-gold-soft'>{activeJob.service_slug.replace(/-/g, ' ')}</p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                {activeJob.service_address ? (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeJob.service_address)}`}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-gold-soft underline underline-offset-4'
+                  >
+                    Directions
+                  </a>
+                ) : (
+                  'No address on file.'
+                )}
+              </p>
               <p className='mt-1 text-xs text-zinc-500'>
                 {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
                 {activeJob.vehicle_class.replace(/_/g, ' ')}
