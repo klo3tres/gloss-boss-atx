@@ -40,6 +40,42 @@ async function hasSmsConsent(db: SupabaseClient | null, appointmentId: string): 
   return sms?.agreed === true;
 }
 
+async function updateAppointmentSafely(
+  db: SupabaseClient | null,
+  appointmentId: string,
+  variants: Record<string, unknown>[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (!db) return { ok: false, error: 'Database unavailable' };
+  let lastError = '';
+  for (const patch of variants) {
+    const { error } = await db.from('appointments').update(patch).eq('id', appointmentId);
+    if (!error) return { ok: true };
+    lastError = error.message;
+    if (!isSchemaDriftError(error.message)) return { ok: false, error: error.message };
+    console.warn('[tech] appointment update schema drift retry', error.message, Object.keys(patch));
+  }
+  return { ok: false, error: lastError || 'Could not update appointment.' };
+}
+
+async function fetchAppointmentForStart(db: SupabaseClient | null, appointmentId: string) {
+  if (!db) return { data: null as Record<string, unknown> | null, error: 'Database unavailable' };
+  const selects = [
+    'id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, booking_source, vehicle_description, customer_id',
+    'id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, vehicle_description, customer_id',
+    'id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, vehicle_description, customer_id',
+    'id, status',
+  ];
+  let lastError = '';
+  for (const selectCols of selects) {
+    const { data, error } = await db.from('appointments').select(selectCols).eq('id', appointmentId).maybeSingle();
+    if (!error) return { data: (data as Record<string, unknown> | null) ?? null, error: null };
+    lastError = error.message;
+    if (!isSchemaDriftError(error.message)) return { data: null, error: error.message };
+    console.warn('[tech] appointment select schema drift retry', error.message, selectCols);
+  }
+  return { data: null, error: lastError || 'Could not load appointment.' };
+}
+
 function normalizePhotoCategory(input: unknown): string {
   return String(input ?? '')
     .trim()
@@ -262,37 +298,39 @@ export async function techStartJobAction(
 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
-  const { data: appt, error: fetchErr } = await db
-    .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, booking_source, vehicle_description, customer_id')
-    .eq('id', appointmentId)
-    .maybeSingle();
+  const { data: appt, error: fetchErr } = await fetchAppointmentForStart(db, appointmentId);
 
   const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
   const isWalkIn = appt && String((appt as { booking_source?: string | null }).booking_source ?? '') === 'tech_workflow';
   if (!fetchErr && appt && assigned !== gate.userId && isWalkIn && !assigned && admin) {
-    await admin
-      .from('appointments')
-      .update({
+    await updateAppointmentSafely(admin, appointmentId, [
+      {
         assigned_technician_id: gate.userId,
         assigned_by: gate.userId,
         assigned_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', appointmentId);
+      },
+      {
+        assigned_technician_id: gate.userId,
+        assigned_by: gate.userId,
+        assigned_at: new Date().toISOString(),
+      },
+      { assigned_technician_id: gate.userId },
+    ]);
     (appt as { assigned_technician_id?: string }).assigned_technician_id = gate.userId;
   } else if (fetchErr || !appt || assigned !== gate.userId) {
-    console.warn('[tech] start job denied', appointmentId, fetchErr?.message);
+    console.warn('[tech] start job denied', appointmentId, fetchErr);
     return { error: 'You cannot start this job.' };
   }
 
-  if (appt.status === 'in_progress') {
+  const appointmentStatus = typeof appt.status === 'string' ? appt.status : '';
+  if (appointmentStatus === 'in_progress') {
     return null;
   }
 
-  if (!['assigned', 'confirmed'].includes(appt.status)) {
-    console.warn('[tech] start job invalid status', appt.status);
-    return { error: `Job cannot start from status “${appt.status}”.` };
+  if (!['assigned', 'confirmed'].includes(appointmentStatus)) {
+    console.warn('[tech] start job invalid status', appointmentStatus);
+    return { error: `Job cannot start from status “${appointmentStatus || 'unknown'}”.` };
   }
 
   const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
@@ -374,18 +412,29 @@ export async function techStartJobAction(
     });
   }
 
-  const { error } = await gate.supabase
-    .from('appointments')
-    .update({
+  const startedAt = new Date().toISOString();
+  const statusUpdate = await updateAppointmentSafely(gate.supabase, appointmentId, [
+    {
       status: 'in_progress',
-      job_started_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', appointmentId);
+      job_started_at: startedAt,
+      started_at: startedAt,
+      updated_at: startedAt,
+    },
+    {
+      status: 'in_progress',
+      job_started_at: startedAt,
+      started_at: startedAt,
+    },
+    {
+      status: 'in_progress',
+      job_started_at: startedAt,
+    },
+    { status: 'in_progress' },
+  ]);
 
-  if (error) {
-    console.error('[tech] start job', error.message);
-    return { error: error.message || 'Could not update job status.' };
+  if (!statusUpdate.ok) {
+    console.error('[tech] start job', statusUpdate.error);
+    return { error: statusUpdate.error || 'Could not update job status.' };
   }
 
   await recordJobTimelineEvent(gate.supabase, {
