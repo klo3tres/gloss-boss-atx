@@ -26,6 +26,7 @@ const PHOTO_CATEGORIES = [
   { value: 'other', label: 'Other' },
 ] as const;
 type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]['value'];
+type PhotoPreview = { src: string; uploadedAt: string; savedTo?: string };
 
 function pickLineCents(prices: PriceRow[], serviceId: string, vehicleClass: UiVehicleClass): number | null {
   const row = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
@@ -65,14 +66,15 @@ export function TechWorkflowWizard() {
 
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [fallbackBookingId, setFallbackBookingId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [lockedTotalCents, setLockedTotalCents] = useState<number | null>(null);
 
   const [signerName, setSignerName] = useState('');
   const [agreementAck, setAgreementAck] = useState(false);
-  const [beforePreviews, setBeforePreviews] = useState<string[]>([]);
-  const [afterPreviews, setAfterPreviews] = useState<string[]>([]);
-  const [beforePreviewByCategory, setBeforePreviewByCategory] = useState<Record<string, string[]>>({});
-  const [afterPreviewByCategory, setAfterPreviewByCategory] = useState<Record<string, string[]>>({});
+  const [beforePreviews, setBeforePreviews] = useState<PhotoPreview[]>([]);
+  const [afterPreviews, setAfterPreviews] = useState<PhotoPreview[]>([]);
+  const [beforePreviewByCategory, setBeforePreviewByCategory] = useState<Record<string, PhotoPreview[]>>({});
+  const [afterPreviewByCategory, setAfterPreviewByCategory] = useState<Record<string, PhotoPreview[]>>({});
   const [beforeCount, setBeforeCount] = useState(0);
   const [afterCount, setAfterCount] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
@@ -92,7 +94,13 @@ export function TechWorkflowWizard() {
     try {
       const raw = sessionStorage.getItem(WALKIN_STORAGE_KEY);
       if (!raw) return;
-      const o = JSON.parse(raw) as { appointmentId?: string | null; fallbackBookingId?: string | null; lockedTotalCents?: number; savedAt?: number };
+      const o = JSON.parse(raw) as {
+        appointmentId?: string | null;
+        fallbackBookingId?: string | null;
+        accessToken?: string | null;
+        lockedTotalCents?: number;
+        savedAt?: number;
+      };
       if ((!o.appointmentId && !o.fallbackBookingId) || typeof o.savedAt !== 'number') return;
       if (Date.now() - o.savedAt > 36 * 3600000) {
         sessionStorage.removeItem(WALKIN_STORAGE_KEY);
@@ -100,6 +108,7 @@ export function TechWorkflowWizard() {
       }
       setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
       setFallbackBookingId((prev) => prev ?? o.fallbackBookingId ?? null);
+      setAccessToken((prev) => prev ?? o.accessToken ?? null);
       if (typeof o.lockedTotalCents === 'number') {
         setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
       }
@@ -272,6 +281,7 @@ export function TechWorkflowWizard() {
             JSON.stringify({
               appointmentId: r.appointmentId,
               fallbackBookingId: r.fallbackBookingId ?? null,
+              accessToken: r.accessToken,
               lockedTotalCents: r.totalCents,
               savedAt: Date.now(),
             }),
@@ -281,6 +291,7 @@ export function TechWorkflowWizard() {
         }
         setAppointmentId(r.appointmentId);
         setFallbackBookingId(r.fallbackBookingId ?? null);
+        setAccessToken(r.accessToken);
         setLockedTotalCents(r.totalCents);
         setSignerName(guestName.trim());
         goNext();
@@ -324,6 +335,10 @@ export function TechWorkflowWizard() {
     const fd = new FormData();
     if (appointmentId) fd.set('appointmentId', appointmentId);
     if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+    if (accessToken) fd.set('accessToken', accessToken);
+    if (appointmentId) fd.set('jobReference', appointmentId);
+    else if (fallbackBookingId) fd.set('jobReference', fallbackBookingId);
+    if (fallbackBookingId) fd.set('techWorkflowId', fallbackBookingId);
     fd.set('category', phase);
     fd.set('photoCategory', photoCat);
     fd.set('file', file);
@@ -332,12 +347,23 @@ export function TechWorkflowWizard() {
         method: 'POST',
         body: fd,
       }).then(async (res) => {
-        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string; category?: string };
+        const j = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          url?: string;
+          error?: string;
+          category?: string;
+          savedTo?: string;
+          uploadedAt?: string;
+        };
         if (!res.ok || !j.ok) {
           setError(j.error ?? 'Photo upload failed.');
           return;
         }
-        const preview = URL.createObjectURL(file);
+        const preview: PhotoPreview = {
+          src: URL.createObjectURL(file),
+          uploadedAt: j.uploadedAt ?? new Date().toISOString(),
+          savedTo: j.savedTo,
+        };
         if (phase === 'after') {
           setAfterCount((c) => c + 1);
           setAfterPreviews((p) => [preview, ...p].slice(0, 8));
@@ -814,10 +840,11 @@ export function TechWorkflowWizard() {
                 className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
               >
                 <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
-                <span className='mt-1 block text-[10px] text-zinc-500'>Tap to upload from camera roll or device.</span>
+                <span className='mt-1 block text-[10px] text-zinc-500'>Tap to take or upload photo.</span>
                 <input
                   type='file'
-                  accept='image/jpeg,image/png,image/webp'
+                  accept='image/*'
+                  capture='environment'
                   onChange={(e) => {
                     uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'before');
                     e.currentTarget.value = '';
@@ -827,7 +854,11 @@ export function TechWorkflowWizard() {
                 {beforePreviewByCategory[cat.value]?.length ? (
                   <div className='mt-3 grid grid-cols-3 gap-2'>
                     {beforePreviewByCategory[cat.value].map((src) => (
-                      <img key={src} src={src} alt={`${cat.label} before upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                      <div key={src.src} className='space-y-1'>
+                        <img src={src.src} alt={`${cat.label} before upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                        <p className='text-[9px] text-emerald-300'>Uploaded {new Date(src.uploadedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                        {src.savedTo === 'fallback' ? <p className='text-[9px] text-amber-200'>Saved to fallback job record</p> : null}
+                      </div>
                     ))}
                   </div>
                 ) : null}
@@ -837,7 +868,7 @@ export function TechWorkflowWizard() {
           {beforePreviews.length > 0 ? (
             <div className='grid grid-cols-3 gap-2'>
               {beforePreviews.map((src) => (
-                <img key={src} src={src} alt='Uploaded job preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
+                <img key={src.src} src={src.src} alt='Uploaded job preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
               ))}
             </div>
           ) : null}
@@ -934,9 +965,11 @@ export function TechWorkflowWizard() {
                   className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
                 >
                   <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
+                  <span className='mt-1 block text-[10px] text-zinc-500'>Tap to take or upload photo.</span>
                   <input
                     type='file'
-                    accept='image/jpeg,image/png,image/webp'
+                    accept='image/*'
+                    capture='environment'
                     onChange={(e) => {
                       uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'after');
                       e.currentTarget.value = '';
@@ -946,7 +979,11 @@ export function TechWorkflowWizard() {
                   {afterPreviewByCategory[cat.value]?.length ? (
                     <div className='mt-3 grid grid-cols-3 gap-2'>
                       {afterPreviewByCategory[cat.value].map((src) => (
-                        <img key={src} src={src} alt={`${cat.label} after upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                        <div key={src.src} className='space-y-1'>
+                          <img src={src.src} alt={`${cat.label} after upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <p className='text-[9px] text-emerald-300'>Uploaded {new Date(src.uploadedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                          {src.savedTo === 'fallback' ? <p className='text-[9px] text-amber-200'>Saved to fallback job record</p> : null}
+                        </div>
                       ))}
                     </div>
                   ) : null}
@@ -956,7 +993,7 @@ export function TechWorkflowWizard() {
             {afterPreviews.length > 0 ? (
               <div className='mt-3 grid grid-cols-3 gap-2'>
                 {afterPreviews.map((src) => (
-                  <img key={src} src={src} alt='Uploaded after preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
+                  <img key={src.src} src={src.src} alt='Uploaded after preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
                 ))}
               </div>
             ) : null}

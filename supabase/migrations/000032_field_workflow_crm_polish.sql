@@ -3,8 +3,11 @@
 -- ---------- job_media: upload/storage metadata + fine-grain categories ----------
 alter table public.job_media add column if not exists storage_bucket text;
 alter table public.job_media add column if not exists storage_path text;
+alter table public.job_media add column if not exists file_path text;
 alter table public.job_media add column if not exists mime_type text;
+alter table public.job_media add column if not exists content_type text;
 alter table public.job_media add column if not exists file_size_bytes bigint;
+alter table public.job_media add column if not exists file_size bigint;
 alter table public.job_media add column if not exists photo_category text;
 alter table public.job_media add column if not exists technician_id uuid references public.profiles (id) on delete set null;
 alter table public.job_media add column if not exists customer_id uuid references public.customers (id) on delete set null;
@@ -12,6 +15,9 @@ alter table public.job_media add column if not exists vehicle_id uuid references
 alter table public.job_media add column if not exists fallback_booking_id uuid references public.booking_fallbacks (id) on delete set null;
 alter table public.job_media add column if not exists approved_for_customer boolean not null default false;
 alter table public.job_media add column if not exists publish_to_gallery boolean not null default false;
+alter table public.job_media add column if not exists published_to_gallery boolean not null default false;
+alter table public.job_media add column if not exists media_url text;
+alter table public.job_media add column if not exists public_url text;
 alter table public.job_media add column if not exists customer_safe_caption text;
 
 -- Parallel structured photo table for fallback/job uploads where job_media constraints vary.
@@ -26,12 +32,18 @@ create table if not exists public.job_photos (
   photo_category text,
   storage_bucket text,
   storage_path text,
+  file_path text,
   file_url text not null,
+  media_url text,
+  public_url text,
   mime_type text,
+  content_type text,
   file_size_bytes bigint,
+  file_size bigint,
   notes text,
   approved_for_customer boolean not null default false,
   publish_to_gallery boolean not null default false,
+  published_to_gallery boolean not null default false,
   customer_safe_caption text,
   created_at timestamptz not null default now()
 );
