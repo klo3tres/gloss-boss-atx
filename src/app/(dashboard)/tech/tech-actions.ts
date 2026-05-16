@@ -6,6 +6,7 @@ import { notifyJobCompletedPlaceholder, notifyJobStartedPlaceholder } from '@/li
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -26,13 +27,28 @@ export async function techStartJobAction(
   const gate = await requireTechSupabase();
   if (!gate.ok) return { error: 'Session unavailable.' };
 
-  const { data: appt, error: fetchErr } = await gate.supabase
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, booking_source')
     .eq('id', appointmentId)
     .maybeSingle();
 
-  if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) {
+  const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
+  const isWalkIn = appt && String((appt as { booking_source?: string | null }).booking_source ?? '') === 'tech_workflow';
+  if (!fetchErr && appt && assigned !== gate.userId && isWalkIn && !assigned && admin) {
+    await admin
+      .from('appointments')
+      .update({
+        assigned_technician_id: gate.userId,
+        assigned_by: gate.userId,
+        assigned_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId);
+    (appt as { assigned_technician_id?: string }).assigned_technician_id = gate.userId;
+  } else if (fetchErr || !appt || assigned !== gate.userId) {
     console.warn('[tech] start job denied', appointmentId, fetchErr?.message);
     return { error: 'You cannot start this job.' };
   }
@@ -47,7 +63,16 @@ export async function techStartJobAction(
   }
 
   const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-  if (!sig) {
+  let legalAck = Boolean(sig);
+  if (!legalAck) {
+    const { data: jobAgreement } = await gate.supabase.from('job_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+    legalAck = Boolean(jobAgreement);
+  }
+  if (!legalAck) {
+    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
+    legalAck = Boolean(intakeAck);
+  }
+  if (!legalAck) {
     return {
       error:
         'Liability agreement must be on file before starting. Complete /agreement (customer) or use Walk-in workflow to capture a signature.',
@@ -58,14 +83,14 @@ export async function techStartJobAction(
     .from('job_media')
     .select('id', { count: 'exact', head: true })
     .eq('appointment_id', appointmentId)
-    .eq('category', 'before');
+    .in('category', ['before', 'inspection', 'damage']);
   if (bcErr) {
     console.warn('[tech] before photo count', bcErr.message);
     return { error: 'Could not verify before photos.' };
   }
   if ((beforeCount ?? 0) < 1) {
     return {
-      error: 'Add at least one before photo (paste image URL under this job) before starting.',
+      error: 'Add at least one before/inspection photo before starting.',
     };
   }
 
@@ -142,20 +167,44 @@ export async function techCompleteJobAction(
   const gate = await requireTechSupabase();
   if (!gate.ok) return { error: 'Session unavailable.' };
 
-  const { data: appt, error: fetchErr } = await gate.supabase
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source')
     .eq('id', appointmentId)
     .maybeSingle();
 
-  if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) {
+  const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
+  const isWalkIn = appt && String((appt as { booking_source?: string | null }).booking_source ?? '') === 'tech_workflow';
+  if (!fetchErr && appt && assigned !== gate.userId && isWalkIn && !assigned && admin) {
+    await admin
+      .from('appointments')
+      .update({
+        assigned_technician_id: gate.userId,
+        assigned_by: gate.userId,
+        assigned_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId);
+    (appt as { assigned_technician_id?: string }).assigned_technician_id = gate.userId;
+  } else if (fetchErr || !appt || assigned !== gate.userId) {
     console.warn('[tech] complete job denied', appointmentId);
     return { error: 'You cannot complete this job.' };
   }
 
   const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+  let legalAck = Boolean(sig);
+  if (!legalAck) {
+    const { data: jobAgreement } = await gate.supabase.from('job_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+    legalAck = Boolean(jobAgreement);
+  }
+  if (!legalAck) {
+    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
+    legalAck = Boolean(intakeAck);
+  }
 
-  if (!sig) {
+  if (!legalAck) {
     return {
       error:
         'Liability acknowledgment is required — have the customer sign the agreement (or complete `/agreement`) before marking complete.',

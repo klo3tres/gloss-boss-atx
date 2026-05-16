@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { techSearchCustomersAction } from '@/app/(dashboard)/tech/tech-customer-search-actions';
-import { techAddJobMediaAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techCompleteJobAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techCreateWalkInJobAction, techSignWalkInAgreementAction } from '@/app/(dashboard)/tech/tech-workflow-actions';
 import { normalizeVehicleClass, UI_VEHICLE_CLASSES, type UiVehicleClass } from '@/lib/vehicle-pricing';
 import { buildNativeAgreementSnapshot, DEFAULT_AGREEMENT_TITLE } from '@/lib/default-gloss-boss-agreement';
@@ -15,6 +15,17 @@ type AddonOpt = { slug: string; label: string; price_cents: number };
 
 const STEPS = 9;
 const WALKIN_STORAGE_KEY = 'glossboss_tech_walkin_v1';
+const PHOTO_CATEGORIES = [
+  { value: 'before', label: 'Before' },
+  { value: 'front', label: 'Front' },
+  { value: 'rear', label: 'Rear' },
+  { value: 'driver_side', label: 'Driver side' },
+  { value: 'passenger_side', label: 'Passenger side' },
+  { value: 'interior', label: 'Interior' },
+  { value: 'wheels', label: 'Wheels' },
+  { value: 'damage', label: 'Damage' },
+  { value: 'after', label: 'After' },
+] as const;
 
 function pickLineCents(prices: PriceRow[], serviceId: string, vehicleClass: UiVehicleClass): number | null {
   const row = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
@@ -53,14 +64,26 @@ export function TechWorkflowWizard() {
   const [addonSlugs, setAddonSlugs] = useState<Set<string>>(new Set());
 
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
+  const [fallbackBookingId, setFallbackBookingId] = useState<string | null>(null);
   const [lockedTotalCents, setLockedTotalCents] = useState<number | null>(null);
 
   const [signerName, setSignerName] = useState('');
   const [agreementAck, setAgreementAck] = useState(false);
-  const [beforeUrlDraft, setBeforeUrlDraft] = useState('');
+  const [photoCategory, setPhotoCategory] = useState<(typeof PHOTO_CATEGORIES)[number]['value']>('before');
+  const [beforePreviews, setBeforePreviews] = useState<string[]>([]);
+  const [afterPreviews, setAfterPreviews] = useState<string[]>([]);
   const [beforeCount, setBeforeCount] = useState(0);
+  const [afterCount, setAfterCount] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
   const [timerError, setTimerError] = useState<string | null>(null);
+  const [timerId, setTimerId] = useState<string | null>(null);
+  const [checklistText, setChecklistText] = useState('Walk-around inspection\nPre-wash photos\nInterior protection\nFinal QC');
+  const [beforeNotes, setBeforeNotes] = useState('');
+  const [afterNotes, setAfterNotes] = useState('');
+  const [damageNotes, setDamageNotes] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
+  const [upsellNotes, setUpsellNotes] = useState('');
+  const [customerVisibleNotes, setCustomerVisibleNotes] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -68,13 +91,14 @@ export function TechWorkflowWizard() {
     try {
       const raw = sessionStorage.getItem(WALKIN_STORAGE_KEY);
       if (!raw) return;
-      const o = JSON.parse(raw) as { appointmentId?: string; lockedTotalCents?: number; savedAt?: number };
-      if (!o.appointmentId || typeof o.savedAt !== 'number') return;
+      const o = JSON.parse(raw) as { appointmentId?: string | null; fallbackBookingId?: string | null; lockedTotalCents?: number; savedAt?: number };
+      if ((!o.appointmentId && !o.fallbackBookingId) || typeof o.savedAt !== 'number') return;
       if (Date.now() - o.savedAt > 36 * 3600000) {
         sessionStorage.removeItem(WALKIN_STORAGE_KEY);
         return;
       }
       setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
+      setFallbackBookingId((prev) => prev ?? o.fallbackBookingId ?? null);
       if (typeof o.lockedTotalCents === 'number') {
         setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
       }
@@ -246,6 +270,7 @@ export function TechWorkflowWizard() {
             WALKIN_STORAGE_KEY,
             JSON.stringify({
               appointmentId: r.appointmentId,
+              fallbackBookingId: r.fallbackBookingId ?? null,
               lockedTotalCents: r.totalCents,
               savedAt: Date.now(),
             }),
@@ -254,6 +279,7 @@ export function TechWorkflowWizard() {
           /* ignore */
         }
         setAppointmentId(r.appointmentId);
+        setFallbackBookingId(r.fallbackBookingId ?? null);
         setLockedTotalCents(r.totalCents);
         setSignerName(guestName.trim());
         goNext();
@@ -262,6 +288,14 @@ export function TechWorkflowWizard() {
   };
 
   const signAgreement = () => {
+    if (!appointmentId && fallbackBookingId) {
+      if (!agreementAck) {
+        setError('Review the acknowledgement and check the box to continue.');
+        return;
+      }
+      goNext();
+      return;
+    }
     if (!appointmentId) return;
     if (!agreementAck) {
       setError('Review the acknowledgement and check the box to continue.');
@@ -289,30 +323,45 @@ export function TechWorkflowWizard() {
     });
   };
 
-  const addBeforePhoto = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!appointmentId || !beforeUrlDraft.trim()) return;
+  const uploadPhoto = (file: File | null, forceCategory?: string) => {
+    if (!file || (!appointmentId && !fallbackBookingId)) return;
     const fd = new FormData();
-    fd.set('appointmentId', appointmentId);
-    fd.set('category', 'before');
-    fd.set('fileUrl', beforeUrlDraft.trim());
+    if (appointmentId) fd.set('appointmentId', appointmentId);
+    if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+    const cat = forceCategory ?? photoCategory;
+    fd.set('photoCategory', cat);
+    fd.set('file', file);
     startTransition(() => {
-      void techAddJobMediaAction(fd).then(() => {
-        setBeforeUrlDraft('');
-        setBeforeCount((c) => c + 1);
-        router.refresh();
+      void fetch('/api/tech/job-media-upload', {
+        method: 'POST',
+        body: fd,
+      }).then(async (res) => {
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string; category?: string };
+        if (!res.ok || !j.ok) {
+          setError(j.error ?? 'Photo upload failed.');
+          return;
+        }
+        const preview = URL.createObjectURL(file);
+        if (cat === 'after') {
+          setAfterCount((c) => c + 1);
+          setAfterPreviews((p) => [preview, ...p].slice(0, 8));
+        } else {
+          setBeforeCount((c) => c + 1);
+          setBeforePreviews((p) => [preview, ...p].slice(0, 8));
+        }
+        setError(null);
       });
     });
   };
 
   const startTimer = async () => {
-    if (!appointmentId) return;
+    if (!appointmentId && !fallbackBookingId) return;
     setTimerError(null);
     try {
       const res = await fetch('/api/tech/job-timer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', appointmentId, label: 'Walk-in workflow' }),
+        body: JSON.stringify({ action: 'start', appointmentId: appointmentId ?? undefined, fallbackBookingId: fallbackBookingId ?? undefined, label: 'Walk-in workflow' }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -320,17 +369,56 @@ export function TechWorkflowWizard() {
         return;
       }
       setTimerStarted(true);
+      if (typeof j.id === 'string') setTimerId(j.id);
+      if (appointmentId) {
+        const fd = new FormData();
+        fd.set('appointmentId', appointmentId);
+        const started = await techStartJobAction(null, fd);
+        if (started?.error) setTimerError(started.error);
+      }
     } catch {
       setTimerError('Network error starting timer');
     }
   };
 
-  const startJob = () => {
-    if (!appointmentId) return;
+  const saveWorkflowNotes = () => {
+    if (!appointmentId && !fallbackBookingId) return;
     startTransition(() => {
+      void fetch('/api/tech/job-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: appointmentId ?? undefined,
+          fallbackBookingId: fallbackBookingId ?? undefined,
+          checklist: checklistText.split('\n').map((s) => s.trim()).filter(Boolean),
+          beforeNotes,
+          afterNotes,
+          damageNotes,
+          internalNotes,
+          upsellSuggestions: upsellNotes,
+          customerVisible: customerVisibleNotes,
+        }),
+      }).then(async (res) => {
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !j.ok) {
+          setError(j.error ?? 'Could not save notes.');
+          return;
+        }
+        setError(null);
+      });
+    });
+  };
+
+  const completeJob = () => {
+    if (!appointmentId) {
+      setError('Fallback workflow saved. Convert the fallback to an appointment from Dispatch before completing.');
+      return;
+    }
+    startTransition(() => {
+      saveWorkflowNotes();
       const fd = new FormData();
       fd.set('appointmentId', appointmentId);
-      void techStartJobAction(null, fd).then((r) => {
+      void techCompleteJobAction(null, fd).then((r) => {
         if (r?.error) {
           setError(r.error);
           return;
@@ -628,11 +716,40 @@ export function TechWorkflowWizard() {
           <p className='text-sm text-zinc-400'>
             Review the Gloss Boss ATX acknowledgement below. The customer must provide their full legal name; a drawn signature is optional.
           </p>
-          {!appointmentId ? (
+          {!appointmentId && !fallbackBookingId ? (
             <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100'>
               No job is linked to this step. Go back to <strong>5 · Quote total</strong> and tap <strong>Create job & continue</strong>. If you
               already created the job this session, refresh the page — your job id is restored automatically when possible.
             </p>
+          ) : fallbackBookingId && !appointmentId ? (
+            <>
+              <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100'>
+                Appointment insert fell back to a review row. This workflow will keep saving photos, timer, and notes against fallback{' '}
+                <span className='font-mono'>{fallbackBookingId.slice(0, 8)}…</span> until Dispatch converts it.
+              </p>
+              <label className='flex items-start gap-2 text-sm text-zinc-300'>
+                <input
+                  type='checkbox'
+                  checked={agreementAck}
+                  onChange={(e) => setAgreementAck(e.target.checked)}
+                  className='mt-1 h-4 w-4 rounded border-zinc-600 bg-black'
+                />
+                <span>Customer reviewed the acknowledgement and authorized the fallback field workflow.</span>
+              </label>
+              <div className='flex justify-between gap-2'>
+                <button type='button' onClick={goBack} className='text-xs font-bold uppercase tracking-wider text-zinc-500'>
+                  Back
+                </button>
+                <button
+                  type='button'
+                  disabled={busy || !agreementAck}
+                  onClick={signAgreement}
+                  className='rounded-lg bg-gold px-5 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40'
+                >
+                  Continue with fallback
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <article className='max-h-[min(60vh,32rem)] overflow-y-auto rounded-sm border border-zinc-200/90 bg-white p-5 text-zinc-900 shadow-[0_0_0_1px_rgba(212,175,55,0.25),0_12px_40px_rgba(0,0,0,0.35)] sm:p-8'>
@@ -642,7 +759,7 @@ export function TechWorkflowWizard() {
                   {lockedTotalCents != null ? (
                     <p className='mt-2 text-sm text-zinc-600'>
                       Agreed job total: <span className='font-semibold text-black'>${(lockedTotalCents / 100).toFixed(2)}</span>
-                      <span className='text-zinc-400'> · Ref. {appointmentId.slice(0, 8)}…</span>
+                      <span className='text-zinc-400'> · Ref. {appointmentId ? appointmentId.slice(0, 8) : 'fallback'}…</span>
                     </p>
                   ) : null}
                 </header>
@@ -690,26 +807,40 @@ export function TechWorkflowWizard() {
       {step === 7 ? (
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>7 · Before photos</h2>
-          <p className='text-sm text-zinc-400'>Add at least one &quot;before&quot; photo URL before starting the job timer.</p>
+          <p className='text-sm text-zinc-400'>Upload photos from your phone or computer. JPEG, PNG, and WEBP are supported.</p>
           <p className='text-xs text-zinc-500'>Recorded this session: {beforeCount}</p>
-          <form onSubmit={addBeforePhoto} className='flex flex-col gap-2 sm:flex-row sm:items-end'>
-            <label className='block flex-1 text-xs text-zinc-400'>
-              Image URL
-              <input
-                value={beforeUrlDraft}
-                onChange={(e) => setBeforeUrlDraft(e.target.value)}
-                placeholder='https://…'
+          <div className='grid gap-3 sm:grid-cols-[1fr_1fr]'>
+            <label className='block text-xs text-zinc-400'>
+              Category
+              <select
+                value={photoCategory}
+                onChange={(e) => setPhotoCategory(e.target.value as typeof photoCategory)}
                 className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+              >
+                {PHOTO_CATEGORIES.filter((c) => c.value !== 'after').map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              Upload image
+              <input
+                type='file'
+                accept='image/jpeg,image/png,image/webp'
+                onChange={(e) => uploadPhoto(e.target.files?.[0] ?? null)}
+                className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
               />
             </label>
-            <button
-              type='submit'
-              disabled={busy || !appointmentId}
-              className='rounded-lg border border-white/20 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-40'
-            >
-              Attach before photo
-            </button>
-          </form>
+          </div>
+          {beforePreviews.length > 0 ? (
+            <div className='grid grid-cols-3 gap-2'>
+              {beforePreviews.map((src) => (
+                <img key={src} src={src} alt='Uploaded job preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
+              ))}
+            </div>
+          ) : null}
           <div className='flex justify-between gap-2'>
             <button type='button' onClick={goBack} className='text-xs font-bold uppercase tracking-wider text-zinc-500'>
               Back
@@ -753,22 +884,82 @@ export function TechWorkflowWizard() {
 
       {step === 9 ? (
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
-          <h2 className='text-lg font-black uppercase tracking-tight text-white'>9 · Start job</h2>
-          <p className='text-sm text-zinc-400'>Sets appointment status to in progress and logs the job start on the timeline.</p>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>9 · Notes, after photos & complete</h2>
+          <p className='text-sm text-zinc-400'>Save the checklist and notes, upload after photos, then complete the field job.</p>
           {!timerStarted ? (
             <p className='text-sm text-amber-200'>Start the timer on the previous step before marking this job in progress.</p>
           ) : null}
+          {timerId ? <p className='text-xs text-emerald-300'>Timer running · {timerId.slice(0, 8)}…</p> : null}
+          <label className='block text-xs text-zinc-400'>
+            Checklist (one item per line)
+            <textarea
+              value={checklistText}
+              onChange={(e) => setChecklistText(e.target.value)}
+              rows={4}
+              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white'
+            />
+          </label>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <label className='block text-xs text-zinc-400'>
+              Before notes
+              <textarea value={beforeNotes} onChange={(e) => setBeforeNotes(e.target.value)} rows={3} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              After notes
+              <textarea value={afterNotes} onChange={(e) => setAfterNotes(e.target.value)} rows={3} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            </label>
+            <label className='block text-xs text-rose-300/90'>
+              Damage notes
+              <textarea value={damageNotes} onChange={(e) => setDamageNotes(e.target.value)} rows={3} className='mt-1 w-full rounded-lg border border-rose-900/40 bg-black px-3 py-2 text-sm text-white' />
+            </label>
+            <label className='block text-xs text-amber-200/90'>
+              Internal notes
+              <textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} rows={3} className='mt-1 w-full rounded-lg border border-amber-900/40 bg-black px-3 py-2 text-sm text-white' />
+            </label>
+          </div>
+          <label className='block text-xs text-zinc-400'>
+            Upsell notes
+            <textarea value={upsellNotes} onChange={(e) => setUpsellNotes(e.target.value)} rows={2} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+          </label>
+          <label className='flex items-center gap-2 text-xs text-zinc-400'>
+            <input type='checkbox' checked={customerVisibleNotes} onChange={(e) => setCustomerVisibleNotes(e.target.checked)} />
+            Mark non-internal notes customer-visible
+          </label>
+          <div className='rounded-xl border border-white/10 bg-black/30 p-3'>
+            <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>After photos ({afterCount})</p>
+            <input
+              type='file'
+              accept='image/jpeg,image/png,image/webp'
+              onChange={(e) => uploadPhoto(e.target.files?.[0] ?? null, 'after')}
+              className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
+            />
+            {afterPreviews.length > 0 ? (
+              <div className='mt-3 grid grid-cols-3 gap-2'>
+                {afterPreviews.map((src) => (
+                  <img key={src} src={src} alt='Uploaded after preview' className='aspect-square rounded-lg border border-white/10 object-cover' />
+                ))}
+              </div>
+            ) : null}
+          </div>
           <div className='flex justify-between gap-2'>
             <button type='button' onClick={goBack} className='text-xs font-bold uppercase tracking-wider text-zinc-500'>
               Back
             </button>
             <button
               type='button'
-              disabled={busy || !timerStarted}
-              onClick={startJob}
+              disabled={busy}
+              onClick={saveWorkflowNotes}
+              className='rounded-lg border border-gold/40 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-gold-soft disabled:opacity-40'
+            >
+              Save notes
+            </button>
+            <button
+              type='button'
+              disabled={busy || !timerStarted || afterCount < 1}
+              onClick={completeJob}
               className='rounded-lg bg-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40'
             >
-              {busy ? 'Starting…' : 'Start job'}
+              {busy ? 'Saving…' : appointmentId ? 'Complete job' : 'Save fallback'}
             </button>
           </div>
         </section>

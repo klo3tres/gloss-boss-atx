@@ -3,6 +3,7 @@ import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { tryCreateServerSupabase } from '@/lib/supabase/server';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
 
@@ -43,18 +44,41 @@ export async function POST(request: Request) {
       damageNotes?: string;
       customerVisible?: boolean;
       appointmentId?: string;
+      fallbackBookingId?: string;
     };
 
     const appointmentId = String(body.appointmentId ?? '').trim();
+    const fallbackBookingId = String(body.fallbackBookingId ?? '').trim();
+    const admin = tryCreateAdminSupabase();
+    const db = admin ?? supabase;
 
     if (appointmentId) {
-      const { data: appt, error: apErr } = await supabase
+      const { data: appt, error: apErr } = await db
         .from('appointments')
-        .select('id, assigned_technician_id')
+        .select('id, assigned_technician_id, booking_source')
         .eq('id', appointmentId)
         .maybeSingle();
-      if (apErr || !appt || appt.assigned_technician_id !== user.id) {
+      const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
+      const isWalkIn = appt && String((appt as { booking_source?: string | null }).booking_source ?? '') === 'tech_workflow';
+      if (!apErr && appt && assigned !== user.id && isWalkIn && !assigned && admin) {
+        await admin
+          .from('appointments')
+          .update({ assigned_technician_id: user.id, assigned_by: user.id, assigned_at: new Date().toISOString() })
+          .eq('id', appointmentId);
+      } else if (apErr || !appt || (assigned !== user.id && role !== 'admin' && role !== 'super_admin')) {
         return NextResponse.json({ error: 'Invalid appointment for this technician' }, { status: 400 });
+      }
+    }
+
+    if (fallbackBookingId && admin) {
+      const { data: fb, error: fbErr } = await admin
+        .from('booking_fallbacks')
+        .select('id, assigned_technician_id')
+        .eq('id', fallbackBookingId)
+        .maybeSingle();
+      const assigned = fb && typeof fb.assigned_technician_id === 'string' ? fb.assigned_technician_id : null;
+      if (fbErr || !fb || (assigned && assigned !== user.id && role !== 'admin' && role !== 'super_admin')) {
+        return NextResponse.json({ error: 'Invalid fallback for this technician' }, { status: 400 });
       }
     }
 
@@ -77,6 +101,7 @@ export async function POST(request: Request) {
       customer_visible: customerVisible,
     };
     if (appointmentId) insertPayload.appointment_id = appointmentId;
+    if (fallbackBookingId) insertPayload.fallback_booking_id = fallbackBookingId;
 
     let { data, error } = await supabase.from('tech_job_notes').insert(insertPayload).select('id').maybeSingle();
 
@@ -89,6 +114,7 @@ export async function POST(request: Request) {
         upsell_suggestions: upsellSuggestions || null,
       };
       if (appointmentId) lean.appointment_id = appointmentId;
+      if (fallbackBookingId) lean.fallback_booking_id = fallbackBookingId;
       ({ data, error } = await supabase.from('tech_job_notes').insert(lean).select('id').maybeSingle());
     }
 

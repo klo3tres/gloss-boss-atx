@@ -25,7 +25,9 @@ export async function techCreateWalkInJobAction(input: {
   customerId?: string | null;
   notes?: string;
 }): Promise<
-  { ok: true; appointmentId: string; accessToken: string; totalCents: number } | { ok: false; error: string }
+  | { ok: true; appointmentId: string; accessToken: string; totalCents: number; fallbackBookingId?: null }
+  | { ok: true; appointmentId: null; accessToken: string; totalCents: number; fallbackBookingId: string }
+  | { ok: false; error: string }
 > {
   const session = await getSessionWithProfile();
   if (!session.user?.id) return { ok: false, error: 'Not signed in' };
@@ -133,7 +135,58 @@ export async function techCreateWalkInJobAction(input: {
 
   const { data: appointment, error: apptErr } = await insertAppointmentResilient(admin, insertPayload);
   if (apptErr || !appointment) {
-    return { ok: false, error: apptErr || 'Could not create walk-in job' };
+    const fallbackPayload = {
+      ...insertPayload,
+      tech_workflow: true,
+      quote,
+    };
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const fbRow: Record<string, unknown> = {
+      payload: fallbackPayload,
+      guest_email: guestEmail,
+      guest_phone: phoneNorm.digits10,
+      guest_name: guestName,
+      deposit_amount_cents: 0,
+      base_price_cents: totalBaseCents,
+      scheduled_start: scheduled.toISOString(),
+      status: 'needs_review',
+      promotion_error: apptErr || 'appointment insert failed',
+      expires_at: expiresAt,
+      assigned_technician_id: session.user.id,
+      assigned_by: session.user.id,
+      assigned_at: nowIso,
+      notes: notes || null,
+    };
+    let fb = await admin.from('booking_fallbacks').insert(fbRow).select('id, access_token').single();
+    if (fb.error && /assigned_|expires_at|notes|column|schema cache|Could not find/i.test(fb.error.message)) {
+      fb = await admin
+        .from('booking_fallbacks')
+        .insert({
+          payload: fallbackPayload,
+          guest_email: guestEmail,
+          guest_phone: phoneNorm.digits10,
+          guest_name: guestName,
+          deposit_amount_cents: 0,
+          base_price_cents: totalBaseCents,
+          scheduled_start: scheduled.toISOString(),
+          status: 'needs_review',
+          promotion_error: apptErr || 'appointment insert failed',
+        })
+        .select('id, access_token')
+        .single();
+    }
+    if (fb.error || !fb.data?.id) {
+      return { ok: false, error: apptErr || fb.error?.message || 'Could not create walk-in fallback' };
+    }
+    revalidatePath('/tech');
+    revalidatePath('/tech/workflow');
+    return {
+      ok: true,
+      appointmentId: null,
+      accessToken: String((fb.data as { access_token?: string | null }).access_token ?? ''),
+      totalCents: totalBaseCents,
+      fallbackBookingId: String(fb.data.id),
+    };
   }
 
   const verify = await admin.from('appointments').select('id').eq('id', appointment.id).maybeSingle();
@@ -143,7 +196,7 @@ export async function techCreateWalkInJobAction(input: {
 
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
-  return { ok: true, appointmentId: appointment.id, accessToken: appointment.access_token, totalCents: totalBaseCents };
+  return { ok: true, appointmentId: appointment.id, accessToken: appointment.access_token, totalCents: totalBaseCents, fallbackBookingId: null };
 }
 
 export async function techSignWalkInAgreementAction(input: {
