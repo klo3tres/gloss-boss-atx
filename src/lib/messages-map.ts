@@ -39,6 +39,6 @@ export function mapMessageRow(raw: Record<string, unknown>): MessageRow | null {
 }
 
 /** Only columns that exist on the default `messages` table — avoid PostgREST schema cache errors. */
-export const MESSAGE_SELECT_LEAN = 'id, from_name, from_email, subject, body, status, created_at';
-export const MESSAGE_SELECT_WITH_PHONE = 'id, from_name, from_email, from_phone, subject, body, status, created_at';
+export const MESSAGE_SELECT_LEAN = 'id, from_name, from_email, subject, body, message, status, created_at';
+export const MESSAGE_SELECT_WITH_PHONE = 'id, from_name, from_email, from_phone, subject, body, message, status, created_at';
 export const MESSAGE_SELECT_FALLBACK = 'id, name, email, message, status, created_at';

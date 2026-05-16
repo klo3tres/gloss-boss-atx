@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
@@ -7,6 +8,18 @@ import {
   unassignAppointmentTechnicianAction,
   updateAppointmentDispatchStatusAction,
 } from '@/app/(dashboard)/admin/dispatch-job-actions';
+
+export type DispatchFallbackRow = {
+  id: string;
+  guest_name: string | null;
+  guest_email: string | null;
+  guest_phone: string | null;
+  scheduled_start: string | null;
+  base_price_cents: number | null;
+  deposit_amount_cents: number | null;
+  status: string;
+  created_at: string;
+};
 
 export type DispatchJobRow = {
   id: string;
@@ -51,7 +64,15 @@ const COLS: { id: ColId; label: string; hint: string }[] = [
 
 const STATUS_OPTIONS = ['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled'] as const;
 
-export function DispatchBoardClient({ jobs, technicians }: { jobs: DispatchJobRow[]; technicians: TechOption[] }) {
+export function DispatchBoardClient({
+  jobs,
+  technicians,
+  fallbacks = [],
+}: {
+  jobs: DispatchJobRow[];
+  technicians: TechOption[];
+  fallbacks?: DispatchFallbackRow[];
+}) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -84,19 +105,49 @@ export function DispatchBoardClient({ jobs, technicians }: { jobs: DispatchJobRo
         </p>
       ) : null}
 
-      <div className='grid gap-4 lg:grid-cols-4'>
+      <div className='-mx-2 overflow-x-auto pb-2'>
+        <div className='flex min-w-[1080px] gap-4 px-2 lg:min-w-0 lg:grid lg:grid-cols-4'>
         {COLS.map((col) => (
-          <section key={col.id} className='rounded-2xl border border-white/10 bg-zinc-950/80'>
+          <section key={col.id} className='min-w-[260px] flex-1 rounded-2xl border border-white/10 bg-zinc-950/80 shadow-[0_0_24px_rgba(0,0,0,0.35)] lg:min-w-0'>
             <header className='border-b border-white/10 px-4 py-3'>
               <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>{col.label}</p>
               <p className='text-[10px] text-zinc-500'>{col.hint}</p>
-              <p className='mt-1 text-[10px] text-zinc-600'>{grouped[col.id].length} jobs</p>
+              <p className='mt-1 text-[10px] text-zinc-600'>
+                {col.id === 'unassigned' ? grouped[col.id].length + fallbacks.length : grouped[col.id].length} jobs
+              </p>
             </header>
-            <ul className='max-h-[70vh] space-y-3 overflow-y-auto p-3'>
+            <ul className='max-h-[75vh] space-y-3 overflow-y-auto p-3'>
+              {col.id === 'unassigned' && fallbacks.length > 0
+                ? fallbacks.map((f) => (
+                    <li
+                      key={`fb-${f.id}`}
+                      className='rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-xs text-amber-50 shadow-[0_0_18px_rgba(245,158,11,0.12)]'
+                    >
+                      <p className='text-[10px] font-black uppercase tracking-wider text-amber-200'>Fallback · {f.status}</p>
+                      <p className='mt-2 font-bold text-white'>{f.guest_name ?? 'Guest'}</p>
+                      <p className='mt-1 text-zinc-300'>{f.guest_email ?? '—'}</p>
+                      <p className='mt-1'>{f.guest_phone ?? '—'}</p>
+                      <p className='mt-2 text-gold-soft/90'>
+                        {f.scheduled_start ? new Date(f.scheduled_start).toLocaleString() : 'Schedule TBD'}
+                      </p>
+                      <p className='mt-1'>
+                        <span className='text-zinc-500'>Value: </span>
+                        {formatMoney(f.base_price_cents)}
+                      </p>
+                      <p className='mt-2 font-mono text-[10px] text-zinc-500'>id {f.id.slice(0, 8)}…</p>
+                      <Link
+                        href='/admin'
+                        className='mt-2 inline-block text-[10px] font-bold uppercase text-amber-200 underline'
+                      >
+                        Review in operations →
+                      </Link>
+                    </li>
+                  ))
+                : null}
               {grouped[col.id].map((j) => (
                 <li
                   key={j.id}
-                  className='rounded-xl border border-white/10 bg-black/50 p-3 text-xs text-zinc-300 shadow-[0_0_20px_rgba(212,166,77,0.06)]'
+                  className='rounded-xl border border-white/10 bg-black/50 p-4 text-xs text-zinc-300 shadow-[0_0_20px_rgba(212,166,77,0.06)] transition hover:border-gold/30 hover:shadow-[0_0_28px_rgba(212,166,77,0.12)]'
                 >
                   <p className='font-bold text-white'>{j.guest_name ?? 'Guest'}</p>
                   <p className='mt-1 text-[10px] uppercase tracking-wider text-zinc-500'>{j.service_slug.replace(/-/g, ' ')}</p>
@@ -133,8 +184,8 @@ export function DispatchBoardClient({ jobs, technicians }: { jobs: DispatchJobRo
                       Assign
                       <select
                         name='technicianId'
-                        className='ml-1 max-w-[10rem] rounded border border-zinc-700 bg-black px-2 py-1 text-white'
-                        defaultValue=''
+                        className='ml-1 max-w-[12rem] rounded border border-zinc-700 bg-black px-2 py-1 text-white'
+                        defaultValue={j.assigned_technician_id ?? ''}
                       >
                         <option value='' disabled>
                           Tech…
@@ -196,10 +247,13 @@ export function DispatchBoardClient({ jobs, technicians }: { jobs: DispatchJobRo
                   </form>
                 </li>
               ))}
-              {grouped[col.id].length === 0 ? <li className='py-8 text-center text-zinc-600'>Empty</li> : null}
+              {grouped[col.id].length === 0 && (col.id !== 'unassigned' || fallbacks.length === 0) ? (
+                <li className='py-8 text-center text-zinc-600'>Empty</li>
+              ) : null}
             </ul>
           </section>
         ))}
+        </div>
       </div>
     </div>
   );

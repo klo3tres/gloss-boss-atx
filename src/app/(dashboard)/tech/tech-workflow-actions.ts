@@ -5,6 +5,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { computeQuoteFromInputs, insertAppointmentResilient, type VehicleLineInput } from '@/lib/booking-server-shared';
+import { fetchAppointmentForTechSign } from '@/lib/appointments-fetch-resilient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 
@@ -134,6 +135,11 @@ export async function techCreateWalkInJobAction(input: {
     return { ok: false, error: apptErr || 'Could not create walk-in job' };
   }
 
+  const verify = await admin.from('appointments').select('id').eq('id', appointment.id).maybeSingle();
+  if (!verify.data?.id) {
+    return { ok: false, error: 'Job was not persisted — check Supabase appointments table and try again.' };
+  }
+
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
   return { ok: true, appointmentId: appointment.id, accessToken: appointment.access_token, totalCents: totalBaseCents };
@@ -162,29 +168,34 @@ export async function techSignWalkInAgreementAction(input: {
   const admin = tryCreateAdminSupabase();
   if (!admin) return { ok: false, error: 'Database not configured' };
 
-  const { data: appt, error: apErr } = await admin
-    .from('appointments')
-    .select(
-      'id, assigned_technician_id, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id',
-    )
-    .eq('id', appointmentId)
-    .maybeSingle();
-  if (apErr || !appt) return { ok: false, error: 'Job not found' };
-  const A = appt as {
-    assigned_technician_id?: string | null;
-    guest_name?: string | null;
-    guest_email?: string | null;
-    guest_phone?: string | null;
-    vehicle_description?: string | null;
-    service_slug?: string | null;
-    vehicle_class?: string | null;
-    base_price_cents?: number | null;
-    deposit_amount_cents?: number | null;
-    customer_id?: string | null;
-    vehicle_id?: string | null;
-  };
+  const { data: appt, error: fetchErr } = await fetchAppointmentForTechSign(admin, appointmentId);
+  if (fetchErr) {
+    return { ok: false, error: `Could not load job: ${fetchErr}` };
+  }
+  if (!appt) {
+    return { ok: false, error: 'Job not found — go back to the quote step and tap “Create job & continue” again.' };
+  }
+  const A = appt;
+
   if (A.assigned_technician_id !== session.user.id) {
-    return { ok: false, error: 'This job is not assigned to you' };
+    const srcRow = await admin.from('appointments').select('booking_source').eq('id', appointmentId).maybeSingle();
+    const bookingSource = String((srcRow.data as { booking_source?: string } | null)?.booking_source ?? '');
+    const isWalkIn = bookingSource === 'tech_workflow';
+    if (isWalkIn && !A.assigned_technician_id) {
+      const nowIso = new Date().toISOString();
+      await admin
+        .from('appointments')
+        .update({
+          assigned_technician_id: session.user.id,
+          assigned_by: session.user.id,
+          assigned_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', appointmentId);
+      A.assigned_technician_id = session.user.id;
+    } else {
+      return { ok: false, error: 'This job is not assigned to you' };
+    }
   }
 
   const { data: existing } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();

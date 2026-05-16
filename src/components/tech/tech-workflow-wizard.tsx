@@ -14,6 +14,7 @@ type PriceRow = { service_id: string; vehicle_class: string; price_cents: number
 type AddonOpt = { slug: string; label: string; price_cents: number };
 
 const STEPS = 9;
+const WALKIN_STORAGE_KEY = 'glossboss_tech_walkin_v1';
 
 function pickLineCents(prices: PriceRow[], serviceId: string, vehicleClass: UiVehicleClass): number | null {
   const row = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
@@ -62,6 +63,25 @@ export function TechWorkflowWizard() {
   const [timerError, setTimerError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(WALKIN_STORAGE_KEY);
+      if (!raw) return;
+      const o = JSON.parse(raw) as { appointmentId?: string; lockedTotalCents?: number; savedAt?: number };
+      if (!o.appointmentId || typeof o.savedAt !== 'number') return;
+      if (Date.now() - o.savedAt > 36 * 3600000) {
+        sessionStorage.removeItem(WALKIN_STORAGE_KEY);
+        return;
+      }
+      setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
+      if (typeof o.lockedTotalCents === 'number') {
+        setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +241,18 @@ export function TechWorkflowWizard() {
           setError(r.error);
           return;
         }
+        try {
+          sessionStorage.setItem(
+            WALKIN_STORAGE_KEY,
+            JSON.stringify({
+              appointmentId: r.appointmentId,
+              lockedTotalCents: r.totalCents,
+              savedAt: Date.now(),
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         setAppointmentId(r.appointmentId);
         setLockedTotalCents(r.totalCents);
         setSignerName(guestName.trim());
@@ -246,6 +278,11 @@ export function TechWorkflowWizard() {
         if (!r.ok) {
           setError(r.error);
           return;
+        }
+        try {
+          sessionStorage.removeItem(WALKIN_STORAGE_KEY);
+        } catch {
+          /* ignore */
         }
         goNext();
       });
@@ -591,20 +628,28 @@ export function TechWorkflowWizard() {
           <p className='text-sm text-zinc-400'>
             Review the Gloss Boss ATX acknowledgement below. The customer must provide their full legal name; a drawn signature is optional.
           </p>
-          {lockedTotalCents != null ? (
-            <p className='text-xs text-emerald-300'>
-              Locked total ${(lockedTotalCents / 100).toFixed(2)}
-              {appointmentId ? ` · Job ${appointmentId.slice(0, 8)}…` : ''}
-            </p>
-          ) : null}
           {!appointmentId ? (
-            <p className='text-sm text-red-300'>No job id — go back to quote step.</p>
+            <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100'>
+              No job is linked to this step. Go back to <strong>5 · Quote total</strong> and tap <strong>Create job & continue</strong>. If you
+              already created the job this session, refresh the page — your job id is restored automatically when possible.
+            </p>
           ) : (
             <>
-              <div className='max-h-[min(55vh,28rem)] overflow-y-auto rounded-xl border border-white/10 bg-black/50 p-4'>
-                <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{DEFAULT_AGREEMENT_TITLE}</p>
-                <pre className='mt-3 whitespace-pre-wrap font-sans text-xs leading-relaxed text-zinc-300'>{walkInAgreementPreview}</pre>
-              </div>
+              <article className='max-h-[min(60vh,32rem)] overflow-y-auto rounded-sm border border-zinc-200/90 bg-white p-5 text-zinc-900 shadow-[0_0_0_1px_rgba(212,175,55,0.25),0_12px_40px_rgba(0,0,0,0.35)] sm:p-8'>
+                <header className='border-b border-amber-600/30 pb-4'>
+                  <p className='text-[10px] font-black uppercase tracking-[0.28em] text-amber-700'>Gloss Boss ATX</p>
+                  <h3 className='mt-2 font-serif text-lg font-bold text-black sm:text-xl'>{DEFAULT_AGREEMENT_TITLE}</h3>
+                  {lockedTotalCents != null ? (
+                    <p className='mt-2 text-sm text-zinc-600'>
+                      Agreed job total: <span className='font-semibold text-black'>${(lockedTotalCents / 100).toFixed(2)}</span>
+                      <span className='text-zinc-400'> · Ref. {appointmentId.slice(0, 8)}…</span>
+                    </p>
+                  ) : null}
+                </header>
+                <pre className='mt-5 whitespace-pre-wrap font-serif text-[13px] leading-relaxed text-zinc-800 sm:text-[14px]'>
+                  {walkInAgreementPreview}
+                </pre>
+              </article>
               <label className='flex items-start gap-2 text-sm text-zinc-300'>
                 <input
                   type='checkbox'

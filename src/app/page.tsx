@@ -270,12 +270,21 @@ export default function HomePage() {
                   <p className='mt-1 text-sm text-zinc-300'>When you book two vehicles in the same appointment window.</p>
                 )}
                 {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
-                  <p className='mt-3 text-sm text-gold-soft'>
-                    Limited time: {displayDeals.websitePromoPercent}% off web bookings
-                    {displayDeals.promoStacksWithMultiCar === false && displayDeals.multiCarSecondVehicleDiscountPercent > 0
-                      ? ' (not combined with multi-car discount).'
-                      : '.'}
-                  </p>
+                  <div className='mt-3 space-y-1 text-sm text-gold-soft'>
+                    <p>
+                      Online booking: <span className='font-semibold text-white'>{displayDeals.websitePromoPercent}% off</span> eligible
+                      services when you book through this site.
+                    </p>
+                    {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
+                      <p className='text-xs leading-relaxed text-zinc-300'>
+                        Multi-car: an <span className='font-semibold text-white'>additional {displayDeals.multiCarSecondVehicleDiscountPercent}%</span>{' '}
+                        applies to the <span className='font-semibold text-white'>second vehicle only</span> when two vehicles are booked in the
+                        same appointment — not a flat {displayDeals.websitePromoPercent + displayDeals.multiCarSecondVehicleDiscountPercent}% off the
+                        entire order.
+                        {displayDeals.promoStacksWithMultiCar === false ? ' These offers do not stack; checkout uses the better eligible discount.' : ''}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {multiCar ? (
                   <p className='mt-3 text-xs leading-relaxed text-zinc-400'>
@@ -415,7 +424,20 @@ export default function HomePage() {
               <Link href='/gift-cards' className='rounded-lg border border-white/20 px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-white'>
                 Gift Cards
               </Link>
+              {googleReviewUrl ? (
+                <a
+                  href={googleReviewUrl}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='rounded-lg border border-gold/50 bg-black/60 px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-gold-soft transition hover:border-gold'
+                >
+                  Leave us a Google Review
+                </a>
+              ) : null}
             </div>
+            {!googleReviewUrl ? (
+              <p className='mt-3 text-xs text-zinc-500'>Add your Google review URL in Admin → Website CMS to show the review button in the footer.</p>
+            ) : null}
           </div>
           <SectionErrorBoundary label='Contact form'>
             <ContactForm />

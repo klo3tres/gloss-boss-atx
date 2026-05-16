@@ -121,22 +121,28 @@ export function StaffRowSuperClient({
   profileId,
   initialRole,
   initialDisplayName,
+  initialActive,
+  currentUserId,
 }: {
   profileId: string;
   initialRole: string;
   initialDisplayName: string;
+  initialActive: boolean;
+  currentUserId: string;
 }) {
   const router = useRouter();
   const [role, setRole] = useState(initialRole);
   const [name, setName] = useState(initialDisplayName);
+  const [active, setActive] = useState(initialActive);
   const [pwd, setPwd] = useState('');
-  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | null>(null);
+  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'active' | 'remove' | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
     setRole(initialRole);
     setName(initialDisplayName);
-  }, [initialRole, initialDisplayName]);
+    setActive(initialActive);
+  }, [initialRole, initialDisplayName, initialActive]);
 
   return (
     <div className='flex min-w-[260px] flex-col gap-2'>
@@ -247,6 +253,62 @@ export function StaffRowSuperClient({
           {msg.text}
         </p>
       ) : null}
+      {profileId !== currentUserId ? (
+        <div className='mt-2 flex flex-col gap-1 border-t border-white/10 pt-2'>
+          <div className='flex flex-wrap gap-1'>
+            <button
+              type='button'
+              disabled={busy !== null}
+              onClick={() => {
+                void (async () => {
+                  setBusy('active');
+                  setMsg(null);
+                  const next = !active;
+                  const r = await teamApi({ intent: 'set_staff_active', profileId, active: next });
+                  setBusy(null);
+                  if (!r.ok) {
+                    setMsg({ type: 'err', text: r.error ?? 'Update failed' });
+                    return;
+                  }
+                  setActive(next);
+                  setMsg({ type: 'ok', text: next ? 'Reactivated.' : 'Deactivated (hidden from dispatch).' });
+                  router.refresh();
+                })();
+              }}
+              className='rounded border border-white/20 px-2 py-1 text-[10px] font-bold uppercase text-zinc-200 disabled:opacity-40'
+            >
+              {active ? 'Deactivate' : 'Reactivate'}
+            </button>
+            <button
+              type='button'
+              disabled={busy !== null}
+              onClick={() => {
+                if (!window.confirm('Remove this profile from the staff roster? Sets role to customer and hides from dispatch. Auth login is unchanged.')) {
+                  return;
+                }
+                void (async () => {
+                  setBusy('remove');
+                  setMsg(null);
+                  const r = await teamApi({ intent: 'remove_from_roster', profileId });
+                  setBusy(null);
+                  if (!r.ok) {
+                    setMsg({ type: 'err', text: r.error ?? 'Remove failed' });
+                    return;
+                  }
+                  setMsg({ type: 'ok', text: 'Removed from roster.' });
+                  router.refresh();
+                })();
+              }}
+              className='rounded border border-rose-500/40 px-2 py-1 text-[10px] font-bold uppercase text-rose-200 disabled:opacity-40'
+            >
+              Remove roster
+            </button>
+          </div>
+          <p className='text-[9px] text-zinc-600'>Does not delete the Supabase auth user — profile only.</p>
+        </div>
+      ) : (
+        <p className='mt-2 text-[9px] text-zinc-600'>This row is you — roster controls hidden.</p>
+      )}
     </div>
   );
 }

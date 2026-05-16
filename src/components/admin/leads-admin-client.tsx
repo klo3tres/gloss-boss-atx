@@ -149,9 +149,13 @@ export function LeadsAdminClient({
       </section>
 
       {view === 'pipeline' ? (
-        <div className='grid gap-3 lg:grid-cols-6'>
-          {PIPELINE_STAGES.map((stage) => (
-            <section key={stage.id} className='rounded-2xl border border-white/10 bg-zinc-950/60'>
+        <div className='-mx-2 overflow-x-auto pb-2'>
+          <div className='flex min-w-[1080px] gap-3 px-2 lg:min-w-0 lg:justify-between'>
+            {PIPELINE_STAGES.map((stage) => (
+              <section
+                key={stage.id}
+                className='flex w-[min(100%,300px)] shrink-0 flex-col rounded-2xl border border-white/10 bg-zinc-950/70 shadow-[0_0_20px_rgba(0,0,0,0.35)] lg:w-auto lg:min-w-0 lg:flex-1'
+              >
               <header className='border-b border-white/10 px-3 py-2'>
                 <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>{stage.label}</p>
                 <p className='text-[10px] text-zinc-600'>{pipelineGrouped[stage.id]?.length ?? 0}</p>
@@ -178,6 +182,16 @@ export function LeadsAdminClient({
                       )}
                       <p className='text-zinc-500'>Attempts {String(r.contact_attempts ?? 0)}</p>
                       {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
+                      {r.address ? <p className='line-clamp-2 text-[9px] text-zinc-500'>{String(r.address)}</p> : null}
+                      {r.vehicle ? <p className='line-clamp-1 text-[9px] text-zinc-500'>Vehicle: {String(r.vehicle)}</p> : null}
+                      {r.notes ? <p className='line-clamp-2 text-[9px] italic text-zinc-600'>{String(r.notes)}</p> : null}
+                      <a
+                        href={`#lead-${id}`}
+                        onClick={() => setView('list')}
+                        className='mt-1 inline-block text-[9px] font-bold uppercase text-gold-soft underline'
+                      >
+                        Open in list
+                      </a>
                       <form
                         className='mt-2'
                         action={async (fd) => {
@@ -213,7 +227,8 @@ export function LeadsAdminClient({
                 ) : null}
               </ul>
             </section>
-          ))}
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -225,7 +240,7 @@ export function LeadsAdminClient({
           const inPool = Boolean(r.in_pool);
           const evs = eventsByLead[id] ?? [];
           return (
-            <li key={id} className='rounded-2xl border border-white/10 bg-zinc-950 p-4 text-sm'>
+            <li key={id} id={`lead-${id}`} className='rounded-2xl border border-white/10 bg-zinc-950 p-4 text-sm scroll-mt-24'>
               <div className='flex flex-wrap items-start justify-between gap-3'>
                 <div>
                   <p className='text-lg font-bold text-white'>{name}</p>

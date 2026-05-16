@@ -15,6 +15,7 @@ type ProfileRow = {
   email: string | null;
   role: string;
   created_at: string;
+  active: boolean;
 };
 
 function firstParam(v: string | string[] | undefined): string | undefined {
@@ -32,6 +33,7 @@ function mapProfileRow(raw: Record<string, unknown>): ProfileRow | null {
     email: typeof raw.email === 'string' ? raw.email : null,
     role: String(raw.role ?? 'customer'),
     created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    active: raw.active === false ? false : true,
   };
 }
 
@@ -56,7 +58,8 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
   let err: string | null = null;
 
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
-    const full = await supabase
+    const db = tryCreateAdminSupabase() ?? supabase;
+    const full = await db
       .from('profiles')
       .select('*')
       .in('role', ['super_admin', 'admin', 'technician'])
@@ -65,7 +68,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
       .limit(200);
 
     if (full.error) {
-      const lean = await supabase
+      const lean = await db
         .from('profiles')
         .select('id, role, created_at, full_name, display_name, email')
         .in('role', ['super_admin', 'admin', 'technician'])
@@ -135,6 +138,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                 <th className='py-2 pr-3'>Name</th>
                 <th className='py-2 pr-3'>Role</th>
                 <th className='py-2 pr-3'>Profile ID</th>
+                <th className='py-2 pr-3'>Active</th>
                 <th className='py-2 pr-3'>Since</th>
                 {isSuper ? <th className='py-2'>Actions</th> : null}
               </tr>
@@ -147,6 +151,17 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                     <span className='rounded-full border border-gold/30 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-soft'>{p.role}</span>
                   </td>
                   <td className='py-2 pr-3 font-mono text-xs text-zinc-500'>{p.id}</td>
+                  <td className='py-2 pr-3 text-xs'>
+                    {p.active ? (
+                      <span className='rounded-full border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300'>
+                        Active
+                      </span>
+                    ) : (
+                      <span className='rounded-full border border-rose-500/40 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-200'>
+                        Inactive
+                      </span>
+                    )}
+                  </td>
                   <td className='py-2 pr-3 text-xs text-zinc-500'>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
                   {isSuper ? (
                     <td className='py-2 align-top'>
@@ -154,6 +169,8 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                         profileId={p.id}
                         initialRole={p.role}
                         initialDisplayName={displayName(p)}
+                        initialActive={p.active}
+                        currentUserId={session.user?.id ?? ''}
                       />
                     </td>
                   ) : null}

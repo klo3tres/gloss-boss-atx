@@ -12,7 +12,9 @@ type Body =
   | { intent: 'create'; email: string; password: string; role: string; fullName?: string }
   | { intent: 'reset_password'; userId: string; password: string }
   | { intent: 'assign_role'; profileId: string; role: string }
-  | { intent: 'display_name'; profileId: string; fullName: string };
+  | { intent: 'display_name'; profileId: string; fullName: string }
+  | { intent: 'set_staff_active'; profileId: string; active: boolean }
+  | { intent: 'remove_from_roster'; profileId: string };
 
 export async function POST(request: Request) {
   const gate = await requireSuperAdminApiUser();
@@ -84,10 +86,11 @@ export async function POST(request: Request) {
       role,
       email,
       updated_at: now,
+      active: true,
     };
     let up = await admin.from('profiles').upsert(payload, { onConflict: 'id' });
-    if (up.error && /updated_at|email|display_name|column .* does not exist|Could not find|schema cache/i.test(up.error.message ?? '')) {
-      up = await admin.from('profiles').upsert({ id: userId, full_name: displayName, role }, { onConflict: 'id' });
+    if (up.error && /active|updated_at|email|display_name|column .* does not exist|Could not find|schema cache/i.test(up.error.message ?? '')) {
+      up = await admin.from('profiles').upsert({ id: userId, full_name: displayName, role, email }, { onConflict: 'id' });
     }
     if (up.error) {
       return NextResponse.json({ ok: false, error: `User created but profile save failed: ${up.error.message}` }, { status: 400 });
@@ -151,6 +154,54 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     }
     revalidatePath('/admin/team');
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'set_staff_active') {
+    const profileId = String(body.profileId ?? '').trim();
+    const active = Boolean(body.active);
+    if (!profileId) {
+      return NextResponse.json({ ok: false, error: 'Profile id required.' }, { status: 400 });
+    }
+    if (profileId === gate.userId && !active) {
+      return NextResponse.json({ ok: false, error: 'You cannot deactivate your own account.' }, { status: 400 });
+    }
+    const now = new Date().toISOString();
+    let { error } = await admin.from('profiles').update({ active, updated_at: now }).eq('id', profileId);
+    if (error && /active|updated_at|column .* does not exist|schema cache/i.test(error.message)) {
+      const r2 = await admin.from('profiles').update({ active }).eq('id', profileId);
+      error = r2.error;
+    }
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    }
+    revalidatePath('/admin/team');
+    revalidatePath('/admin/dispatch');
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'remove_from_roster') {
+    const profileId = String(body.profileId ?? '').trim();
+    if (!profileId) {
+      return NextResponse.json({ ok: false, error: 'Profile id required.' }, { status: 400 });
+    }
+    if (profileId === gate.userId) {
+      return NextResponse.json({ ok: false, error: 'You cannot remove your own profile.' }, { status: 400 });
+    }
+    const now = new Date().toISOString();
+    let { error } = await admin
+      .from('profiles')
+      .update({ role: 'customer', active: false, updated_at: now })
+      .eq('id', profileId);
+    if (error && /active|updated_at|column .* does not exist|schema cache/i.test(error.message)) {
+      const r2 = await admin.from('profiles').update({ role: 'customer' }).eq('id', profileId);
+      error = r2.error;
+    }
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    }
+    revalidatePath('/admin/team');
+    revalidatePath('/admin/dispatch');
     return NextResponse.json({ ok: true });
   }
 

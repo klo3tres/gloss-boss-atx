@@ -17,12 +17,13 @@ export default async function AdminLeadsPage() {
 
   const [leadsRes, techRes, evRes] = await Promise.all([
     admin.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
-    admin.from('profiles').select('id, full_name, email, role').eq('role', 'technician').order('full_name', { ascending: true }),
+    admin.from('profiles').select('id, full_name, email, role, active').eq('role', 'technician').order('full_name', { ascending: true }),
     admin.from('assignment_events').select('id, action, technician_id, previous_technician_id, actor_id, created_at, note, entity_id').eq('entity_type', 'lead').order('created_at', { ascending: false }).limit(600),
   ]);
 
   const rows = (leadsRes.data ?? []) as Record<string, unknown>[];
-  const technicians = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
+  const techRaw = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null; active?: boolean | null }[];
+  const technicians = techRaw.filter((t) => t.active !== false).map(({ id, full_name, email }) => ({ id, full_name, email }));
   const techById: Record<string, string> = {};
   for (const t of technicians) {
     techById[t.id] = t.full_name?.trim() || t.email?.trim() || t.id.slice(0, 8);

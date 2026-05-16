@@ -85,7 +85,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 
-  const totalSpent = past.reduce((s, a) => s + (typeof a.base_price_cents === 'number' ? a.base_price_cents : 0), 0);
+  const completedPast = past.filter((a) => a.status === 'completed');
+  const completedJobValueCents = completedPast.reduce(
+    (s, a) => s + (typeof a.base_price_cents === 'number' ? a.base_price_cents : 0),
+    0,
+  );
+  const paidViaStripeCents = paymentsTotalCents;
+  const lifetimeDisplayCents = paidViaStripeCents > 0 ? paidViaStripeCents : completedJobValueCents;
   const serviceSlugs = [...new Set(apptRows.map((a) => a.service_slug).filter(Boolean))];
 
   const vehicles = (vehiclesRes.data ?? []) as { id: string; description: string; notes: string | null; created_at: string }[];
@@ -117,8 +123,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </section>
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
           <h2 className='text-sm font-bold uppercase text-gold-soft'>Lifetime stats</h2>
-          <p className='mt-2 text-3xl font-black text-white'>${(totalSpent / 100).toFixed(0)}</p>
-          <p className='text-xs text-zinc-500'>Booked job total (past appointments) · {apptRows.length} booking(s)</p>
+          <p className='mt-2 text-3xl font-black text-white'>${(lifetimeDisplayCents / 100).toFixed(0)}</p>
+          <p className='text-xs text-zinc-500'>
+            {paidViaStripeCents > 0
+              ? 'Paid total (Stripe succeeded on linked appointments).'
+              : 'Completed job booked value (no Stripe payouts on file — deposit-only or off-platform).'}
+          </p>
+          {paidViaStripeCents > 0 && completedJobValueCents > 0 ? (
+            <p className='mt-1 text-xs text-zinc-600'>Completed jobs (booked value): ${(completedJobValueCents / 100).toFixed(0)} reference</p>
+          ) : null}
+          <p className='mt-2 text-xs text-zinc-500'>
+            Pending / non-completed: {apptRows.filter((a) => a.status !== 'completed' && a.status !== 'cancelled').length} open row(s) ·{' '}
+            {past.filter((a) => a.status !== 'completed').length} past row(s) not counted as completed revenue
+          </p>
           <p className='mt-2 text-sm text-zinc-400'>
             Stripe (succeeded payments): <span className='font-semibold text-emerald-300'>${(paymentsTotalCents / 100).toFixed(2)}</span>
           </p>
@@ -188,7 +205,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Past appointments</h2>
         <ul className='mt-3 space-y-2 text-sm'>
-          {past.length === 0 ? <li className='text-zinc-500'>No past visits linked.</li> : null}
+          {past.length === 0 ? (
+            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
+              No past appointments yet
+            </li>
+          ) : null}
           {past.map((a) => (
             <li key={a.id} className='rounded border border-white/10 px-3 py-2'>
               {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()} · {a.status}

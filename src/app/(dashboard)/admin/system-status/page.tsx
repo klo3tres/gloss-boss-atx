@@ -208,6 +208,15 @@ export default function SystemStatusPage() {
           </section>
 
           <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
+            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Google review & notifications</h2>
+            <p className='mt-2 text-xs text-zinc-400'>
+              Set the public review button from <span className='text-gold-soft'>Admin → Website CMS</span> (saves to review settings and{' '}
+              <code className='text-zinc-300'>site_settings.google_review_url</code>). Optional business inbox: configure Resend above; SMS via
+              Twilio.
+            </p>
+          </section>
+
+          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
             <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>App URL & webhooks</h2>
             <div className='mt-4 space-y-2'>
               <Row
@@ -227,6 +236,19 @@ export default function SystemStatusPage() {
               ) : null}
             </div>
           </section>
+
+          <details className='rounded-2xl border border-white/10 bg-black/40 p-4'>
+            <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-300'>Full environment checklist</summary>
+            <ul className='mt-3 list-inside list-disc space-y-1 font-mono text-[11px] text-zinc-500'>
+              <li>NEXT_PUBLIC_SUPABASE_URL — public Supabase project URL</li>
+              <li>NEXT_PUBLIC_SUPABASE_ANON_KEY — browser-safe key</li>
+              <li>SUPABASE_SERVICE_ROLE_KEY — server-only; required for messages, some admin writes, booking fallbacks</li>
+              <li>STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</li>
+              <li>RESEND_API_KEY, RESEND_FROM_EMAIL</li>
+              <li>TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (optional)</li>
+              <li>NEXT_PUBLIC_APP_URL — canonical site URL for redirects</li>
+            </ul>
+          </details>
         </div>
       ) : null}
     </DashboardShell>

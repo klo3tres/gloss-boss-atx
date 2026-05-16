@@ -32,7 +32,10 @@ export async function setMessageStatusAction(formData: FormData) {
   const gate = await requireAdminSupabase();
   if (!gate.ok) return;
 
-  await gate.supabase.from('messages').update({ status }).eq('id', id);
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  const { error } = await client.from('messages').update({ status }).eq('id', id);
+  if (error) console.error('[setMessageStatusAction]', error.message);
   revalidatePath('/admin/messages');
 }
 

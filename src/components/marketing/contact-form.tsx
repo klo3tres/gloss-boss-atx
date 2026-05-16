@@ -47,6 +47,11 @@ export function ContactForm() {
         setStatus('error');
         return;
       }
+      if (data.ok !== true) {
+        setError((data as { error?: string }).error ?? 'Message was not saved. Please try again or call the shop.');
+        setStatus('error');
+        return;
+      }
       setStatus('ok');
       setToast('Message sent — thank you. We will reply shortly.');
       setEmailNote(
