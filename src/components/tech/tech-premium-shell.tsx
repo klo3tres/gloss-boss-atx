@@ -33,6 +33,8 @@ export type TechJob = {
   hasIntake?: boolean;
   beforePhotoCount?: number;
   afterPhotoCount?: number;
+  payment_status?: string | null;
+  balance_due_cents?: number | null;
 };
 
 export type TechAnalytics = {
@@ -361,6 +363,9 @@ export function TechPremiumShell({
               <p className='text-sm text-zinc-400'>{activeJob.vehicle_description ?? 'Vehicle TBD'}</p>
               <p className='mt-2 text-sm font-semibold text-gold-soft'>{activeJob.service_slug.replace(/-/g, ' ')}</p>
               <p className='mt-1 text-xs uppercase tracking-wider text-zinc-500'>{activeJob.status.replace(/_/g, ' ')}</p>
+              {activeJob.fieldNotesPreview ? (
+                <p className='mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400'>{activeJob.fieldNotesPreview}</p>
+              ) : null}
             </div>
             <ul className='space-y-2 text-xs text-zinc-300'>
               <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
@@ -389,7 +394,25 @@ export function TechPremiumShell({
                 </span>
                 <span className='text-white'>{activeJob.afterPhotoCount ?? 0}</span>
               </li>
+              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
+                <span className='flex items-center gap-2 text-zinc-400'>
+                  <Zap className='h-3.5 w-3.5' aria-hidden /> Payment
+                </span>
+                <span className={(activeJob.balance_due_cents ?? 0) > 0 ? 'text-amber-300' : 'text-emerald-400'}>
+                  {(activeJob.balance_due_cents ?? 0) > 0
+                    ? `$${((activeJob.balance_due_cents ?? 0) / 100).toFixed(2)} due`
+                    : activeJob.payment_status ?? 'Ready'}
+                </span>
+              </li>
             </ul>
+          </div>
+          <div className='mt-4 flex flex-wrap gap-2'>
+            <Link href='/tech/workflow' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
+              Open workflow closeout
+            </Link>
+            <a href='#field-invoice' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white'>
+              Notes / payment tools
+            </a>
           </div>
         </section>
       ) : null}

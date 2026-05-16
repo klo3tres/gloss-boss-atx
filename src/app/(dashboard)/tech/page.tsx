@@ -50,7 +50,7 @@ export default async function TechnicianDashboardPage() {
   if (supabase && session.user) {
     const uid = session.user.id;
     const selectCols =
-      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at';
+      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents';
     const { data } = await supabase
       .from('appointments')
       .select(selectCols)
@@ -129,6 +129,8 @@ export default async function TechnicianDashboardPage() {
         hasIntake: intakeIds.has(id) || intakeCompleted,
         beforePhotoCount: counts?.before,
         afterPhotoCount: counts?.after,
+        payment_status: row.payment_status != null ? String(row.payment_status) : null,
+        balance_due_cents: typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null,
       };
     });
 

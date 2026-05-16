@@ -45,6 +45,7 @@ export async function POST(request: Request) {
       customerVisible?: boolean;
       appointmentId?: string;
       fallbackBookingId?: string;
+      noDamageObserved?: boolean;
     };
 
     const appointmentId = String(body.appointmentId ?? '').trim();
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
     const internalNotes = String(body.internalNotes ?? '').trim().slice(0, 8000);
     const damageNotes = String(body.damageNotes ?? '').trim().slice(0, 8000);
     const customerVisible = Boolean(body.customerVisible);
+    const noDamageObserved = Boolean(body.noDamageObserved);
 
     const insertPayload: Record<string, unknown> = {
       technician_id: user.id,
@@ -99,13 +101,15 @@ export async function POST(request: Request) {
       internal_notes: internalNotes || null,
       damage_notes: damageNotes || null,
       customer_visible: customerVisible,
+      no_damage_observed: noDamageObserved,
+      saved_at: new Date().toISOString(),
     };
     if (appointmentId) insertPayload.appointment_id = appointmentId;
     if (fallbackBookingId) insertPayload.fallback_booking_id = fallbackBookingId;
 
     let { data, error } = await supabase.from('tech_job_notes').insert(insertPayload).select('id').maybeSingle();
 
-    if (error && /internal_notes|damage_notes|customer_visible|column|schema cache|Could not find/i.test(error.message)) {
+    if (error && /internal_notes|damage_notes|customer_visible|no_damage_observed|saved_at|column|schema cache|Could not find/i.test(error.message)) {
       const lean: Record<string, unknown> = {
         technician_id: user.id,
         checklist,

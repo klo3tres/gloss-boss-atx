@@ -43,6 +43,18 @@ export async function insertSignedAgreementFlexible(
     template_id: base.template_id ?? null,
     template_version: base.template_version ?? 1,
   };
+  for (const key of [
+    'sms_consent',
+    'sms_consent_at',
+    'sms_consent_text',
+    'sms_consent_phone',
+    'technician_witness_id',
+    'technician_witness_name',
+    'technician_witness_role',
+    'technician_witnessed_at',
+  ]) {
+    if (key in base) minimal[key] = base[key];
+  }
   variants.push(minimal);
 
   const minimalNoTemplate = { ...minimal };

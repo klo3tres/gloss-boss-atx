@@ -75,7 +75,22 @@ function readStoredWalkInJob(): StoredWalkInJob | null {
   }
 }
 
-export function TechWorkflowWizard() {
+function formatPhoneDisplay(input: string): string {
+  const d = input.replace(/\D/g, '').slice(0, 10);
+  if (d.length !== 10) return input.trim() || '—';
+  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+function formatRoleLabel(role: string | null | undefined): string {
+  const r = (role ?? '').replace(/_/g, ' ').trim();
+  return r ? r.charAt(0).toUpperCase() + r.slice(1) : 'Technician';
+}
+
+export function TechWorkflowWizard({
+  witness,
+}: {
+  witness?: { id: string | null; name: string; role: string | null };
+}) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [busy, startTransition] = useTransition();
@@ -122,6 +137,11 @@ export function TechWorkflowWizard() {
   const [internalNotes, setInternalNotes] = useState('');
   const [upsellNotes, setUpsellNotes] = useState('');
   const [customerVisibleNotes, setCustomerVisibleNotes] = useState(false);
+  const [noDamageObserved, setNoDamageObserved] = useState(false);
+  const [notesSavedAt, setNotesSavedAt] = useState<string | null>(null);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -256,13 +276,13 @@ export function TechWorkflowWizard() {
     return buildNativeAgreementSnapshot({
       customerName: guestName.trim() || 'Customer',
       customerEmail: guestEmail.trim(),
-      customerPhone: guestPhone.replace(/\D/g, ''),
+      customerPhone: formatPhoneDisplay(guestPhone),
       vehicleDescription: vehicleDescription.trim() || '—',
       serviceLabel: selectedService.title || selectedService.slug.replace(/-/g, ' '),
       vehicleClassLabel: classLabel,
       totalDollars: (line / 100).toFixed(2),
       depositNote: 'Walk-in field job — deposit $0 unless collected separately.',
-      technicianName: null,
+      technicianName: witness?.name ? `${witness.name} (${formatRoleLabel(witness.role)})` : null,
     });
   }, [
     selectedService,
@@ -274,6 +294,8 @@ export function TechWorkflowWizard() {
     guestEmail,
     guestPhone,
     vehicleDescription,
+    witness?.name,
+    witness?.role,
   ]);
 
   const runSearch = useCallback(() => {
@@ -381,6 +403,8 @@ export function TechWorkflowWizard() {
           signatureType: 'typed',
           signatureData: signerName.trim() || guestName.trim() || null,
           smsConsent,
+          technicianWitnessName: witness?.name ?? null,
+          technicianWitnessRole: witness?.role ?? null,
         }).then((r) => {
           if (!r.ok) {
             setError(r.error);
@@ -406,6 +430,8 @@ export function TechWorkflowWizard() {
         signatureType: 'typed',
         signatureData: signerName.trim(),
         smsConsent,
+        technicianWitnessName: witness?.name ?? null,
+        technicianWitnessRole: witness?.role ?? null,
       }).then((r) => {
         if (!r.ok) {
           setError(r.error);
@@ -502,10 +528,10 @@ export function TechWorkflowWizard() {
     });
   };
 
-  const startTimer = async () => {
+  const startJob = async () => {
     if (!appointmentId && !fallbackBookingId) return;
     setTimerError(null);
-    try {
+    if (!appointmentId && fallbackBookingId) {
       const res = await fetch('/api/tech/job-timer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -518,15 +544,20 @@ export function TechWorkflowWizard() {
       }
       setTimerStarted(true);
       if (typeof j.id === 'string') setTimerId(j.id);
-      if (appointmentId) {
-        const fd = new FormData();
-        fd.set('appointmentId', appointmentId);
-        const started = await techStartJobAction(null, fd);
-        if (started?.error) setTimerError(started.error);
-      }
-    } catch {
-      setTimerError('Network error starting timer');
+      setTimerError('Fallback timer started. Convert this fallback in Dispatch before completing it as an appointment.');
+      return;
     }
+    const activeAppointmentId = appointmentId;
+    if (!activeAppointmentId) return;
+    const fd = new FormData();
+    fd.set('appointmentId', activeAppointmentId);
+    const started = await techStartJobAction(null, fd);
+    if (started?.error) {
+      setTimerError(started.error);
+      return;
+    }
+    setTimerStarted(true);
+    router.push('/tech');
   };
 
   const saveWorkflowNotes = () => {
@@ -545,6 +576,7 @@ export function TechWorkflowWizard() {
           internalNotes,
           upsellSuggestions: upsellNotes,
           customerVisible: customerVisibleNotes,
+          noDamageObserved,
         }),
       }).then(async (res) => {
         const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -553,6 +585,7 @@ export function TechWorkflowWizard() {
           return;
         }
         setError(null);
+        setNotesSavedAt(new Date().toISOString());
       });
     });
   };
@@ -566,14 +599,35 @@ export function TechWorkflowWizard() {
       saveWorkflowNotes();
       const fd = new FormData();
       fd.set('appointmentId', appointmentId);
+      if (noDamageObserved) fd.set('noDamageObserved', 'true');
       void techCompleteJobAction(null, fd).then((r) => {
         if (r?.error) {
           setError(r.error);
           return;
         }
-        router.push('/tech');
+        setCompletionMessage('Job completed. Payment and receipt options are ready.');
       });
     });
+  };
+
+  const createPayNow = async () => {
+    if (!appointmentId) {
+      setPaymentMessage('Payment links require an appointment. Convert this fallback first.');
+      return;
+    }
+    setPaymentMessage(null);
+    const res = await fetch('/api/tech/final-balance-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string; code?: string };
+    if (!res.ok || !j.ok || !j.url) {
+      setPaymentMessage(j.error ?? 'Payment link unavailable.');
+      return;
+    }
+    setPaymentUrl(j.url);
+    window.open(j.url, '_blank', 'noopener,noreferrer');
   };
 
   const storedDebug = step === 7 ? readStoredWalkInJob() : null;
@@ -1056,8 +1110,34 @@ export function TechWorkflowWizard() {
 
       {step === 8 ? (
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
-          <h2 className='text-lg font-black uppercase tracking-tight text-white'>8 · Start timer</h2>
-          <p className='text-sm text-zinc-400'>Starts a tech_job_timers row linked to this appointment for reporting.</p>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>8 · Start Job</h2>
+          <p className='text-sm text-zinc-400'>Review the work order, then start the job and timer in one tap.</p>
+          <div className='grid gap-3 rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-zinc-300 sm:grid-cols-2'>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Customer</p>
+              <p className='font-semibold text-white'>{guestName || 'Walk-in customer'}</p>
+              <p className='text-xs text-zinc-500'>{formatPhoneDisplay(guestPhone)}</p>
+            </div>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Vehicle</p>
+              <p className='font-semibold text-white'>{vehicleDescription || 'Vehicle pending'}</p>
+              <p className='text-xs text-zinc-500'>{vehicleClass === 'suv_truck' ? 'SUV / Truck' : 'Sedan'}</p>
+            </div>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Service</p>
+              <p className='font-semibold text-white'>{selectedService?.title ?? selectedService?.slug ?? 'Service'}</p>
+              <p className='text-xs text-zinc-500'>
+                {Array.from(addonSlugs).length ? `Add-ons: ${Array.from(addonSlugs).join(', ')}` : 'No add-ons selected'}
+              </p>
+            </div>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Closeout checks</p>
+              <p className='font-semibold text-white'>${((lockedTotalCents ?? estimatedTotalCents ?? 0) / 100).toFixed(2)}</p>
+              <p className='text-xs text-zinc-500'>
+                Agreement {agreementAck ? 'captured' : 'pending'} · Before photos {beforeCount > 0 ? `${beforeCount} uploaded` : 'needed'}
+              </p>
+            </div>
+          </div>
           <div className='flex flex-wrap justify-between gap-2'>
             <button type='button' onClick={goBack} className='text-xs font-bold uppercase tracking-wider text-zinc-500'>
               Back
@@ -1069,10 +1149,10 @@ export function TechWorkflowWizard() {
             ) : (
               <button
                 type='button'
-                onClick={() => void startTimer()}
+                onClick={() => void startJob()}
                 className='rounded-lg bg-emerald-600 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white'
               >
-                Start timer
+                Start Job & Timer
               </button>
             )}
           </div>
@@ -1081,12 +1161,28 @@ export function TechWorkflowWizard() {
 
       {step === 9 ? (
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
-          <h2 className='text-lg font-black uppercase tracking-tight text-white'>9 · Notes, after photos & complete</h2>
-          <p className='text-sm text-zinc-400'>Save the checklist and notes, upload after photos, then complete the field job.</p>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>9 · Active Job / Complete Job</h2>
+          <p className='text-sm text-zinc-400'>Track the running job, save closeout notes, add at least one after photo, then complete service.</p>
           {!timerStarted ? (
             <p className='text-sm text-amber-200'>Start the timer on the previous step before marking this job in progress.</p>
           ) : null}
           {timerId ? <p className='text-xs text-emerald-300'>Timer running · {timerId.slice(0, 8)}…</p> : null}
+          {notesSavedAt ? (
+            <p className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-200'>
+              Notes saved at {new Date(notesSavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </p>
+          ) : null}
+          {completionMessage ? (
+            <p className='rounded-lg border border-gold/30 bg-gold/10 p-2 text-xs text-gold-soft'>{completionMessage}</p>
+          ) : null}
+          {paymentMessage ? (
+            <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100'>{paymentMessage}</p>
+          ) : null}
+          {paymentUrl ? (
+            <a href={paymentUrl} target='_blank' rel='noreferrer' className='inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white'>
+              Open customer payment link
+            </a>
+          ) : null}
           <label className='block text-xs text-zinc-400'>
             Checklist (one item per line)
             <textarea
@@ -1121,6 +1217,10 @@ export function TechWorkflowWizard() {
           <label className='flex items-center gap-2 text-xs text-zinc-400'>
             <input type='checkbox' checked={customerVisibleNotes} onChange={(e) => setCustomerVisibleNotes(e.target.checked)} />
             Mark non-internal notes customer-visible
+          </label>
+          <label className='flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-100'>
+            <input type='checkbox' checked={noDamageObserved} onChange={(e) => setNoDamageObserved(e.target.checked)} />
+            No damage observed
           </label>
           <div className='rounded-xl border border-white/10 bg-black/30 p-3'>
             <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>After photos ({afterCount})</p>
@@ -1178,11 +1278,19 @@ export function TechWorkflowWizard() {
             </button>
             <button
               type='button'
-              disabled={busy || !timerStarted || afterCount < 1}
+              disabled={busy || !timerStarted}
               onClick={completeJob}
               className='rounded-lg bg-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40'
             >
               {busy ? 'Saving…' : appointmentId ? 'Complete job' : 'Save fallback'}
+            </button>
+            <button
+              type='button'
+              disabled={busy || !appointmentId}
+              onClick={() => void createPayNow()}
+              className='rounded-lg bg-emerald-600 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white disabled:opacity-40'
+            >
+              Customer Pay Now
             </button>
           </div>
         </section>

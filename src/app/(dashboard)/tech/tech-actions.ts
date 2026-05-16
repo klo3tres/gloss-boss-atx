@@ -17,6 +17,28 @@ async function requireTechSupabase() {
   return { ok: true as const, supabase, userId: session.user.id };
 }
 
+async function writeNotificationOutbox(
+  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  row: Record<string, unknown>,
+): Promise<void> {
+  if (!db) return;
+  const { error } = await db.from('notification_outbox').insert({
+    ...row,
+    created_at: new Date().toISOString(),
+  });
+  if (error) console.warn('[tech] notification_outbox', error.message);
+}
+
+async function hasSmsConsent(db: Awaited<ReturnType<typeof createSupabaseServerClient>>, appointmentId: string): Promise<boolean> {
+  if (!db) return false;
+  const { data: agreement } = await db.from('signed_agreements').select('sms_consent').eq('appointment_id', appointmentId).maybeSingle();
+  if ((agreement as { sms_consent?: boolean } | null)?.sms_consent === true) return true;
+  const { data: intake } = await db.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+  const fd = (intake?.form_data as Record<string, unknown> | undefined) ?? {};
+  const sms = fd.walk_in_sms_consent as Record<string, unknown> | undefined;
+  return sms?.agreed === true;
+}
+
 export async function techStartJobAction(
   _prev: { error?: string } | null,
   formData: FormData,
@@ -31,7 +53,7 @@ export async function techStartJobAction(
   const db = admin ?? gate.supabase;
   const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, booking_source')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, scheduled_start, booking_source, vehicle_description, customer_id')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -69,8 +91,9 @@ export async function techStartJobAction(
     legalAck = Boolean(jobAgreement);
   }
   if (!legalAck) {
-    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
-    legalAck = Boolean(intakeAck);
+    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+    const fd = (intakeAck?.form_data as Record<string, unknown> | undefined) ?? {};
+    legalAck = Boolean(fd.walk_in_legal_ack || fd.deposit_legal_ack);
   }
   if (!legalAck) {
     return {
@@ -89,9 +112,16 @@ export async function techStartJobAction(
     return { error: 'Could not verify before photos.' };
   }
   if ((beforeCount ?? 0) < 1) {
-    return {
-      error: 'Add at least one before/inspection photo before starting.',
-    };
+    const { count: photoBeforeCount } = await gate.supabase
+      .from('job_photos')
+      .select('id', { count: 'exact', head: true })
+      .eq('appointment_id', appointmentId)
+      .in('category', ['before', 'inspection', 'damage']);
+    if ((photoBeforeCount ?? 0) < 1) {
+      return {
+        error: 'Add at least one before/inspection photo before starting.',
+      };
+    }
   }
 
   const { data: openTimer } = await gate.supabase
@@ -146,7 +176,22 @@ export async function techStartJobAction(
     createdBy: gate.userId,
   });
 
-  void notifyJobStartedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
+  const smsOk = await hasSmsConsent(gate.supabase, appointmentId);
+  await writeNotificationOutbox(gate.supabase, {
+    kind: 'job_started',
+    appointment_id: appointmentId,
+    customer_id: (appt as { customer_id?: string | null }).customer_id ?? null,
+    technician_id: gate.userId,
+    channel: 'customer',
+    status: smsOk || appt.guest_email ? 'queued' : 'skipped',
+    payload: {
+      message: `Your Gloss Boss ATX service has started on your ${String((appt as { vehicle_description?: string | null }).vehicle_description ?? 'vehicle')}. You can follow updates in your customer dashboard.`,
+      guest_email: appt.guest_email ?? null,
+      guest_phone: appt.guest_phone ?? null,
+    },
+  });
+
+  void notifyJobStartedPlaceholder(smsOk && appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
     guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
     guestName: appt.guest_name != null ? String(appt.guest_name) : null,
     serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',
@@ -162,6 +207,7 @@ export async function techCompleteJobAction(
   formData: FormData,
 ): Promise<{ error?: string } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const noDamageObserved = String(formData.get('noDamageObserved') ?? '') === 'true';
   if (!appointmentId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
@@ -171,7 +217,7 @@ export async function techCompleteJobAction(
   const db = admin ?? gate.supabase;
   const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source, vehicle_description, customer_id')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -200,8 +246,9 @@ export async function techCompleteJobAction(
     legalAck = Boolean(jobAgreement);
   }
   if (!legalAck) {
-    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
-    legalAck = Boolean(intakeAck);
+    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+    const fd = (intakeAck?.form_data as Record<string, unknown> | undefined) ?? {};
+    legalAck = Boolean(fd.walk_in_legal_ack || fd.deposit_legal_ack);
   }
 
   if (!legalAck) {
@@ -232,7 +279,14 @@ export async function techCompleteJobAction(
     return { error: 'Could not verify after photos.' };
   }
   if ((afterCount ?? 0) < 1) {
-    return { error: 'Add at least one after photo to this job before marking complete.' };
+    const { count: photoAfterCount } = await gate.supabase
+      .from('job_photos')
+      .select('id', { count: 'exact', head: true })
+      .eq('appointment_id', appointmentId)
+      .eq('category', 'after');
+    if ((photoAfterCount ?? 0) < 1) {
+      return { error: 'Add at least one after photo to this job before marking complete.' };
+    }
   }
 
   const { data: checklistRow } = await gate.supabase
@@ -249,18 +303,50 @@ export async function techCompleteJobAction(
     };
   }
 
-  const { error } = await gate.supabase
+  const { data: openTimer } = await gate.supabase
+    .from('tech_job_timers')
+    .select('id, started_at')
+    .eq('appointment_id', appointmentId)
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (openTimer?.id) {
+    const endedAt = new Date();
+    const startedAt = new Date(String((openTimer as { started_at?: string }).started_at ?? endedAt.toISOString()));
+    const durationSeconds = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000));
+    const timerUpdate = await gate.supabase
+      .from('tech_job_timers')
+      .update({ ended_at: endedAt.toISOString(), duration_seconds: durationSeconds, stopped_reason: 'job_completed' })
+      .eq('id', String(openTimer.id));
+    if (timerUpdate.error && isSchemaDriftError(timerUpdate.error.message)) {
+      await gate.supabase.from('tech_job_timers').update({ ended_at: endedAt.toISOString() }).eq('id', String(openTimer.id));
+    }
+  }
+
+  let completeUpdate = await gate.supabase
     .from('appointments')
     .update({
       status: 'completed',
       job_completed_at: new Date().toISOString(),
+      no_damage_observed: noDamageObserved,
       updated_at: new Date().toISOString(),
     })
     .eq('id', appointmentId);
+  if (completeUpdate.error && isSchemaDriftError(completeUpdate.error.message)) {
+    completeUpdate = await gate.supabase
+      .from('appointments')
+      .update({
+        status: 'completed',
+        job_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId);
+  }
 
-  if (error) {
-    console.error('[tech] complete job', error.message);
-    return { error: error.message || 'Could not update job status.' };
+  if (completeUpdate.error) {
+    console.error('[tech] complete job', completeUpdate.error.message);
+    return { error: completeUpdate.error.message || 'Could not update job status.' };
   }
 
   const vis = await gate.supabase
@@ -282,7 +368,22 @@ export async function techCompleteJobAction(
     createdBy: gate.userId,
   });
 
-  void notifyJobCompletedPlaceholder(appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
+  const smsOk = await hasSmsConsent(gate.supabase, appointmentId);
+  await writeNotificationOutbox(gate.supabase, {
+    kind: 'job_completed',
+    appointment_id: appointmentId,
+    customer_id: (appt as { customer_id?: string | null }).customer_id ?? null,
+    technician_id: gate.userId,
+    channel: 'customer',
+    status: smsOk || appt.guest_email ? 'queued' : 'skipped',
+    payload: {
+      message: `Your Gloss Boss ATX service is complete on your ${String((appt as { vehicle_description?: string | null }).vehicle_description ?? 'vehicle')}. Thank you for choosing Gloss Boss ATX.`,
+      guest_email: appt.guest_email ?? null,
+      guest_phone: appt.guest_phone ?? null,
+    },
+  });
+
+  void notifyJobCompletedPlaceholder(smsOk && appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
     guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
     guestName: appt.guest_name != null ? String(appt.guest_name) : null,
     serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',

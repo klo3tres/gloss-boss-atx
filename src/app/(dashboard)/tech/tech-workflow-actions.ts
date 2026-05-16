@@ -35,6 +35,11 @@ async function saveTechWorkflowSession(
   return typeof data?.id === 'string' ? data.id : null;
 }
 
+function formatUsPhoneDisplay(input: unknown): string {
+  const d = String(input ?? '').replace(/\D/g, '').slice(0, 10);
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : String(input ?? '').trim();
+}
+
 export async function techCreateWalkInJobAction(input: {
   guestName: string;
   guestEmail: string;
@@ -256,11 +261,14 @@ export async function techSignWalkInAgreementAction(input: {
   signatureType: 'typed' | 'drawn';
   signatureData: string | null;
   smsConsent?: boolean;
+  technicianWitnessName?: string | null;
+  technicianWitnessRole?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const appointmentId = String(input.appointmentId ?? '').trim();
   const fallbackBookingId = String(input.fallbackBookingId ?? '').trim();
   const signerLegalName = String(input.signerLegalName ?? '').trim();
   const smsConsent = Boolean(input.smsConsent);
+  const smsConsentAt = smsConsent ? new Date().toISOString() : null;
   if ((!appointmentId && !fallbackBookingId) || !signerLegalName) return { ok: false, error: 'Missing fields' };
 
   const session = await getSessionWithProfile();
@@ -271,10 +279,20 @@ export async function techSignWalkInAgreementAction(input: {
     const em = (session.user.email ?? '').trim().toLowerCase();
     if (em === OWNER_LOGIN_EMAIL) role = 'super_admin';
   }
-  if (role !== 'technician') return { ok: false, error: 'Technicians only' };
+  if (role !== 'technician' && role !== 'admin' && role !== 'super_admin') return { ok: false, error: 'Technicians only' };
 
   const admin = tryCreateAdminSupabase();
   if (!admin) return { ok: false, error: 'Database not configured' };
+  const { data: profileRow } = await admin.from('profiles').select('full_name, role').eq('id', session.user.id).maybeSingle();
+  const witnessName =
+    String(input.technicianWitnessName ?? '').trim() ||
+    String((profileRow as { full_name?: string | null } | null)?.full_name ?? '').trim() ||
+    session.user.email?.split('@')[0] ||
+    'Gloss Boss technician';
+  const witnessRole = String(input.technicianWitnessRole ?? '').trim() || role || String((profileRow as { role?: string | null } | null)?.role ?? 'technician');
+  const witnessAt = new Date().toISOString();
+  const smsConsentText =
+    'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.';
 
   if (!appointmentId && fallbackBookingId) {
     const { data: fb, error: fbErr } = await admin
@@ -295,8 +313,12 @@ export async function techSignWalkInAgreementAction(input: {
         signature_type: input.signatureType,
         signature_data: input.signatureData ?? null,
         sms_consent: smsConsent,
-        sms_consent_text:
-          'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+        sms_consent_at: smsConsentAt,
+        sms_consent_text: smsConsentText,
+        technician_witness_id: session.user.id,
+        technician_witness_name: witnessName,
+        technician_witness_role: witnessRole,
+        technician_witnessed_at: witnessAt,
         stored_at: new Date().toISOString(),
       },
     };
@@ -350,8 +372,9 @@ export async function techSignWalkInAgreementAction(input: {
             ...existingForm,
             walk_in_sms_consent: {
               agreed: smsConsent,
-              text:
-                'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+              agreed_at: smsConsentAt,
+              phone: null,
+              text: smsConsentText,
               stored_at: new Date().toISOString(),
             },
           },
@@ -375,12 +398,6 @@ export async function techSignWalkInAgreementAction(input: {
     .limit(1)
     .maybeSingle();
 
-  let techName: string | null = null;
-  const { data: techProf } = await admin.from('profiles').select('full_name').eq('id', session.user.id).maybeSingle();
-  if (techProf && typeof (techProf as { full_name?: string }).full_name === 'string') {
-    techName = (techProf as { full_name: string }).full_name.trim() || null;
-  }
-
   const totalCents = typeof A.base_price_cents === 'number' ? A.base_price_cents : 0;
   const depCents = typeof A.deposit_amount_cents === 'number' ? A.deposit_amount_cents : 0;
   const depositNote =
@@ -396,13 +413,13 @@ export async function techSignWalkInAgreementAction(input: {
     : buildNativeAgreementSnapshot({
         customerName: String(A.guest_name ?? signerLegalName).trim() || signerLegalName,
         customerEmail: A.guest_email,
-        customerPhone: A.guest_phone,
+        customerPhone: formatUsPhoneDisplay(A.guest_phone),
         vehicleDescription: String(A.vehicle_description ?? '').trim() || 'See job notes.',
         serviceLabel,
         vehicleClassLabel: classLabel,
         totalDollars: (totalCents / 100).toFixed(2),
         depositNote,
-        technicianName: techName,
+        technicianName: `${witnessName} (${witnessRole.replace(/_/g, ' ')})`,
       });
 
   const insertRow: Record<string, unknown> = {
@@ -414,8 +431,13 @@ export async function techSignWalkInAgreementAction(input: {
     signature_type: input.signatureType,
     signature_data: input.signatureData ?? null,
     sms_consent: smsConsent,
-    sms_consent_text:
-      'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+    sms_consent_at: smsConsentAt,
+    sms_consent_text: smsConsentText,
+    sms_consent_phone: String(A.guest_phone ?? '').replace(/\D/g, '').slice(0, 10),
+    technician_witness_id: session.user.id,
+    technician_witness_name: witnessName,
+    technician_witness_role: witnessRole,
+    technician_witnessed_at: witnessAt,
     ip_address: null,
     user_agent: 'tech_workflow',
     customer_id: A.customer_id ?? null,
@@ -435,8 +457,13 @@ export async function techSignWalkInAgreementAction(input: {
         signature_type: input.signatureType,
         signature_data: input.signatureData ?? null,
         sms_consent: smsConsent,
-        sms_consent_text:
-          'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+        sms_consent_at: smsConsentAt,
+        sms_consent_text: smsConsentText,
+        sms_consent_phone: String(A.guest_phone ?? '').replace(/\D/g, '').slice(0, 10),
+        technician_witness_id: session.user.id,
+        technician_witness_name: witnessName,
+        technician_witness_role: witnessRole,
+        technician_witnessed_at: witnessAt,
         agreement_snapshot: snapshot,
         stored_at: new Date().toISOString(),
       },
@@ -462,9 +489,16 @@ export async function techSignWalkInAgreementAction(input: {
     ...consentPrevForm,
     walk_in_sms_consent: {
       agreed: smsConsent,
-      text:
-        'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+      agreed_at: smsConsentAt,
+      phone: String(A.guest_phone ?? '').replace(/\D/g, '').slice(0, 10),
+      text: smsConsentText,
       stored_at: new Date().toISOString(),
+    },
+    technician_witness: {
+      id: session.user.id,
+      name: witnessName,
+      role: witnessRole,
+      witnessed_at: witnessAt,
     },
   };
   await admin
@@ -485,8 +519,13 @@ export async function techSignWalkInAgreementAction(input: {
     signature_type: input.signatureType,
     signature_data: input.signatureData ?? null,
     sms_consent: smsConsent,
-    sms_consent_text:
-      'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+    sms_consent_at: smsConsentAt,
+    sms_consent_text: smsConsentText,
+    sms_consent_phone: String(A.guest_phone ?? '').replace(/\D/g, '').slice(0, 10),
+    technician_witness_id: session.user.id,
+    technician_witness_name: witnessName,
+    technician_witness_role: witnessRole,
+    technician_witnessed_at: witnessAt,
     template_id: template?.id ?? null,
     template_version: template?.version ?? 1,
     signed_at: new Date().toISOString(),

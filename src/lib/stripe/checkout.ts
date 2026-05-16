@@ -279,6 +279,91 @@ export async function createFieldInvoiceCheckoutSession(params: {
   }
 }
 
+export async function createCustomerFinalBalanceCheckoutSession(params: {
+  admin: SupabaseClient | null;
+  appointmentId: string;
+  origin: string;
+  technicianId?: string | null;
+}): Promise<CreateDepositCheckoutResult & { balanceCents?: number }> {
+  const { admin, appointmentId, origin, technicianId } = params;
+  if (!admin) return { ok: false, error: 'Database unavailable', code: 'SUPABASE_NOT_READY' };
+
+  const stripe = await getStripeSdk(admin);
+  if (!stripe) return { ok: false, error: 'Stripe is not configured', code: 'STRIPE_NOT_CONFIGURED' };
+
+  try {
+    const { data: appt, error } = await admin
+      .from('appointments')
+      .select('id, access_token, status, guest_email, guest_name, base_price_cents, deposit_amount_cents, customer_id, service_slug, vehicle_description')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (error || !appt) return { ok: false, error: 'Job not found' };
+
+    const totalCents = typeof appt.base_price_cents === 'number' ? appt.base_price_cents : 0;
+    const { data: pays } = await admin
+      .from('payments')
+      .select('amount_cents, status')
+      .eq('appointment_id', appointmentId)
+      .eq('status', 'succeeded');
+    const paidCents = (pays ?? []).reduce((sum, row) => {
+      const cents = (row as { amount_cents?: number }).amount_cents;
+      return sum + (typeof cents === 'number' ? cents : 0);
+    }, 0);
+    const balanceCents = Math.max(0, totalCents - paidCents);
+    if (balanceCents < 50) {
+      await admin
+        .from('appointments')
+        .update({ payment_status: 'paid', balance_due_cents: 0, updated_at: new Date().toISOString() })
+        .eq('id', appointmentId);
+      return { ok: false, error: 'No balance due', code: 'NO_BALANCE_DUE', balanceCents };
+    }
+
+    const token = String(appt.access_token ?? '');
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: typeof appt.guest_email === 'string' ? appt.guest_email : undefined,
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: balanceCents,
+            product_data: {
+              name: 'Gloss Boss ATX — Final service balance',
+              description: `${String(appt.service_slug ?? 'Service').replace(/-/g, ' ')} · ${String(appt.vehicle_description ?? appointmentId)}`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${origin}/customer?payment=success&appointment_id=${appointmentId}`,
+      cancel_url: `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
+      metadata: {
+        appointment_id: appointmentId,
+        access_token: token,
+        technician_id: technicianId ?? '',
+        stripe_checkout_kind: 'customer_final_balance',
+      },
+    });
+
+    await admin
+      .from('appointments')
+      .update({
+        final_payment_checkout_session_id: session.id,
+        final_payment_url: session.url ?? null,
+        final_payment_created_at: new Date().toISOString(),
+        balance_due_cents: balanceCents,
+        payment_status: 'balance_due',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId);
+
+    return session.url ? { ok: true, url: session.url, balanceCents } : { ok: false, error: 'No checkout URL returned' };
+  } catch (e) {
+    console.warn('[checkout] createCustomerFinalBalanceCheckoutSession', e);
+    return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
+  }
+}
+
 async function upsertSessionIdSafe(admin: SupabaseClient, appointmentId: string, sessionId: string): Promise<void> {
   const u = await admin
     .from('appointments')
@@ -425,7 +510,9 @@ export async function processCheckoutSessionCompleted(params: {
     return;
   }
 
-  const isField = session.metadata?.tech_field_invoice === '1';
+  const kind = session.metadata?.stripe_checkout_kind;
+  const isField = session.metadata?.tech_field_invoice === '1' || kind === 'field_full';
+  const isFinalBalance = kind === 'customer_final_balance';
   const technicianId = session.metadata?.technician_id ?? null;
 
   try {
@@ -436,7 +523,7 @@ export async function processCheckoutSessionCompleted(params: {
         typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
       amount_cents: amount,
       status: 'succeeded',
-      payment_kind: isField ? 'field_full' : 'deposit',
+      payment_kind: isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : 'deposit',
     };
     if (technicianId && typeof technicianId === 'string') {
       paymentRow.technician_id = technicianId;
@@ -448,14 +535,25 @@ export async function processCheckoutSessionCompleted(params: {
     }
 
     const extras: Record<string, unknown> = {};
-    if (isField) {
+    if (isFinalBalance) {
+      await admin
+        .from('appointments')
+        .update({
+          payment_status: 'paid',
+          balance_due_cents: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', appointmentId);
+    } else if (isField) {
       extras.field_invoice_paid_at = new Date().toISOString();
       extras.stripe_checkout_kind = 'field_full';
     } else {
       extras.stripe_checkout_kind = 'deposit';
     }
 
-    await updateAppointmentPaidSafe(admin, appointmentId, extras);
+    if (!isFinalBalance) {
+      await updateAppointmentPaidSafe(admin, appointmentId, extras);
+    }
 
     await recordJobTimelineEvent(admin, {
       appointmentId,
@@ -463,6 +561,7 @@ export async function processCheckoutSessionCompleted(params: {
       meta: {
         amount_cents: amount,
         field_full: isField,
+        final_balance: isFinalBalance,
         session_id: session.id,
       },
       createdBy: typeof technicianId === 'string' ? technicianId : null,
@@ -482,7 +581,7 @@ export async function processCheckoutSessionCompleted(params: {
         whenIso: String(appt.scheduled_start ?? new Date().toISOString()),
         totalCents: typeof appt.base_price_cents === 'number' ? appt.base_price_cents : amount,
         paidCents: amount,
-        isFieldFull: isField,
+        isFieldFull: isField || isFinalBalance,
       });
     }
 
@@ -491,7 +590,7 @@ export async function processCheckoutSessionCompleted(params: {
       appointmentId,
       'amount',
       amount,
-      isField ? 'field_full' : 'deposit',
+      isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : 'deposit',
     );
   } catch (e) {
     console.warn('[checkout] processCheckoutSessionCompleted', e);
