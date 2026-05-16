@@ -27,6 +27,20 @@ const PHOTO_CATEGORIES = [
 ] as const;
 type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]['value'];
 type PhotoPreview = { src: string; uploadedAt: string; savedTo?: string; label?: string };
+type UploadedPhotoProof = {
+  uploadedProof: true;
+  category: string;
+  photoCategory?: string | null;
+  url?: string | null;
+  path?: string | null;
+  mediaId?: string | null;
+  photoId?: string | null;
+  uploadedAt: string;
+  appointmentId?: string | null;
+  fallbackBookingId?: string | null;
+  workflowSessionId?: string | null;
+  savedTo?: string | null;
+};
 type StoredWalkInJob = {
   appointmentId?: string | null;
   fallbackBookingId?: string | null;
@@ -42,6 +56,7 @@ type StoredWalkInJob = {
   vehicleDescription?: string;
   serviceId?: string | null;
   serviceSlug?: string | null;
+  uploadedPhotoProof?: UploadedPhotoProof[];
   savedAt?: number;
 };
 
@@ -90,6 +105,11 @@ function isQualifyingBeforePhotoCategory(cat: PhotoCategory): boolean {
   return cat !== 'damage' && cat !== 'other';
 }
 
+function isQualifyingBeforeCategoryValue(value: string | null | undefined): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['before', 'front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels', 'inspection'].includes(normalized);
+}
+
 function photoCategoryLabel(value: PhotoCategory): string {
   return PHOTO_CATEGORIES.find((cat) => cat.value === value)?.label ?? value.replace(/_/g, ' ');
 }
@@ -133,6 +153,7 @@ export function TechWorkflowWizard({
   const [afterPreviews, setAfterPreviews] = useState<PhotoPreview[]>([]);
   const [beforePreviewByCategory, setBeforePreviewByCategory] = useState<Record<string, PhotoPreview[]>>({});
   const [afterPreviewByCategory, setAfterPreviewByCategory] = useState<Record<string, PhotoPreview[]>>({});
+  const [uploadedPhotoProof, setUploadedPhotoProof] = useState<UploadedPhotoProof[]>([]);
   const [beforeCount, setBeforeCount] = useState(0);
   const [afterCount, setAfterCount] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
@@ -162,6 +183,11 @@ export function TechWorkflowWizard({
     setWorkflowSessionId((prev) => prev ?? o.workflowSessionId ?? null);
     if (typeof o.lockedTotalCents === 'number') {
       setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
+    }
+    if (Array.isArray(o.uploadedPhotoProof)) {
+      setUploadedPhotoProof(o.uploadedPhotoProof);
+      const proofCount = o.uploadedPhotoProof.filter((p) => isQualifyingBeforeCategoryValue(p.photoCategory ?? p.category)).length;
+      if (proofCount > 0) setBeforeCount((prev) => Math.max(prev, proofCount));
     }
   }, []);
 
@@ -501,9 +527,15 @@ export function TechWorkflowWizard({
           url?: string;
           error?: string;
           category?: string;
+          photoCategory?: string;
           savedTo?: string;
           appointmentId?: string | null;
           fallbackBookingId?: string | null;
+          workflowSessionId?: string | null;
+          mediaId?: string | null;
+          photoId?: string | null;
+          uploadedProof?: boolean;
+          path?: string | null;
           uploadedAt?: string;
         };
         if (!res.ok || !j.ok) {
@@ -516,12 +548,30 @@ export function TechWorkflowWizard({
           savedTo: j.savedTo,
           label: photoCategoryLabel(photoCat),
         };
+        const proof: UploadedPhotoProof = {
+          uploadedProof: true,
+          category: j.category ?? phase,
+          photoCategory: j.photoCategory ?? photoCat,
+          url: j.url ?? null,
+          path: j.path ?? null,
+          mediaId: j.mediaId ?? null,
+          photoId: j.photoId ?? null,
+          uploadedAt: j.uploadedAt ?? new Date().toISOString(),
+          appointmentId: j.appointmentId ?? activeAppointmentId ?? null,
+          fallbackBookingId: j.fallbackBookingId ?? activeFallbackBookingId ?? null,
+          workflowSessionId: j.workflowSessionId ?? activeWorkflowSessionId ?? null,
+          savedTo: j.savedTo ?? null,
+        };
+        const storedProof = (readStoredWalkInJob()?.uploadedPhotoProof ?? []).filter((p) => p.url !== proof.url && p.path !== proof.path);
+        const nextProof = [proof, ...storedProof].slice(0, 30);
+        setUploadedPhotoProof(nextProof);
+        persistWalkInJob({ uploadedPhotoProof: nextProof, workflowSessionId: proof.workflowSessionId ?? activeWorkflowSessionId });
         if (j.appointmentId) {
           setAppointmentId(j.appointmentId);
-          persistWalkInJob({ appointmentId: j.appointmentId, fallbackBookingId: j.fallbackBookingId ?? null, jobReference: j.appointmentId });
+          persistWalkInJob({ appointmentId: j.appointmentId, fallbackBookingId: j.fallbackBookingId ?? null, workflowSessionId: proof.workflowSessionId ?? null, jobReference: j.appointmentId, uploadedPhotoProof: nextProof });
         } else if (j.fallbackBookingId) {
           setFallbackBookingId(j.fallbackBookingId);
-          persistWalkInJob({ fallbackBookingId: j.fallbackBookingId, jobReference: j.fallbackBookingId });
+          persistWalkInJob({ fallbackBookingId: j.fallbackBookingId, workflowSessionId: proof.workflowSessionId ?? null, jobReference: j.fallbackBookingId, uploadedPhotoProof: nextProof });
         }
         if (phase === 'after') {
           setAfterCount((c) => c + 1);
@@ -564,6 +614,25 @@ export function TechWorkflowWizard({
     if (workflowSessionId) fd.set('workflowSessionId', workflowSessionId);
     if (accessToken) fd.set('accessToken', accessToken);
     fd.set('jobReference', activeAppointmentId);
+    const storedProof = readStoredWalkInJob()?.uploadedPhotoProof ?? [];
+    const proofForStart =
+      uploadedPhotoProof.length > 0
+        ? uploadedPhotoProof
+        : storedProof.length > 0
+          ? storedProof
+          : beforeCount > 0 || beforePreviews.length > 0
+            ? [{
+                uploadedProof: true as const,
+                category: 'before',
+                photoCategory: 'before',
+                uploadedAt: new Date().toISOString(),
+                appointmentId: activeAppointmentId,
+                fallbackBookingId,
+                workflowSessionId,
+                savedTo: fallbackBookingId ? 'fallback' : 'appointment',
+              }]
+            : [];
+    fd.set('uploadedPhotoProof', JSON.stringify(proofForStart));
     const started = await techStartJobAction(null, fd);
     if (started?.error) {
       setTimerError(started.error);

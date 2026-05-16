@@ -65,6 +65,75 @@ function photoMatchesPhase(row: Record<string, unknown>, phase: 'before' | 'afte
   return BEFORE_PHOTO_CATEGORIES.has(category) || BEFORE_PHOTO_CATEGORIES.has(photoCategory);
 }
 
+function countUploadedPhotoProof(
+  raw: FormDataEntryValue | null,
+  refs: { appointmentId?: string; fallbackBookingId?: string; workflowSessionId?: string; accessToken?: string; jobReference?: string },
+): number {
+  if (typeof raw !== 'string' || !raw.trim()) return 0;
+  let rows: unknown;
+  try {
+    rows = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  if (!Array.isArray(rows)) return 0;
+  const refSet = new Set(
+    [refs.appointmentId, refs.fallbackBookingId, refs.workflowSessionId, refs.accessToken, refs.jobReference]
+      .filter((v): v is string => Boolean(v)),
+  );
+  const recentCutoff = Date.now() - 36 * 60 * 60 * 1000;
+  return rows.filter((row) => {
+    if (!row || typeof row !== 'object') return false;
+    const r = row as Record<string, unknown>;
+    if (r.uploadedProof !== true) return false;
+    const uploadedAt = Date.parse(String(r.uploadedAt ?? r.uploaded_at ?? ''));
+    if (!Number.isFinite(uploadedAt) || uploadedAt < recentCutoff) return false;
+    if (!photoMatchesPhase({ category: r.category, photo_category: r.photoCategory ?? r.photo_category }, 'before')) return false;
+    const proofRefs = [r.appointmentId, r.appointment_id, r.fallbackBookingId, r.fallback_booking_id, r.workflowSessionId, r.workflow_session_id]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0);
+    return proofRefs.length === 0 || proofRefs.some((v) => refSet.has(v));
+  }).length;
+}
+
+async function countWorkflowSessionPhotos(
+  db: SupabaseClient | null,
+  refs: { appointmentId?: string; fallbackBookingId?: string; workflowSessionId?: string; technicianId?: string; phase: 'before' | 'after' },
+): Promise<number> {
+  if (!db) return 0;
+  const column = refs.phase === 'after' ? 'after_photo_count' : 'before_photo_count';
+  const selectCols = `id, ${column}`;
+  const queries = [];
+  if (refs.workflowSessionId) queries.push(db.from('tech_workflow_sessions').select(selectCols).eq('id', refs.workflowSessionId).limit(1));
+  if (refs.appointmentId) queries.push(db.from('tech_workflow_sessions').select(selectCols).eq('appointment_id', refs.appointmentId).order('updated_at', { ascending: false }).limit(3));
+  if (refs.fallbackBookingId) queries.push(db.from('tech_workflow_sessions').select(selectCols).eq('fallback_booking_id', refs.fallbackBookingId).order('updated_at', { ascending: false }).limit(3));
+  if (refs.technicianId) {
+    queries.push(
+      db
+        .from('tech_workflow_sessions')
+        .select(selectCols)
+        .eq('technician_id', refs.technicianId)
+        .eq('status', 'active')
+        .gte('updated_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+        .order('updated_at', { ascending: false })
+        .limit(3),
+    );
+  }
+  let count = 0;
+  for (const query of queries) {
+    const { data, error } = await query;
+    if (error) {
+      if (isSchemaDriftError(error.message)) continue;
+      console.warn('[tech] workflow session photo count', error.message);
+      continue;
+    }
+    for (const row of data ?? []) {
+      const value = Number(((row as unknown) as Record<string, unknown>)[column] ?? 0);
+      if (Number.isFinite(value)) count = Math.max(count, value);
+    }
+  }
+  return count;
+}
+
 async function resolveFallbackForPhotoGate(
   db: SupabaseClient | null,
   refs: { appointmentId?: string; fallbackBookingId?: string; workflowSessionId?: string; accessToken?: string; jobReference?: string; technicianId?: string },
@@ -179,6 +248,13 @@ export async function techStartJobAction(
   const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
   const accessToken = String(formData.get('accessToken') ?? '').trim();
   const jobReference = String(formData.get('jobReference') ?? '').trim();
+  const uploadedProofCount = countUploadedPhotoProof(formData.get('uploadedPhotoProof'), {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    accessToken,
+    jobReference,
+  });
   if (!appointmentId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
@@ -246,13 +322,24 @@ export async function techStartJobAction(
     technicianId: gate.userId,
     phase: 'before',
   });
+  const sessionPhotoCount = await countWorkflowSessionPhotos(db, {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    technicianId: gate.userId,
+    phase: 'before',
+  });
   if (beforeGate.error) {
     console.warn('[tech] before photo count', beforeGate.error);
-    return { error: `Could not verify before photos. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}` };
+    if (uploadedProofCount < 1 && sessionPhotoCount < 1) {
+      return {
+        error: `Could not verify before photos. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}`,
+      };
+    }
   }
-  if (beforeGate.count < 1) {
+  if (beforeGate.count < 1 && uploadedProofCount < 1 && sessionPhotoCount < 1) {
     return {
-      error: `Add at least one vehicle photo before starting. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
+      error: `Add at least one vehicle photo before starting. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
     };
   }
 

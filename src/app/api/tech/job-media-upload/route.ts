@@ -35,6 +35,12 @@ function broadCategory(fine: string): 'inspection' | 'before' | 'after' | 'damag
   return 'other';
 }
 
+function isBeforeRequirementCategory(value: string): boolean {
+  return ['before', 'front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels', 'inspection'].includes(
+    String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+  );
+}
+
 function isFieldTechRole(role: string | null): boolean {
   return role === 'technician' || role === 'admin' || role === 'super_admin';
 }
@@ -500,22 +506,23 @@ export async function POST(request: Request) {
       published_to_gallery: false,
     };
 
-    if (linkedAppointmentId) {
-      let ins = await admin.from('job_media').insert(baseRow).select('id').maybeSingle();
-      if (ins.error && isSchemaDriftError(ins.error.message)) {
-        ins = await admin
-          .from('job_media')
-          .insert({
-            appointment_id: linkedAppointmentId,
-            uploaded_by: user.id,
-            category,
-            file_url: fileUrl,
-          })
-          .select('id')
-          .maybeSingle();
-      }
-      if (ins.error) console.warn('[job-media-upload] job_media insert', ins.error.message);
+    let mediaId: string | null = null;
+    let ins = await admin.from('job_media').insert(baseRow).select('id').maybeSingle();
+    if (ins.error && isSchemaDriftError(ins.error.message)) {
+      ins = await admin
+        .from('job_media')
+        .insert({
+          appointment_id: linkedAppointmentId || null,
+          fallback_booking_id: fallbackBookingId || null,
+          uploaded_by: user.id,
+          category,
+          file_url: fileUrl,
+        })
+        .select('id')
+        .maybeSingle();
     }
+    if (ins.error) console.warn('[job-media-upload] job_media insert', ins.error.message);
+    else mediaId = typeof ins.data?.id === 'string' ? ins.data.id : null;
 
     const photoRow = { ...baseRow };
     delete photoRow.uploaded_by;
@@ -534,6 +541,7 @@ export async function POST(request: Request) {
         .maybeSingle();
     }
     if (photoIns.error) console.warn('[job-media-upload] job_photos insert', photoIns.error.message);
+    const photoId = !photoIns.error && typeof photoIns.data?.id === 'string' ? photoIns.data.id : null;
 
     if (linkedAppointmentId) {
       await recordJobTimelineEvent(admin, {
@@ -544,7 +552,15 @@ export async function POST(request: Request) {
       });
     }
 
-    const workflowSessionSave = await admin.from('tech_workflow_sessions').insert({
+    const nowIso = new Date().toISOString();
+    const countPatch =
+      category === 'after'
+        ? { after_photo_count: 1, last_photo_uploaded_at: nowIso }
+        : isBeforeRequirementCategory(photoCategory) || isBeforeRequirementCategory(category)
+          ? { before_photo_count: 1, last_photo_uploaded_at: nowIso }
+          : { last_photo_uploaded_at: nowIso };
+    let savedWorkflowSessionId = techWorkflowSessionId || '';
+    const workflowSessionPayload = {
       technician_id: user.id,
       appointment_id: linkedAppointmentId || null,
       fallback_booking_id: fallbackBookingId || null,
@@ -554,9 +570,57 @@ export async function POST(request: Request) {
       vehicle_summary: vehicleSummary || null,
       service_slug: serviceSlug || null,
       total_cents: null,
-    });
+      updated_at: nowIso,
+      ...countPatch,
+    };
+    let workflowSessionSave = savedWorkflowSessionId
+      ? await admin
+          .from('tech_workflow_sessions')
+          .update(workflowSessionPayload)
+          .eq('id', savedWorkflowSessionId)
+          .select('id')
+          .maybeSingle()
+      : await admin
+          .from('tech_workflow_sessions')
+          .insert({ ...workflowSessionPayload, created_at: nowIso })
+          .select('id')
+          .maybeSingle();
+    if (workflowSessionSave.error && isSchemaDriftError(workflowSessionSave.error.message)) {
+      const leanPayload = {
+        technician_id: user.id,
+        appointment_id: linkedAppointmentId || null,
+        fallback_booking_id: fallbackBookingId || null,
+        access_token: accessToken || jobReference || null,
+        status: 'active',
+        customer_name: customerName || null,
+        vehicle_summary: vehicleSummary || null,
+        service_slug: serviceSlug || null,
+        total_cents: null,
+      };
+      workflowSessionSave = savedWorkflowSessionId
+        ? await admin.from('tech_workflow_sessions').update(leanPayload).eq('id', savedWorkflowSessionId).select('id').maybeSingle()
+        : await admin.from('tech_workflow_sessions').insert(leanPayload).select('id').maybeSingle();
+    }
     if (workflowSessionSave.error) {
       console.warn('[job-media-upload] workflow session save', workflowSessionSave.error.message);
+    } else if (workflowSessionSave.data?.id) {
+      savedWorkflowSessionId = String(workflowSessionSave.data.id);
+    }
+
+    for (const table of ['job_media', 'job_photos']) {
+      const updatePatch: Record<string, unknown> = {
+        appointment_id: linkedAppointmentId || null,
+        fallback_booking_id: fallbackBookingId || null,
+      };
+      if (savedWorkflowSessionId) updatePatch.workflow_session_id = savedWorkflowSessionId;
+      const byPath = await admin
+        .from(table)
+        .update(updatePatch)
+        .or(`storage_path.eq.${path},file_path.eq.${path},media_url.eq.${fileUrl},public_url.eq.${fileUrl},file_url.eq.${fileUrl}`)
+        .eq('technician_id', user.id);
+      if (byPath.error && !isSchemaDriftError(byPath.error.message)) {
+        console.warn('[job-media-upload] photo self-heal', table, byPath.error.message);
+      }
     }
 
     logDebug('saved', {
@@ -572,9 +636,14 @@ export async function POST(request: Request) {
       url: fileUrl,
       category,
       photoCategory,
+      mediaId,
+      photoId,
+      uploadedProof: true,
       savedTo: linkedAppointmentId ? 'appointment' : 'fallback',
       appointmentId: linkedAppointmentId || null,
       fallbackBookingId: fallbackBookingId || null,
+      workflowSessionId: savedWorkflowSessionId || null,
+      path,
       uploadedAt: new Date().toISOString(),
     });
   } catch (e) {
