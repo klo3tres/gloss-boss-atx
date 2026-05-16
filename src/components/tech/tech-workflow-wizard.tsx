@@ -16,7 +16,6 @@ type AddonOpt = { slug: string; label: string; price_cents: number };
 const STEPS = 9;
 const WALKIN_STORAGE_KEY = 'glossboss_tech_walkin_v1';
 const PHOTO_CATEGORIES = [
-  { value: 'before', label: 'Before' },
   { value: 'front', label: 'Front' },
   { value: 'rear', label: 'Rear' },
   { value: 'driver_side', label: 'Driver side' },
@@ -24,8 +23,9 @@ const PHOTO_CATEGORIES = [
   { value: 'interior', label: 'Interior' },
   { value: 'wheels', label: 'Wheels' },
   { value: 'damage', label: 'Damage' },
-  { value: 'after', label: 'After' },
+  { value: 'other', label: 'Other' },
 ] as const;
+type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]['value'];
 
 function pickLineCents(prices: PriceRow[], serviceId: string, vehicleClass: UiVehicleClass): number | null {
   const row = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
@@ -69,9 +69,10 @@ export function TechWorkflowWizard() {
 
   const [signerName, setSignerName] = useState('');
   const [agreementAck, setAgreementAck] = useState(false);
-  const [photoCategory, setPhotoCategory] = useState<(typeof PHOTO_CATEGORIES)[number]['value']>('before');
   const [beforePreviews, setBeforePreviews] = useState<string[]>([]);
   const [afterPreviews, setAfterPreviews] = useState<string[]>([]);
+  const [beforePreviewByCategory, setBeforePreviewByCategory] = useState<Record<string, string[]>>({});
+  const [afterPreviewByCategory, setAfterPreviewByCategory] = useState<Record<string, string[]>>({});
   const [beforeCount, setBeforeCount] = useState(0);
   const [afterCount, setAfterCount] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
@@ -313,23 +314,18 @@ export function TechWorkflowWizard() {
           setError(r.error);
           return;
         }
-        try {
-          sessionStorage.removeItem(WALKIN_STORAGE_KEY);
-        } catch {
-          /* ignore */
-        }
         goNext();
       });
     });
   };
 
-  const uploadPhoto = (file: File | null, forceCategory?: string) => {
+  const uploadPhoto = (file: File | null, photoCat: PhotoCategory, phase: 'before' | 'after') => {
     if (!file || (!appointmentId && !fallbackBookingId)) return;
     const fd = new FormData();
     if (appointmentId) fd.set('appointmentId', appointmentId);
     if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
-    const cat = forceCategory ?? photoCategory;
-    fd.set('photoCategory', cat);
+    fd.set('category', phase);
+    fd.set('photoCategory', photoCat);
     fd.set('file', file);
     startTransition(() => {
       void fetch('/api/tech/job-media-upload', {
@@ -342,12 +338,14 @@ export function TechWorkflowWizard() {
           return;
         }
         const preview = URL.createObjectURL(file);
-        if (cat === 'after') {
+        if (phase === 'after') {
           setAfterCount((c) => c + 1);
           setAfterPreviews((p) => [preview, ...p].slice(0, 8));
+          setAfterPreviewByCategory((prev) => ({ ...prev, [photoCat]: [preview, ...(prev[photoCat] ?? [])].slice(0, 4) }));
         } else {
           setBeforeCount((c) => c + 1);
           setBeforePreviews((p) => [preview, ...p].slice(0, 8));
+          setBeforePreviewByCategory((prev) => ({ ...prev, [photoCat]: [preview, ...(prev[photoCat] ?? [])].slice(0, 4) }));
         }
         setError(null);
       });
@@ -809,30 +807,32 @@ export function TechWorkflowWizard() {
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>7 · Before photos</h2>
           <p className='text-sm text-zinc-400'>Upload photos from your phone or computer. JPEG, PNG, and WEBP are supported.</p>
           <p className='text-xs text-zinc-500'>Recorded this session: {beforeCount}</p>
-          <div className='grid gap-3 sm:grid-cols-[1fr_1fr]'>
-            <label className='block text-xs text-zinc-400'>
-              Category
-              <select
-                value={photoCategory}
-                onChange={(e) => setPhotoCategory(e.target.value as typeof photoCategory)}
-                className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          <div className='grid gap-3 sm:grid-cols-2'>
+            {PHOTO_CATEGORIES.map((cat) => (
+              <label
+                key={cat.value}
+                className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
               >
-                {PHOTO_CATEGORIES.filter((c) => c.value !== 'after').map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className='block text-xs text-zinc-400'>
-              Upload image
-              <input
-                type='file'
-                accept='image/jpeg,image/png,image/webp'
-                onChange={(e) => uploadPhoto(e.target.files?.[0] ?? null)}
-                className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
-              />
-            </label>
+                <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
+                <span className='mt-1 block text-[10px] text-zinc-500'>Tap to upload from camera roll or device.</span>
+                <input
+                  type='file'
+                  accept='image/jpeg,image/png,image/webp'
+                  onChange={(e) => {
+                    uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'before');
+                    e.currentTarget.value = '';
+                  }}
+                  className='mt-3 w-full text-[11px] text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
+                />
+                {beforePreviewByCategory[cat.value]?.length ? (
+                  <div className='mt-3 grid grid-cols-3 gap-2'>
+                    {beforePreviewByCategory[cat.value].map((src) => (
+                      <img key={src} src={src} alt={`${cat.label} before upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                    ))}
+                  </div>
+                ) : null}
+              </label>
+            ))}
           </div>
           {beforePreviews.length > 0 ? (
             <div className='grid grid-cols-3 gap-2'>
@@ -927,12 +927,32 @@ export function TechWorkflowWizard() {
           </label>
           <div className='rounded-xl border border-white/10 bg-black/30 p-3'>
             <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>After photos ({afterCount})</p>
-            <input
-              type='file'
-              accept='image/jpeg,image/png,image/webp'
-              onChange={(e) => uploadPhoto(e.target.files?.[0] ?? null, 'after')}
-              className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
-            />
+            <div className='mt-3 grid gap-3 sm:grid-cols-2'>
+              {PHOTO_CATEGORIES.map((cat) => (
+                <label
+                  key={cat.value}
+                  className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
+                >
+                  <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
+                  <input
+                    type='file'
+                    accept='image/jpeg,image/png,image/webp'
+                    onChange={(e) => {
+                      uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'after');
+                      e.currentTarget.value = '';
+                    }}
+                    className='mt-3 w-full text-[11px] text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
+                  />
+                  {afterPreviewByCategory[cat.value]?.length ? (
+                    <div className='mt-3 grid grid-cols-3 gap-2'>
+                      {afterPreviewByCategory[cat.value].map((src) => (
+                        <img key={src} src={src} alt={`${cat.label} after upload preview`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                      ))}
+                    </div>
+                  ) : null}
+                </label>
+              ))}
+            </div>
             {afterPreviews.length > 0 ? (
               <div className='mt-3 grid grid-cols-3 gap-2'>
                 {afterPreviews.map((src) => (

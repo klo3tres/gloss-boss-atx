@@ -474,7 +474,19 @@ export function TechPremiumShell({
       </div>
 
       <div id='field-invoice' className='mt-10 scroll-mt-28'>
-        <TechFieldTools linkAppointmentId={activeJob?.id ?? null} />
+        {activeJob ? (
+          <TechFieldTools linkAppointmentId={activeJob.id} />
+        ) : (
+          <section className={cardGlow}>
+            <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Field tools</p>
+            <p className='mt-2 text-sm text-zinc-400'>
+              Timer and job notes appear here after you start or select an active job. Use the walk-in workflow for same-day jobs.
+            </p>
+            <Link href='/tech/workflow' className='mt-4 inline-block rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
+              Start walk-in workflow
+            </Link>
+          </section>
+        )}
       </div>
     </div>
   );

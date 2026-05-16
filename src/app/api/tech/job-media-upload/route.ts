@@ -22,6 +22,7 @@ const FINE_CATEGORIES = new Set([
   'interior',
   'wheels',
   'damage',
+  'other',
   'before',
   'after',
 ]);
@@ -60,12 +61,19 @@ export async function POST(request: Request) {
     const file = form.get('file');
     const appointmentId = String(form.get('appointmentId') ?? '').trim();
     const fallbackBookingId = String(form.get('fallbackBookingId') ?? '').trim();
-    const rawCat = String(form.get('photoCategory') ?? form.get('category') ?? 'before')
+    const rawCat = String(form.get('photoCategory') ?? 'other')
       .trim()
       .toLowerCase()
       .replace(/[\s-]+/g, '_');
-    const photoCategory = FINE_CATEGORIES.has(rawCat) ? rawCat : 'before';
-    const category = broadCategory(photoCategory);
+    const photoCategory = FINE_CATEGORIES.has(rawCat) ? rawCat : 'other';
+    const rawBroad = String(form.get('category') ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    const category =
+      rawBroad === 'before' || rawBroad === 'after' || rawBroad === 'damage' || rawBroad === 'inspection' || rawBroad === 'other'
+        ? rawBroad
+        : broadCategory(photoCategory);
 
     if (!(file instanceof File)) return NextResponse.json({ error: 'Choose an image file.' }, { status: 400 });
     if (!MIME_TO_EXT[file.type]) {
@@ -81,6 +89,7 @@ export async function POST(request: Request) {
     let customerId: string | null = null;
     let vehicleId: string | null = null;
 
+    let appointmentUsable = Boolean(appointmentId);
     if (appointmentId) {
       const { data: appt, error } = await admin
         .from('appointments')
@@ -88,7 +97,10 @@ export async function POST(request: Request) {
         .eq('id', appointmentId)
         .maybeSingle();
       const a = appt as Record<string, unknown> | null;
-      if (error || !a) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
+      if (error || !a) {
+        if (!fallbackBookingId) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
+        appointmentUsable = false;
+      } else {
       const assigned = typeof a.assigned_technician_id === 'string' ? a.assigned_technician_id : null;
       if (assigned !== user.id) {
         const isWalkIn = String(a.booking_source ?? '') === 'tech_workflow';
@@ -103,6 +115,7 @@ export async function POST(request: Request) {
       }
       customerId = typeof a.customer_id === 'string' ? a.customer_id : null;
       vehicleId = typeof a.vehicle_id === 'string' ? a.vehicle_id : null;
+      }
     }
 
     if (fallbackBookingId) {
@@ -121,12 +134,24 @@ export async function POST(request: Request) {
 
     const ext = MIME_TO_EXT[file.type];
     const bucket = process.env.JOB_MEDIA_BUCKET?.trim() || 'job-media';
-    const path = `${user.id}/${appointmentId || `fallback-${fallbackBookingId}`}/${Date.now()}-${randomUUID()}.${ext}`;
+    const linkedAppointmentId = appointmentUsable ? appointmentId : '';
+    const path = `${user.id}/${linkedAppointmentId || `fallback-${fallbackBookingId}`}/${Date.now()}-${randomUUID()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: uploadError } = await admin.storage.from(bucket).upload(path, buffer, {
+    let { error: uploadError } = await admin.storage.from(bucket).upload(path, buffer, {
       contentType: file.type,
       upsert: false,
     });
+    if (uploadError && /bucket|not found|does not exist/i.test(uploadError.message)) {
+      await admin.storage.createBucket(bucket, {
+        public: true,
+        fileSizeLimit: 12 * 1024 * 1024,
+        allowedMimeTypes: Object.keys(MIME_TO_EXT),
+      });
+      ({ error: uploadError } = await admin.storage.from(bucket).upload(path, buffer, {
+        contentType: file.type,
+        upsert: false,
+      }));
+    }
     if (uploadError) {
       return NextResponse.json(
         { error: `Photo storage failed: ${uploadError.message}. Create a Supabase bucket named "${bucket}".` },
@@ -138,7 +163,7 @@ export async function POST(request: Request) {
     const fileUrl = pub.publicUrl;
 
     const baseRow: Record<string, unknown> = {
-      appointment_id: appointmentId || null,
+      appointment_id: linkedAppointmentId || null,
       fallback_booking_id: fallbackBookingId || null,
       customer_id: customerId,
       vehicle_id: vehicleId,
@@ -155,13 +180,13 @@ export async function POST(request: Request) {
       approved_for_customer: false,
     };
 
-    if (appointmentId) {
+    if (linkedAppointmentId) {
       let ins = await admin.from('job_media').insert(baseRow).select('id').maybeSingle();
       if (ins.error && isSchemaDriftError(ins.error.message)) {
         ins = await admin
           .from('job_media')
           .insert({
-            appointment_id: appointmentId,
+            appointment_id: linkedAppointmentId,
             uploaded_by: user.id,
             category,
             file_url: fileUrl,
@@ -179,7 +204,7 @@ export async function POST(request: Request) {
       photoIns = await admin
         .from('job_photos')
         .insert({
-          appointment_id: appointmentId || null,
+          appointment_id: linkedAppointmentId || null,
           fallback_booking_id: fallbackBookingId || null,
           technician_id: user.id,
           category,
@@ -190,9 +215,9 @@ export async function POST(request: Request) {
     }
     if (photoIns.error) console.warn('[job-media-upload] job_photos insert', photoIns.error.message);
 
-    if (appointmentId) {
+    if (linkedAppointmentId) {
       await recordJobTimelineEvent(admin, {
-        appointmentId,
+        appointmentId: linkedAppointmentId,
         eventType: category === 'before' ? 'photo_before' : category === 'after' ? 'photo_after' : category === 'damage' ? 'photo_damage' : 'photo_inspection',
         meta: { category, photo_category: photoCategory, file_url: fileUrl },
         createdBy: user.id,
