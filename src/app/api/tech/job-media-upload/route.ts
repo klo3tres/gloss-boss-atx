@@ -64,9 +64,14 @@ export async function POST(request: Request) {
     const appointmentId = String(form.get('appointmentId') ?? '').trim();
     let fallbackBookingId = String(form.get('fallbackBookingId') ?? '').trim();
     const techWorkflowId = String(form.get('techWorkflowId') ?? '').trim();
+    const techWorkflowSessionId = String(form.get('techWorkflowSessionId') ?? '').trim();
     const accessToken = String(form.get('accessToken') ?? '').trim();
     const jobReference = String(form.get('jobReference') ?? '').trim();
     const currentStep = String(form.get('currentStep') ?? '').trim();
+    const customerName = String(form.get('customerName') ?? '').trim();
+    const customerPhone = String(form.get('customerPhone') ?? '').trim();
+    const vehicleSummary = String(form.get('vehicleSummary') ?? '').trim();
+    const serviceSlug = String(form.get('serviceSlug') ?? '').trim();
     const rawCat = String(form.get('photoCategory') ?? 'other')
       .trim()
       .toLowerCase()
@@ -98,9 +103,11 @@ export async function POST(request: Request) {
       appointmentId,
       fallbackBookingId,
       techWorkflowId,
+      techWorkflowSessionId,
       accessToken: accessToken ? `${accessToken.slice(0, 8)}...` : null,
       jobReference: jobReference ? `${jobReference.slice(0, 8)}...` : null,
       currentStep,
+      hasSubmittedContext: Boolean(customerName || customerPhone || vehicleSummary || serviceSlug),
       userId: user.id,
     });
 
@@ -218,6 +225,54 @@ export async function POST(request: Request) {
     }
 
     if (!appointmentUsable && !fallbackBookingId) {
+      const sessionQuery = admin
+        .from('tech_workflow_sessions')
+        .select('id, appointment_id, fallback_booking_id, access_token, status, created_at')
+        .eq('technician_id', user.id);
+      const workflowSession = techWorkflowSessionId
+        ? await sessionQuery.eq('id', techWorkflowSessionId).maybeSingle()
+        : await sessionQuery
+            .eq('status', 'active')
+            .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+      const row = workflowSession.data as Record<string, unknown> | null;
+      logDebug('tech_workflow_sessions.lookup', {
+        byId: Boolean(techWorkflowSessionId),
+        found: Boolean(row),
+        error: workflowSession.error?.message ?? null,
+      });
+      if (!workflowSession.error && row) {
+        const sessionAppointmentId = typeof row.appointment_id === 'string' ? row.appointment_id : '';
+        const sessionFallbackId = typeof row.fallback_booking_id === 'string' ? row.fallback_booking_id : '';
+        if (sessionAppointmentId) {
+          const bySessionAppointment = await admin
+            .from('appointments')
+            .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source')
+            .eq('id', sessionAppointmentId)
+            .maybeSingle();
+          const a = bySessionAppointment.data as Record<string, unknown> | null;
+          logDebug('tech_workflow_sessions.appointment', {
+            appointmentId: sessionAppointmentId,
+            found: Boolean(a),
+            error: bySessionAppointment.error?.message ?? null,
+          });
+          if (!bySessionAppointment.error && a?.id) {
+            appointmentUsable = true;
+            linkedAppointmentId = String(a.id);
+            customerId = typeof a.customer_id === 'string' ? a.customer_id : null;
+            vehicleId = typeof a.vehicle_id === 'string' ? a.vehicle_id : null;
+          }
+        }
+        if (!appointmentUsable && sessionFallbackId) {
+          fallbackBookingId = sessionFallbackId;
+          logDebug('tech_workflow_sessions.fallback_selected', { fallbackBookingId });
+        }
+      }
+    }
+
+    if (!appointmentUsable && !fallbackBookingId) {
       const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const latestAppointment = await admin
         .from('appointments')
@@ -245,14 +300,25 @@ export async function POST(request: Request) {
 
     if (!appointmentUsable && !fallbackBookingId) {
       const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      const latestFallback = await admin
+      let latestFallback = await admin
         .from('booking_fallbacks')
         .select('id, assigned_technician_id, created_at')
+        .eq('booking_source', 'tech_workflow')
         .eq('assigned_technician_id', user.id)
         .gte('created_at', since)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (latestFallback.error && /booking_source|column|schema cache|Could not find/i.test(latestFallback.error.message)) {
+        latestFallback = await admin
+          .from('booking_fallbacks')
+          .select('id, assigned_technician_id, created_at')
+          .eq('assigned_technician_id', user.id)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+      }
       logDebug('booking_fallbacks.latest_for_tech', {
         found: Boolean(latestFallback.data),
         error: latestFallback.error?.message ?? null,
@@ -308,12 +374,71 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!appointmentUsable && !fallbackBookingId && (customerName || customerPhone || vehicleSummary || serviceSlug)) {
+      const nowIso = new Date().toISOString();
+      const fallbackPayload = {
+        tech_workflow: true,
+        created_from: 'job_media_upload_self_heal',
+        customer_name: customerName || null,
+        customer_phone: customerPhone || null,
+        vehicle_summary: vehicleSummary || null,
+        service_slug: serviceSlug || null,
+        photo_category: photoCategory,
+      };
+      const fbRow: Record<string, unknown> = {
+        payload: fallbackPayload,
+        guest_name: customerName || 'Walk-in customer',
+        guest_phone: customerPhone || null,
+        vehicle_description: vehicleSummary || null,
+        service_slug: serviceSlug || null,
+        status: 'needs_review',
+        booking_source: 'tech_workflow',
+        promotion_error: 'Created by photo upload self-heal because workflow reference was missing.',
+        assigned_technician_id: user.id,
+        assigned_by: user.id,
+        assigned_at: nowIso,
+        notes: 'Self-healed tech workflow fallback from photo upload.',
+      };
+      let createdFallback = await admin.from('booking_fallbacks').insert(fbRow).select('id, access_token').maybeSingle();
+      if (createdFallback.error && /vehicle_description|service_slug|booking_source|assigned_|notes|column|schema cache|Could not find/i.test(createdFallback.error.message)) {
+        createdFallback = await admin
+          .from('booking_fallbacks')
+          .insert({
+            payload: fallbackPayload,
+            guest_name: customerName || 'Walk-in customer',
+            guest_phone: customerPhone || null,
+            status: 'needs_review',
+            promotion_error: 'Created by photo upload self-heal because workflow reference was missing.',
+          })
+          .select('id, access_token')
+          .maybeSingle();
+      }
+      logDebug('booking_fallbacks.self_heal_create', {
+        found: Boolean(createdFallback.data?.id),
+        error: createdFallback.error?.message ?? null,
+      });
+      if (!createdFallback.error && createdFallback.data?.id) {
+        fallbackBookingId = String(createdFallback.data.id);
+        await admin.from('tech_workflow_sessions').insert({
+          technician_id: user.id,
+          appointment_id: null,
+          fallback_booking_id: fallbackBookingId,
+          access_token: (createdFallback.data as { access_token?: string | null }).access_token ?? null,
+          status: 'active',
+          customer_name: customerName || null,
+          vehicle_summary: vehicleSummary || null,
+          service_slug: serviceSlug || null,
+          total_cents: null,
+        });
+      }
+    }
+
     if (!appointmentUsable && !fallbackBookingId) {
       console.warn('[job-media-upload] no workflow job/fallback found', debug);
       return NextResponse.json(
         {
           error:
-            'Could not find an active walk-in workflow job for this technician. Create the walk-in job, then retry the upload.',
+            'Could not find or create an active walk-in workflow job for this technician.',
           debug,
         },
         { status: 404 },
@@ -417,6 +542,21 @@ export async function POST(request: Request) {
         meta: { category, photo_category: photoCategory, file_url: fileUrl },
         createdBy: user.id,
       });
+    }
+
+    const workflowSessionSave = await admin.from('tech_workflow_sessions').insert({
+      technician_id: user.id,
+      appointment_id: linkedAppointmentId || null,
+      fallback_booking_id: fallbackBookingId || null,
+      access_token: accessToken || jobReference || null,
+      status: 'active',
+      customer_name: customerName || null,
+      vehicle_summary: vehicleSummary || null,
+      service_slug: serviceSlug || null,
+      total_cents: null,
+    });
+    if (workflowSessionSave.error) {
+      console.warn('[job-media-upload] workflow session save', workflowSessionSave.error.message);
     }
 
     logDebug('saved', {

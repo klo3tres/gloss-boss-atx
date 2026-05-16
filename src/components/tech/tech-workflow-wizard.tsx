@@ -32,6 +32,7 @@ type StoredWalkInJob = {
   fallbackBookingId?: string | null;
   accessToken?: string | null;
   jobReference?: string | null;
+  workflowSessionId?: string | null;
   lockedTotalCents?: number | null;
   guestName?: string;
   guestEmail?: string;
@@ -99,6 +100,7 @@ export function TechWorkflowWizard() {
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [fallbackBookingId, setFallbackBookingId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
   const [lockedTotalCents, setLockedTotalCents] = useState<number | null>(null);
 
   const [signerName, setSignerName] = useState('');
@@ -129,6 +131,7 @@ export function TechWorkflowWizard() {
     setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
     setFallbackBookingId((prev) => prev ?? o.fallbackBookingId ?? null);
     setAccessToken((prev) => prev ?? o.accessToken ?? null);
+    setWorkflowSessionId((prev) => prev ?? o.workflowSessionId ?? null);
     if (typeof o.lockedTotalCents === 'number') {
       setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
     }
@@ -141,6 +144,7 @@ export function TechWorkflowWizard() {
         appointmentId,
         fallbackBookingId,
         accessToken,
+        workflowSessionId,
         lockedTotalCents,
         guestName,
         guestEmail,
@@ -180,6 +184,7 @@ export function TechWorkflowWizard() {
       step,
       vehicleClass,
       vehicleDescription,
+      workflowSessionId,
     ],
   );
 
@@ -344,12 +349,14 @@ export function TechWorkflowWizard() {
         setAppointmentId(r.appointmentId);
         setFallbackBookingId(r.fallbackBookingId ?? null);
         setAccessToken(r.accessToken);
+        setWorkflowSessionId(r.workflowSessionId ?? null);
         setLockedTotalCents(r.totalCents);
         persistWalkInJob({
           appointmentId: r.appointmentId,
           fallbackBookingId: r.fallbackBookingId ?? null,
           accessToken: r.accessToken,
           jobReference: r.appointmentId ?? r.fallbackBookingId ?? r.accessToken,
+          workflowSessionId: r.workflowSessionId ?? null,
           lockedTotalCents: r.totalCents,
         });
         setSignerName(guestName.trim());
@@ -416,6 +423,7 @@ export function TechWorkflowWizard() {
     const activeAppointmentId = appointmentId ?? stored?.appointmentId ?? null;
     const activeFallbackBookingId = fallbackBookingId ?? stored?.fallbackBookingId ?? null;
     const activeAccessToken = accessToken ?? stored?.accessToken ?? null;
+    const activeWorkflowSessionId = workflowSessionId ?? stored?.workflowSessionId ?? null;
     const activeJobReference = activeAppointmentId ?? activeFallbackBookingId ?? stored?.jobReference ?? activeAccessToken ?? null;
     console.info('[tech-workflow] upload refs', {
       step,
@@ -425,19 +433,27 @@ export function TechWorkflowWizard() {
         appointmentId: stored?.appointmentId ?? null,
         fallbackBookingId: stored?.fallbackBookingId ?? null,
         accessToken: stored?.accessToken ? `${stored.accessToken.slice(0, 8)}...` : null,
+        workflowSessionId: stored?.workflowSessionId ?? null,
       },
       selectedJobReference: activeJobReference,
     });
     if (activeAppointmentId && !appointmentId) setAppointmentId(activeAppointmentId);
     if (activeFallbackBookingId && !fallbackBookingId) setFallbackBookingId(activeFallbackBookingId);
     if (activeAccessToken && !accessToken) setAccessToken(activeAccessToken);
+    if (activeWorkflowSessionId && !workflowSessionId) setWorkflowSessionId(activeWorkflowSessionId);
     const fd = new FormData();
     fd.set('currentStep', String(step));
     if (activeAppointmentId) fd.set('appointmentId', activeAppointmentId);
     if (activeFallbackBookingId) fd.set('fallbackBookingId', activeFallbackBookingId);
     if (activeAccessToken) fd.set('accessToken', activeAccessToken);
+    if (activeWorkflowSessionId) fd.set('techWorkflowSessionId', activeWorkflowSessionId);
     if (activeJobReference) fd.set('jobReference', activeJobReference);
     if (activeFallbackBookingId) fd.set('techWorkflowId', activeFallbackBookingId);
+    fd.set('customerName', guestName.trim() || stored?.guestName || '');
+    fd.set('customerPhone', guestPhone.trim() || stored?.guestPhone || '');
+    fd.set('vehicleSummary', vehicleDescription.trim() || stored?.vehicleDescription || '');
+    fd.set('serviceSlug', selectedService?.slug ?? stored?.serviceSlug ?? '');
+    if (customerId ?? stored?.customerId) fd.set('customerId', customerId ?? stored?.customerId ?? '');
     fd.set('category', phase);
     fd.set('photoCategory', photoCat);
     fd.set('file', file);
@@ -560,6 +576,9 @@ export function TechWorkflowWizard() {
     });
   };
 
+  const storedDebug = step === 7 ? readStoredWalkInJob() : null;
+  const jobReference = appointmentId ?? fallbackBookingId ?? accessToken ?? workflowSessionId ?? storedDebug?.jobReference ?? null;
+
   return (
     <div className='tech-workflow-form mx-auto w-full max-w-2xl space-y-8 px-3 pb-24 sm:px-0'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
@@ -586,6 +605,12 @@ export function TechWorkflowWizard() {
       {timerError ? (
         <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='alert'>
           {timerError}
+        </p>
+      ) : null}
+      {jobReference ? (
+        <p className='rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-2 text-xs text-emerald-200'>
+          Workflow job saved: {appointmentId ? 'appointment' : fallbackBookingId ? 'fallback' : workflowSessionId ? 'session' : 'reference'}{' '}
+          <span className='font-mono'>{jobReference.slice(0, 8)}…</span>
         </p>
       ) : null}
 
@@ -963,6 +988,17 @@ export function TechWorkflowWizard() {
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>7 · Before photos</h2>
           <p className='text-sm text-zinc-400'>Upload photos from your phone or computer. JPEG, PNG, and WEBP are supported.</p>
           <p className='text-xs text-zinc-500'>Recorded this session: {beforeCount}</p>
+          <details className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400'>
+            <summary className='cursor-pointer font-bold uppercase tracking-wider text-gold-soft'>Workflow debug</summary>
+            <dl className='mt-3 grid gap-1 font-mono text-[11px]'>
+              <div>appointmentId: {appointmentId ? `${appointmentId.slice(0, 8)}...` : 'none'}</div>
+              <div>fallbackBookingId: {fallbackBookingId ? `${fallbackBookingId.slice(0, 8)}...` : 'none'}</div>
+              <div>accessToken: {accessToken ? `${accessToken.slice(0, 8)}...` : 'none'}</div>
+              <div>workflowSessionId: {workflowSessionId ? `${workflowSessionId.slice(0, 8)}...` : 'none'}</div>
+              <div>jobReference: {jobReference ? `${jobReference.slice(0, 8)}...` : 'none'}</div>
+              <div>sessionStorage: {storedDebug ? 'present' : 'missing'}</div>
+            </dl>
+          </details>
           <div className='grid gap-3 sm:grid-cols-2'>
             {PHOTO_CATEGORIES.map((cat) => (
               <label

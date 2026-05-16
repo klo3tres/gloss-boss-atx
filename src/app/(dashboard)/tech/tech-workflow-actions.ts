@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -16,6 +17,24 @@ export type WalkInVehicleInput = {
   vehicleDescription: string;
 };
 
+async function saveTechWorkflowSession(
+  admin: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  const nowIso = new Date().toISOString();
+  const payload = {
+    ...row,
+    status: row.status ?? 'active',
+    updated_at: nowIso,
+  };
+  const { data, error } = await admin.from('tech_workflow_sessions').insert(payload).select('id').maybeSingle();
+  if (error) {
+    console.warn('[tech-workflow] session save failed', error.message);
+    return null;
+  }
+  return typeof data?.id === 'string' ? data.id : null;
+}
+
 export async function techCreateWalkInJobAction(input: {
   guestName: string;
   guestEmail: string;
@@ -25,8 +44,8 @@ export async function techCreateWalkInJobAction(input: {
   customerId?: string | null;
   notes?: string;
 }): Promise<
-  | { ok: true; appointmentId: string; accessToken: string; totalCents: number; fallbackBookingId?: null }
-  | { ok: true; appointmentId: null; accessToken: string; totalCents: number; fallbackBookingId: string }
+  | { ok: true; appointmentId: string; accessToken: string; totalCents: number; fallbackBookingId?: null; workflowSessionId?: string | null }
+  | { ok: true; appointmentId: null; accessToken: string; totalCents: number; fallbackBookingId: string; workflowSessionId?: string | null }
   | { ok: false; error: string }
 > {
   const session = await getSessionWithProfile();
@@ -150,6 +169,7 @@ export async function techCreateWalkInJobAction(input: {
       base_price_cents: totalBaseCents,
       scheduled_start: scheduled.toISOString(),
       status: 'needs_review',
+      booking_source: 'tech_workflow',
       promotion_error: apptErr || 'appointment insert failed',
       expires_at: expiresAt,
       assigned_technician_id: session.user.id,
@@ -158,7 +178,7 @@ export async function techCreateWalkInJobAction(input: {
       notes: notes || null,
     };
     let fb = await admin.from('booking_fallbacks').insert(fbRow).select('id, access_token').single();
-    if (fb.error && /assigned_|expires_at|notes|column|schema cache|Could not find/i.test(fb.error.message)) {
+    if (fb.error && /assigned_|expires_at|notes|booking_source|column|schema cache|Could not find/i.test(fb.error.message)) {
       fb = await admin
         .from('booking_fallbacks')
         .insert({
@@ -178,14 +198,27 @@ export async function techCreateWalkInJobAction(input: {
     if (fb.error || !fb.data?.id) {
       return { ok: false, error: apptErr || fb.error?.message || 'Could not create walk-in fallback' };
     }
+    const fallbackId = String(fb.data.id);
+    const fbAccessToken = String((fb.data as { access_token?: string | null }).access_token ?? '');
+    const workflowSessionId = await saveTechWorkflowSession(admin, {
+      technician_id: session.user.id,
+      appointment_id: null,
+      fallback_booking_id: fallbackId,
+      access_token: fbAccessToken || null,
+      customer_name: guestName,
+      vehicle_summary: vehicleDescriptionJoined,
+      service_slug: primary.serviceSlug,
+      total_cents: totalBaseCents,
+    });
     revalidatePath('/tech');
     revalidatePath('/tech/workflow');
     return {
       ok: true,
       appointmentId: null,
-      accessToken: String((fb.data as { access_token?: string | null }).access_token ?? ''),
+      accessToken: fbAccessToken,
       totalCents: totalBaseCents,
-      fallbackBookingId: String(fb.data.id),
+      fallbackBookingId: fallbackId,
+      workflowSessionId,
     };
   }
 
@@ -196,7 +229,24 @@ export async function techCreateWalkInJobAction(input: {
 
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
-  return { ok: true, appointmentId: appointment.id, accessToken: appointment.access_token, totalCents: totalBaseCents, fallbackBookingId: null };
+  const workflowSessionId = await saveTechWorkflowSession(admin, {
+    technician_id: session.user.id,
+    appointment_id: appointment.id,
+    fallback_booking_id: null,
+    access_token: appointment.access_token ?? null,
+    customer_name: guestName,
+    vehicle_summary: vehicleDescriptionJoined,
+    service_slug: primary.serviceSlug,
+    total_cents: totalBaseCents,
+  });
+  return {
+    ok: true,
+    appointmentId: appointment.id,
+    accessToken: appointment.access_token,
+    totalCents: totalBaseCents,
+    fallbackBookingId: null,
+    workflowSessionId,
+  };
 }
 
 export async function techSignWalkInAgreementAction(input: {
