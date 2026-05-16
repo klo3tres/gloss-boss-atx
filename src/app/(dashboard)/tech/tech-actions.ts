@@ -39,11 +39,116 @@ async function hasSmsConsent(db: Awaited<ReturnType<typeof createSupabaseServerC
   return sms?.agreed === true;
 }
 
+function normalizePhotoCategory(input: unknown): string {
+  return String(input ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+const BEFORE_PHOTO_CATEGORIES = new Set([
+  'before',
+  'front',
+  'rear',
+  'driver_side',
+  'passenger_side',
+  'interior',
+  'wheels',
+  'inspection',
+]);
+
+function photoMatchesPhase(row: Record<string, unknown>, phase: 'before' | 'after'): boolean {
+  const category = normalizePhotoCategory(row.category);
+  const photoCategory = normalizePhotoCategory(row.photo_category);
+  if (phase === 'after') return category === 'after';
+  return BEFORE_PHOTO_CATEGORIES.has(category) || BEFORE_PHOTO_CATEGORIES.has(photoCategory);
+}
+
+async function resolveFallbackForPhotoGate(
+  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  refs: { fallbackBookingId?: string; workflowSessionId?: string; accessToken?: string; jobReference?: string },
+): Promise<string> {
+  if (!db) return refs.fallbackBookingId ?? '';
+  if (refs.fallbackBookingId) return refs.fallbackBookingId;
+  if (refs.workflowSessionId) {
+    const { data } = await db
+      .from('tech_workflow_sessions')
+      .select('fallback_booking_id')
+      .eq('id', refs.workflowSessionId)
+      .maybeSingle();
+    const id = (data as { fallback_booking_id?: string | null } | null)?.fallback_booking_id;
+    if (id) return id;
+  }
+  const token = refs.accessToken || refs.jobReference || '';
+  if (token) {
+    const { data } = await db.from('booking_fallbacks').select('id').eq('access_token', token).maybeSingle();
+    const id = (data as { id?: string | null } | null)?.id;
+    if (id) return id;
+  }
+  return '';
+}
+
+async function countWorkflowPhotos(
+  db: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  refs: {
+    appointmentId?: string;
+    fallbackBookingId?: string;
+    workflowSessionId?: string;
+    accessToken?: string;
+    jobReference?: string;
+    phase: 'before' | 'after';
+  },
+): Promise<{ count: number; checked: string[]; error?: string }> {
+  if (!db) return { count: 0, checked: [], error: 'Database unavailable' };
+  const fallbackBookingId = await resolveFallbackForPhotoGate(db, refs);
+  const checked: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+
+  for (const table of ['job_media', 'job_photos']) {
+    if (refs.appointmentId) {
+      checked.push(`${table}.appointment_id=${refs.appointmentId.slice(0, 8)}`);
+      const { data, error } = await db
+        .from(table)
+        .select('category, photo_category')
+        .eq('appointment_id', refs.appointmentId);
+      if (error && !isSchemaDriftError(error.message)) return { count: 0, checked, error: error.message };
+      if (error && isSchemaDriftError(error.message)) {
+        const lean = await db.from(table).select('category').eq('appointment_id', refs.appointmentId);
+        if (lean.error && !isSchemaDriftError(lean.error.message)) return { count: 0, checked, error: lean.error.message };
+        rows.push(...((lean.data ?? []) as Record<string, unknown>[]));
+      } else {
+        rows.push(...((data ?? []) as Record<string, unknown>[]));
+      }
+    }
+    if (fallbackBookingId) {
+      checked.push(`${table}.fallback_booking_id=${fallbackBookingId.slice(0, 8)}`);
+      const { data, error } = await db
+        .from(table)
+        .select('category, photo_category')
+        .eq('fallback_booking_id', fallbackBookingId);
+      if (error && !isSchemaDriftError(error.message)) return { count: 0, checked, error: error.message };
+      if (error && isSchemaDriftError(error.message)) {
+        const lean = await db.from(table).select('category').eq('fallback_booking_id', fallbackBookingId);
+        if (lean.error && !isSchemaDriftError(lean.error.message)) return { count: 0, checked, error: lean.error.message };
+        rows.push(...((lean.data ?? []) as Record<string, unknown>[]));
+      } else {
+        rows.push(...((data ?? []) as Record<string, unknown>[]));
+      }
+    }
+  }
+
+  return { count: rows.filter((row) => photoMatchesPhase(row, refs.phase)).length, checked };
+}
+
 export async function techStartJobAction(
   _prev: { error?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
+  const accessToken = String(formData.get('accessToken') ?? '').trim();
+  const jobReference = String(formData.get('jobReference') ?? '').trim();
   if (!appointmentId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
@@ -102,26 +207,22 @@ export async function techStartJobAction(
     };
   }
 
-  const { count: beforeCount, error: bcErr } = await gate.supabase
-    .from('job_media')
-    .select('id', { count: 'exact', head: true })
-    .eq('appointment_id', appointmentId)
-    .in('category', ['before', 'inspection', 'damage']);
-  if (bcErr) {
-    console.warn('[tech] before photo count', bcErr.message);
-    return { error: 'Could not verify before photos.' };
+  const beforeGate = await countWorkflowPhotos(gate.supabase, {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    accessToken,
+    jobReference,
+    phase: 'before',
+  });
+  if (beforeGate.error) {
+    console.warn('[tech] before photo count', beforeGate.error);
+    return { error: `Could not verify before photos. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}` };
   }
-  if ((beforeCount ?? 0) < 1) {
-    const { count: photoBeforeCount } = await gate.supabase
-      .from('job_photos')
-      .select('id', { count: 'exact', head: true })
-      .eq('appointment_id', appointmentId)
-      .in('category', ['before', 'inspection', 'damage']);
-    if ((photoBeforeCount ?? 0) < 1) {
-      return {
-        error: 'Add at least one before/inspection photo before starting.',
-      };
-    }
+  if (beforeGate.count < 1) {
+    return {
+      error: `Add at least one vehicle photo before starting. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
+    };
   }
 
   const { data: openTimer } = await gate.supabase
@@ -208,6 +309,10 @@ export async function techCompleteJobAction(
 ): Promise<{ error?: string } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const noDamageObserved = String(formData.get('noDamageObserved') ?? '') === 'true';
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
+  const accessToken = String(formData.get('accessToken') ?? '').trim();
+  const jobReference = String(formData.get('jobReference') ?? '').trim();
   if (!appointmentId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
@@ -270,23 +375,19 @@ export async function techCompleteJobAction(
     }
   }
 
-  const { count: afterCount, error: acErr } = await gate.supabase
-    .from('job_media')
-    .select('id', { count: 'exact', head: true })
-    .eq('appointment_id', appointmentId)
-    .eq('category', 'after');
-  if (acErr) {
-    return { error: 'Could not verify after photos.' };
+  const afterGate = await countWorkflowPhotos(gate.supabase, {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    accessToken,
+    jobReference,
+    phase: 'after',
+  });
+  if (afterGate.error) {
+    return { error: `Could not verify after photos. Checked: ${afterGate.checked.join(', ') || 'no job reference'}` };
   }
-  if ((afterCount ?? 0) < 1) {
-    const { count: photoAfterCount } = await gate.supabase
-      .from('job_photos')
-      .select('id', { count: 'exact', head: true })
-      .eq('appointment_id', appointmentId)
-      .eq('category', 'after');
-    if ((photoAfterCount ?? 0) < 1) {
-      return { error: 'Add at least one after photo to this job before marking complete.' };
-    }
+  if (afterGate.count < 1) {
+    return { error: `Add at least one after photo before marking complete. Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}` };
   }
 
   const { data: checklistRow } = await gate.supabase

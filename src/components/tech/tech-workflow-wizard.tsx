@@ -86,6 +86,10 @@ function formatRoleLabel(role: string | null | undefined): string {
   return r ? r.charAt(0).toUpperCase() + r.slice(1) : 'Technician';
 }
 
+function isQualifyingBeforePhotoCategory(cat: PhotoCategory): boolean {
+  return cat !== 'damage' && cat !== 'other';
+}
+
 export function TechWorkflowWizard({
   witness,
 }: {
@@ -519,7 +523,7 @@ export function TechWorkflowWizard({
           setAfterPreviews((p) => [preview, ...p].slice(0, 8));
           setAfterPreviewByCategory((prev) => ({ ...prev, [photoCat]: [preview, ...(prev[photoCat] ?? [])].slice(0, 4) }));
         } else {
-          setBeforeCount((c) => c + 1);
+          if (isQualifyingBeforePhotoCategory(photoCat)) setBeforeCount((c) => c + 1);
           setBeforePreviews((p) => [preview, ...p].slice(0, 8));
           setBeforePreviewByCategory((prev) => ({ ...prev, [photoCat]: [preview, ...(prev[photoCat] ?? [])].slice(0, 4) }));
         }
@@ -551,6 +555,10 @@ export function TechWorkflowWizard({
     if (!activeAppointmentId) return;
     const fd = new FormData();
     fd.set('appointmentId', activeAppointmentId);
+    if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+    if (workflowSessionId) fd.set('workflowSessionId', workflowSessionId);
+    if (accessToken) fd.set('accessToken', accessToken);
+    fd.set('jobReference', activeAppointmentId);
     const started = await techStartJobAction(null, fd);
     if (started?.error) {
       setTimerError(started.error);
@@ -599,6 +607,10 @@ export function TechWorkflowWizard({
       saveWorkflowNotes();
       const fd = new FormData();
       fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      if (workflowSessionId) fd.set('workflowSessionId', workflowSessionId);
+      if (accessToken) fd.set('accessToken', accessToken);
+      fd.set('jobReference', appointmentId);
       if (noDamageObserved) fd.set('noDamageObserved', 'true');
       void techCompleteJobAction(null, fd).then((r) => {
         if (r?.error) {
@@ -1041,7 +1053,16 @@ export function TechWorkflowWizard({
         <section className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/90 p-6'>
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>7 · Before photos</h2>
           <p className='text-sm text-zinc-400'>Upload photos from your phone or computer. JPEG, PNG, and WEBP are supported.</p>
-          <p className='text-xs text-zinc-500'>Recorded this session: {beforeCount}</p>
+          <div className={`rounded-xl border p-3 text-xs ${beforeCount > 0 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'}`}>
+            <p className='font-black uppercase tracking-wider'>
+              {beforeCount > 0 ? 'Before photo requirement met' : 'At least one vehicle photo required before starting'}
+            </p>
+            <p className='mt-1'>Uploaded qualifying before/inspection photos this session: {beforeCount}</p>
+          </div>
+          <label className='flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-100'>
+            <input type='checkbox' checked={noDamageObserved} onChange={(e) => setNoDamageObserved(e.target.checked)} />
+            No visible damage observed
+          </label>
           <details className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400'>
             <summary className='cursor-pointer font-bold uppercase tracking-wider text-gold-soft'>Workflow debug</summary>
             <dl className='mt-3 grid gap-1 font-mono text-[11px]'>
