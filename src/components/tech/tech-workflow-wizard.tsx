@@ -27,6 +27,22 @@ const PHOTO_CATEGORIES = [
 ] as const;
 type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]['value'];
 type PhotoPreview = { src: string; uploadedAt: string; savedTo?: string };
+type StoredWalkInJob = {
+  appointmentId?: string | null;
+  fallbackBookingId?: string | null;
+  accessToken?: string | null;
+  jobReference?: string | null;
+  lockedTotalCents?: number | null;
+  guestName?: string;
+  guestEmail?: string;
+  guestPhone?: string;
+  customerId?: string | null;
+  vehicleClass?: UiVehicleClass;
+  vehicleDescription?: string;
+  serviceId?: string | null;
+  serviceSlug?: string | null;
+  savedAt?: number;
+};
 
 function pickLineCents(prices: PriceRow[], serviceId: string, vehicleClass: UiVehicleClass): number | null {
   const row = prices.find((p) => p.service_id === serviceId && p.vehicle_class === vehicleClass);
@@ -40,6 +56,22 @@ function addonSumCents(addons: AddonOpt[], slugs: Set<string>): number {
     if (slugs.has(a.slug)) s += a.price_cents;
   }
   return s;
+}
+
+function readStoredWalkInJob(): StoredWalkInJob | null {
+  try {
+    const raw = sessionStorage.getItem(WALKIN_STORAGE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as StoredWalkInJob;
+    if (typeof o.savedAt !== 'number') return null;
+    if (Date.now() - o.savedAt > 36 * 3600000) {
+      sessionStorage.removeItem(WALKIN_STORAGE_KEY);
+      return null;
+    }
+    return o;
+  } catch {
+    return null;
+  }
 }
 
 export function TechWorkflowWizard() {
@@ -71,6 +103,7 @@ export function TechWorkflowWizard() {
 
   const [signerName, setSignerName] = useState('');
   const [agreementAck, setAgreementAck] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(false);
   const [beforePreviews, setBeforePreviews] = useState<PhotoPreview[]>([]);
   const [afterPreviews, setAfterPreviews] = useState<PhotoPreview[]>([]);
   const [beforePreviewByCategory, setBeforePreviewByCategory] = useState<Record<string, PhotoPreview[]>>({});
@@ -91,31 +124,64 @@ export function TechWorkflowWizard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(WALKIN_STORAGE_KEY);
-      if (!raw) return;
-      const o = JSON.parse(raw) as {
-        appointmentId?: string | null;
-        fallbackBookingId?: string | null;
-        accessToken?: string | null;
-        lockedTotalCents?: number;
-        savedAt?: number;
-      };
-      if ((!o.appointmentId && !o.fallbackBookingId) || typeof o.savedAt !== 'number') return;
-      if (Date.now() - o.savedAt > 36 * 3600000) {
-        sessionStorage.removeItem(WALKIN_STORAGE_KEY);
-        return;
-      }
-      setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
-      setFallbackBookingId((prev) => prev ?? o.fallbackBookingId ?? null);
-      setAccessToken((prev) => prev ?? o.accessToken ?? null);
-      if (typeof o.lockedTotalCents === 'number') {
-        setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
-      }
-    } catch {
-      /* ignore */
+    const o = readStoredWalkInJob();
+    if (!o) return;
+    setAppointmentId((prev) => prev ?? o.appointmentId ?? null);
+    setFallbackBookingId((prev) => prev ?? o.fallbackBookingId ?? null);
+    setAccessToken((prev) => prev ?? o.accessToken ?? null);
+    if (typeof o.lockedTotalCents === 'number') {
+      setLockedTotalCents((prev) => (prev != null ? prev : o.lockedTotalCents ?? null));
     }
   }, []);
+
+  const persistWalkInJob = useCallback(
+    (patch: Partial<StoredWalkInJob>) => {
+      const next: StoredWalkInJob = {
+        ...(readStoredWalkInJob() ?? {}),
+        appointmentId,
+        fallbackBookingId,
+        accessToken,
+        lockedTotalCents,
+        guestName,
+        guestEmail,
+        guestPhone,
+        customerId,
+        vehicleClass,
+        vehicleDescription,
+        serviceId,
+        serviceSlug: services.find((s) => s.id === serviceId)?.slug ?? null,
+        ...patch,
+        savedAt: Date.now(),
+      };
+      try {
+        sessionStorage.setItem(WALKIN_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      console.info('[tech-workflow] persisted job reference', {
+        step,
+        appointmentId: next.appointmentId ?? null,
+        fallbackBookingId: next.fallbackBookingId ?? null,
+        accessToken: next.accessToken ? `${next.accessToken.slice(0, 8)}...` : null,
+      });
+      return next;
+    },
+    [
+      accessToken,
+      appointmentId,
+      customerId,
+      fallbackBookingId,
+      guestEmail,
+      guestName,
+      guestPhone,
+      lockedTotalCents,
+      serviceId,
+      services,
+      step,
+      vehicleClass,
+      vehicleDescription,
+    ],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -275,24 +341,17 @@ export function TechWorkflowWizard() {
           setError(r.error);
           return;
         }
-        try {
-          sessionStorage.setItem(
-            WALKIN_STORAGE_KEY,
-            JSON.stringify({
-              appointmentId: r.appointmentId,
-              fallbackBookingId: r.fallbackBookingId ?? null,
-              accessToken: r.accessToken,
-              lockedTotalCents: r.totalCents,
-              savedAt: Date.now(),
-            }),
-          );
-        } catch {
-          /* ignore */
-        }
         setAppointmentId(r.appointmentId);
         setFallbackBookingId(r.fallbackBookingId ?? null);
         setAccessToken(r.accessToken);
         setLockedTotalCents(r.totalCents);
+        persistWalkInJob({
+          appointmentId: r.appointmentId,
+          fallbackBookingId: r.fallbackBookingId ?? null,
+          accessToken: r.accessToken,
+          jobReference: r.appointmentId ?? r.fallbackBookingId ?? r.accessToken,
+          lockedTotalCents: r.totalCents,
+        });
         setSignerName(guestName.trim());
         goNext();
       });
@@ -305,7 +364,25 @@ export function TechWorkflowWizard() {
         setError('Review the acknowledgement and check the box to continue.');
         return;
       }
-      goNext();
+      setError(null);
+      persistWalkInJob({ fallbackBookingId, accessToken, jobReference: fallbackBookingId });
+      startTransition(() => {
+        void techSignWalkInAgreementAction({
+          appointmentId: null,
+          fallbackBookingId,
+          signerLegalName: signerName.trim() || guestName.trim() || 'Walk-in customer',
+          signatureType: 'typed',
+          signatureData: signerName.trim() || guestName.trim() || null,
+          smsConsent,
+        }).then((r) => {
+          if (!r.ok) {
+            setError(r.error);
+            return;
+          }
+          persistWalkInJob({ fallbackBookingId, accessToken, jobReference: fallbackBookingId });
+          goNext();
+        });
+      });
       return;
     }
     if (!appointmentId) return;
@@ -317,28 +394,50 @@ export function TechWorkflowWizard() {
     startTransition(() => {
       void techSignWalkInAgreementAction({
         appointmentId,
+        fallbackBookingId,
         signerLegalName: signerName.trim(),
         signatureType: 'typed',
         signatureData: signerName.trim(),
+        smsConsent,
       }).then((r) => {
         if (!r.ok) {
           setError(r.error);
           return;
         }
+        persistWalkInJob({ appointmentId, fallbackBookingId, accessToken, jobReference: appointmentId });
         goNext();
       });
     });
   };
 
   const uploadPhoto = (file: File | null, photoCat: PhotoCategory, phase: 'before' | 'after') => {
-    if (!file || (!appointmentId && !fallbackBookingId)) return;
+    if (!file) return;
+    const stored = readStoredWalkInJob();
+    const activeAppointmentId = appointmentId ?? stored?.appointmentId ?? null;
+    const activeFallbackBookingId = fallbackBookingId ?? stored?.fallbackBookingId ?? null;
+    const activeAccessToken = accessToken ?? stored?.accessToken ?? null;
+    const activeJobReference = activeAppointmentId ?? activeFallbackBookingId ?? stored?.jobReference ?? activeAccessToken ?? null;
+    console.info('[tech-workflow] upload refs', {
+      step,
+      appointmentId,
+      fallbackBookingId,
+      sessionStorage: {
+        appointmentId: stored?.appointmentId ?? null,
+        fallbackBookingId: stored?.fallbackBookingId ?? null,
+        accessToken: stored?.accessToken ? `${stored.accessToken.slice(0, 8)}...` : null,
+      },
+      selectedJobReference: activeJobReference,
+    });
+    if (activeAppointmentId && !appointmentId) setAppointmentId(activeAppointmentId);
+    if (activeFallbackBookingId && !fallbackBookingId) setFallbackBookingId(activeFallbackBookingId);
+    if (activeAccessToken && !accessToken) setAccessToken(activeAccessToken);
     const fd = new FormData();
-    if (appointmentId) fd.set('appointmentId', appointmentId);
-    if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
-    if (accessToken) fd.set('accessToken', accessToken);
-    if (appointmentId) fd.set('jobReference', appointmentId);
-    else if (fallbackBookingId) fd.set('jobReference', fallbackBookingId);
-    if (fallbackBookingId) fd.set('techWorkflowId', fallbackBookingId);
+    fd.set('currentStep', String(step));
+    if (activeAppointmentId) fd.set('appointmentId', activeAppointmentId);
+    if (activeFallbackBookingId) fd.set('fallbackBookingId', activeFallbackBookingId);
+    if (activeAccessToken) fd.set('accessToken', activeAccessToken);
+    if (activeJobReference) fd.set('jobReference', activeJobReference);
+    if (activeFallbackBookingId) fd.set('techWorkflowId', activeFallbackBookingId);
     fd.set('category', phase);
     fd.set('photoCategory', photoCat);
     fd.set('file', file);
@@ -353,6 +452,8 @@ export function TechWorkflowWizard() {
           error?: string;
           category?: string;
           savedTo?: string;
+          appointmentId?: string | null;
+          fallbackBookingId?: string | null;
           uploadedAt?: string;
         };
         if (!res.ok || !j.ok) {
@@ -364,6 +465,13 @@ export function TechWorkflowWizard() {
           uploadedAt: j.uploadedAt ?? new Date().toISOString(),
           savedTo: j.savedTo,
         };
+        if (j.appointmentId) {
+          setAppointmentId(j.appointmentId);
+          persistWalkInJob({ appointmentId: j.appointmentId, fallbackBookingId: j.fallbackBookingId ?? null, jobReference: j.appointmentId });
+        } else if (j.fallbackBookingId) {
+          setFallbackBookingId(j.fallbackBookingId);
+          persistWalkInJob({ fallbackBookingId: j.fallbackBookingId, jobReference: j.fallbackBookingId });
+        }
         if (phase === 'after') {
           setAfterCount((c) => c + 1);
           setAfterPreviews((p) => [preview, ...p].slice(0, 8));
@@ -453,7 +561,7 @@ export function TechWorkflowWizard() {
   };
 
   return (
-    <div className='mx-auto max-w-2xl space-y-8 pb-24'>
+    <div className='tech-workflow-form mx-auto w-full max-w-2xl space-y-8 px-3 pb-24 sm:px-0'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <p className='text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>
           Step {step} / {STEPS}
@@ -760,6 +868,17 @@ export function TechWorkflowWizard() {
                 />
                 <span>Customer reviewed the acknowledgement and authorized the fallback field workflow.</span>
               </label>
+              <label className='flex items-start gap-2 text-sm text-zinc-300'>
+                <input
+                  type='checkbox'
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  className='mt-1 h-4 w-4 rounded border-zinc-600 bg-black'
+                />
+                <span>
+                  I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.
+                </span>
+              </label>
               <div className='flex justify-between gap-2'>
                 <button type='button' onClick={goBack} className='text-xs font-bold uppercase tracking-wider text-zinc-500'>
                   Back
@@ -800,6 +919,17 @@ export function TechWorkflowWizard() {
                 />
                 <span>
                   Customer has read the acknowledgement and agrees to its terms. I confirm the information above matches this job.
+                </span>
+              </label>
+              <label className='flex items-start gap-2 text-sm text-zinc-300'>
+                <input
+                  type='checkbox'
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  className='mt-1 h-4 w-4 rounded border-zinc-600 bg-black'
+                />
+                <span>
+                  I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.
                 </span>
               </label>
               <label className='block text-xs text-zinc-400'>

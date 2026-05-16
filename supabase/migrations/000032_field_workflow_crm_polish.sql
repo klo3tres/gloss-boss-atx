@@ -1,6 +1,12 @@
 -- Field workflow + CRM polish (safe additive only).
 
 -- ---------- job_media: upload/storage metadata + fine-grain categories ----------
+-- ---------- Agreements: SMS service update consent ----------
+alter table public.signed_agreements add column if not exists sms_consent boolean not null default false;
+alter table public.signed_agreements add column if not exists sms_consent_text text;
+alter table public.job_agreements add column if not exists sms_consent boolean not null default false;
+alter table public.job_agreements add column if not exists sms_consent_text text;
+
 alter table public.job_media add column if not exists storage_bucket text;
 alter table public.job_media add column if not exists storage_path text;
 alter table public.job_media add column if not exists file_path text;

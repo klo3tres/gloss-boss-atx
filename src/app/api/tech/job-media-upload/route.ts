@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     const techWorkflowId = String(form.get('techWorkflowId') ?? '').trim();
     const accessToken = String(form.get('accessToken') ?? '').trim();
     const jobReference = String(form.get('jobReference') ?? '').trim();
+    const currentStep = String(form.get('currentStep') ?? '').trim();
     const rawCat = String(form.get('photoCategory') ?? 'other')
       .trim()
       .toLowerCase()
@@ -87,10 +88,6 @@ export async function POST(request: Request) {
     if (file.size > 12 * 1024 * 1024) {
       return NextResponse.json({ error: 'Image must be 12MB or smaller.' }, { status: 400 });
     }
-    if (!appointmentId && !fallbackBookingId && !techWorkflowId && !accessToken && !jobReference) {
-      return NextResponse.json({ error: 'Missing job reference.' }, { status: 400 });
-    }
-
     let customerId: string | null = null;
     let vehicleId: string | null = null;
     const debug: Array<Record<string, unknown>> = [];
@@ -103,6 +100,7 @@ export async function POST(request: Request) {
       techWorkflowId,
       accessToken: accessToken ? `${accessToken.slice(0, 8)}...` : null,
       jobReference: jobReference ? `${jobReference.slice(0, 8)}...` : null,
+      currentStep,
       userId: user.id,
     });
 
@@ -183,11 +181,11 @@ export async function POST(request: Request) {
       if (error || !f) {
         fallbackBookingId = '';
       } else {
-      const assigned = typeof f.assigned_technician_id === 'string' ? f.assigned_technician_id : null;
-      if (assigned && assigned !== user.id && role !== 'admin' && role !== 'super_admin') {
-        console.warn('[job-media-upload] fallback assignment denied', debug);
-        return NextResponse.json({ error: 'Invalid fallback for this technician.' }, { status: 400 });
-      }
+        const assigned = typeof f.assigned_technician_id === 'string' ? f.assigned_technician_id : null;
+        if (assigned && assigned !== user.id && role !== 'admin' && role !== 'super_admin') {
+          console.warn('[job-media-upload] fallback assignment denied', debug);
+          return NextResponse.json({ error: 'Invalid fallback for this technician.' }, { status: 400 });
+        }
       }
     }
 
@@ -219,6 +217,78 @@ export async function POST(request: Request) {
       }
     }
 
+    if (!appointmentUsable && !fallbackBookingId) {
+      const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const latestAppointment = await admin
+        .from('appointments')
+        .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source, created_at')
+        .eq('booking_source', 'tech_workflow')
+        .eq('assigned_technician_id', user.id)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const latestAppt = latestAppointment.data as Record<string, unknown> | null;
+      logDebug('appointments.latest_for_tech', {
+        found: Boolean(latestAppt),
+        error: latestAppointment.error?.message ?? null,
+        since,
+      });
+      if (!latestAppointment.error && latestAppt?.id) {
+        appointmentUsable = true;
+        linkedAppointmentId = String(latestAppt.id);
+        customerId = typeof latestAppt.customer_id === 'string' ? latestAppt.customer_id : null;
+        vehicleId = typeof latestAppt.vehicle_id === 'string' ? latestAppt.vehicle_id : null;
+        logDebug('appointments.selected_latest', { appointmentId: linkedAppointmentId });
+      }
+    }
+
+    if (!appointmentUsable && !fallbackBookingId) {
+      const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const latestFallback = await admin
+        .from('booking_fallbacks')
+        .select('id, assigned_technician_id, created_at')
+        .eq('assigned_technician_id', user.id)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      logDebug('booking_fallbacks.latest_for_tech', {
+        found: Boolean(latestFallback.data),
+        error: latestFallback.error?.message ?? null,
+        since,
+      });
+      if (!latestFallback.error && latestFallback.data?.id) {
+        fallbackBookingId = String(latestFallback.data.id);
+        logDebug('booking_fallbacks.selected_latest', { fallbackBookingId });
+      }
+    }
+
+    if (!appointmentUsable && !fallbackBookingId) {
+      const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const looseFallbacks = await admin
+        .from('booking_fallbacks')
+        .select('id, payload, created_at')
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      const rows = Array.isArray(looseFallbacks.data) ? looseFallbacks.data : [];
+      logDebug('booking_fallbacks.latest_payload_scan', {
+        count: rows.length,
+        error: looseFallbacks.error?.message ?? null,
+      });
+      const match = rows.find((row) => {
+        const payload = (row as { payload?: unknown }).payload;
+        if (!payload || typeof payload !== 'object') return false;
+        const p = payload as Record<string, unknown>;
+        return p.tech_workflow === true && p.assigned_technician_id === user.id;
+      }) as { id?: string } | undefined;
+      if (match?.id) {
+        fallbackBookingId = String(match.id);
+        logDebug('booking_fallbacks.selected_from_payload', { fallbackBookingId });
+      }
+    }
+
     if (!appointmentUsable && fallbackBookingId) {
       const fbCheck = await admin
         .from('booking_fallbacks')
@@ -243,7 +313,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Could not find the active workflow job. Go back to Quote total and tap Create job & continue, then retry the upload.',
+            'Could not find an active walk-in workflow job for this technician. Create the walk-in job, then retry the upload.',
+          debug,
         },
         { status: 404 },
       );
@@ -362,6 +433,8 @@ export async function POST(request: Request) {
       category,
       photoCategory,
       savedTo: linkedAppointmentId ? 'appointment' : 'fallback',
+      appointmentId: linkedAppointmentId || null,
+      fallbackBookingId: fallbackBookingId || null,
       uploadedAt: new Date().toISOString(),
     });
   } catch (e) {

@@ -200,14 +200,18 @@ export async function techCreateWalkInJobAction(input: {
 }
 
 export async function techSignWalkInAgreementAction(input: {
-  appointmentId: string;
+  appointmentId?: string | null;
+  fallbackBookingId?: string | null;
   signerLegalName: string;
   signatureType: 'typed' | 'drawn';
   signatureData: string | null;
+  smsConsent?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const appointmentId = String(input.appointmentId ?? '').trim();
+  const fallbackBookingId = String(input.fallbackBookingId ?? '').trim();
   const signerLegalName = String(input.signerLegalName ?? '').trim();
-  if (!appointmentId || !signerLegalName) return { ok: false, error: 'Missing fields' };
+  const smsConsent = Boolean(input.smsConsent);
+  if ((!appointmentId && !fallbackBookingId) || !signerLegalName) return { ok: false, error: 'Missing fields' };
 
   const session = await getSessionWithProfile();
   if (!session.user?.id) return { ok: false, error: 'Not signed in' };
@@ -221,6 +225,37 @@ export async function techSignWalkInAgreementAction(input: {
 
   const admin = tryCreateAdminSupabase();
   if (!admin) return { ok: false, error: 'Database not configured' };
+
+  if (!appointmentId && fallbackBookingId) {
+    const { data: fb, error: fbErr } = await admin
+      .from('booking_fallbacks')
+      .select('id, assigned_technician_id, payload')
+      .eq('id', fallbackBookingId)
+      .maybeSingle();
+    if (fbErr || !fb?.id) return { ok: false, error: 'Fallback job not found' };
+    const assigned = typeof fb.assigned_technician_id === 'string' ? fb.assigned_technician_id : null;
+    if (assigned && assigned !== session.user.id) return { ok: false, error: 'This fallback job is not assigned to you' };
+    const prevPayload = ((fb as { payload?: unknown }).payload && typeof (fb as { payload?: unknown }).payload === 'object'
+      ? ((fb as { payload?: Record<string, unknown> }).payload ?? {})
+      : {}) as Record<string, unknown>;
+    const nextPayload = {
+      ...prevPayload,
+      walk_in_legal_ack: {
+        signer_legal_name: signerLegalName,
+        signature_type: input.signatureType,
+        signature_data: input.signatureData ?? null,
+        sms_consent: smsConsent,
+        sms_consent_text:
+          'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+        stored_at: new Date().toISOString(),
+      },
+    };
+    const up = await admin.from('booking_fallbacks').update({ payload: nextPayload }).eq('id', fallbackBookingId);
+    if (up.error) return { ok: false, error: up.error.message };
+    revalidatePath('/tech');
+    revalidatePath('/tech/workflow');
+    return { ok: true };
+  }
 
   const { data: appt, error: fetchErr } = await fetchAppointmentForTechSign(admin, appointmentId);
   if (fetchErr) {
@@ -254,6 +289,25 @@ export async function techSignWalkInAgreementAction(input: {
 
   const { data: existing } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
   if (existing) {
+    const { data: existingIntake } = await admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+    const existingForm = (existingIntake?.form_data as Record<string, unknown>) ?? {};
+    await admin
+      .from('intake_submissions')
+      .upsert(
+        {
+          appointment_id: appointmentId,
+          form_data: {
+            ...existingForm,
+            walk_in_sms_consent: {
+              agreed: smsConsent,
+              text:
+                'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+              stored_at: new Date().toISOString(),
+            },
+          },
+        },
+        { onConflict: 'appointment_id' },
+      );
     await admin
       .from('appointments')
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
@@ -309,6 +363,9 @@ export async function techSignWalkInAgreementAction(input: {
     signer_legal_name: signerLegalName,
     signature_type: input.signatureType,
     signature_data: input.signatureData ?? null,
+    sms_consent: smsConsent,
+    sms_consent_text:
+      'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
     ip_address: null,
     user_agent: 'tech_workflow',
     customer_id: A.customer_id ?? null,
@@ -327,6 +384,9 @@ export async function techSignWalkInAgreementAction(input: {
         signer_legal_name: signerLegalName,
         signature_type: input.signatureType,
         signature_data: input.signatureData ?? null,
+        sms_consent: smsConsent,
+        sms_consent_text:
+          'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
         agreement_snapshot: snapshot,
         stored_at: new Date().toISOString(),
       },
@@ -346,12 +406,37 @@ export async function techSignWalkInAgreementAction(input: {
     }
   }
 
+  const { data: consentIntakeRow } = await admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
+  const consentPrevForm = (consentIntakeRow?.form_data as Record<string, unknown>) ?? {};
+  const consentBackupForm = {
+    ...consentPrevForm,
+    walk_in_sms_consent: {
+      agreed: smsConsent,
+      text:
+        'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
+      stored_at: new Date().toISOString(),
+    },
+  };
+  await admin
+    .from('intake_submissions')
+    .upsert(
+      {
+        appointment_id: appointmentId,
+        customer_id: typeof A.customer_id === 'string' && A.customer_id ? A.customer_id : null,
+        form_data: consentBackupForm,
+      },
+      { onConflict: 'appointment_id' },
+    );
+
   const ja = await insertJobAgreementFlexible(admin, {
     appointment_id: appointmentId,
     signer_legal_name: signerLegalName,
     agreement_snapshot: snapshot,
     signature_type: input.signatureType,
     signature_data: input.signatureData ?? null,
+    sms_consent: smsConsent,
+    sms_consent_text:
+      'I agree to receive SMS service updates from Gloss Boss ATX about this appointment. Message/data rates may apply. Reply STOP to opt out.',
     template_id: template?.id ?? null,
     template_version: template?.version ?? 1,
     signed_at: new Date().toISOString(),

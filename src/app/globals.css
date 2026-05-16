@@ -26,3 +26,10 @@ body {
 * {
   border-color: rgba(255, 255, 255, 0.08);
 }
+
+.tech-workflow-form input,
+.tech-workflow-form select,
+.tech-workflow-form textarea,
+.tech-workflow-form button {
+  font-size: 16px;
+}
