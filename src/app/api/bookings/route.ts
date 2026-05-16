@@ -132,11 +132,18 @@ export async function POST(request: Request) {
     const resolved = quote.resolved;
     const claimed = quote.claimed;
     const allowFreeTestPromo = (siteSettings as { allow_free_test_promo?: boolean } | null)?.allow_free_test_promo === true;
+    if (promoCode === 'FREE' && !allowFreeTestPromo) {
+      return NextResponse.json({ error: 'Promo code not available.' }, { status: 400 });
+    }
     const freePromoApplied =
       promoCode === 'FREE' &&
       allowFreeTestPromo &&
-      resolved.length > 0 &&
-      resolved.every((r) => r.serviceSlug === 'exterior-wash');
+      resolved.length === 1 &&
+      resolved[0]?.serviceSlug === 'exterior-wash' &&
+      normalizeVehicleClass(resolved[0]?.vehicleClass ?? '') === 'sedan';
+    if (promoCode === 'FREE' && allowFreeTestPromo && !freePromoApplied) {
+      return NextResponse.json({ error: 'FREE only applies to a Sedan Exterior Wash test booking.' }, { status: 400 });
+    }
 
     const totalBaseCents = freePromoApplied ? 0 : priced.finalTotalCents;
     const depositAmountCents = freePromoApplied ? 0 : priced.depositCents;
@@ -180,6 +187,10 @@ export async function POST(request: Request) {
             city: serviceCity,
             state: serviceState,
             postal_code: serviceZip,
+            service_address: serviceAddress,
+            service_city: serviceCity,
+            service_state: serviceState,
+            service_zip: serviceZip,
           })
           .eq('id', customerId);
         if (upErr) {
@@ -196,6 +207,10 @@ export async function POST(request: Request) {
             city: serviceCity,
             state: serviceState,
             postal_code: serviceZip,
+            service_address: serviceAddress,
+            service_city: serviceCity,
+            service_state: serviceState,
+            service_zip: serviceZip,
           })
           .select('id')
           .single();
@@ -240,7 +255,7 @@ export async function POST(request: Request) {
       service_zip: serviceZip,
       service_address_notes: serviceAddressNotes || null,
       status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
-      payment_status: freePromoApplied ? 'manual_comped' : 'awaiting_deposit',
+      payment_status: freePromoApplied ? 'comped' : 'awaiting_deposit',
       promo_code: promoCode || null,
       comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
       booking_vehicles: bookingVehicles,
@@ -321,6 +336,7 @@ export async function POST(request: Request) {
         depositAmountCents: 0,
         skipPayment: true,
         compStatus: 'test_comped',
+        message: 'Test comp applied.',
       });
     }
 

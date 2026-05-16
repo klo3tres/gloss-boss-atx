@@ -70,7 +70,7 @@ export default async function TechnicianDashboardPage({
     const uid = session.user.id;
     activeDebug = { userId: uid, checked: [], adminRead: Boolean(admin) };
     let selectCols =
-      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, service_address, address, booking_add_ons, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents, archived';
+      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, address, booking_add_ons, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents, archived';
     let appointmentQuery = await db
       .from('appointments')
       .select(selectCols)
@@ -261,7 +261,10 @@ export default async function TechnicianDashboardPage({
         guest_phone: row.guest_phone != null ? String(row.guest_phone) : null,
         guest_email: row.guest_email != null ? String(row.guest_email) : null,
         vehicle_description: row.vehicle_description != null ? String(row.vehicle_description) : null,
-        service_address: row.service_address != null ? String(row.service_address) : row.address != null ? String(row.address) : null,
+        booking_vehicles: Array.isArray(row.booking_vehicles) ? (row.booking_vehicles as Record<string, unknown>[]) : [],
+        service_address:
+          [row.service_address, row.service_city, row.service_state, row.service_zip].map((v) => (v == null ? '' : String(v))).filter(Boolean).join(', ') ||
+          (row.address != null ? String(row.address) : null),
         service_slug: String(row.service_slug ?? ''),
         vehicle_class: String(row.vehicle_class ?? 'sedan'),
         base_price_cents: typeof row.base_price_cents === 'number' ? row.base_price_cents : null,
@@ -302,7 +305,7 @@ export default async function TechnicianDashboardPage({
     if (fallbackIds.length > 0) {
       const { data: fallbackRows, error: fallbackErr } = await db
         .from('booking_fallbacks')
-      .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, payload, created_at')
+      .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, vehicle_class, payload, created_at')
         .in('id', fallbackIds);
       if (fallbackErr) console.warn('[tech dashboard] fallback active select', fallbackErr.message);
       const mediaByFallback = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
@@ -353,14 +356,20 @@ export default async function TechnicianDashboardPage({
           guest_phone: r.guest_phone != null ? String(r.guest_phone) : payload.customer_phone != null ? String(payload.customer_phone) : null,
           guest_email: r.guest_email != null ? String(r.guest_email) : null,
           vehicle_description: r.vehicle_description != null ? String(r.vehicle_description) : payload.vehicle_summary != null ? String(payload.vehicle_summary) : null,
+          booking_vehicles: Array.isArray(r.booking_vehicles)
+            ? (r.booking_vehicles as Record<string, unknown>[])
+            : Array.isArray(payload.booking_vehicles)
+              ? (payload.booking_vehicles as Record<string, unknown>[])
+              : [],
           service_address:
-            payload.service_address != null
+            [r.service_address, r.service_city, r.service_state, r.service_zip].map((v) => (v == null ? '' : String(v))).filter(Boolean).join(', ') ||
+            (payload.service_address != null
               ? String(payload.service_address)
               : payload.address != null
                 ? String(payload.address)
                 : payload.customer_address != null
                   ? String(payload.customer_address)
-                  : null,
+                  : null),
           service_slug: String(r.service_slug ?? payload.service_slug ?? 'walk-in-service'),
           vehicle_class: String(r.vehicle_class ?? 'sedan'),
           base_price_cents: null,

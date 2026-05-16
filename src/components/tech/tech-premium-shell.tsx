@@ -27,6 +27,7 @@ export type TechJob = {
   guest_phone: string | null;
   guest_email: string | null;
   vehicle_description: string | null;
+  booking_vehicles?: Array<Record<string, unknown>>;
   service_address?: string | null;
   service_slug: string;
   vehicle_class: string;
@@ -46,6 +47,29 @@ export type TechJob = {
   timerStartedAt?: string | null;
   isFallback?: boolean;
 };
+
+function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_description' | 'service_slug' | 'vehicle_class' | 'base_price_cents'>) {
+  if (Array.isArray(job.booking_vehicles) && job.booking_vehicles.length > 0) {
+    return job.booking_vehicles.map((v, i) => ({
+      label: String(v.vehicle_description ?? v.description ?? `Vehicle ${i + 1}`),
+      service: String(v.service_slug ?? job.service_slug ?? ''),
+      vehicleClass: String(v.vehicle_class ?? job.vehicle_class ?? ''),
+      priceCents: typeof v.price_cents === 'number' ? v.price_cents : null,
+    }));
+  }
+  return [
+    {
+      label: job.vehicle_description ?? 'Vehicle TBD',
+      service: job.service_slug,
+      vehicleClass: job.vehicle_class,
+      priceCents: job.base_price_cents,
+    },
+  ];
+}
+
+function directionsHref(address?: string | null) {
+  return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+}
 
 export type TechAnalytics = {
   completedCount: number;
@@ -307,7 +331,7 @@ export function TechPremiumShell({
                 Directions:{' '}
                 {activeJob.service_address ? (
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeJob.service_address)}`}
+                    href={directionsHref(activeJob.service_address)}
                     target='_blank'
                     rel='noreferrer'
                     className='text-gold-soft underline underline-offset-4'
@@ -315,7 +339,7 @@ export function TechPremiumShell({
                     {activeJob.service_address}
                   </a>
                 ) : (
-                  'No address on file.'
+                  <span className='text-zinc-600'>No service address on file — contact customer.</span>
                 )}
               </p>
             </div>
@@ -538,12 +562,25 @@ export function TechPremiumShell({
                   {activeJob.isFallback ? 'Fallback workflow' : activeJob.status.replace(/_/g, ' ')}
                 </span>
               </div>
-              <p className='mt-4 text-sm text-zinc-400'>{activeJob.vehicle_description ?? 'Vehicle TBD'}</p>
-              <p className='mt-2 text-sm font-semibold text-gold-soft'>{activeJob.service_slug.replace(/-/g, ' ')}</p>
+              <p className='mt-4 text-sm font-semibold text-zinc-300'>
+                {vehicleLines(activeJob).length} vehicle{vehicleLines(activeJob).length === 1 ? '' : 's'}
+              </p>
+              <div className='mt-2 space-y-2'>
+                {vehicleLines(activeJob).map((v, i) => (
+                  <div key={`${v.label}-${i}`} className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs'>
+                    <p className='font-bold text-white'>Vehicle {i + 1}: {v.label}</p>
+                    <p className='text-gold-soft'>{v.service.replace(/-/g, ' ')}</p>
+                    <p className='text-zinc-500'>
+                      {v.vehicleClass.replace(/_/g, ' ')}
+                      {v.priceCents != null ? ` · $${(v.priceCents / 100).toFixed(2)}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
               <p className='mt-1 text-xs text-zinc-500'>
                 {activeJob.service_address ? (
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeJob.service_address)}`}
+                    href={directionsHref(activeJob.service_address)}
                     target='_blank'
                     rel='noreferrer'
                     className='text-gold-soft underline underline-offset-4'
@@ -551,7 +588,7 @@ export function TechPremiumShell({
                     Directions
                   </a>
                 ) : (
-                  'No address on file.'
+                  <span className='text-zinc-600'>No service address on file — contact customer.</span>
                 )}
               </p>
               <p className='mt-1 text-xs text-zinc-500'>

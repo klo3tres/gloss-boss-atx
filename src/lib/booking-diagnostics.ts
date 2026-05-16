@@ -126,6 +126,15 @@ export async function saveBookingFallback(
         deposit_amount_cents: params.depositAmountCents,
         base_price_cents: params.basePriceCents,
         scheduled_start: params.scheduledStartIso,
+        service_address: params.payload.service_address ?? null,
+        service_city: params.payload.service_city ?? null,
+        service_state: params.payload.service_state ?? null,
+        service_zip: params.payload.service_zip ?? null,
+        service_address_notes: params.payload.service_address_notes ?? null,
+        booking_vehicles: params.payload.booking_vehicles ?? [],
+        promo_code: params.payload.promo_code ?? null,
+        payment_status: params.payload.payment_status ?? null,
+        comp_reason: params.payload.comp_reason ?? null,
         status: 'pending',
       })
       .select('id, access_token')

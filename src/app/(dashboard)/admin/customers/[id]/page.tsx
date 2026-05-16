@@ -34,7 +34,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     admin
       .from('appointments')
       .select(
-        'id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone',
+        'id, status, payment_status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone',
       )
       .eq('customer_id', id)
       .order('scheduled_start', { ascending: false })
@@ -44,14 +44,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     custEmailRaw
       ? admin
           .from('appointments')
-          .select('id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
+          .select('id, status, payment_status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
           .eq('guest_email', custEmailRaw)
           .limit(80)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     custPhoneRaw
       ? admin
           .from('appointments')
-          .select('id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
+          .select('id, status, payment_status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, created_at, assigned_technician_id, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, guest_name, guest_email, guest_phone')
           .eq('guest_phone', custPhoneRaw)
           .limit(80)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
@@ -65,6 +65,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const apptRows = [...apptMap.values()] as unknown as {
     id: string;
     status: string;
+    payment_status?: string | null;
     scheduled_start: string;
     service_slug: string;
     vehicle_class: string;
@@ -130,7 +131,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const paidViaStripeCents = paymentsTotalCents;
   const headlineSpendCents = paidViaStripeCents;
   const pendingBookings = apptRows.filter((a) => !['completed', 'cancelled'].includes(a.status));
-  const serviceSlugs = [...new Set(apptRows.map((a) => a.service_slug).filter(Boolean))];
+  const serviceSlugs = [...new Set(apptRows.filter((a) => a.status === 'completed').map((a) => a.service_slug).filter(Boolean))];
 
   const vehicles = (vehiclesRes.data ?? []) as { id: string; description: string; notes: string | null; created_at: string }[];
   const notes = (notesRes.data ?? []) as { id: string; body: string; created_at: string }[];
@@ -281,7 +282,27 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Services received</h2>
-        <p className='mt-2 text-sm text-zinc-300'>{serviceSlugs.length ? serviceSlugs.join(' · ') : '—'}</p>
+        <p className='mt-2 text-sm text-zinc-300'>{serviceSlugs.length ? serviceSlugs.join(' · ') : 'No completed services yet.'}</p>
+      </section>
+
+      <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <div className='flex items-center justify-between gap-3'>
+          <h2 className='text-sm font-bold uppercase text-gold-soft'>Work orders</h2>
+          <Link href='/admin/work-orders' className='text-xs font-bold uppercase text-gold-soft underline'>Open board</Link>
+        </div>
+        <ul className='mt-3 space-y-2 text-sm'>
+          {apptRows.length === 0 ? <li className='text-zinc-500'>No work orders yet.</li> : null}
+          {apptRows.map((a) => (
+            <li key={`wo-${a.id}`} className='rounded border border-white/10 px-3 py-2'>
+              <span className='text-white'>{a.service_slug}</span>
+              <span className='ml-2 text-xs text-zinc-500'>{a.status}</span>
+              {a.payment_status ? <span className='ml-2 text-xs text-emerald-300'>{a.payment_status}</span> : null}
+              <p className='mt-1 text-xs text-zinc-500'>
+                {[a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ') || 'No service address saved'}
+              </p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

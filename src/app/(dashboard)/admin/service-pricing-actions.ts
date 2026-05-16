@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
@@ -10,19 +11,22 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   const priceId = String(formData.get('priceId') ?? '').trim();
   const rawStr = String(formData.get('priceDollars') ?? '').trim();
   const raw = rawStr === '' ? 0 : Number(rawStr);
-  if (!priceId || !Number.isFinite(raw) || raw < 0) return;
+  if (!priceId || !Number.isFinite(raw) || raw < 0) redirect('/admin/services?priceErr=Invalid%20price');
 
   const session = await getSessionWithProfile();
   const supabase = await createSupabaseServerClient();
   if (!session.supabaseConfigured || !supabase || !session.user || !isAdminLevel(session.profile?.role ?? null)) {
-    return;
+    redirect('/admin/services?priceErr=Unauthorized');
   }
 
   const cents = Math.round(raw * 100);
   const admin = tryCreateAdminSupabase();
   const client = admin ?? supabase;
   const { error } = await client.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
-  if (error) console.error('[admin/services] price update', error.message);
+  if (error) {
+    console.error('[admin/services] price update', error.message);
+    redirect(`/admin/services?priceErr=${encodeURIComponent(error.message)}`);
+  }
 
   revalidatePath('/admin/services');
   revalidatePath('/admin/pricing');
@@ -32,4 +36,5 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   revalidatePath('/');
   revalidatePath('/api/public/site-data');
   revalidatePath('/api/services');
+  redirect('/admin/services?priceSaved=1');
 }

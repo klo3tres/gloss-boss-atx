@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { techAddJobMediaAction, techSaveChecklistSnapshotAction, techSaveJobNotesAction } from './tech-actions';
+import { techSaveChecklistSnapshotAction, techSaveJobNotesAction } from './tech-actions';
 import { checklistForServiceSlug } from '@/lib/tech-service-checklist';
 
 type Job = {
@@ -16,6 +16,11 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
   const checklist = checklistForServiceSlug(job.service_slug ?? '');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [chkMsg, setChkMsg] = useState<string | null>(null);
+  const [photoPhase, setPhotoPhase] = useState<'before' | 'after'>('before');
+  const [photoCategory, setPhotoCategory] = useState('front');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoMsg, setPhotoMsg] = useState<string | null>(null);
+  const [photoPending, setPhotoPending] = useState(false);
   const [pendingChk, startChkTransition] = useTransition();
 
   if (!showWorkspace) return null;
@@ -29,6 +34,27 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
         );
       });
     });
+  };
+
+  const uploadPhoto = async (file: File | null | undefined) => {
+    if (!file) return;
+    setPhotoPending(true);
+    setPhotoMsg(null);
+    setPhotoPreview(URL.createObjectURL(file));
+    const fd = new FormData();
+    fd.set('appointmentId', job.id);
+    fd.set('category', photoPhase);
+    fd.set('photoCategory', photoCategory);
+    fd.set('file', file);
+    const res = await fetch('/api/tech/job-media-upload', { method: 'POST', body: fd });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+    setPhotoPending(false);
+    if (!res.ok) {
+      setPhotoMsg(json.error ?? 'Photo upload failed.');
+      return;
+    }
+    if (json.url) setPhotoPreview(json.url);
+    setPhotoMsg(`${photoPhase === 'before' ? 'Before' : 'After'} ${photoCategory.replace(/_/g, ' ')} photo uploaded.`);
   };
 
   return (
@@ -82,35 +108,60 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
         </button>
       </form>
 
-      <form action={techAddJobMediaAction} className='grid gap-2 sm:grid-cols-[1fr_2fr_auto]'>
-        <input type='hidden' name='appointmentId' value={job.id} />
-        <label className='block text-xs text-zinc-400'>
-          Photo type
-          <select name='category' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
-            <option value='before'>Before</option>
-            <option value='inspection'>During / inspection</option>
-            <option value='damage'>Damage / concern</option>
-            <option value='after'>After</option>
-            <option value='other'>Other</option>
-          </select>
-        </label>
-        <label className='block text-xs text-zinc-400 sm:col-span-1'>
-          Image URL
-          <input
-            name='fileUrl'
-            type='url'
-            placeholder='https://…'
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
-        <button
-          type='submit'
-          className='self-end rounded-lg border border-white/20 px-3 py-2 text-xs font-bold uppercase text-white'
-        >
-          Add photo
-        </button>
-      </form>
-      <p className='text-[10px] text-zinc-600'>Paste a hosted image URL (storage upload can be added when bucket is configured).</p>
+      {job.status === 'in_progress' ? (
+        <section className='rounded-2xl border border-gold/20 bg-black/30 p-3'>
+          <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Work order photos</p>
+          <p className='mt-1 text-[10px] text-zinc-500'>Tap a category to take a mobile photo or upload from this device.</p>
+          <div className='mt-3 grid gap-2 sm:grid-cols-3'>
+            <label className='block text-xs text-zinc-400'>
+              Phase
+              <select value={photoPhase} onChange={(e) => setPhotoPhase(e.target.value as 'before' | 'after')} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
+                <option value='before'>Before</option>
+                <option value='after'>After</option>
+              </select>
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              Category
+              <select value={photoCategory} onChange={(e) => setPhotoCategory(e.target.value)} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
+                <option value='front'>Front</option>
+                <option value='rear'>Rear</option>
+                <option value='driver_side'>Driver side</option>
+                <option value='passenger_side'>Passenger side</option>
+                <option value='interior'>Interior</option>
+                <option value='wheels'>Wheels</option>
+                <option value='damage'>Damage</option>
+                <option value='other'>Other</option>
+              </select>
+            </label>
+            <label className='flex cursor-pointer items-center justify-center rounded-xl border border-gold/35 bg-gold/10 px-3 py-3 text-center text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/15'>
+              {photoPending ? 'Uploading...' : 'Take / Upload Photo'}
+              <input
+                type='file'
+                accept='image/*'
+                capture='environment'
+                className='sr-only'
+                disabled={photoPending}
+                onChange={(e) => {
+                  void uploadPhoto(e.target.files?.[0]);
+                  e.currentTarget.value = '';
+                }}
+              />
+            </label>
+          </div>
+          {photoPreview ? (
+            <div className='mt-3 flex items-center gap-3'>
+              <img src={photoPreview} alt='Uploaded work order preview' className='h-20 w-20 rounded-xl border border-white/10 object-cover' />
+              <p className='text-xs text-zinc-400'>{photoMsg ?? 'Preview ready.'}</p>
+            </div>
+          ) : photoMsg ? (
+            <p className='mt-2 text-xs text-amber-200'>{photoMsg}</p>
+          ) : null}
+        </section>
+      ) : (
+        <p className='rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-zinc-500'>
+          Photo uploads unlock after the job is started.
+        </p>
+      )}
     </div>
   );
 }

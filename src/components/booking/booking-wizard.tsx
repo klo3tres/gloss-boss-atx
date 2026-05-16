@@ -91,6 +91,7 @@ export function BookingWizard() {
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
+  const freePromoRequested = promoCode.trim().toUpperCase() === 'FREE';
 
   useEffect(() => {
     type CatalogPayload = {
@@ -972,7 +973,7 @@ export function BookingWizard() {
               />
               {promoCode.trim().toUpperCase() === 'FREE' ? (
                 <p className='mt-2 text-xs text-amber-200'>
-                  FREE is a gated staff/test comp. It only applies when enabled by admin settings and only for Exterior Wash tests.
+                  FREE is gated by admin settings and only applies to a Sedan Exterior Wash test. If enabled, total becomes $0 and Stripe is bypassed.
                 </p>
               ) : null}
             </label>
@@ -1012,6 +1013,11 @@ export function BookingWizard() {
             })}
             {priceSummary?.kind === 'ok' ? (
               <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
+                {freePromoRequested ? (
+                  <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs font-bold text-amber-100'>
+                    Test comp requested. The server will apply it only when enabled and valid.
+                  </p>
+                ) : null}
                 <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
                   <span>Original — vehicle services</span>
                   <span className='text-zinc-300'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>

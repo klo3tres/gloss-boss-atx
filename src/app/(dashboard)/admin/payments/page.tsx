@@ -48,11 +48,21 @@ export default async function AdminPaymentsPage() {
     ]);
     if (payments.error) loadError = payments.error.message;
     const bySession = new Map<string, PayRow>();
+    const apptById = new Map<string, PayRow>();
+    const apptBySession = new Map<string, PayRow>();
+    for (const a of appointments.data ?? []) {
+      const r = a as PayRow;
+      apptById.set(str(r.id), r);
+      for (const sid of [str(r.stripe_checkout_session_id), str(r.final_payment_checkout_session_id)].filter(Boolean)) {
+        apptBySession.set(sid, r);
+      }
+    }
     for (const p of payments.data ?? []) {
       const r = p as PayRow;
       const sid = str(r.stripe_checkout_session_id);
+      const linked = apptById.get(str(r.appointment_id)) ?? apptBySession.get(sid) ?? {};
       if (sid) bySession.set(sid, r);
-      rows.push({ source: 'payment', ...r });
+      rows.push({ source: 'payment', ...linked, ...r, customer_id: r.customer_id ?? linked.customer_id });
     }
     for (const a of appointments.data ?? []) {
       const r = a as PayRow;
@@ -112,7 +122,10 @@ export default async function AdminPaymentsPage() {
                     <td className='p-2'>{str(r.payment_status) || str(r.status) || 'unknown'}</td>
                     <td className='p-2 font-mono'>{sid || '—'}</td>
                     <td className='p-2 font-mono'>{pi || '—'}</td>
-                    <td className='p-2 font-mono'>{str(r.appointment_id) ? `appt ${str(r.appointment_id).slice(0, 8)}` : str(r.fallback_booking_id) ? `fb ${str(r.fallback_booking_id).slice(0, 8)}` : '—'}</td>
+                    <td className='p-2 font-mono'>
+                      <p>{str(r.appointment_id) ? `appt ${str(r.appointment_id).slice(0, 8)}` : str(r.fallback_booking_id) ? `fb ${str(r.fallback_booking_id).slice(0, 8)}` : '—'}</p>
+                      {str(r.id) ? <Link href={`/admin/payments/${str(r.id)}`} className='font-sans text-gold-soft underline'>Detail</Link> : null}
+                    </td>
                     <td className='p-2'>{chicago(r.created_at)}</td>
                     <td className='space-y-2 p-2'>
                       {sid ? (

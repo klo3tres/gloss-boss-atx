@@ -18,7 +18,12 @@ type PriceRow = {
   services: { title: string; slug: string } | { title: string; slug: string }[] | null;
 };
 
-export default async function AdminServicesPricingPage() {
+export default async function AdminServicesPricingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const session = await getSessionWithProfile();
 
   if (!session.supabaseConfigured) {
@@ -66,6 +71,16 @@ export default async function AdminServicesPricingPage() {
       {seedMsg ? (
         <p className='mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
           Catalog seed note: {seedMsg} Check <code className='text-gold-soft'>SUPABASE_SERVICE_ROLE_KEY</code> for automatic seeding.
+        </p>
+      ) : null}
+      {resolvedSearchParams.priceSaved === '1' ? (
+        <p className='mb-4 rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-100'>
+          Price saved. Public booking and services pages were revalidated.
+        </p>
+      ) : null}
+      {typeof resolvedSearchParams.priceErr === 'string' ? (
+        <p className='mb-4 rounded-lg border border-red-500/35 bg-red-500/10 p-4 text-sm text-red-100'>
+          Price save failed: {resolvedSearchParams.priceErr}
         </p>
       ) : null}
       {!admin ? (

@@ -36,6 +36,26 @@ function vehicles(r: Row) {
   return str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending';
 }
 
+function vehicleLines(r: Row) {
+  const bookingVehicles = r.booking_vehicles;
+  if (Array.isArray(bookingVehicles) && bookingVehicles.length > 0) {
+    return bookingVehicles.map((v, i) => {
+      const row = v && typeof v === 'object' ? (v as Row) : {};
+      return {
+        label: str(row.vehicle_description || row.description) || `Vehicle ${i + 1}`,
+        service: str(row.service_slug) || str(r.service_slug),
+        priceCents: typeof row.price_cents === 'number' ? row.price_cents : null,
+        status: str(row.status) || str(r.status),
+      };
+    });
+  }
+  return [{ label: str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending', service: str(r.service_slug), priceCents: typeof r.base_price_cents === 'number' ? r.base_price_cents : null, status: str(r.status) }];
+}
+
+function mapsHref(addr: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+}
+
 function statusBucket(r: Row) {
   const status = str(r.status);
   const payment = str(r.payment_status);
@@ -76,7 +96,7 @@ export default async function AdminWorkOrdersPage() {
     );
   }
 
-  const [appointmentsRes, fallbacksRes, techRes, agreementsRes] = await Promise.all([
+  const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
       .from('appointments')
       .select('id, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
@@ -89,11 +109,28 @@ export default async function AdminWorkOrdersPage() {
       .limit(80),
     admin.from('profiles').select('id, full_name, email, active').eq('role', 'technician').order('full_name'),
     admin.from('signed_agreements').select('id, appointment_id, signed_at').order('signed_at', { ascending: false }).limit(250),
+    admin.from('intake_submissions').select('id, appointment_id, created_at').order('created_at', { ascending: false }).limit(250),
+    admin.from('payments').select('id, appointment_id, fallback_booking_id, stripe_checkout_session_id, amount_cents, status, created_at').order('created_at', { ascending: false }).limit(250),
   ]);
 
   const agreementByAppt = new Map(
     ((agreementsRes.data ?? []) as Row[]).filter((a) => a.appointment_id).map((a) => [str(a.appointment_id), a]),
   );
+  for (const intake of (intakeRes.data ?? []) as Row[]) {
+    const aid = str(intake.appointment_id);
+    if (aid && !agreementByAppt.has(aid)) agreementByAppt.set(aid, { ...intake, signed_at: intake.created_at, source: 'intake_submissions' });
+  }
+  const paymentByAppt = new Map<string, Row>();
+  const paymentByFallback = new Map<string, Row>();
+  const paymentBySession = new Map<string, Row>();
+  for (const payment of (paymentsRes.data ?? []) as Row[]) {
+    const aid = str(payment.appointment_id);
+    const fid = str(payment.fallback_booking_id);
+    const sid = str(payment.stripe_checkout_session_id);
+    if (aid && !paymentByAppt.has(aid)) paymentByAppt.set(aid, payment);
+    if (fid && !paymentByFallback.has(fid)) paymentByFallback.set(fid, payment);
+    if (sid && !paymentBySession.has(sid)) paymentBySession.set(sid, payment);
+  }
   const technicians = ((techRes.data ?? []) as Row[]).filter((t) => t.active !== false);
   const appts = ((appointmentsRes.data ?? []) as Row[]).filter((r) => r.archived !== true && !r.archived_at);
   const fallbacks: Row[] = ((fallbacksRes.data ?? []) as Row[])
@@ -131,6 +168,15 @@ export default async function AdminWorkOrdersPage() {
                 {bucketRows.map((r) => {
                   const isFallback = str(r.kind) === 'fallback';
                   const agreement = agreementByAppt.get(str(r.id));
+                  const fullAddress = address(r);
+                  const payment =
+                    (isFallback ? paymentByFallback.get(str(r.id)) : paymentByAppt.get(str(r.id))) ??
+                    paymentBySession.get(str(r.stripe_checkout_session_id));
+                  const paymentHref = payment?.id
+                    ? `/admin/payments/${str(payment.id)}`
+                    : str(r.stripe_checkout_session_id)
+                      ? `/admin/payments?session=${encodeURIComponent(str(r.stripe_checkout_session_id))}`
+                      : '/admin/payments';
                   return (
                     <article key={`${isFallback ? 'fb' : 'appt'}-${str(r.id)}`} className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm'>
                       <div className='flex flex-wrap items-start justify-between gap-3'>
@@ -142,9 +188,21 @@ export default async function AdminWorkOrdersPage() {
                       </div>
                       <div className='mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2'>
                         <p>{str(r.guest_email)}<br />{str(r.guest_phone)}</p>
-                        <p>{vehicles(r)}<br />{address(r) || 'No service address saved'}</p>
+                        <p>{vehicles(r)}<br />{fullAddress || 'No service address on file — contact customer.'}</p>
                         <p>Tech: {str(technicians.find((t) => str(t.id) === str(r.assigned_technician_id))?.full_name) || 'Unassigned'}</p>
                         <p>Agreement: {agreement ? `Signed ${chicago(agreement.signed_at)}` : 'Missing'}</p>
+                      </div>
+                      <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+                        {vehicleLines(r).map((v, i) => (
+                          <div key={`${v.label}-${i}`} className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs'>
+                            <p className='font-bold text-white'>Vehicle {i + 1}: {v.label}</p>
+                            <p className='text-gold-soft'>{v.service.replace(/-/g, ' ') || 'Service pending'}</p>
+                            <p className='text-zinc-500'>
+                              {v.priceCents != null ? `$${(v.priceCents / 100).toFixed(2)}` : 'Price pending'} · {v.status.replace(/_/g, ' ')}
+                            </p>
+                            <p className='mt-1 text-zinc-600'>Timer/photos/notes tracked under this work order.</p>
+                          </div>
+                        ))}
                       </div>
                       <div className='mt-4 flex flex-wrap gap-2'>
                         {!isFallback ? (
@@ -160,8 +218,13 @@ export default async function AdminWorkOrdersPage() {
                           </form>
                         ) : null}
                         {!isFallback && str(r.customer_id) ? <Link href={`/admin/customers/${str(r.customer_id)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Customer</Link> : null}
-                        {str(r.stripe_checkout_session_id) ? <Link href='/admin/payments' className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
-                        {agreement ? <Link href='/admin/agreements' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Agreement</Link> : null}
+                        {fullAddress ? (
+                          <a href={mapsHref(fullAddress)} target='_blank' rel='noreferrer' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Directions</a>
+                        ) : (
+                          <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
+                        )}
+                        {(str(r.stripe_checkout_session_id) || payment) ? <Link href={paymentHref} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
+                        {agreement ? <Link href={`/admin/agreements?appointment=${encodeURIComponent(str(r.id))}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : null}
                         {isFallback ? (
                           <>
                             <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
