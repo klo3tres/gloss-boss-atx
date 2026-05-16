@@ -389,14 +389,26 @@ export async function techStartJobAction(
     .maybeSingle();
 
   if (!openTimer) {
-    let ins = await gate.supabase.from('tech_job_timers').insert({
+    const timerFull: Record<string, unknown> = {
       technician_id: gate.userId,
       appointment_id: appointmentId,
+      fallback_booking_id: fallbackBookingId || null,
+      workflow_session_id: workflowSessionId || null,
       label: 'Job start',
-    });
+    };
+    let ins = await gate.supabase.from('tech_job_timers').insert(timerFull);
     if (ins.error && isSchemaDriftError(ins.error.message)) {
       ins = await gate.supabase.from('tech_job_timers').insert({
         technician_id: gate.userId,
+        appointment_id: appointmentId,
+        fallback_booking_id: fallbackBookingId || null,
+        label: `Job ${appointmentId.slice(0, 8)}`,
+      });
+    }
+    if (ins.error && isSchemaDriftError(ins.error.message)) {
+      ins = await gate.supabase.from('tech_job_timers').insert({
+        technician_id: gate.userId,
+        appointment_id: appointmentId,
         label: `Job ${appointmentId.slice(0, 8)}`,
       });
     }
@@ -468,6 +480,60 @@ export async function techStartJobAction(
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
   return null;
+}
+
+export async function techSendActiveJobNotificationAction(formData: FormData): Promise<void> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return;
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const kind = String(formData.get('kind') ?? '').trim();
+  const allowed = new Set(['last_touches', 'payment_link', 'review_request']);
+  if (!allowed.has(kind) || (!appointmentId && !fallbackBookingId)) return;
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  let vehicle = 'your vehicle';
+  let guestEmail: string | null = null;
+  let guestPhone: string | null = null;
+  let customerId: string | null = null;
+  if (appointmentId) {
+    const { data } = await db
+      .from('appointments')
+      .select('vehicle_description, guest_email, guest_phone, customer_id')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    const row = (data ?? {}) as Record<string, unknown>;
+    vehicle = row.vehicle_description ? String(row.vehicle_description) : vehicle;
+    guestEmail = row.guest_email ? String(row.guest_email) : null;
+    guestPhone = row.guest_phone ? String(row.guest_phone) : null;
+    customerId = row.customer_id ? String(row.customer_id) : null;
+  }
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || ''}/dashboard`;
+  const message =
+    kind === 'last_touches'
+      ? `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`
+      : kind === 'payment_link'
+        ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. Track updates here: ${dashboardUrl}`
+        : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
+  await writeNotificationOutbox(db, {
+    kind,
+    appointment_id: appointmentId || null,
+    fallback_booking_id: fallbackBookingId || null,
+    customer_id: customerId,
+    technician_id: gate.userId,
+    channel: 'customer',
+    status: guestEmail || guestPhone ? 'queued' : 'skipped',
+    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl },
+  });
+  if (appointmentId) {
+    await recordJobTimelineEvent(db, {
+      appointmentId,
+      eventType: 'checklist_saved',
+      meta: { notification_kind: kind, message, channel: guestEmail || guestPhone ? 'queued' : 'skipped' },
+      createdBy: gate.userId,
+    });
+  }
+  revalidatePath('/tech');
 }
 
 export async function techCompleteJobAction(

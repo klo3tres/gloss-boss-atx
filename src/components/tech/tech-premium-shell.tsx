@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   CalendarDays,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
+import { techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
@@ -35,6 +37,11 @@ export type TechJob = {
   afterPhotoCount?: number;
   payment_status?: string | null;
   balance_due_cents?: number | null;
+  fallback_booking_id?: string | null;
+  workflowSessionId?: string | null;
+  timerId?: string | null;
+  timerStartedAt?: string | null;
+  isFallback?: boolean;
 };
 
 export type TechAnalytics = {
@@ -92,6 +99,25 @@ const initialPerform: TechPerformanceMetrics = {
   topAddOns: [],
 };
 
+function LiveTimer({ startedAt }: { startedAt?: string | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (!startedAt) return <span className='text-zinc-500'>Timer started</span>;
+  const elapsed = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  return (
+    <span className='font-mono text-emerald-300'>
+      {h > 0 ? `${h}:` : ''}
+      {String(m).padStart(h > 0 ? 2 : 1, '0')}:{String(s).padStart(2, '0')}
+    </span>
+  );
+}
+
 export function TechPremiumShell({
   techName,
   roleLabel,
@@ -104,6 +130,7 @@ export function TechPremiumShell({
   performance = initialPerform,
   goalLabel,
   goalTargetCents,
+  justStarted = false,
 }: {
   techName: string;
   roleLabel: string | null;
@@ -116,6 +143,7 @@ export function TechPremiumShell({
   performance?: TechPerformanceMetrics;
   goalLabel: string | null;
   goalTargetCents: number | null;
+  justStarted?: boolean;
 }) {
   const todayJobs = jobs.filter((j) => isToday(j.scheduled_start));
   const activeJob = jobs.find((j) => j.status === 'in_progress');
@@ -157,6 +185,12 @@ export function TechPremiumShell({
           </span>
         </div>
       </header>
+
+      {justStarted ? (
+        <div className='mb-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.12)]'>
+          Job started. Your active work order is ready below.
+        </div>
+      ) : null}
 
       <section className={`${cardGlow} relative mb-10 overflow-hidden`}>
         <div className='pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_top,rgba(212,166,77,0.14),transparent_55%)]' />
@@ -233,6 +267,31 @@ export function TechPremiumShell({
           </div>
         </div>
       </section>
+
+      {activeJob ? (
+        <section className='mb-10 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
+          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Active job live now</p>
+              <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
+                {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
+              </h2>
+              <p className='mt-1 text-sm text-zinc-400'>
+                {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
+              </p>
+            </div>
+            <div className='flex flex-wrap items-center gap-3'>
+              <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
+                <span className='mr-2 text-zinc-500'>Timer</span>
+                <LiveTimer startedAt={activeJob.timerStartedAt} />
+              </div>
+              <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+                Open Work Order
+              </a>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs</h2>
       <TechJobsClient jobs={jobs} />
@@ -356,13 +415,33 @@ export function TechPremiumShell({
 
       {activeJob ? (
         <section className={`${cardGlow} mt-10 border-emerald-500/25 shadow-[0_0_36px_rgba(16,185,129,0.12)]`}>
-          <p className='text-xs font-black uppercase tracking-[0.25em] text-emerald-400'>Active job</p>
+          <p className='text-xs font-black uppercase tracking-[0.25em] text-emerald-400'>Active work order</p>
           <div className='mt-4 grid gap-4 md:grid-cols-2'>
             <div>
-              <p className='text-lg font-bold text-white'>{activeJob.guest_name ?? 'Guest'}</p>
-              <p className='text-sm text-zinc-400'>{activeJob.vehicle_description ?? 'Vehicle TBD'}</p>
+              <div className='flex flex-wrap items-start justify-between gap-3'>
+                <div>
+                  <p className='text-lg font-bold text-white'>{activeJob.guest_name ?? 'Walk-in customer'}</p>
+                  {activeJob.guest_phone ? (
+                    <a href={`tel:${activeJob.guest_phone}`} className='text-sm font-semibold text-gold-soft underline decoration-gold/30 underline-offset-4'>
+                      {activeJob.guest_phone}
+                    </a>
+                  ) : (
+                    <p className='text-sm text-zinc-500'>No phone on file</p>
+                  )}
+                </div>
+                <span className='rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300'>
+                  {activeJob.isFallback ? 'Fallback workflow' : activeJob.status.replace(/_/g, ' ')}
+                </span>
+              </div>
+              <p className='mt-4 text-sm text-zinc-400'>{activeJob.vehicle_description ?? 'Vehicle TBD'}</p>
               <p className='mt-2 text-sm font-semibold text-gold-soft'>{activeJob.service_slug.replace(/-/g, ' ')}</p>
-              <p className='mt-1 text-xs uppercase tracking-wider text-zinc-500'>{activeJob.status.replace(/_/g, ' ')}</p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
+                {activeJob.vehicle_class.replace(/_/g, ' ')}
+              </p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                Started {activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}
+              </p>
               {activeJob.fieldNotesPreview ? (
                 <p className='mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400'>{activeJob.fieldNotesPreview}</p>
               ) : null}
@@ -372,11 +451,11 @@ export function TechPremiumShell({
                 <span className='flex items-center gap-2 text-zinc-400'>
                   <Timer className='h-3.5 w-3.5' aria-hidden /> Live timer
                 </span>
-                <span className='text-zinc-500'>Use field tools</span>
+                <LiveTimer startedAt={activeJob.timerStartedAt} />
               </li>
               <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
                 <span className='flex items-center gap-2 text-zinc-400'>
-                  <ClipboardCheck className='h-3.5 w-3.5' aria-hidden /> Intake
+                  <ClipboardCheck className='h-3.5 w-3.5' aria-hidden /> Agreement
                 </span>
                 <span className={activeJob.hasIntake ? 'text-emerald-400' : 'text-amber-300'}>
                   {activeJob.hasIntake ? 'On file' : 'Needed'}
@@ -396,6 +475,14 @@ export function TechPremiumShell({
               </li>
               <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
                 <span className='flex items-center gap-2 text-zinc-400'>
+                  <FileText className='h-3.5 w-3.5' aria-hidden /> Notes
+                </span>
+                <span className={activeJob.fieldNotesPreview ? 'text-emerald-400' : 'text-zinc-500'}>
+                  {activeJob.fieldNotesPreview ? 'Saved' : 'Ready'}
+                </span>
+              </li>
+              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
+                <span className='flex items-center gap-2 text-zinc-400'>
                   <Zap className='h-3.5 w-3.5' aria-hidden /> Payment
                 </span>
                 <span className={(activeJob.balance_due_cents ?? 0) > 0 ? 'text-amber-300' : 'text-emerald-400'}>
@@ -407,11 +494,25 @@ export function TechPremiumShell({
             </ul>
           </div>
           <div className='mt-4 flex flex-wrap gap-2'>
-            <Link href='/tech/workflow' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
-              Open workflow closeout
+            <Link href='#field-invoice' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
+              Open Work Order
             </Link>
-            <a href='#field-invoice' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white'>
-              Notes / payment tools
+            <Link href='/tech/workflow' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>
+              Upload After Photos
+            </Link>
+            <a href='#field-invoice' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</a>
+            {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+              <form key={kind} action={techSendActiveJobNotificationAction}>
+                <input type='hidden' name='kind' value={kind} />
+                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                <button type='submit' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110'>
+                  {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+                </button>
+              </form>
+            ))}
+            <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+              Complete Job
             </a>
           </div>
         </section>

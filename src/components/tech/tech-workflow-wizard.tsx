@@ -594,7 +594,13 @@ export function TechWorkflowWizard({
       const res = await fetch('/api/tech/job-timer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', appointmentId: appointmentId ?? undefined, fallbackBookingId: fallbackBookingId ?? undefined, label: 'Walk-in workflow' }),
+        body: JSON.stringify({
+          action: 'start',
+          appointmentId: appointmentId ?? undefined,
+          fallbackBookingId: fallbackBookingId ?? undefined,
+          workflowSessionId: workflowSessionId ?? undefined,
+          label: 'Walk-in workflow',
+        }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -603,7 +609,7 @@ export function TechWorkflowWizard({
       }
       setTimerStarted(true);
       if (typeof j.id === 'string') setTimerId(j.id);
-      setTimerError('Fallback timer started. Convert this fallback in Dispatch before completing it as an appointment.');
+      router.push('/tech?jobStarted=1');
       return;
     }
     const activeAppointmentId = appointmentId;
@@ -639,7 +645,7 @@ export function TechWorkflowWizard({
       return;
     }
     setTimerStarted(true);
-    router.push('/tech');
+    router.push('/tech?jobStarted=1');
   };
 
   const saveWorkflowNotes = () => {

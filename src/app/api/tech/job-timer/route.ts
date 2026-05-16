@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       label?: string;
       appointmentId?: string;
       fallbackBookingId?: string;
+      workflowSessionId?: string;
     };
 
     const action = String(body.action ?? '').trim();
@@ -99,6 +100,7 @@ export async function POST(request: Request) {
 
     const appointmentId = String(body.appointmentId ?? '').trim();
     const fallbackBookingId = String(body.fallbackBookingId ?? '').trim();
+    const workflowSessionId = String(body.workflowSessionId ?? '').trim();
     const admin = tryCreateAdminSupabase();
     const db = admin ?? supabase;
 
@@ -119,10 +121,13 @@ export async function POST(request: Request) {
       const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
       const isWalkIn = appt && String((appt as { booking_source?: string | null }).booking_source ?? '') === 'tech_workflow';
       if (!apErr && appt && assigned !== user.id && isWalkIn && !assigned && admin) {
-        await admin
+        const full = await admin
           .from('appointments')
           .update({ assigned_technician_id: user.id, assigned_by: user.id, assigned_at: nowIso, updated_at: nowIso })
           .eq('id', appointmentId);
+        if (full.error && isSchemaDriftError(full.error.message)) {
+          await admin.from('appointments').update({ assigned_technician_id: user.id }).eq('id', appointmentId);
+        }
       } else if (apErr || !appt || (assigned !== user.id && role !== 'admin' && role !== 'super_admin')) {
 
         return NextResponse.json({ error: 'Invalid appointment for this technician' }, { status: 400 });
@@ -153,6 +158,7 @@ export async function POST(request: Request) {
 
       if (appointmentId) insertPayload.appointment_id = appointmentId;
       if (fallbackBookingId) insertPayload.fallback_booking_id = fallbackBookingId;
+      if (workflowSessionId) insertPayload.workflow_session_id = workflowSessionId;
 
 
 
@@ -172,12 +178,20 @@ export async function POST(request: Request) {
 
         const minimal: Record<string, unknown> = { technician_id: user.id, label };
         if (fallbackBookingId) minimal.fallback_booking_id = fallbackBookingId;
+        if (workflowSessionId) minimal.workflow_session_id = workflowSessionId;
 
         ({ data, error } = await supabase.from('tech_job_timers').insert(minimal).select('id, started_at, created_at').maybeSingle());
 
       }
 
 
+
+      if (error && isSchemaDriftError(error.message)) {
+        const minimal: Record<string, unknown> = { technician_id: user.id, label };
+        if (appointmentId) minimal.appointment_id = appointmentId;
+        if (fallbackBookingId) minimal.fallback_booking_id = fallbackBookingId;
+        ({ data, error } = await supabase.from('tech_job_timers').insert(minimal).select('id, started_at, created_at').maybeSingle());
+      }
 
       if (error) {
 
@@ -216,6 +230,16 @@ export async function POST(request: Request) {
       const row = (data ?? {}) as Record<string, unknown>;
 
       const startedAt = resolveStartedAt(row) ?? nowIso;
+
+      if (fallbackBookingId && admin) {
+        const fbUpdate = await admin
+          .from('booking_fallbacks')
+          .update({ status: 'in_progress', updated_at: nowIso })
+          .eq('id', fallbackBookingId);
+        if (fbUpdate.error && isSchemaDriftError(fbUpdate.error.message)) {
+          await admin.from('booking_fallbacks').update({ status: 'in_progress' }).eq('id', fallbackBookingId);
+        }
+      }
 
 
 

@@ -22,7 +22,22 @@ function addOnSlugCounts(bookingAddOns: unknown): Record<string, number> {
   return out;
 }
 
-export default async function TechnicianDashboardPage() {
+function isBeforePhotoCategory(input: unknown): boolean {
+  const cat = String(input ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['before', 'inspection', 'front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels'].includes(cat);
+}
+
+function isAfterPhotoCategory(input: unknown): boolean {
+  return String(input ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_') === 'after';
+}
+
+export default async function TechnicianDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const justStarted = resolvedSearchParams.jobStarted === '1';
   const session = await getSessionWithProfile();
   const supabase = await createSupabaseServerClient();
 
@@ -59,6 +74,29 @@ export default async function TechnicianDashboardPage() {
       .order('scheduled_start', { ascending: true });
     const rawRows = (data ?? []) as Record<string, unknown>[];
     const ids = rawRows.map((row) => String(row.id));
+    const openTimerByAppt = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
+    const openTimerByFallback = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
+    const timerQuery = await supabase
+      .from('tech_job_timers')
+      .select('id, appointment_id, fallback_booking_id, workflow_session_id, started_at, created_at')
+      .eq('technician_id', uid)
+      .is('ended_at', null)
+      .order('started_at', { ascending: false })
+      .limit(20);
+    const timerRows = !timerQuery.error ? (timerQuery.data ?? []) : [];
+    if (timerQuery.error) console.warn('[tech dashboard] open timers select', timerQuery.error.message);
+    for (const timer of timerRows) {
+      const row = timer as Record<string, unknown>;
+      const t = {
+        id: String(row.id ?? ''),
+        startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null,
+        workflowSessionId: row.workflow_session_id != null ? String(row.workflow_session_id) : null,
+      };
+      const aid = row.appointment_id != null ? String(row.appointment_id) : '';
+      const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
+      if (aid && !openTimerByAppt.has(aid)) openTimerByAppt.set(aid, t);
+      if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
+    }
 
     let intakeIds = new Set<string>();
     if (ids.length > 0) {
@@ -68,14 +106,22 @@ export default async function TechnicianDashboardPage() {
 
     const mediaByAppt = new Map<string, { before: number; after: number }>();
     if (ids.length > 0) {
-      const { data: med } = await supabase.from('job_media').select('appointment_id, category').in('appointment_id', ids);
+      const { data: med } = await supabase.from('job_media').select('appointment_id, category, photo_category').in('appointment_id', ids);
       for (const m of med ?? []) {
-        const row = m as { appointment_id?: string; category?: string };
+        const row = m as { appointment_id?: string; category?: string; photo_category?: string };
         const aid = String(row.appointment_id ?? '');
-        const cat = String(row.category ?? '');
         const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0 };
-        if (cat === 'before') cur.before += 1;
-        else if (cat === 'after') cur.after += 1;
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
+        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        mediaByAppt.set(aid, cur);
+      }
+      const { data: photos } = await supabase.from('job_photos').select('appointment_id, category, photo_category').in('appointment_id', ids);
+      for (const p of photos ?? []) {
+        const row = p as { appointment_id?: string; category?: string; photo_category?: string };
+        const aid = String(row.appointment_id ?? '');
+        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0 };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
+        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
         mediaByAppt.set(aid, cur);
       }
     }
@@ -131,8 +177,71 @@ export default async function TechnicianDashboardPage() {
         afterPhotoCount: counts?.after,
         payment_status: row.payment_status != null ? String(row.payment_status) : null,
         balance_due_cents: typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null,
+        timerId: openTimerByAppt.get(id)?.id ?? null,
+        timerStartedAt: openTimerByAppt.get(id)?.startedAt ?? null,
+        workflowSessionId: openTimerByAppt.get(id)?.workflowSessionId ?? null,
+        isFallback: false,
       };
     });
+
+    const fallbackIds = Array.from(openTimerByFallback.keys());
+    if (fallbackIds.length > 0) {
+      const { data: fallbackRows, error: fallbackErr } = await supabase
+        .from('booking_fallbacks')
+        .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, service_slug, vehicle_class, payload, created_at')
+        .in('id', fallbackIds);
+      if (fallbackErr) console.warn('[tech dashboard] fallback active select', fallbackErr.message);
+      const mediaByFallback = new Map<string, { before: number; after: number }>();
+      const { data: fallbackMedia } = await supabase.from('job_media').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      for (const m of fallbackMedia ?? []) {
+        const row = m as { fallback_booking_id?: string; category?: string; photo_category?: string };
+        const fid = String(row.fallback_booking_id ?? '');
+        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0 };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
+        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        mediaByFallback.set(fid, cur);
+      }
+      const { data: fallbackPhotos } = await supabase.from('job_photos').select('fallback_booking_id, category, photo_category').in('fallback_booking_id', fallbackIds);
+      for (const p of fallbackPhotos ?? []) {
+        const row = p as { fallback_booking_id?: string; category?: string; photo_category?: string };
+        const fid = String(row.fallback_booking_id ?? '');
+        const cur = mediaByFallback.get(fid) ?? { before: 0, after: 0 };
+        if (isBeforePhotoCategory(row.photo_category ?? row.category)) cur.before += 1;
+        else if (isAfterPhotoCategory(row.photo_category ?? row.category)) cur.after += 1;
+        mediaByFallback.set(fid, cur);
+      }
+      for (const row of fallbackRows ?? []) {
+        const r = row as Record<string, unknown>;
+        const id = String(r.id ?? '');
+        const timer = openTimerByFallback.get(id);
+        const payload = (r.payload && typeof r.payload === 'object' ? r.payload : {}) as Record<string, unknown>;
+        const counts = mediaByFallback.get(id);
+        jobs.unshift({
+          id,
+          fallback_booking_id: id,
+          status: 'in_progress',
+          scheduled_start: String(r.created_at ?? new Date().toISOString()),
+          guest_name: r.guest_name != null ? String(r.guest_name) : payload.customer_name != null ? String(payload.customer_name) : 'Walk-in customer',
+          guest_phone: r.guest_phone != null ? String(r.guest_phone) : payload.customer_phone != null ? String(payload.customer_phone) : null,
+          guest_email: r.guest_email != null ? String(r.guest_email) : null,
+          vehicle_description: r.vehicle_description != null ? String(r.vehicle_description) : payload.vehicle_summary != null ? String(payload.vehicle_summary) : null,
+          service_slug: String(r.service_slug ?? payload.service_slug ?? 'walk-in-service'),
+          vehicle_class: String(r.vehicle_class ?? 'sedan'),
+          base_price_cents: null,
+          notes: 'Fallback work order created from walk-in workflow.',
+          fieldNotesPreview: null,
+          hasIntake: true,
+          beforePhotoCount: counts?.before ?? 0,
+          afterPhotoCount: counts?.after ?? 0,
+          payment_status: 'pending',
+          balance_due_cents: null,
+          timerId: timer?.id ?? null,
+          timerStartedAt: timer?.startedAt ?? null,
+          workflowSessionId: timer?.workflowSessionId ?? null,
+          isFallback: true,
+        });
+      }
+    }
 
     const { data: done } = await supabase
       .from('appointments')
@@ -296,6 +405,7 @@ export default async function TechnicianDashboardPage() {
         performance={performance}
         goalLabel={goalLabel}
         goalTargetCents={goalTargetCents}
+        justStarted={justStarted}
       />
     </DashboardShell>
   );
