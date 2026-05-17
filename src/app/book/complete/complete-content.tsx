@@ -24,13 +24,21 @@ type ApptLite = {
 
 export default function CompleteContent() {
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get('session_id');
-  const token = searchParams.get('token');
-  const appointmentId = searchParams.get('appointment_id');
+  const sessionId = searchParams.get('session_id') ?? searchParams.get('sessionId') ?? '';
+  const token = searchParams.get('token') ?? '';
+  const appointmentId = searchParams.get('appointment_id') ?? searchParams.get('appointmentId') ?? '';
+  const fallbackBookingId = searchParams.get('fallback_booking_id') ?? searchParams.get('fallbackBookingId') ?? '';
+  const customerId = searchParams.get('customer_id') ?? searchParams.get('customerId') ?? '';
+  const paymentId = searchParams.get('payment_id') ?? searchParams.get('paymentId') ?? '';
+  const email = searchParams.get('email') ?? '';
+  const phone = searchParams.get('phone') ?? '';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [appointment, setAppointment] = useState<ApptLite | null>(null);
+  const [resolvedAppointmentId, setResolvedAppointmentId] = useState(appointmentId);
+  const [resolvedToken, setResolvedToken] = useState(token);
+  const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
   const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
   const [alreadySigned, setAlreadySigned] = useState(false);
   const [legalName, setLegalName] = useState('');
@@ -68,20 +76,30 @@ export default function CompleteContent() {
   const agreementTitle = template?.title?.trim() ? template.title : DEFAULT_AGREEMENT_TITLE;
 
   useEffect(() => {
-    if (!sessionId || !token || !appointmentId) {
+    if (!sessionId && !token && !appointmentId && !fallbackBookingId && !customerId && !paymentId && !email && !phone) {
       setError('Missing booking parameters.');
       setLoading(false);
       return;
     }
 
     let cancelled = false;
-    fetch(
-      `/api/bookings/ready-sign?session_id=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&appointmentId=${encodeURIComponent(appointmentId)}`,
-    )
+    const q = new URLSearchParams();
+    if (sessionId) q.set('session_id', sessionId);
+    if (token) q.set('token', token);
+    if (appointmentId) q.set('appointmentId', appointmentId);
+    if (fallbackBookingId) q.set('fallbackBookingId', fallbackBookingId);
+    if (customerId) q.set('customerId', customerId);
+    if (paymentId) q.set('paymentId', paymentId);
+    if (email) q.set('email', email);
+    if (phone) q.set('phone', phone);
+    fetch(`/api/bookings/ready-sign?${q.toString()}`)
       .then((r) => r.json())
       .then((data: {
         error?: string;
         appointment?: ApptLite;
+        appointmentId?: string;
+        accessToken?: string;
+        sessionId?: string;
         template?: { id: string; title: string; body: string; version: number } | null;
         alreadySigned?: boolean;
       }) => {
@@ -95,6 +113,9 @@ export default function CompleteContent() {
           return;
         }
         setAppointment(data.appointment);
+        setResolvedAppointmentId(data.appointmentId ?? appointmentId);
+        setResolvedToken(data.accessToken ?? token);
+        setResolvedSessionId(data.sessionId ?? sessionId);
         setTemplate(data.template ?? null);
         setAlreadySigned(Boolean(data.alreadySigned));
         if (data.alreadySigned) setDone(true);
@@ -109,10 +130,10 @@ export default function CompleteContent() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, token, appointmentId]);
+  }, [sessionId, token, appointmentId, fallbackBookingId, customerId, paymentId, email, phone, searchParams]);
 
   const handleSign = async () => {
-    if (!sessionId || !token || !appointmentId || !agreementBody.trim()) return;
+    if (!resolvedAppointmentId || !agreementBody.trim()) return;
     if (!legalName.trim()) {
       setError('Enter your full legal name.');
       return;
@@ -138,9 +159,9 @@ export default function CompleteContent() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        appointmentId,
-        accessToken: token,
-        sessionId,
+        appointmentId: resolvedAppointmentId,
+        accessToken: resolvedToken,
+        sessionId: resolvedSessionId,
         templateId: template?.id,
         signerLegalName: legalName.trim(),
         signatureType: signatureMode,

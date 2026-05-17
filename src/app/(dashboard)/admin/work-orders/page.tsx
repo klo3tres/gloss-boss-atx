@@ -105,7 +105,7 @@ export default async function AdminWorkOrdersPage() {
   const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
       .from('appointments')
-      .select('id, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
+      .select('id, access_token, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
       .order('scheduled_start', { ascending: false })
       .limit(180),
     admin
@@ -183,6 +183,15 @@ export default async function AdminWorkOrdersPage() {
                     : str(r.stripe_checkout_session_id)
                       ? `/admin/payments?session=${encodeURIComponent(str(r.stripe_checkout_session_id))}`
                       : '/admin/payments';
+                  const agreementCaptureParams = new URLSearchParams();
+                  if (!isFallback) agreementCaptureParams.set('appointment_id', str(r.id));
+                  if (isFallback) agreementCaptureParams.set('fallback_booking_id', str(r.id));
+                  if (str(r.access_token)) agreementCaptureParams.set('token', str(r.access_token));
+                  if (str(r.customer_id)) agreementCaptureParams.set('customer_id', str(r.customer_id));
+                  if (str(payment?.id)) agreementCaptureParams.set('payment_id', str(payment?.id));
+                  if (str(r.stripe_checkout_session_id)) agreementCaptureParams.set('session_id', str(r.stripe_checkout_session_id));
+                  if (str(r.guest_email)) agreementCaptureParams.set('email', str(r.guest_email));
+                  if (str(r.guest_phone)) agreementCaptureParams.set('phone', str(r.guest_phone));
                   return (
                     <article key={`${isFallback ? 'fb' : 'appt'}-${str(r.id)}`} className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm'>
                       <div className='flex flex-wrap items-start justify-between gap-3'>
@@ -249,7 +258,7 @@ export default async function AdminWorkOrdersPage() {
                           <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
                         )}
                         {(str(r.stripe_checkout_session_id) || payment) ? <Link href={paymentHref} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
-                        {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={`/agreement?appointment_id=${encodeURIComponent(str(r.id))}`} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Capture Agreement</Link>}
+                        {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={`/agreement?${agreementCaptureParams.toString()}`} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Capture Agreement</Link>}
                         {isFallback ? (
                           <>
                             <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>

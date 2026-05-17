@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       acknowledged,
     } = body;
 
-    if (!appointmentId || !accessToken || !sessionId || !signerLegalName || !signatureType || !acknowledged) {
+    if (!appointmentId || !signerLegalName || !signatureType || !acknowledged) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -39,17 +39,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Database not configured', code: 'SUPABASE_NOT_READY' }, { status: 503 });
     }
 
-    const stripe = await getStripeSdk(admin);
-    if (!stripe) {
-      return NextResponse.json({ error: 'Stripe not configured', code: 'STRIPE_NOT_CONFIGURED' }, { status: 503 });
-    }
-
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status !== 'paid') {
-      return NextResponse.json({ error: 'Payment not completed' }, { status: 400 });
-    }
-    if (session.metadata?.appointment_id !== appointmentId) {
-      return NextResponse.json({ error: 'Session mismatch' }, { status: 400 });
+    if (sessionId) {
+      const stripe = await getStripeSdk(admin);
+      if (stripe) {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
+          return NextResponse.json({ error: 'Payment not completed' }, { status: 400 });
+        }
+        if (session.metadata?.appointment_id && session.metadata.appointment_id !== appointmentId) {
+          return NextResponse.json({ error: 'Session mismatch' }, { status: 400 });
+        }
+      }
     }
 
     const { data: appt, error: apptErr } = await admin
@@ -60,11 +60,11 @@ export async function POST(request: Request) {
       .eq('id', appointmentId)
       .maybeSingle();
 
-    if (apptErr || !appt || appt.access_token !== accessToken) {
+    if (apptErr || !appt || (accessToken && appt.access_token !== accessToken)) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
-    if (appt.status !== 'deposit_paid') {
+    if (!['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'test_comped', 'manual_comped'].includes(String(appt.status))) {
       return NextResponse.json({ error: 'Deposit must be completed before signing' }, { status: 400 });
     }
 

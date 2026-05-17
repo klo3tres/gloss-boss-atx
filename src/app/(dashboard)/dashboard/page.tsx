@@ -410,7 +410,7 @@ export default async function CustomerDashboardRootPage() {
 
         <Link
 
-          href='/agreement'
+          href={appointments[0]?.id ? `/agreement?appointment_id=${encodeURIComponent(appointments[0].id)}` : '/agreement'}
 
           className='rounded-lg border border-white/15 px-5 py-3 text-sm font-bold uppercase tracking-wider text-zinc-300'
 
