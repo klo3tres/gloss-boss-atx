@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         serviceSlug: String(v.serviceSlug ?? '').trim(),
         vehicleClass: String(v.vehicleClass ?? '').trim(),
         vehicleDescription: String(v.vehicleDescription ?? '').trim(),
+        vehicleColor: String((v as VehicleLineInput & { vehicleColor?: string }).vehicleColor ?? '').trim(),
       }));
     } else if (body.serviceSlug && body.vehicleClass && body.vehicleDescription) {
       lines = [
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
           serviceSlug: body.serviceSlug.trim(),
           vehicleClass: body.vehicleClass.trim(),
           vehicleDescription: body.vehicleDescription.trim(),
+          vehicleColor: String((body as { vehicleColor?: string }).vehicleColor ?? '').trim(),
         },
       ];
     }
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
           !l.serviceSlug ||
           !l.vehicleClass ||
           !l.vehicleDescription ||
+          !String((l as { vehicleColor?: string }).vehicleColor ?? '').trim() ||
           !ALLOWED_CLASS.has(normalizeVehicleClass(l.vehicleClass)),
       )
     ) {
@@ -234,6 +237,7 @@ export async function POST(request: Request) {
       service_slug: r.serviceSlug,
       vehicle_class: r.vehicleClass,
       vehicle_description: r.vehicleDescription,
+      vehicle_color: r.vehicleColor || null,
       price_cents: r.priceCents,
     }));
 
@@ -259,6 +263,7 @@ export async function POST(request: Request) {
       promo_code: promoCode || null,
       comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
       booking_vehicles: bookingVehicles,
+      booking_pricing_breakdown: priced,
       booking_add_ons: addOns,
       booking_source: 'online',
     };

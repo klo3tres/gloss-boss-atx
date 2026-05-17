@@ -34,10 +34,11 @@ function vehicleLines(job: Job) {
     return job.booking_vehicles.map((v, i) => ({
       label: String(v.vehicle_description ?? v.description ?? `Vehicle ${i + 1}`),
       service: String(v.service_slug ?? job.service_slug),
+      color: String(v.vehicle_color ?? v.color ?? '') || 'Color not provided',
       priceCents: typeof v.price_cents === 'number' ? v.price_cents : null,
     }));
   }
-  return [{ label: job.vehicle_description ?? formatVehicleClassLabel(job.vehicle_class), service: job.service_slug, priceCents: job.base_price_cents }];
+  return [{ label: job.vehicle_description ?? formatVehicleClassLabel(job.vehicle_class), service: job.service_slug, color: 'Color not provided', priceCents: job.base_price_cents }];
 }
 
 function telHref(phone: string): string {
@@ -86,7 +87,7 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   {vehicles.map((v, i) => (
                     <div key={`${v.label}-${i}`} className='rounded-lg border border-white/10 bg-black/30 p-2 text-xs'>
                       <p className='font-semibold text-white'>Vehicle {i + 1}: {v.label}</p>
-                      <p className='text-zinc-500'>{v.service.replace(/-/g, ' ')}{v.priceCents != null ? ` · $${(v.priceCents / 100).toFixed(2)}` : ''}</p>
+                      <p className='text-zinc-500'>{v.service.replace(/-/g, ' ')} · {v.color}{v.priceCents != null ? ` · $${(v.priceCents / 100).toFixed(2)}` : ''}</p>
                     </div>
                   ))}
                 </div>
@@ -107,6 +108,14 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                   <p className='mt-2 text-xs font-semibold text-amber-200'>
                     Intake not on file yet — customer must complete `/intake` after paying before you can close this job.
                   </p>
+                ) : null}
+                {!job.hasIntake ? (
+                  <a
+                    href={`/agreement?appointment_id=${encodeURIComponent(job.id)}`}
+                    className='mt-2 inline-block rounded-lg border border-amber-500/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-200'
+                  >
+                    Capture Agreement
+                  </a>
                 ) : null}
               </div>
               <div className='flex flex-col gap-2'>

@@ -224,6 +224,43 @@ export async function updateLeadStatusAction(formData: FormData) {
   return { ok: true as const };
 }
 
+export async function archiveLeadAction(formData: FormData) {
+  const leadId = String(formData.get('leadId') ?? '').trim();
+  if (!leadId) return { ok: false, error: 'Missing lead' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ archived: true, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', leadId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/leads');
+  revalidatePath('/tech');
+  return { ok: true as const };
+}
+
+export async function deleteLeadAction(formData: FormData) {
+  const leadId = String(formData.get('leadId') ?? '').trim();
+  const confirm = String(formData.get('confirm') ?? '').trim();
+  if (!leadId || confirm !== 'DELETE') return { ok: false, error: 'Type DELETE to confirm' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({
+      archived: true,
+      archived_at: new Date().toISOString(),
+      deleted_at: new Date().toISOString(),
+      status: 'deleted',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/leads');
+  revalidatePath('/tech');
+  return { ok: true as const };
+}
+
 export async function updateLeadNotesAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '').trim();
   const notes = String(formData.get('notes') ?? '').trim();

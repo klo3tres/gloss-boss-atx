@@ -21,7 +21,9 @@ export default async function AdminLeadsPage() {
     admin.from('assignment_events').select('id, action, technician_id, previous_technician_id, actor_id, created_at, note, entity_id').eq('entity_type', 'lead').order('created_at', { ascending: false }).limit(600),
   ]);
 
-  const rows = (leadsRes.data ?? []) as Record<string, unknown>[];
+  const rows = ((leadsRes.data ?? []) as Record<string, unknown>[]).filter(
+    (r) => r.archived !== true && !r.archived_at && !r.deleted_at && r.status !== 'deleted',
+  );
   const techRaw = (techRes.data ?? []) as { id: string; full_name: string | null; email: string | null; active?: boolean | null }[];
   const technicians = techRaw.filter((t) => t.active !== false).map(({ id, full_name, email }) => ({ id, full_name, email }));
   const techById: Record<string, string> = {};

@@ -17,7 +17,7 @@ import {
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
 import { techArchiveTestWorkOrderAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
-import { techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
+import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
   id: string;
@@ -54,6 +54,7 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
       label: String(v.vehicle_description ?? v.description ?? `Vehicle ${i + 1}`),
       service: String(v.service_slug ?? job.service_slug ?? ''),
       vehicleClass: String(v.vehicle_class ?? job.vehicle_class ?? ''),
+      color: String(v.vehicle_color ?? v.color ?? '') || 'Color not provided',
       priceCents: typeof v.price_cents === 'number' ? v.price_cents : null,
     }));
   }
@@ -62,6 +63,7 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
       label: job.vehicle_description ?? 'Vehicle TBD',
       service: job.service_slug,
       vehicleClass: job.vehicle_class,
+      color: 'Color not provided',
       priceCents: job.base_price_cents,
     },
   ];
@@ -483,6 +485,15 @@ export function TechPremiumShell({
                     Save notes
                   </button>
                 </form>
+                {l.status !== 'booked' ? (
+                  <form className='mt-2 flex gap-2' action={techArchiveOwnLeadAction}>
+                    <input type='hidden' name='leadId' value={l.id} />
+                    <input name='confirm' placeholder='ARCHIVE' className='w-24 rounded border border-amber-500/20 bg-black px-2 py-1 text-[10px] text-amber-100' />
+                    <button type='submit' className='text-[10px] font-bold uppercase text-amber-200 underline'>
+                      Archive Test Lead
+                    </button>
+                  </form>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -571,7 +582,7 @@ export function TechPremiumShell({
                     <p className='font-bold text-white'>Vehicle {i + 1}: {v.label}</p>
                     <p className='text-gold-soft'>{v.service.replace(/-/g, ' ')}</p>
                     <p className='text-zinc-500'>
-                      {v.vehicleClass.replace(/_/g, ' ')}
+                      {v.vehicleClass.replace(/_/g, ' ')} · {v.color}
                       {v.priceCents != null ? ` · $${(v.priceCents / 100).toFixed(2)}` : ''}
                     </p>
                   </div>

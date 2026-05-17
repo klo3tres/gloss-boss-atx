@@ -30,3 +30,20 @@ export async function archiveAppointmentWorkOrderAction(formData: FormData) {
   revalidatePath('/admin/dispatch');
   return { ok: true };
 }
+
+export async function deleteAppointmentWorkOrderAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const confirm = String(formData.get('confirm') ?? '').trim();
+  if (!id || confirm !== 'DELETE') return { ok: false, error: 'Type DELETE to confirm.' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const now = new Date().toISOString();
+  const { error } = await gate.admin
+    .from('appointments')
+    .update({ archived: true, archived_at: now, deleted_at: now, status: 'deleted', updated_at: now })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/dispatch');
+  return { ok: true };
+}

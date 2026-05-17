@@ -395,7 +395,7 @@ export async function insertAppointmentResilient(
   };
 }
 
-export type VehicleLineInput = { serviceSlug: string; vehicleClass: string; vehicleDescription: string };
+export type VehicleLineInput = { serviceSlug: string; vehicleClass: string; vehicleDescription: string; vehicleColor?: string };
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv_truck']);
 
@@ -403,6 +403,7 @@ export type ResolvedVehicleLine = {
   serviceSlug: string;
   vehicleClass: string;
   vehicleDescription: string;
+  vehicleColor?: string;
   priceCents: number;
 };
 
@@ -454,6 +455,7 @@ export async function resolveVehicleLinesPricing(
       serviceSlug: line.serviceSlug,
       vehicleClass,
       vehicleDescription: line.vehicleDescription,
+      vehicleColor: line.vehicleColor,
       priceCents,
     });
   }

@@ -117,3 +117,22 @@ export async function techUpdateLeadNotesAction(formData: FormData): Promise<voi
   revalidatePath('/tech');
   revalidatePath('/admin/leads');
 }
+
+export async function techArchiveOwnLeadAction(formData: FormData): Promise<void> {
+  const leadId = String(formData.get('leadId') ?? '').trim();
+  const confirm = String(formData.get('confirm') ?? '').trim().toUpperCase();
+  if (!leadId || confirm !== 'ARCHIVE') return;
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) return;
+  const { data: row } = await gate.supabase.from('leads').select('assigned_technician_id, status').eq('id', leadId).maybeSingle();
+  const lead = (row ?? {}) as Record<string, unknown>;
+  if (lead.assigned_technician_id !== gate.userId) return;
+  if (String(lead.status ?? '').toLowerCase() === 'booked') return;
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ archived: true, archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', leadId);
+  if (error) console.warn('[tech] archive lead', error.message);
+  revalidatePath('/tech');
+  revalidatePath('/admin/leads');
+}

@@ -70,7 +70,7 @@ export default async function TechnicianDashboardPage({
     const uid = session.user.id;
     activeDebug = { userId: uid, checked: [], adminRead: Boolean(admin) };
     let selectCols =
-      'id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, address, booking_add_ons, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents, archived';
+      'id, customer_id, status, scheduled_start, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, address, booking_add_ons, service_slug, vehicle_class, base_price_cents, notes, intake_completed_at, payment_status, balance_due_cents, archived';
     let appointmentQuery = await db
       .from('appointments')
       .select(selectCols)
@@ -179,9 +179,36 @@ export default async function TechnicianDashboardPage({
     }
 
     let intakeIds = new Set<string>();
+    const legalIds = new Set<string>();
+    const customerAddressById = new Map<string, string>();
     if (ids.length > 0) {
       const { data: subs } = await db.from('intake_submissions').select('appointment_id').in('appointment_id', ids);
       intakeIds = new Set((subs ?? []).map((s) => String((s as { appointment_id: string }).appointment_id)));
+      const { data: sigs } = await db.from('signed_agreements').select('appointment_id').in('appointment_id', ids);
+      for (const row of sigs ?? []) {
+        const aid = String((row as { appointment_id?: string }).appointment_id ?? '');
+        if (aid) legalIds.add(aid);
+      }
+      const { data: jobAgreements } = await db.from('job_agreements').select('appointment_id').in('appointment_id', ids);
+      for (const row of jobAgreements ?? []) {
+        const aid = String((row as { appointment_id?: string }).appointment_id ?? '');
+        if (aid) legalIds.add(aid);
+      }
+    }
+    const customerIds = [...new Set(rawRows.map((r) => String(r.customer_id ?? '')).filter(Boolean))];
+    if (customerIds.length > 0) {
+      const { data: customers } = await db
+        .from('customers')
+        .select('id, service_address, service_city, service_state, service_zip, address_line1, city, state, postal_code')
+        .in('id', customerIds);
+      for (const c of customers ?? []) {
+        const r = c as Record<string, unknown>;
+        const full = [r.service_address ?? r.address_line1, r.service_city ?? r.city, r.service_state ?? r.state, r.service_zip ?? r.postal_code]
+          .map((v) => (v == null ? '' : String(v)))
+          .filter(Boolean)
+          .join(', ');
+        if (r.id && full) customerAddressById.set(String(r.id), full);
+      }
     }
 
     const mediaByAppt = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
@@ -264,13 +291,13 @@ export default async function TechnicianDashboardPage({
         booking_vehicles: Array.isArray(row.booking_vehicles) ? (row.booking_vehicles as Record<string, unknown>[]) : [],
         service_address:
           [row.service_address, row.service_city, row.service_state, row.service_zip].map((v) => (v == null ? '' : String(v))).filter(Boolean).join(', ') ||
-          (row.address != null ? String(row.address) : null),
+          (row.address != null ? String(row.address) : customerAddressById.get(String(row.customer_id ?? '')) ?? null),
         service_slug: String(row.service_slug ?? ''),
         vehicle_class: String(row.vehicle_class ?? 'sedan'),
         base_price_cents: typeof row.base_price_cents === 'number' ? row.base_price_cents : null,
         notes: row.notes != null ? String(row.notes) : null,
         fieldNotesPreview: fieldPreviewByAppt.get(id) ?? null,
-        hasIntake: intakeIds.has(id) || intakeCompleted,
+        hasIntake: intakeIds.has(id) || legalIds.has(id) || intakeCompleted,
         beforePhotoCount: counts?.before,
         afterPhotoCount: counts?.after,
         beforePhotos: counts?.beforePhotos.slice(0, 8) ?? [],
@@ -498,13 +525,13 @@ export default async function TechnicianDashboardPage({
 
     const { data: leadsMine } = await db
       .from('leads')
-      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
+      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id, archived, archived_at, deleted_at')
       .eq('assigned_technician_id', uid)
       .order('updated_at', { ascending: false })
       .limit(40);
 
     assignedLeads =
-      leadsMine?.map((r: Record<string, unknown>) => ({
+      leadsMine?.filter((r: Record<string, unknown>) => r.archived !== true && !r.archived_at && !r.deleted_at && r.status !== 'deleted').map((r: Record<string, unknown>) => ({
         id: String(r.id),
         name: String(r.name ?? ''),
         phone: r.phone != null ? String(r.phone) : null,
@@ -518,14 +545,14 @@ export default async function TechnicianDashboardPage({
 
     const { data: pool } = await db
       .from('leads')
-      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id')
+      .select('id, name, phone, email, status, contact_attempts, notes, created_at, in_pool, assigned_technician_id, archived, archived_at, deleted_at')
       .eq('in_pool', true)
       .is('assigned_technician_id', null)
       .order('created_at', { ascending: false })
       .limit(30);
 
     poolLeads =
-      pool?.map((r: Record<string, unknown>) => ({
+      pool?.filter((r: Record<string, unknown>) => r.archived !== true && !r.archived_at && !r.deleted_at && r.status !== 'deleted').map((r: Record<string, unknown>) => ({
         id: String(r.id),
         name: String(r.name ?? ''),
         phone: r.phone != null ? String(r.phone) : null,

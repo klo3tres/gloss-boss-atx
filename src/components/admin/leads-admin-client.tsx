@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
   assignLeadTechnicianAction,
+  archiveLeadAction,
   convertLeadToCustomerAction,
   createLeadAction,
+  deleteLeadAction,
   incrementLeadContactAttemptsAction,
   setLeadPoolAction,
   unassignLeadAction,
@@ -361,6 +363,33 @@ export function LeadsAdminClient({
                   >
                     <button type='submit' className='text-[10px] font-bold uppercase text-gold-soft underline'>
                       Convert to customer
+                    </button>
+                  </form>
+                  <form
+                    action={async () => {
+                      const fd = new FormData();
+                      fd.set('leadId', id);
+                      const res = await archiveLeadAction(fd);
+                      setMsg(res.ok ? 'Lead archived.' : res.error ?? 'Failed');
+                      router.refresh();
+                    }}
+                  >
+                    <button type='submit' className='text-[10px] font-bold uppercase text-amber-200 underline'>
+                      Archive
+                    </button>
+                  </form>
+                  <form
+                    className='flex gap-1'
+                    action={async (fd) => {
+                      fd.set('leadId', id);
+                      const res = await deleteLeadAction(fd);
+                      setMsg(res.ok ? 'Lead deleted.' : res.error ?? 'Failed');
+                      router.refresh();
+                    }}
+                  >
+                    <input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' />
+                    <button type='submit' className='text-[10px] font-bold uppercase text-red-200 underline'>
+                      Delete
                     </button>
                   </form>
                 </div>

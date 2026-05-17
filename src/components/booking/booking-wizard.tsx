@@ -39,7 +39,7 @@ type PriceRow = { service_id: string; vehicle_class: string; price_cents: number
 
 type VehicleClass = UiVehicleClass;
 
-type ExtraLine = { serviceSlug: string; vehicleClass: VehicleClass; vehicleDescription: string };
+type ExtraLine = { serviceSlug: string; vehicleClass: VehicleClass; vehicleDescription: string; vehicleColor: string };
 
 type AddonOption = { slug: string; label: string; price_cents: number };
 
@@ -79,6 +79,7 @@ export function BookingWizard() {
   const [guestPhone, setGuestPhone] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [vehicleDescription, setVehicleDescription] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
   const [serviceAddress, setServiceAddress] = useState('');
   const [serviceCity, setServiceCity] = useState('');
   const [serviceState, setServiceState] = useState('TX');
@@ -426,8 +427,8 @@ export function BookingWizard() {
   }, [offerFromUrl, offers]);
 
   const bookingLines = useMemo(
-    () => [{ serviceSlug, vehicleClass, vehicleDescription }, ...extraVehicles],
-    [serviceSlug, vehicleClass, vehicleDescription, extraVehicles],
+    () => [{ serviceSlug, vehicleClass, vehicleDescription, vehicleColor }, ...extraVehicles],
+    [serviceSlug, vehicleClass, vehicleDescription, vehicleColor, extraVehicles],
   );
 
   const priceSummary = useMemo(() => {
@@ -490,7 +491,7 @@ export function BookingWizard() {
     if (bookingLines.length >= 3) return;
     setExtraVehicles((prev) => [
       ...prev,
-      { serviceSlug: serviceSlug || services[0]?.slug || '', vehicleClass: 'sedan', vehicleDescription: '' },
+      { serviceSlug: serviceSlug || services[0]?.slug || '', vehicleClass: 'sedan', vehicleDescription: '', vehicleColor: '' },
     ]);
   };
 
@@ -519,16 +520,22 @@ export function BookingWizard() {
         return;
       }
       const vehicles = bookingLines
-        .filter((l) => l.serviceSlug && l.vehicleClass && l.vehicleDescription.trim())
+        .filter((l) => l.serviceSlug && l.vehicleClass && l.vehicleDescription.trim() && l.vehicleColor.trim())
         .slice(0, 3)
         .map((l) => ({
           serviceSlug: l.serviceSlug.trim(),
           vehicleClass: normalizeVehicleClass(l.vehicleClass),
           vehicleDescription: l.vehicleDescription.trim(),
+          vehicleColor: l.vehicleColor.trim(),
         }));
 
       if (vehicles.length === 0) {
-        setError('Add at least one vehicle with year / make / model.');
+        setError('Add at least one vehicle with year / make / model and color.');
+        setSubmitting(false);
+        return;
+      }
+      if (vehicles.length !== bookingLines.length) {
+        setError('Vehicle color is required for every vehicle.');
         setSubmitting(false);
         return;
       }
@@ -779,6 +786,16 @@ export function BookingWizard() {
                   required
                 />
               </label>
+              <label className='mt-3 block text-sm'>
+                <span className='mb-2 block text-zinc-300'>Color</span>
+                <input
+                  value={line.vehicleColor}
+                  onChange={(e) => updateExtra(idx, { vehicleColor: e.target.value })}
+                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                  placeholder='Black'
+                  required
+                />
+              </label>
             </section>
           ))}
 
@@ -920,6 +937,16 @@ export function BookingWizard() {
                 onChange={(e) => setVehicleDescription(e.target.value)}
                 className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
                 placeholder='2022 BMW M3 Competition'
+                required
+              />
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Vehicle 1 color</span>
+              <input
+                value={vehicleColor}
+                onChange={(e) => setVehicleColor(e.target.value)}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                placeholder='Black'
                 required
               />
             </label>

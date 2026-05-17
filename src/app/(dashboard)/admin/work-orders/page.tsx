@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
 import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../booking-fallback-actions';
-import { archiveAppointmentWorkOrderAction } from './work-order-actions';
+import { archiveAppointmentWorkOrderAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,12 +44,13 @@ function vehicleLines(r: Row) {
       return {
         label: str(row.vehicle_description || row.description) || `Vehicle ${i + 1}`,
         service: str(row.service_slug) || str(r.service_slug),
+        color: str(row.vehicle_color || row.color) || 'Color not provided',
         priceCents: typeof row.price_cents === 'number' ? row.price_cents : null,
         status: str(row.status) || str(r.status),
       };
     });
   }
-  return [{ label: str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending', service: str(r.service_slug), priceCents: typeof r.base_price_cents === 'number' ? r.base_price_cents : null, status: str(r.status) }];
+  return [{ label: str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending', service: str(r.service_slug), color: 'Color not provided', priceCents: typeof r.base_price_cents === 'number' ? r.base_price_cents : null, status: str(r.status) }];
 }
 
 function mapsHref(addr: string) {
@@ -86,6 +87,11 @@ async function archiveAppointmentWorkOrderFormAction(formData: FormData) {
   await archiveAppointmentWorkOrderAction(formData);
 }
 
+async function deleteAppointmentWorkOrderFormAction(formData: FormData) {
+  'use server';
+  await deleteAppointmentWorkOrderAction(formData);
+}
+
 export default async function AdminWorkOrdersPage() {
   const admin = tryCreateAdminSupabase();
   if (!admin) {
@@ -99,12 +105,12 @@ export default async function AdminWorkOrdersPage() {
   const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
       .from('appointments')
-      .select('id, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
+      .select('id, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
       .order('scheduled_start', { ascending: false })
       .limit(180),
     admin
       .from('booking_fallbacks')
-      .select('id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_description, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, stripe_checkout_session_id, created_at, archived_at')
+      .select('id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, stripe_checkout_session_id, created_at, archived_at')
       .order('created_at', { ascending: false })
       .limit(80),
     admin.from('profiles').select('id, full_name, email, active').eq('role', 'technician').order('full_name'),
@@ -113,8 +119,8 @@ export default async function AdminWorkOrdersPage() {
     admin.from('payments').select('id, appointment_id, fallback_booking_id, stripe_checkout_session_id, amount_cents, status, created_at').order('created_at', { ascending: false }).limit(250),
   ]);
 
-  const agreementByAppt = new Map(
-    ((agreementsRes.data ?? []) as Row[]).filter((a) => a.appointment_id).map((a) => [str(a.appointment_id), a]),
+  const agreementByAppt = new Map<string, Row>(
+    ((agreementsRes.data ?? []) as Row[]).filter((a) => a.appointment_id).map((a) => [str(a.appointment_id), { ...a, source: 'signed_agreements' }]),
   );
   for (const intake of (intakeRes.data ?? []) as Row[]) {
     const aid = str(intake.appointment_id);
@@ -192,13 +198,32 @@ export default async function AdminWorkOrdersPage() {
                         <p>Tech: {str(technicians.find((t) => str(t.id) === str(r.assigned_technician_id))?.full_name) || 'Unassigned'}</p>
                         <p>Agreement: {agreement ? `Signed ${chicago(agreement.signed_at)}` : 'Missing'}</p>
                       </div>
+                      {r.booking_pricing_breakdown && typeof r.booking_pricing_breakdown === 'object' ? (
+                        <div className='mt-3 grid gap-2 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300 sm:grid-cols-2'>
+                          {(() => {
+                            const b = r.booking_pricing_breakdown as Row;
+                            return (
+                              <>
+                                <p>Base total: {money(b.baseTotalCents ?? r.base_price_cents)}</p>
+                                <p>Final total: {money(b.finalTotalCents ?? r.base_price_cents)}</p>
+                                <p>Promo / offer: {str(r.promo_code || b.offerLabel) || (b.offerDiscountCents ? `-${money(b.offerDiscountCents)}` : '—')}</p>
+                                <p>Multi-car discount: {money(b.multiCarDiscountCents)}</p>
+                                <p>Online booking discount: {money(b.onlineDiscountCents ?? b.sitewideDiscountCents)}</p>
+                                <p>Deposit paid: {money(r.deposit_amount_cents)}</p>
+                                <p>Remaining balance: {money(r.balance_due_cents)}</p>
+                                {r.comp_reason ? <p className='sm:col-span-2 text-amber-200'>{str(r.comp_reason)}</p> : null}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      ) : null}
                       <div className='mt-3 grid gap-2 sm:grid-cols-2'>
                         {vehicleLines(r).map((v, i) => (
                           <div key={`${v.label}-${i}`} className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs'>
                             <p className='font-bold text-white'>Vehicle {i + 1}: {v.label}</p>
                             <p className='text-gold-soft'>{v.service.replace(/-/g, ' ') || 'Service pending'}</p>
                             <p className='text-zinc-500'>
-                              {v.priceCents != null ? `$${(v.priceCents / 100).toFixed(2)}` : 'Price pending'} · {v.status.replace(/_/g, ' ')}
+                              {v.color} · {v.priceCents != null ? `$${(v.priceCents / 100).toFixed(2)}` : 'Price pending'} · {v.status.replace(/_/g, ' ')}
                             </p>
                             <p className='mt-1 text-zinc-600'>Timer/photos/notes tracked under this work order.</p>
                           </div>
@@ -224,14 +249,17 @@ export default async function AdminWorkOrdersPage() {
                           <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
                         )}
                         {(str(r.stripe_checkout_session_id) || payment) ? <Link href={paymentHref} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
-                        {agreement ? <Link href={`/admin/agreements?appointment=${encodeURIComponent(str(r.id))}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : null}
+                        {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={`/agreement?appointment_id=${encodeURIComponent(str(r.id))}`} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Capture Agreement</Link>}
                         {isFallback ? (
                           <>
                             <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
                             <form action={deleteFallbackWorkOrderAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</button></form>
                           </>
                         ) : (
-                          <form action={archiveAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='ARCHIVE' className='w-24 rounded border border-amber-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
+                          <>
+                            <form action={archiveAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='ARCHIVE' className='w-24 rounded border border-amber-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
+                            <form action={deleteAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</button></form>
+                          </>
                         )}
                       </div>
                     </article>

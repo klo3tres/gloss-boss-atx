@@ -49,7 +49,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   const { data: payment } = await admin.from('payments').select('*').eq('id', id).maybeSingle();
   if (!payment) notFound();
   const p = payment as Row;
-  const [apptRes, fallbackRes, customerRes] = await Promise.all([
+  const [apptRes, fallbackRes, customerRes, agreementRes, intakeRes] = await Promise.all([
     p.appointment_id
       ? admin.from('appointments').select('*').eq('id', str(p.appointment_id)).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -58,6 +58,12 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
       : Promise.resolve({ data: null }),
     p.customer_id
       ? admin.from('customers').select('*').eq('id', str(p.customer_id)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    p.appointment_id
+      ? admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', str(p.appointment_id)).maybeSingle()
+      : Promise.resolve({ data: null }),
+    p.appointment_id
+      ? admin.from('intake_submissions').select('id, created_at').eq('appointment_id', str(p.appointment_id)).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -68,6 +74,8 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   const balance = total != null && deposit != null ? Math.max(0, total - deposit) : null;
   const sessionId = str(p.stripe_checkout_session_id || linked.stripe_checkout_session_id);
   const paymentIntentId = str(p.stripe_payment_intent_id);
+  const agreement = (agreementRes.data ?? intakeRes.data ?? null) as Row | null;
+  const agreementSource = agreementRes.data ? 'signed_agreements' : intakeRes.data ? 'intake_submissions' : '';
 
   return (
     <DashboardShell title='Payment detail' subtitle='Specific payment, booking, customer, and refund controls.' role='admin'>
@@ -100,6 +108,9 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <p><span className='text-zinc-500'>Payment status:</span> {str(linked.payment_status || p.status)}</p>
         </div>
         <div className='mt-5 flex flex-wrap gap-3'>
+          <Link href='/admin/work-orders' className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Work Order</Link>
+          {str(p.appointment_id || linked.id) ? <Link href={`/admin/work-orders?appointment=${encodeURIComponent(str(p.appointment_id || linked.id))}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Appointment</Link> : null}
+          {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${agreementSource}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Agreement</Link> : null}
           {sessionId ? (
             <form action={reconcileStripeSessionAction}>
               <input type='hidden' name='sessionId' value={sessionId} />

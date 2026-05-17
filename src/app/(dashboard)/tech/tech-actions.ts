@@ -40,6 +40,85 @@ async function hasSmsConsent(db: SupabaseClient | null, appointmentId: string): 
   return sms?.agreed === true;
 }
 
+async function hasLegalAgreementForJob(
+  db: SupabaseClient | null,
+  refs: {
+    appointmentId?: string;
+    fallbackBookingId?: string;
+    customerId?: string | null;
+    guestEmail?: string | null;
+    guestPhone?: string | null;
+  },
+): Promise<boolean> {
+  if (!db) return false;
+  const phoneDigits = String(refs.guestPhone ?? '').replace(/\D/g, '');
+  const email = String(refs.guestEmail ?? '').trim().toLowerCase();
+  const checks: Array<() => Promise<boolean>> = [];
+
+  for (const table of ['signed_agreements', 'job_agreements']) {
+    if (refs.appointmentId) {
+      checks.push(async () => {
+        const { data, error } = await db.from(table).select('id').eq('appointment_id', refs.appointmentId).limit(1);
+        if (error) return false;
+        return Boolean(data?.length);
+      });
+    }
+    if (refs.fallbackBookingId) {
+      checks.push(async () => {
+        const { data, error } = await db.from(table).select('id').eq('fallback_booking_id', refs.fallbackBookingId).limit(1);
+        if (error) return false;
+        return Boolean(data?.length);
+      });
+    }
+    if (refs.customerId) {
+      checks.push(async () => {
+        const { data, error } = await db.from(table).select('id').eq('customer_id', refs.customerId).limit(1);
+        if (error) return false;
+        return Boolean(data?.length);
+      });
+    }
+  }
+
+  if (refs.appointmentId) {
+    checks.push(async () => {
+      const { data, error } = await db.from('intake_submissions').select('id, form_data').eq('appointment_id', refs.appointmentId).limit(1);
+      if (error) return false;
+      return Boolean(data?.length);
+    });
+  }
+  if (refs.customerId) {
+    checks.push(async () => {
+      const { data, error } = await db.from('intake_submissions').select('id').eq('customer_id', refs.customerId).limit(1);
+      if (error) return false;
+      return Boolean(data?.length);
+    });
+  }
+  if (email || phoneDigits) {
+    checks.push(async () => {
+      const { data, error } = await db
+        .from('intake_submissions')
+        .select('id, form_data, created_at')
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (error) return false;
+      return (data ?? []).some((row) => {
+        const fd = ((row as { form_data?: unknown }).form_data ?? {}) as Record<string, unknown>;
+        const raw = JSON.stringify(fd).toLowerCase();
+        return (email && raw.includes(email)) || (phoneDigits && raw.replace(/\D/g, '').includes(phoneDigits));
+      });
+    });
+  }
+
+  for (const check of checks) {
+    try {
+      if (await check()) return true;
+    } catch {
+      // Optional linkage columns may not exist in older deployments.
+    }
+  }
+  return false;
+}
+
 async function updateAppointmentSafely(
   db: SupabaseClient | null,
   appointmentId: string,
@@ -461,21 +540,17 @@ export async function techStartJobAction(
     return { error: `Job cannot start from status “${appointmentStatus || 'unknown'}”.` };
   }
 
-  const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-  let legalAck = Boolean(sig);
-  if (!legalAck) {
-    const { data: jobAgreement } = await gate.supabase.from('job_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-    legalAck = Boolean(jobAgreement);
-  }
-  if (!legalAck) {
-    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
-    const fd = (intakeAck?.form_data as Record<string, unknown> | undefined) ?? {};
-    legalAck = Boolean(fd.walk_in_legal_ack || fd.deposit_legal_ack);
-  }
+  const legalAck = await hasLegalAgreementForJob(db, {
+    appointmentId,
+    fallbackBookingId,
+    customerId: (appt as { customer_id?: string | null }).customer_id ?? null,
+    guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
+    guestPhone: appt.guest_phone != null ? String(appt.guest_phone) : null,
+  });
   if (!legalAck) {
     return {
       error:
-        'Liability agreement must be on file before starting. Complete /agreement (customer) or use Walk-in workflow to capture a signature.',
+        'Liability agreement must be on file before starting. Use Capture Agreement on this work order or send the customer agreement link.',
     };
   }
 
@@ -715,17 +790,13 @@ export async function techCompleteJobAction(
     return { error: 'You cannot complete this job.' };
   }
 
-  const { data: sig } = await gate.supabase.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-  let legalAck = Boolean(sig);
-  if (!legalAck) {
-    const { data: jobAgreement } = await gate.supabase.from('job_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-    legalAck = Boolean(jobAgreement);
-  }
-  if (!legalAck) {
-    const { data: intakeAck } = await gate.supabase.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
-    const fd = (intakeAck?.form_data as Record<string, unknown> | undefined) ?? {};
-    legalAck = Boolean(fd.walk_in_legal_ack || fd.deposit_legal_ack);
-  }
+  const legalAck = await hasLegalAgreementForJob(db, {
+    appointmentId,
+    fallbackBookingId,
+    customerId: (appt as { customer_id?: string | null }).customer_id ?? null,
+    guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
+    guestPhone: appt.guest_phone != null ? String(appt.guest_phone) : null,
+  });
 
   if (!legalAck) {
     return {
