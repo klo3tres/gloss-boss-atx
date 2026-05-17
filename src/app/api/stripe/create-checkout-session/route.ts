@@ -11,6 +11,7 @@ export async function POST(request: Request) {
       fallbackBookingId?: string;
       accessToken?: string;
       serviceId?: string;
+      paymentChoice?: 'deposit' | 'full';
     };
 
     const appointmentId = body.appointmentId?.trim();
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
       fallbackBookingId,
       accessToken,
       origin,
+      paymentChoice: body.paymentChoice === 'full' ? 'full' : 'deposit',
     });
 
     if (!result.ok) {

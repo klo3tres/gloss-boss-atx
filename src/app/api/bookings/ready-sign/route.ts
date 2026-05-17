@@ -62,14 +62,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
-    if (sessionId) {
+    let paymentVerified = false;
+    if (sessionId && !['awaiting_payment', 'pending', 'assigned', 'confirmed'].includes(String(appt.status))) {
       const stripe = await getStripeSdk(admin);
       if (stripe) {
         const session = await stripe.checkout.sessions.retrieve(sessionId);
         if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
           return NextResponse.json({ error: 'Invalid payment session' }, { status: 400 });
         }
+        paymentVerified = true;
       }
+    }
+    if (['deposit_paid', 'paid', 'full_paid', 'test_comped', 'manual_comped'].includes(String(appt.status)) || ['deposit_paid', 'paid', 'full_paid', 'comped'].includes(String((appt as Record<string, unknown>).payment_status))) {
+      paymentVerified = true;
     }
 
     const { data: template } = await admin
@@ -89,7 +94,7 @@ export async function GET(request: Request) {
       sessionId,
       template: template ?? null,
       useNativeAgreementFallback: !template,
-      paymentVerified: true,
+      paymentVerified,
       alreadySigned: Boolean(existingSign),
     });
   } catch (e) {

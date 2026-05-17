@@ -16,6 +16,8 @@ type ApptLite = {
   base_price_cents?: number | null;
   deposit_amount_cents?: number | null;
   scheduled_start?: string | null;
+  status?: string | null;
+  payment_status?: string | null;
   service_address?: string | null;
   service_city?: string | null;
   service_state?: string | null;
@@ -41,6 +43,7 @@ export default function CompleteContent() {
   const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
   const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
   const [alreadySigned, setAlreadySigned] = useState(false);
+  const [paymentVerified, setPaymentVerified] = useState(false);
   const [legalName, setLegalName] = useState('');
   const [signatureMode, setSignatureMode] = useState<'typed' | 'drawn'>('typed');
   const [acknowledged, setAcknowledged] = useState(false);
@@ -55,9 +58,9 @@ export default function CompleteContent() {
     const totalCents = typeof a.base_price_cents === 'number' ? a.base_price_cents : 0;
     const depCents = typeof a.deposit_amount_cents === 'number' ? a.deposit_amount_cents : 0;
     const depositNote =
-      depCents > 0
+      paymentVerified && depCents > 0
         ? `Deposit paid: $${(depCents / 100).toFixed(2)} (Stripe checkout).`
-        : 'Deposit per booking configuration.';
+        : 'Deposit/payment status will be confirmed by Gloss Boss ATX.';
     const vc = String(a.vehicle_class ?? 'sedan');
     const classLabel = vc === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
     return buildNativeAgreementSnapshot({
@@ -71,7 +74,7 @@ export default function CompleteContent() {
       depositNote,
       technicianName: null,
     });
-  }, [template, appointment]);
+  }, [template, appointment, paymentVerified]);
 
   const agreementTitle = template?.title?.trim() ? template.title : DEFAULT_AGREEMENT_TITLE;
 
@@ -102,6 +105,7 @@ export default function CompleteContent() {
         sessionId?: string;
         template?: { id: string; title: string; body: string; version: number } | null;
         alreadySigned?: boolean;
+        paymentVerified?: boolean;
       }) => {
         if (cancelled) return;
         if (data.error) {
@@ -118,6 +122,7 @@ export default function CompleteContent() {
         setResolvedSessionId(data.sessionId ?? sessionId);
         setTemplate(data.template ?? null);
         setAlreadySigned(Boolean(data.alreadySigned));
+        setPaymentVerified(Boolean(data.paymentVerified));
         if (data.alreadySigned) setDone(true);
       })
       .catch(() => {

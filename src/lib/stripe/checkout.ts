@@ -28,6 +28,7 @@ export async function createDepositCheckoutSession(params: {
   accessToken?: string;
   fallbackBookingId?: string;
   origin: string;
+  paymentChoice?: 'deposit' | 'full';
 }): Promise<CreateDepositCheckoutResult> {
   const { admin, accessToken, origin } = params;
   const appointmentId = params.appointmentId?.trim();
@@ -46,6 +47,7 @@ export async function createDepositCheckoutSession(params: {
       fallbackBookingId,
       accessToken: accessToken.trim(),
       origin,
+      paymentChoice: params.paymentChoice,
     });
   }
 
@@ -61,7 +63,7 @@ export async function createDepositCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, deposit_amount_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+      .select('id, access_token, status, deposit_amount_cents, base_price_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -80,6 +82,8 @@ export async function createDepositCheckoutSession(params: {
     const serviceName = String(appt.service_slug ?? 'Service').replace(/-/g, ' ');
     const vehicleSummary = String(appt.vehicle_description ?? 'Vehicle');
     const serviceAddress = [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', ');
+    const isFullPay = params.paymentChoice === 'full';
+    const amountCents = isFullPay && typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : appt.deposit_amount_cents;
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: appt.guest_email ?? undefined,
@@ -87,9 +91,9 @@ export async function createDepositCheckoutSession(params: {
         {
           price_data: {
             currency: 'usd',
-            unit_amount: appt.deposit_amount_cents,
+            unit_amount: amountCents,
             product_data: {
-              name: 'Gloss Boss ATX — Service deposit (30%)',
+              name: isFullPay ? 'Gloss Boss ATX — Paid in full' : 'Gloss Boss ATX — Service deposit (30%)',
               description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },
@@ -101,7 +105,7 @@ export async function createDepositCheckoutSession(params: {
       metadata: {
         appointment_id: appt.id,
         access_token: accessToken.trim(),
-        stripe_checkout_kind: 'deposit',
+        stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
         customer_name: String(appt.guest_name ?? ''),
         service_name: serviceName,
         vehicle_summary: vehicleSummary.slice(0, 500),
@@ -127,6 +131,7 @@ async function createFallbackDepositCheckoutSession(params: {
   fallbackBookingId: string;
   accessToken: string;
   origin: string;
+  paymentChoice?: 'deposit' | 'full';
 }): Promise<CreateDepositCheckoutResult> {
   const { admin, fallbackBookingId, accessToken, origin } = params;
   const stripe = await getStripeSdk(admin);
@@ -136,7 +141,7 @@ async function createFallbackDepositCheckoutSession(params: {
 
   const { data: row, error } = await admin
     .from('booking_fallbacks')
-    .select('id, access_token, deposit_amount_cents, guest_email, guest_name, status, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+    .select('id, access_token, deposit_amount_cents, base_price_cents, guest_email, guest_name, status, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
     .eq('id', fallbackBookingId)
     .maybeSingle();
 
@@ -147,8 +152,11 @@ async function createFallbackDepositCheckoutSession(params: {
     return { ok: false, error: 'Booking already converted' };
   }
 
+  const isFullPay = params.paymentChoice === 'full';
   const amount =
-    typeof row.deposit_amount_cents === 'number' && row.deposit_amount_cents > 0 ? row.deposit_amount_cents : 0;
+    isFullPay && typeof row.base_price_cents === 'number' && row.base_price_cents > 0
+      ? row.base_price_cents
+      : typeof row.deposit_amount_cents === 'number' && row.deposit_amount_cents > 0 ? row.deposit_amount_cents : 0;
   if (amount < 50) {
     return { ok: false, error: 'Invalid deposit amount' };
   }
@@ -166,7 +174,7 @@ async function createFallbackDepositCheckoutSession(params: {
             currency: 'usd',
             unit_amount: amount,
             product_data: {
-              name: 'Gloss Boss ATX — Service deposit (30%)',
+              name: isFullPay ? 'Gloss Boss ATX — Paid in full' : 'Gloss Boss ATX — Service deposit (30%)',
               description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },
@@ -178,7 +186,7 @@ async function createFallbackDepositCheckoutSession(params: {
       metadata: {
         fallback_booking_id: String(row.id),
         access_token: accessToken,
-        stripe_checkout_kind: 'deposit',
+        stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
         customer_name: String(row.guest_name ?? ''),
         service_name: serviceName,
         vehicle_summary: vehicleSummary.slice(0, 500),
@@ -530,6 +538,7 @@ export async function processCheckoutSessionCompleted(params: {
   const kind = session.metadata?.stripe_checkout_kind;
   const isField = session.metadata?.tech_field_invoice === '1' || kind === 'field_full';
   const isFinalBalance = kind === 'customer_final_balance';
+  const isBookingFull = kind === 'booking_full';
   const technicianId = session.metadata?.technician_id ?? null;
 
   try {
@@ -540,7 +549,7 @@ export async function processCheckoutSessionCompleted(params: {
         typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
       amount_cents: amount,
       status: 'succeeded',
-      payment_kind: isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : 'deposit',
+      payment_kind: isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : isBookingFull ? 'booking_full' : 'deposit',
     };
     if (technicianId && typeof technicianId === 'string') {
       paymentRow.technician_id = technicianId;
@@ -561,6 +570,11 @@ export async function processCheckoutSessionCompleted(params: {
           updated_at: new Date().toISOString(),
         })
         .eq('id', appointmentId);
+    } else if (isBookingFull) {
+      extras.stripe_checkout_kind = 'booking_full';
+      extras.payment_status = 'full_paid';
+      extras.balance_due_cents = 0;
+      extras.full_paid_at = new Date().toISOString();
     } else if (isField) {
       extras.field_invoice_paid_at = new Date().toISOString();
       extras.stripe_checkout_kind = 'field_full';

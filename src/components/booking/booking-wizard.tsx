@@ -87,6 +87,7 @@ export function BookingWizard() {
   const [serviceAddressNotes, setServiceAddressNotes] = useState('');
   const [notes, setNotes] = useState('');
   const [promoCode, setPromoCode] = useState('');
+  const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
@@ -581,6 +582,7 @@ export function BookingWizard() {
           serviceZip: serviceZip.replace(/\D/g, '').slice(0, 5),
           serviceAddressNotes: serviceAddressNotes.trim() || undefined,
           promoCode: promoCode.trim() || undefined,
+          paymentChoice,
           notes: notes || undefined,
         }),
       });
@@ -609,8 +611,8 @@ export function BookingWizard() {
       }
 
       const checkoutBody = bookingJson.usedFallback
-        ? { fallbackBookingId: bookingJson.fallbackBookingId, accessToken: bookingJson.accessToken }
-        : { appointmentId: bookingJson.appointmentId, accessToken: bookingJson.accessToken };
+        ? { fallbackBookingId: bookingJson.fallbackBookingId, accessToken: bookingJson.accessToken, paymentChoice }
+        : { appointmentId: bookingJson.appointmentId, accessToken: bookingJson.accessToken, paymentChoice };
 
       const checkoutRes = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
@@ -1007,8 +1009,32 @@ export function BookingWizard() {
           </section>
 
           <section className='rounded-xl border border-gold/20 bg-black/60 p-4 text-sm text-zinc-300'>
+            <div className='mb-4 grid gap-2 sm:grid-cols-2'>
+              <button
+                type='button'
+                onClick={() => setPaymentChoice('deposit')}
+                className={clsx(
+                  'rounded-xl border px-4 py-3 text-left transition',
+                  paymentChoice === 'deposit' ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                )}
+              >
+                <span className='block text-xs font-black uppercase tracking-wider'>Pay deposit</span>
+                <span className='mt-1 block text-xs text-zinc-400'>Reserve now, pay balance later.</span>
+              </button>
+              <button
+                type='button'
+                onClick={() => setPaymentChoice('full')}
+                className={clsx(
+                  'rounded-xl border px-4 py-3 text-left transition',
+                  paymentChoice === 'full' ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                )}
+              >
+                <span className='block text-xs font-black uppercase tracking-wider'>Pay full amount now</span>
+                <span className='mt-1 block text-xs text-zinc-400'>No remaining balance after checkout.</span>
+              </button>
+            </div>
             <p>
-              After you pay the <span className='font-bold text-gold-soft'>30% deposit</span> via Stripe, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.
+              After checkout, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.
             </p>
           </section>
 
@@ -1017,7 +1043,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:hidden'
           >
-            {submitting ? 'Redirecting…' : 'Continue to deposit (Stripe)'}
+            {submitting ? 'Redirecting…' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
           </button>
         </div>
 
@@ -1121,7 +1147,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='hidden w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:block'
           >
-            {submitting ? 'Redirecting…' : 'Continue to deposit (Stripe)'}
+            {submitting ? 'Redirecting…' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
           </button>
         </aside>
       </div>

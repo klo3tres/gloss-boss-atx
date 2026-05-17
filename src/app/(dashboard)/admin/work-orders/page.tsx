@@ -116,7 +116,7 @@ export default async function AdminWorkOrdersPage() {
     admin.from('profiles').select('id, full_name, email, active').eq('role', 'technician').order('full_name'),
     admin.from('signed_agreements').select('id, appointment_id, signed_at').order('signed_at', { ascending: false }).limit(250),
     admin.from('intake_submissions').select('id, appointment_id, created_at').order('created_at', { ascending: false }).limit(250),
-    admin.from('payments').select('id, appointment_id, fallback_booking_id, stripe_checkout_session_id, amount_cents, status, created_at').order('created_at', { ascending: false }).limit(250),
+    admin.from('payments').select('id, appointment_id, fallback_booking_id, stripe_checkout_session_id, amount_cents, status, metadata, created_at').order('created_at', { ascending: false }).limit(250),
   ]);
 
   const agreementByAppt = new Map<string, Row>(
@@ -174,10 +174,11 @@ export default async function AdminWorkOrdersPage() {
                 {bucketRows.map((r) => {
                   const isFallback = str(r.kind) === 'fallback';
                   const agreement = agreementByAppt.get(str(r.id));
-                  const fullAddress = address(r);
                   const payment =
                     (isFallback ? paymentByFallback.get(str(r.id)) : paymentByAppt.get(str(r.id))) ??
                     paymentBySession.get(str(r.stripe_checkout_session_id));
+                  const paymentMeta = payment?.metadata && typeof payment.metadata === 'object' ? (payment.metadata as Row) : {};
+                  const fullAddress = address(r) || str(paymentMeta.service_address);
                   const paymentHref = payment?.id
                     ? `/admin/payments/${str(payment.id)}`
                     : str(r.stripe_checkout_session_id)

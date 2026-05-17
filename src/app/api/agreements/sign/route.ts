@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
-    if (!['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'test_comped', 'manual_comped'].includes(String(appt.status))) {
+    if (!['awaiting_payment', 'pending', 'deposit_paid', 'confirmed', 'assigned', 'in_progress', 'test_comped', 'manual_comped'].includes(String(appt.status))) {
       return NextResponse.json({ error: 'Deposit must be completed before signing' }, { status: 400 });
     }
 

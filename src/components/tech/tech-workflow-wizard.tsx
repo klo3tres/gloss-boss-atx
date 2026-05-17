@@ -1158,7 +1158,7 @@ export function TechWorkflowWizard({
             {PHOTO_CATEGORIES.map((cat) => (
               <label
                 key={cat.value}
-                className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
+                className='block cursor-pointer rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
               >
                 <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
                 <span className='mt-1 block text-[10px] text-zinc-500'>Tap to take or upload photo.</span>
@@ -1170,7 +1170,7 @@ export function TechWorkflowWizard({
                     uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'before');
                     e.currentTarget.value = '';
                   }}
-                  className='mt-3 w-full text-[11px] text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
+                  className='sr-only'
                 />
                 {beforePreviewByCategory[cat.value]?.length ? (
                   <div className='mt-3 grid grid-cols-3 gap-2'>
@@ -1330,7 +1330,7 @@ export function TechWorkflowWizard({
               {PHOTO_CATEGORIES.map((cat) => (
                 <label
                   key={cat.value}
-                  className='block rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
+                  className='block cursor-pointer rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300 transition hover:border-gold/35 hover:bg-gold/5'
                 >
                   <span className='font-black uppercase tracking-wider text-gold-soft'>{cat.label}</span>
                   <span className='mt-1 block text-[10px] text-zinc-500'>Tap to take or upload photo.</span>
@@ -1342,7 +1342,7 @@ export function TechWorkflowWizard({
                       uploadPhoto(e.target.files?.[0] ?? null, cat.value, 'after');
                       e.currentTarget.value = '';
                     }}
-                    className='mt-3 w-full text-[11px] text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-bold file:text-black'
+                    className='sr-only'
                   />
                   {afterPreviewByCategory[cat.value]?.length ? (
                     <div className='mt-3 grid grid-cols-3 gap-2'>

@@ -34,6 +34,7 @@ type Body = {
   serviceZip?: string;
   serviceAddressNotes?: string;
   promoCode?: string;
+  paymentChoice?: 'deposit' | 'full';
   notes?: string;
 };
 
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
     const serviceZip = String(body.serviceZip ?? '').replace(/\D/g, '').slice(0, 5);
     const serviceAddressNotes = String(body.serviceAddressNotes ?? '').trim();
     const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
+    const paymentChoice = body.paymentChoice === 'full' ? 'full' : 'deposit';
     const addOns = Array.isArray(body.addOns)
       ? body.addOns
           .map((a) => String(a ?? '').trim())
@@ -260,6 +262,8 @@ export async function POST(request: Request) {
       service_address_notes: serviceAddressNotes || null,
       status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
       payment_status: freePromoApplied ? 'comped' : 'awaiting_deposit',
+      payment_choice: paymentChoice,
+      balance_due_cents: paymentChoice === 'full' || freePromoApplied ? 0 : Math.max(0, totalBaseCents - depositAmountCents),
       promo_code: promoCode || null,
       comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
       booking_vehicles: bookingVehicles,
