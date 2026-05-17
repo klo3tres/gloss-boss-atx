@@ -238,8 +238,7 @@ export function DispatchBoardClient({
                     className='flex flex-wrap items-center gap-1'
                   >
                     <input type='hidden' name='id' value={f.id} />
-                    <input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-1 py-0.5 text-[10px]' />
-                    <button type='submit' className='rounded border border-red-500/40 px-2 py-1 text-[10px] font-bold uppercase text-red-200'>
+                    <button type='submit' onClick={(e) => { if (!window.confirm('Delete this fallback?')) e.preventDefault(); }} className='rounded border border-red-500/40 px-2 py-1 text-[10px] font-bold uppercase text-red-200'>
                       Delete
                     </button>
                   </form>

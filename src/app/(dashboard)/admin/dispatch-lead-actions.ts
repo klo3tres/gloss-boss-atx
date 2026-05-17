@@ -241,8 +241,7 @@ export async function archiveLeadAction(formData: FormData) {
 
 export async function deleteLeadAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim();
-  if (!leadId || confirm !== 'DELETE') return { ok: false, error: 'Type DELETE to confirm' };
+  if (!leadId) return { ok: false, error: 'Missing lead' };
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const { error } = await gate.supabase

@@ -9,6 +9,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
+import { resendConfigured, sendResendHtml, sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { glossBossEmailShell } from '@/lib/email-brand';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -29,6 +31,10 @@ async function writeNotificationOutbox(
     created_at: new Date().toISOString(),
   });
   if (error) console.warn('[tech] notification_outbox', error.message);
+}
+
+function escapeEmailText(value: string): string {
+  return value.replace(/[<>&]/g, (m) => (m === '<' ? '&lt;' : m === '>' ? '&gt;' : '&amp;'));
 }
 
 async function hasSmsConsent(db: SupabaseClient | null, appointmentId: string): Promise<boolean> {
@@ -709,7 +715,7 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const kind = String(formData.get('kind') ?? '').trim();
-  const allowed = new Set(['last_touches', 'payment_link', 'review_request']);
+  const allowed = new Set(['job_started', 'last_touches', 'payment_link', 'review_request', 'job_completed', 'technician_assigned', 'work_started', 'appointment_reminder', 'appointment_confirmed']);
   if (!allowed.has(kind) || (!appointmentId && !fallbackBookingId)) return;
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
@@ -731,7 +737,7 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
   }
   const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || ''}/dashboard`;
   let paymentUrl: string | null = null;
-  const notificationConfigured = Boolean(process.env.RESEND_API_KEY || process.env.TWILIO_ACCOUNT_SID);
+  const notificationConfigured = Boolean(resendConfigured() || twilioConfigured());
   let outboxStatus = guestEmail || guestPhone ? (notificationConfigured ? 'queued' : 'skipped') : 'skipped';
   let skippedReason: string | null = guestEmail || guestPhone
     ? notificationConfigured ? null : 'Skipped — configure Twilio/Resend.'
@@ -758,7 +764,43 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
       ? `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`
       : kind === 'payment_link'
         ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. ${paymentUrl ? `Pay here: ${paymentUrl}` : `Track updates here: ${dashboardUrl}`}`
-        : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
+        : kind === 'job_started' || kind === 'work_started'
+          ? `Gloss Boss ATX update: Work has started on ${vehicle}. Track live progress here: ${dashboardUrl}`
+          : kind === 'job_completed'
+            ? `Gloss Boss ATX update: Your detail is complete for ${vehicle}. Photos and receipt are available here: ${dashboardUrl}`
+            : kind === 'technician_assigned'
+              ? `Gloss Boss ATX update: Your technician has been assigned for ${vehicle}. Track your appointment here: ${dashboardUrl}`
+              : kind === 'appointment_reminder'
+                ? `Gloss Boss ATX reminder: Your appointment for ${vehicle} is coming up. Details: ${dashboardUrl}`
+                : kind === 'appointment_confirmed'
+                  ? `Gloss Boss ATX update: Your appointment for ${vehicle} is confirmed. Details: ${dashboardUrl}`
+                  : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
+  let sendSummary: Record<string, unknown> = {};
+  if (outboxStatus !== 'skipped') {
+    const smsTo = String(guestPhone ?? '').replace(/\D/g, '');
+    const smsResult = smsTo && twilioConfigured() ? await sendTwilioSms({ to: smsTo, body: message }) : null;
+    const emailResult = guestEmail && resendConfigured()
+      ? await sendResendHtml({
+          to: guestEmail,
+          subject: kind === 'payment_link' ? 'Gloss Boss ATX - Payment link' : kind === 'last_touches' ? 'Gloss Boss ATX - Last touches' : 'Gloss Boss ATX - Review request',
+          html: glossBossEmailShell({
+            title: kind === 'payment_link' ? 'Payment link ready' : kind === 'last_touches' ? 'Last touches' : 'Review request',
+            bodyHtml: `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">${escapeEmailText(message)}</p>`,
+          }),
+        })
+      : null;
+    sendSummary = { sms: smsResult, email: emailResult };
+    if (smsResult?.ok === false || emailResult?.ok === false) {
+      outboxStatus = 'failed';
+      skippedReason = smsResult?.error || emailResult?.error || 'Provider send failed.';
+    } else if (!smsResult && !emailResult) {
+      outboxStatus = 'skipped';
+      skippedReason = 'Skipped - configure Twilio/Resend.';
+    } else {
+      outboxStatus = 'sent';
+      skippedReason = null;
+    }
+  }
   await writeNotificationOutbox(db, {
     kind,
     appointment_id: appointmentId || null,
@@ -768,7 +810,7 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
     channel: 'customer',
     status: outboxStatus,
     skipped_reason: skippedReason,
-    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl, payment_url: paymentUrl },
+    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl, payment_url: paymentUrl, send_summary: sendSummary },
   });
   if (appointmentId) {
     await recordJobTimelineEvent(db, {

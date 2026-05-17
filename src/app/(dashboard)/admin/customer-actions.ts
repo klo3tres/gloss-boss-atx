@@ -68,8 +68,7 @@ export async function updateCustomerAction(formData: FormData) {
 /** Soft-archive: hides from default directory; reversible. */
 export async function archiveCustomerAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
-  const confirm = String(formData.get('archive_confirm') ?? '').trim();
-  if (!id || confirm !== 'ARCHIVE') return;
+  if (!id) return;
 
   const gate = await requireAdminGate();
   if (!gate.ok) return;
@@ -112,11 +111,10 @@ export async function unarchiveCustomerAction(formData: FormData) {
   revalidatePath(`/admin/customers/${id}`);
 }
 
-/** Permanent delete: **super_admin only** and requires typed confirmation `DELETE`. */
+/** Permanent delete: **super_admin only** and requires click confirmation in the UI. */
 export async function deleteCustomerAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
-  const confirm = String(formData.get('super_confirm') ?? '').trim();
-  if (!id || confirm !== 'DELETE') return;
+  if (!id) return;
 
   const gate = await requireAdminGate();
   if (!gate.ok || !gate.session?.profile || gate.session.profile.role !== 'super_admin') {

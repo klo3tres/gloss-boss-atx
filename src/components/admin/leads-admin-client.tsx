@@ -387,8 +387,7 @@ export function LeadsAdminClient({
                       router.refresh();
                     }}
                   >
-                    <input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' />
-                    <button type='submit' className='text-[10px] font-bold uppercase text-red-200 underline'>
+                    <button type='submit' onClick={(e) => { if (!window.confirm('Delete this lead?')) e.preventDefault(); }} className='text-[10px] font-bold uppercase text-red-200 underline'>
                       Delete
                     </button>
                   </form>

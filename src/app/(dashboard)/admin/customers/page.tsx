@@ -5,6 +5,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { createCustomerAction, deleteCustomerAction, updateCustomerAction, archiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,28 +140,16 @@ export default async function AdminCustomersPage() {
                       </form>
                       <form action={archiveCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>
                         <input type='hidden' name='id' value={c.id} />
-                        <input
-                          name='archive_confirm'
-                          placeholder='ARCHIVE'
-                          className='w-28 rounded border border-amber-500/30 bg-black px-2 py-1.5 text-xs text-amber-100'
-                          aria-label='Type ARCHIVE to confirm archive'
-                        />
-                        <button type='submit' className='rounded-lg border border-amber-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-amber-200 hover:bg-amber-500/10'>
+                        <ConfirmSubmitButton message='Archive this customer?' className='rounded-lg border border-amber-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-amber-200 hover:bg-amber-500/10'>
                           Archive
-                        </button>
+                        </ConfirmSubmitButton>
                       </form>
                       {isSuper ? (
                         <form action={deleteCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>
                           <input type='hidden' name='id' value={c.id} />
-                          <input
-                            name='super_confirm'
-                            placeholder='DELETE'
-                            className='w-24 rounded border border-red-500/30 bg-black px-2 py-1.5 text-xs text-red-200'
-                            aria-label='Type DELETE to confirm'
-                          />
-                          <button type='submit' className='rounded-lg border border-red-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-red-300 hover:bg-red-500/10'>
+                          <ConfirmSubmitButton message='Delete this customer?' className='rounded-lg border border-red-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-red-300 hover:bg-red-500/10'>
                             Delete
-                          </button>
+                          </ConfirmSubmitButton>
                         </form>
                       ) : null}
                     </div>

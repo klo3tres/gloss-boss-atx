@@ -154,7 +154,14 @@ export async function POST(request: Request) {
       resolved[0]?.serviceSlug === 'exterior-wash' &&
       normalizeVehicleClass(resolved[0]?.vehicleClass ?? '') === 'sedan';
     if (promoCode === 'FREE' && allowFreeTestPromo && !freePromoApplied) {
-      return NextResponse.json({ error: 'FREE only applies to a Sedan Exterior Wash test booking.' }, { status: 400 });
+      const reason = resolved.length !== 1
+        ? 'FREE only applies to one vehicle at a time.'
+        : resolved[0]?.serviceSlug !== 'exterior-wash'
+          ? 'FREE only applies to Exterior Wash.'
+          : normalizeVehicleClass(resolved[0]?.vehicleClass ?? '') !== 'sedan'
+            ? 'FREE only applies to Sedan vehicle class.'
+            : 'FREE only applies to a Sedan Exterior Wash test booking.';
+      return NextResponse.json({ error: reason }, { status: 400 });
     }
 
     const totalBaseCents = freePromoApplied ? 0 : priced.finalTotalCents;
@@ -328,7 +335,7 @@ export async function POST(request: Request) {
     await recordBookingSuccess(admin);
 
     if (freePromoApplied) {
-      await admin
+      const compPayment = await admin
         .from('payments')
         .insert({
           appointment_id: appointment.id,
@@ -346,9 +353,23 @@ export async function POST(request: Request) {
             vehicles: bookingVehicles,
           },
         })
-        .then(({ error }) => {
+        .select('id')
+        .maybeSingle()
+        .then((res) => {
+          const { error } = res;
           if (error) console.warn('[api/bookings] FREE promo payment marker skipped', error.message);
+          return res.data as { id?: string } | null;
         });
+      await admin.from('receipts').insert({
+        appointment_id: appointment.id,
+        customer_id: customerId,
+        payment_id: compPayment?.id ?? null,
+        receipt_number: `COMP-${String(appointment.id).slice(0, 8)}`,
+        amount_cents: 0,
+        payment_method: 'test_comped',
+        status: 'issued',
+        metadata: { promo_code: 'FREE', source: 'free_test_promo', vehicles: bookingVehicles },
+      });
 
       return NextResponse.json({
         appointmentId: appointment.id,

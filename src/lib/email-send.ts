@@ -4,7 +4,7 @@ export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
 }
 
-async function sendResendHtml(params: { to: string; subject: string; html: string }): Promise<{ ok: boolean; error?: string }> {
+export async function sendResendHtml(params: { to: string; subject: string; html: string }): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim();
   if (!key || !from) {

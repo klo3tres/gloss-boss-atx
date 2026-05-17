@@ -539,12 +539,22 @@ export function BookingWizard() {
     }
     if (!allowFreeTestPromo) {
       setAppliedPromoCode('');
-      setPromoMessage('Promo code not available.');
+      setPromoMessage('FREE is disabled by admin. Enable “FREE test promo” in Admin → Promotions.');
       return;
     }
-    if (bookingLines.length !== 1 || serviceSlug !== 'exterior-wash' || normalizeVehicleClass(vehicleClass) !== 'sedan') {
+    if (bookingLines.length !== 1) {
       setAppliedPromoCode('');
-      setPromoMessage('FREE only applies to a Sedan Exterior Wash test booking.');
+      setPromoMessage('FREE only applies to one vehicle at a time.');
+      return;
+    }
+    if (serviceSlug !== 'exterior-wash') {
+      setAppliedPromoCode('');
+      setPromoMessage('FREE only applies to Exterior Wash.');
+      return;
+    }
+    if (normalizeVehicleClass(vehicleClass) !== 'sedan') {
+      setAppliedPromoCode('');
+      setPromoMessage('FREE only applies to Sedan vehicle class.');
       return;
     }
     setAppliedPromoCode('FREE');

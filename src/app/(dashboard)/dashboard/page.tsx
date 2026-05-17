@@ -225,6 +225,10 @@ export default async function CustomerDashboardRootPage() {
 
 
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
+  const vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
+  const receiptTotal = Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
+  const photoTotal = Array.from(photosByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
+  const agreementTotal = agreementByAppt.size;
 
 
 
@@ -289,6 +293,25 @@ export default async function CustomerDashboardRootPage() {
         </div>
 
       ) : null}
+
+      <section className='mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        {[
+          ['Overview', `${appointments.length} appointment(s)`, 'Bookings and service history'],
+          ['Vehicle garage', `${vehicleTotal} vehicle(s)`, 'Saved from booking records'],
+          ['Invoices / receipts', `${receiptTotal} receipt(s)`, 'Stripe, cash, and comped records'],
+          ['Photos', `${photoTotal} approved`, 'Before/after gallery items'],
+          ['Signed agreements', `${agreementTotal} signed`, 'Legal acknowledgements'],
+          ['Messages', 'Inbox ready', 'Replies and job updates'],
+          ['Reviews', 'Leave feedback', 'Review CTA after completion'],
+          ['Gift cards', 'Available', 'Book again or gift a detail'],
+        ].map(([title, value, hint]) => (
+          <article key={title} className='rounded-2xl border border-gold/20 bg-gradient-to-br from-zinc-950/95 to-black/80 p-4 shadow-[0_0_24px_rgba(212,166,77,0.08)]'>
+            <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>{title}</p>
+            <p className='mt-2 text-xl font-black text-white'>{value}</p>
+            <p className='mt-1 text-xs text-zinc-500'>{hint}</p>
+          </article>
+        ))}
+      </section>
 
       <div className='grid gap-6 lg:grid-cols-2'>
 

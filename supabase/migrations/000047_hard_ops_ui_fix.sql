@@ -15,6 +15,20 @@ create table if not exists public.receipts (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.notification_templates (
+  id uuid primary key default gen_random_uuid(),
+  template_key text not null,
+  channel text not null default 'sms',
+  name text not null,
+  subject text,
+  body text not null,
+  variables jsonb not null default '[]'::jsonb,
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(template_key, channel)
+);
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   from_name text,
@@ -65,6 +79,10 @@ alter table public.booking_fallbacks add column if not exists balance_due_cents 
 alter table public.booking_fallbacks add column if not exists payment_status text;
 alter table public.booking_fallbacks add column if not exists booking_vehicles jsonb default '[]'::jsonb;
 
+alter table public.customers add column if not exists archived boolean default false;
+alter table public.customers add column if not exists archived_at timestamptz;
+alter table public.customers add column if not exists deleted_at timestamptz;
+
 alter table public.job_media add column if not exists vehicle_index integer;
 alter table public.job_media add column if not exists vehicle_label text;
 alter table public.job_media add column if not exists uploaded_by uuid;
@@ -95,6 +113,9 @@ alter table public.notification_outbox add column if not exists channel text;
 alter table public.notification_outbox add column if not exists status text default 'pending';
 alter table public.notification_outbox add column if not exists skipped_reason text;
 alter table public.notification_outbox add column if not exists payload jsonb default '{}'::jsonb;
+alter table public.notification_outbox add column if not exists sent_at timestamptz;
+alter table public.notification_outbox add column if not exists failed_at timestamptz;
+alter table public.notification_outbox add column if not exists error_message text;
 
 alter table public.signed_agreements add column if not exists fallback_booking_id uuid;
 alter table public.signed_agreements add column if not exists archived_at timestamptz;
@@ -118,3 +139,4 @@ create index if not exists receipts_fallback_idx on public.receipts(fallback_boo
 create index if not exists job_media_vehicle_idx on public.job_media(appointment_id, vehicle_index);
 create index if not exists job_photos_vehicle_idx on public.job_photos(appointment_id, vehicle_index);
 create index if not exists tech_job_notes_vehicle_idx on public.tech_job_notes(appointment_id, vehicle_index);
+create index if not exists notification_templates_key_idx on public.notification_templates(template_key, channel);
