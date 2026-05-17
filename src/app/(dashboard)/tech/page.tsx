@@ -25,7 +25,7 @@ function addOnSlugCounts(bookingAddOns: unknown): Record<string, number> {
 
 function isBeforePhotoCategory(input: unknown): boolean {
   const cat = String(input ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  return ['before', 'inspection', 'front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels'].includes(cat);
+  return ['before', 'inspection', 'front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels', 'damage'].includes(cat);
 }
 
 function isAfterPhotoCategory(input: unknown): boolean {
@@ -278,38 +278,52 @@ export default async function TechnicianDashboardPage({
     }
 
     const mediaByAppt = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
+    const mediaByWorkflow = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
+    const addPhoto = (
+      map: Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>,
+      key: string,
+      row: { category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string },
+    ) => {
+      if (!key) return;
+      const cur = map.get(key) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
+      const url = row.public_url || row.media_url || row.file_url || '';
+      const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
+      if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
+        cur.after += 1;
+        if (url) cur.afterPhotos.push(photo);
+      } else if (isBeforePhotoCategory(row.photo_category ?? row.category) || row.category) {
+        cur.before += 1;
+        if (url) cur.beforePhotos.push(photo);
+      }
+      map.set(key, cur);
+    };
     if (ids.length > 0) {
       const { data: med } = await db.from('job_media').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
       for (const m of med ?? []) {
         const row = m as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
-        const aid = String(row.appointment_id ?? '');
-        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
-        const url = row.public_url || row.media_url || row.file_url || '';
-        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
-          cur.before += 1;
-          if (url) cur.beforePhotos.push(photo);
-        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
-          cur.after += 1;
-          if (url) cur.afterPhotos.push(photo);
-        }
-        mediaByAppt.set(aid, cur);
+        addPhoto(mediaByAppt, String(row.appointment_id ?? ''), row);
       }
       const { data: photos } = await db.from('job_photos').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
       for (const p of photos ?? []) {
         const row = p as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
-        const aid = String(row.appointment_id ?? '');
-        const cur = mediaByAppt.get(aid) ?? { before: 0, after: 0, beforePhotos: [], afterPhotos: [] };
-        const url = row.public_url || row.media_url || row.file_url || '';
-        const photo = { url, category: String(row.photo_category ?? row.category ?? 'photo'), uploadedAt: row.created_at ?? null };
-        if (isBeforePhotoCategory(row.photo_category ?? row.category)) {
-          cur.before += 1;
-          if (url) cur.beforePhotos.push(photo);
-        } else if (isAfterPhotoCategory(row.photo_category ?? row.category)) {
-          cur.after += 1;
-          if (url) cur.afterPhotos.push(photo);
+        addPhoto(mediaByAppt, String(row.appointment_id ?? ''), row);
+      }
+    }
+    const workflowIdsForMedia = workflowRows.map((row) => String(row.id ?? '')).filter(Boolean);
+    if (workflowIdsForMedia.length > 0) {
+      const workflowToAppt = new Map(workflowRows.map((row) => [String(row.id ?? ''), String(row.appointment_id ?? '')]));
+      for (const table of ['job_media', 'job_photos']) {
+        const { data } = await db
+          .from(table)
+          .select('workflow_session_id, category, photo_category, file_url, media_url, public_url, created_at')
+          .in('workflow_session_id', workflowIdsForMedia);
+        for (const p of data ?? []) {
+          const row = p as { workflow_session_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
+          const wid = String(row.workflow_session_id ?? '');
+          addPhoto(mediaByWorkflow, wid, row);
+          const aid = workflowToAppt.get(wid) ?? '';
+          if (aid) addPhoto(mediaByAppt, aid, row);
         }
-        mediaByAppt.set(aid, cur);
       }
     }
 
@@ -499,6 +513,7 @@ export default async function TechnicianDashboardPage({
       };
       const before = Number(row.before_photo_count ?? 0);
       const after = Number(row.after_photo_count ?? 0);
+      const workflowCounts = mediaByWorkflow.get(wid);
       jobs.unshift(normalizeActiveJob({
         id: aid || fid || wid,
         source: 'workflow_session',
@@ -508,10 +523,10 @@ export default async function TechnicianDashboardPage({
         fallbackBookingId: fid || null,
         workflowSessionId: wid,
         counts: {
-          before: Number.isFinite(before) ? before : 0,
-          after: Number.isFinite(after) ? after : 0,
-          beforePhotos: [],
-          afterPhotos: [],
+          before: Math.max(Number.isFinite(before) ? before : 0, workflowCounts?.before ?? 0),
+          after: Math.max(Number.isFinite(after) ? after : 0, workflowCounts?.after ?? 0),
+          beforePhotos: workflowCounts?.beforePhotos ?? [],
+          afterPhotos: workflowCounts?.afterPhotos ?? [],
         },
       }));
       renderedWorkflowIds.add(wid);
@@ -523,6 +538,7 @@ export default async function TechnicianDashboardPage({
       const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
       const wid = row.workflow_session_id != null ? String(row.workflow_session_id) : '';
       if (!tid || (aid && renderedAppointmentIds.has(aid)) || (fid && renderedFallbackIds.has(fid)) || (wid && renderedWorkflowIds.has(wid))) continue;
+      const workflowCounts = wid ? mediaByWorkflow.get(wid) : undefined;
       jobs.unshift(normalizeActiveJob({
         id: aid || fid || wid || tid,
         source: 'timer',
@@ -534,6 +550,7 @@ export default async function TechnicianDashboardPage({
         },
         fallbackBookingId: fid || null,
         workflowSessionId: wid || null,
+        counts: workflowCounts,
       }));
     }
 

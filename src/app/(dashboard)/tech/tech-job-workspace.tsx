@@ -19,6 +19,7 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
   const checklist = checklistForServiceSlug(job.service_slug ?? '');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [chkMsg, setChkMsg] = useState<string | null>(null);
+  const [noteMsg, setNoteMsg] = useState<string | null>(null);
   const [photoPhase, setPhotoPhase] = useState<'before' | 'after'>('before');
   const [photoCategory, setPhotoCategory] = useState('front');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -28,12 +29,14 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
 
   if (!showWorkspace) return null;
 
-  const logChecklist = () => {
-    const items = checklist.filter((item) => checked[item]);
+  const saveChecklist = (nextChecked = checked) => {
+    const items = checklist.filter((item) => nextChecked[item]);
     startChkTransition(() => {
       void techSaveChecklistSnapshotAction(job.id, JSON.stringify(items)).then(() => {
         setChkMsg(
-          items.length ? `Logged ${items.length} checklist item(s) to the timeline.` : 'Checklist snapshot sent (no items checked).',
+          items.length === checklist.length
+            ? 'Checklist complete and saved.'
+            : `Saved ${items.length} of ${checklist.length} checklist item(s).`,
         );
       });
     });
@@ -71,14 +74,18 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
       ) : null}
 
       <div>
-        <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Service checklist</p>
+          <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Service checklist</p>
         <ul className='mt-2 space-y-1'>
           {checklist.map((item) => (
             <li key={item} className='flex items-center gap-2 text-sm text-zinc-300'>
               <input
                 type='checkbox'
                 checked={Boolean(checked[item])}
-                onChange={(e) => setChecked((c) => ({ ...c, [item]: e.target.checked }))}
+                  onChange={(e) => {
+                    const next = { ...checked, [item]: e.target.checked };
+                    setChecked(next);
+                    saveChecklist(next);
+                  }}
                 className='rounded border-zinc-600'
               />
               {item}
@@ -88,30 +95,66 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
         <button
           type='button'
           disabled={pendingChk}
-          onClick={logChecklist}
+          onClick={() => saveChecklist()}
           className='mt-3 rounded-lg border border-white/20 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-200 disabled:opacity-40'
         >
-          {pendingChk ? 'Saving…' : 'Log checklist to job timeline'}
+          {pendingChk ? 'Saving…' : 'Save Checklist'}
         </button>
         {chkMsg ? <p className='mt-2 text-[10px] text-zinc-500'>{chkMsg}</p> : null}
       </div>
 
-      <form action={techSaveJobNotesAction} className='space-y-2'>
+      <form
+        action={async (formData) => {
+          setNoteMsg(null);
+          await techSaveJobNotesAction(formData);
+          setNoteMsg('Notes saved to this work order.');
+        }}
+        className='space-y-3 rounded-2xl border border-white/10 bg-black/25 p-3'
+      >
         {!job.isFallback ? <input type='hidden' name='appointmentId' value={job.id} /> : null}
         {job.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={job.fallback_booking_id} /> : null}
+        {job.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={job.workflowSessionId} /> : null}
+        <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Work order notes</p>
         <label className='block text-xs text-zinc-400'>
-          Job notes
+          Internal notes
           <textarea
-            name='notes'
+            name='internalNotes'
             defaultValue={job.notes ?? ''}
             rows={3}
-            placeholder='Before / during / after notes, checklist, upsell ideas…'
+            placeholder='Internal team notes, special handling, customer context…'
             className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
           />
+        </label>
+        <div className='grid gap-3 md:grid-cols-2'>
+          <label className='block text-xs text-zinc-400'>
+            Before notes
+            <textarea name='beforeNotes' rows={2} placeholder='Initial condition, pre-existing issues…' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+          </label>
+          <label className='block text-xs text-zinc-400'>
+            After notes
+            <textarea name='afterNotes' rows={2} placeholder='Final result, finishing details…' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+          </label>
+          <label className='block text-xs text-zinc-400'>
+            Damage notes
+            <textarea name='damageNotes' rows={2} placeholder='Damage observed or no visible damage…' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+          </label>
+          <label className='block text-xs text-zinc-400'>
+            Upsell notes
+            <textarea name='upsellNotes' rows={2} placeholder='Recommended add-ons or future service…' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+          </label>
+        </div>
+        <label className='block text-xs text-zinc-400'>
+          Customer-visible notes
+          <textarea name='notes' rows={2} placeholder='Summary safe to show the customer…' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+        </label>
+        <label className='flex items-center gap-2 text-xs text-zinc-300'>
+          <input type='checkbox' name='customerVisible' className='rounded border-zinc-600' />
+          Mark customer-visible summary
         </label>
         <button type='submit' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft'>
           Save notes
         </button>
+        {noteMsg ? <p className='text-xs text-emerald-300'>{noteMsg}</p> : null}
       </form>
 
       {job.status === 'in_progress' ? (

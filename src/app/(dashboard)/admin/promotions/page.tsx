@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { archivePromoCodeAction, savePromoCodeAction } from './promo-code-actions';
+import { archivePromoCodeAction, savePromoCodeAction, setFreeTestPromoSettingAction } from './promo-code-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,13 @@ export default async function AdminPromotionsPage() {
   const { data, error } = admin
     ? await admin.from('promo_codes').select('*').is('archived_at', null).order('created_at', { ascending: false }).limit(100)
     : { data: [] as Row[], error: null };
+  const settingsRes = admin
+    ? await admin.from('site_settings').select('key, value, allow_free_test_promo').limit(20)
+    : { data: [] as Row[] };
   const rows = (data ?? []) as Row[];
+  const allowFree = ((settingsRes.data ?? []) as Row[]).some(
+    (r) => r.allow_free_test_promo === true || (str(r.key) === 'allow_free_test_promo' && str(r.value).toLowerCase() === 'true'),
+  );
 
   return (
     <DashboardShell title='Promo codes' subtitle='Create, disable, restrict, and archive booking promo codes.' role='admin'>
@@ -25,6 +31,22 @@ export default async function AdminPromotionsPage() {
         <Link href='/admin/services' className='rounded border border-white/15 px-3 py-2 font-bold uppercase text-zinc-300'>Services</Link>
       </div>
       {error ? <p className='rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100'>{error.message}. Run migration 000042.</p> : null}
+      <section className='rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_30px_rgba(16,185,129,0.12)]'>
+        <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+          <div>
+            <p className='text-xs font-black uppercase tracking-[0.22em] text-emerald-300'>FREE test promo gate</p>
+            <h2 className='mt-1 text-xl font-black uppercase text-white'>{allowFree ? 'FREE is enabled' : 'FREE is disabled'}</h2>
+            <p className='mt-1 text-sm text-zinc-400'>When enabled, FREE applies only to Sedan Exterior Wash, sets the booking total to $0, bypasses Stripe, and marks the job as a comped test.</p>
+          </div>
+          <form action={setFreeTestPromoSettingAction} className='flex items-center gap-3 rounded-xl border border-white/10 bg-black/35 p-3'>
+            <label className='flex items-center gap-2 text-sm font-bold text-zinc-200'>
+              <input name='allowFreeTestPromo' type='checkbox' defaultChecked={allowFree} />
+              Enable FREE test promo
+            </label>
+            <button className='rounded bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save</button>
+          </form>
+        </div>
+      </section>
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>New promo code</p>
         <form action={savePromoCodeAction} className='mt-4 grid gap-3 md:grid-cols-2'>

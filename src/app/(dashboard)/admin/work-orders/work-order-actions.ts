@@ -78,3 +78,58 @@ export async function clearStaleActiveTestRecordsAction(formData: FormData) {
   revalidatePath('/tech');
   return { ok: true };
 }
+
+export async function adminRecordCashPaymentAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const source = String(formData.get('source') ?? 'appointment').trim();
+  if (!id) return { ok: false, error: 'Missing work order.' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const amount = Number(String(formData.get('amountReceived') ?? '').replace(/[^0-9.]/g, ''));
+  const change = Number(String(formData.get('changeGiven') ?? '').replace(/[^0-9.]/g, ''));
+  const note = String(formData.get('cashNote') ?? '').trim();
+  const table = source === 'fallback' ? 'booking_fallbacks' : 'appointments';
+  const { data } = await gate.admin
+    .from(table)
+    .select('id, customer_id, base_price_cents, balance_due_cents, service_slug, vehicle_description')
+    .eq('id', id)
+    .maybeSingle();
+  const row = (data ?? {}) as Record<string, unknown>;
+  const amountCents = Math.max(
+    0,
+    Number.isFinite(amount) && amount > 0
+      ? Math.round(amount * 100)
+      : typeof row.balance_due_cents === 'number'
+        ? row.balance_due_cents
+        : typeof row.base_price_cents === 'number'
+          ? row.base_price_cents
+          : 0,
+  );
+  if (amountCents < 1) return { ok: false, error: 'Enter amount received.' };
+  const now = new Date().toISOString();
+  await gate.admin.from('payments').insert({
+    appointment_id: source === 'fallback' ? null : id,
+    fallback_booking_id: source === 'fallback' ? id : null,
+    customer_id: row.customer_id ?? null,
+    amount_cents: amountCents,
+    status: 'succeeded',
+    payment_method: 'cash',
+    payment_choice: 'cash',
+    paid_at: now,
+    metadata: {
+      source: 'admin_cash_payment',
+      note: note || null,
+      cash_received_cents: amountCents,
+      change_given_cents: Number.isFinite(change) ? Math.max(0, Math.round(change * 100)) : 0,
+      receipt_number: `CASH-${now.slice(0, 10).replace(/-/g, '')}-${id.slice(0, 8)}`,
+    },
+  });
+  await gate.admin
+    .from(table)
+    .update({ payment_status: 'paid_cash', balance_due_cents: 0, paid_at: now, updated_at: now })
+    .eq('id', id);
+  revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/payments');
+  revalidatePath('/tech');
+  return { ok: true };
+}

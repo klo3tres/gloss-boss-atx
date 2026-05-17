@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
 import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../booking-fallback-actions';
-import { archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
+import { adminRecordCashPaymentAction, archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +95,11 @@ async function deleteAppointmentWorkOrderFormAction(formData: FormData) {
 async function clearStaleActiveTestRecordsFormAction(formData: FormData) {
   'use server';
   await clearStaleActiveTestRecordsAction(formData);
+}
+
+async function adminRecordCashPaymentFormAction(formData: FormData) {
+  'use server';
+  await adminRecordCashPaymentAction(formData);
 }
 
 export default async function AdminWorkOrdersPage() {
@@ -219,6 +224,14 @@ export default async function AdminWorkOrdersPage() {
                         <p>Tech: {str(technicians.find((t) => str(t.id) === str(r.assigned_technician_id))?.full_name) || 'Unassigned'}</p>
                         <p>Agreement: {agreement ? `Signed ${chicago(agreement.signed_at)}` : 'Missing'}</p>
                       </div>
+                      <form action={adminRecordCashPaymentFormAction} className='mt-3 grid gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs sm:grid-cols-4'>
+                        <input type='hidden' name='id' value={str(r.id)} />
+                        <input type='hidden' name='source' value={isFallback ? 'fallback' : 'appointment'} />
+                        <input name='amountReceived' inputMode='decimal' placeholder='Cash received' className='rounded border border-emerald-500/20 bg-black px-2 py-2 text-white' />
+                        <input name='changeGiven' inputMode='decimal' placeholder='Change given' className='rounded border border-emerald-500/20 bg-black px-2 py-2 text-white' />
+                        <input name='cashNote' placeholder='Receipt note' className='rounded border border-emerald-500/20 bg-black px-2 py-2 text-white' />
+                        <button className='rounded bg-emerald-500 px-3 py-2 font-black uppercase text-black'>Paid Cash</button>
+                      </form>
                       {r.booking_pricing_breakdown && typeof r.booking_pricing_breakdown === 'object' ? (
                         <div className='mt-3 grid gap-2 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300 sm:grid-cols-2'>
                           {(() => {

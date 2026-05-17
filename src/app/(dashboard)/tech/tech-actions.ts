@@ -8,6 +8,7 @@ import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -327,6 +328,7 @@ const BEFORE_PHOTO_CATEGORIES = new Set([
   'interior',
   'wheels',
   'inspection',
+  'damage',
 ]);
 
 function photoMatchesPhase(row: Record<string, unknown>, phase: 'before' | 'after'): boolean {
@@ -728,11 +730,34 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
     customerId = row.customer_id ? String(row.customer_id) : null;
   }
   const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || ''}/dashboard`;
+  let paymentUrl: string | null = null;
+  const notificationConfigured = Boolean(process.env.RESEND_API_KEY || process.env.TWILIO_ACCOUNT_SID);
+  let outboxStatus = guestEmail || guestPhone ? (notificationConfigured ? 'queued' : 'skipped') : 'skipped';
+  let skippedReason: string | null = guestEmail || guestPhone
+    ? notificationConfigured ? null : 'Skipped — configure Twilio/Resend.'
+    : 'No customer email or phone on file.';
+  if (kind === 'payment_link' && appointmentId) {
+    const checkout = await createCustomerFinalBalanceCheckoutSession({
+      admin: db,
+      appointmentId,
+      origin: process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com',
+      technicianId: gate.userId,
+    });
+    if (checkout.ok) {
+      paymentUrl = checkout.url;
+    } else if (checkout.code === 'NO_BALANCE_DUE') {
+      outboxStatus = 'skipped';
+      skippedReason = 'No balance due.';
+    } else if (checkout.code === 'STRIPE_NOT_CONFIGURED') {
+      outboxStatus = 'skipped';
+      skippedReason = 'Skipped — configure Stripe before sending payment links.';
+    }
+  }
   const message =
     kind === 'last_touches'
       ? `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`
       : kind === 'payment_link'
-        ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. Track updates here: ${dashboardUrl}`
+        ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. ${paymentUrl ? `Pay here: ${paymentUrl}` : `Track updates here: ${dashboardUrl}`}`
         : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
   await writeNotificationOutbox(db, {
     kind,
@@ -741,8 +766,9 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
     customer_id: customerId,
     technician_id: gate.userId,
     channel: 'customer',
-    status: guestEmail || guestPhone ? 'queued' : 'skipped',
-    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl },
+    status: outboxStatus,
+    skipped_reason: skippedReason,
+    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl, payment_url: paymentUrl },
   });
   if (appointmentId) {
     await recordJobTimelineEvent(db, {
@@ -761,6 +787,9 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   if (!appointmentId && !fallbackBookingId) return;
+  const amountReceivedRaw = Number(String(formData.get('amountReceived') ?? '').replace(/[^0-9.]/g, ''));
+  const changeGivenRaw = Number(String(formData.get('changeGiven') ?? '').replace(/[^0-9.]/g, ''));
+  const cashNote = String(formData.get('cashNote') ?? '').trim();
 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
@@ -783,7 +812,8 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
   }
   const balance = typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null;
   const base = typeof row.base_price_cents === 'number' ? row.base_price_cents : null;
-  const amountCents = Math.max(0, balance ?? base ?? 0);
+  const amountCents = Math.max(0, Number.isFinite(amountReceivedRaw) && amountReceivedRaw > 0 ? Math.round(amountReceivedRaw * 100) : balance ?? base ?? 0);
+  const changeGivenCents = Math.max(0, Number.isFinite(changeGivenRaw) && changeGivenRaw > 0 ? Math.round(changeGivenRaw * 100) : 0);
   if (amountCents < 1) return;
 
   const paymentVariants: Record<string, unknown>[] = [
@@ -801,6 +831,10 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       metadata: {
         source: 'technician_cash_payment',
         recorded_by: gate.userId,
+        cash_received_cents: amountCents,
+        change_given_cents: changeGivenCents,
+        note: cashNote || null,
+        receipt_number: `CASH-${nowIso.slice(0, 10).replace(/-/g, '')}-${(appointmentId || fallbackBookingId).slice(0, 8)}`,
         service_slug: row.service_slug ?? null,
         vehicle_description: row.vehicle_description ?? null,
       },
@@ -813,7 +847,7 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       status: 'succeeded',
       payment_method: 'cash',
       payment_choice: 'cash',
-      metadata: { source: 'technician_cash_payment', recorded_by: gate.userId },
+      metadata: { source: 'technician_cash_payment', recorded_by: gate.userId, cash_received_cents: amountCents, change_given_cents: changeGivenCents, note: cashNote || null },
     },
     {
       appointment_id: appointmentId || null,
@@ -906,7 +940,7 @@ export async function techCompleteJobAction(
   const db = admin ?? gate.supabase;
   const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source, vehicle_description, customer_id')
+    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source, vehicle_description, customer_id, notes')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -964,12 +998,8 @@ export async function techCompleteJobAction(
     technicianId: gate.userId,
     phase: 'after',
   });
-  if (afterGate.error) {
-    return { error: `Could not verify after photos. Checked: ${afterGate.checked.join(', ') || 'no job reference'}` };
-  }
-  if (afterGate.count < 1) {
-    return { error: `Add at least one after photo before marking complete. Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}` };
-  }
+  const completionMissing: string[] = [];
+  if (afterGate.error || afterGate.count < 1) completionMissing.push('after photo missing');
 
   const { data: checklistRow } = await gate.supabase
     .from('job_timeline_events')
@@ -979,11 +1009,7 @@ export async function techCompleteJobAction(
     .limit(1)
     .maybeSingle();
 
-  if (!checklistRow) {
-    return {
-      error: 'Log the service checklist to the job timeline from the workspace below before completing.',
-    };
-  }
+  if (!checklistRow) completionMissing.push('checklist incomplete');
 
   const { data: openTimer } = await gate.supabase
     .from('tech_job_timers')
@@ -993,6 +1019,22 @@ export async function techCompleteJobAction(
     .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (!openTimer?.id) completionMissing.push('timer not running');
+
+  const { data: noteRow } = await gate.supabase
+    .from('tech_job_notes')
+    .select('id')
+    .eq('appointment_id', appointmentId)
+    .limit(1)
+    .maybeSingle();
+  if (!noteRow && !String((appt as { notes?: string | null }).notes ?? '').trim()) completionMissing.push('notes not saved');
+
+  if (completionMissing.length > 0) {
+    return {
+      error: `Cannot complete job: ${completionMissing.join('; ')}. ${afterGate.error ? `Photo check: ${afterGate.error}. ` : ''}Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
+    };
+  }
+
   if (openTimer?.id) {
     const endedAt = new Date();
     const startedAt = new Date(String((openTimer as { started_at?: string }).started_at ?? endedAt.toISOString()));
@@ -1077,27 +1119,79 @@ export async function techCompleteJobAction(
 
 export async function techSaveJobNotesAction(formData: FormData) {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
   const notes = String(formData.get('notes') ?? '').trim();
-  if (!appointmentId) return;
+  const beforeNotes = String(formData.get('beforeNotes') ?? '').trim();
+  const afterNotes = String(formData.get('afterNotes') ?? '').trim();
+  const internalNotes = String(formData.get('internalNotes') ?? '').trim();
+  const damageNotes = String(formData.get('damageNotes') ?? '').trim();
+  const upsellNotes = String(formData.get('upsellNotes') ?? '').trim();
+  const customerVisible = String(formData.get('customerVisible') ?? '') === 'on';
+  if (!appointmentId && !fallbackBookingId) return;
 
   const gate = await requireTechSupabase();
   if (!gate.ok) return;
 
-  const { data: appt, error: fetchErr } = await gate.supabase
-    .from('appointments')
-    .select('id, assigned_technician_id')
-    .eq('id', appointmentId)
-    .maybeSingle();
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  if (appointmentId) {
+    const { data: appt, error: fetchErr } = await db
+      .from('appointments')
+      .select('id, assigned_technician_id')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (fetchErr || !appt || (appt as { assigned_technician_id?: string | null }).assigned_technician_id !== gate.userId) return;
+  }
 
-  if (fetchErr || !appt || appt.assigned_technician_id !== gate.userId) return;
+  const nowIso = new Date().toISOString();
+  const combined = notes || [beforeNotes, afterNotes, damageNotes, upsellNotes, internalNotes].filter(Boolean).join('\n\n');
+  if (appointmentId) {
+    const { error } = await db
+      .from('appointments')
+      .update({ notes: combined || null, updated_at: nowIso })
+      .eq('id', appointmentId);
+    if (error && !isSchemaDriftError(error.message)) console.warn('[tech] save appointment notes', error.message);
+  }
 
-  const { error } = await gate.supabase
-    .from('appointments')
-    .update({ notes: notes || null, updated_at: new Date().toISOString() })
-    .eq('id', appointmentId);
-
-  if (error) console.warn('[tech] save notes', error.message);
+  const noteRow: Record<string, unknown> = {
+    appointment_id: appointmentId || null,
+    fallback_booking_id: fallbackBookingId || null,
+    workflow_session_id: workflowSessionId || null,
+    technician_id: gate.userId,
+    notes: notes || combined || null,
+    before_notes: beforeNotes || null,
+    after_notes: afterNotes || null,
+    internal_notes: internalNotes || null,
+    damage_notes: damageNotes || null,
+    upsell_suggestions: upsellNotes || null,
+    customer_visible: customerVisible,
+    created_at: nowIso,
+  };
+  const ins = await db.from('tech_job_notes').insert(noteRow);
+  if (ins.error && isSchemaDriftError(ins.error.message)) {
+    await db.from('tech_job_notes').insert({
+      appointment_id: appointmentId || null,
+      technician_id: gate.userId,
+      notes: combined || null,
+      before_notes: beforeNotes || null,
+      after_notes: afterNotes || null,
+      upsell_suggestions: upsellNotes || null,
+      created_at: nowIso,
+    });
+  } else if (ins.error) {
+    console.warn('[tech] save structured notes', ins.error.message);
+  }
+  if (appointmentId) {
+    await recordJobTimelineEvent(db, {
+      appointmentId,
+      eventType: 'checklist_saved',
+      meta: { notification_kind: 'notes_saved', has_customer_visible: customerVisible },
+      createdBy: gate.userId,
+    });
+  }
   revalidatePath('/tech');
+  if (appointmentId || fallbackBookingId) revalidatePath(`/tech/work-orders/${appointmentId || fallbackBookingId}`);
 }
 
 /** Log checklist progress to the job timeline (does not persist checkbox state server-side). */

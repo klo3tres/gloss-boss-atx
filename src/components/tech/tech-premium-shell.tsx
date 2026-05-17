@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
+import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
@@ -71,6 +72,15 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
 
 function directionsHref(address?: string | null) {
   return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+}
+
+function workOrderHref(job: TechJob) {
+  const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
+  const params = new URLSearchParams();
+  if (job.isFallback) params.set('source', 'fallback');
+  if (job.workflowSessionId) params.set('workflowSessionId', job.workflowSessionId);
+  const qs = params.toString();
+  return `/tech/work-orders/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`;
 }
 
 export type TechAnalytics = {
@@ -350,9 +360,15 @@ export function TechPremiumShell({
                 <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
                 <LiveTimer startedAt={activeJob.timerStartedAt} />
               </div>
-              <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+              <TechTimerControls
+                appointmentId={activeJob.isFallback ? null : activeJob.id}
+                fallbackBookingId={activeJob.fallback_booking_id ?? null}
+                workflowSessionId={activeJob.workflowSessionId ?? null}
+                initialTimerId={activeJob.timerId ?? null}
+              />
+              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
                 Open Work Order
-              </a>
+              </Link>
             </div>
           </div>
           <div className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
@@ -376,9 +392,9 @@ export function TechPremiumShell({
               ) : (
                 <div className='mt-2 space-y-2'>
                   <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
-                  <a href='#field-invoice' className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                  <Link href={workOrderHref(activeJob)} className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
                     Upload before photo now
-                  </a>
+                  </Link>
                 </div>
               )}
             </div>
@@ -399,9 +415,9 @@ export function TechPremiumShell({
             </div>
           </div>
           <div className='mt-4 flex flex-wrap gap-2'>
-            <a href='#field-invoice' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</a>
-            <Link href='/tech/workflow' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
-            <a href='#field-invoice' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</a>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</Link>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
             {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
               <form key={`top-${kind}`} action={techSendActiveJobNotificationAction}>
                 <input type='hidden' name='kind' value={kind} />
@@ -412,14 +428,16 @@ export function TechPremiumShell({
                 </button>
               </form>
             ))}
-            <form action={techRecordCashPaymentAction}>
+            <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
               {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+              <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
+              <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
               <button type='submit' className='rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/15'>
                 Paid Cash
               </button>
             </form>
-            <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</a>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</Link>
             <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
               {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
@@ -673,13 +691,13 @@ export function TechPremiumShell({
             </ul>
           </div>
           <div className='mt-4 flex flex-wrap gap-2'>
-            <Link href='#field-invoice' className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
               Open Work Order
             </Link>
-            <Link href='/tech/workflow' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>
               Upload After Photos
             </Link>
-            <a href='#field-invoice' className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</a>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
             {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
               <form key={kind} action={techSendActiveJobNotificationAction}>
                 <input type='hidden' name='kind' value={kind} />
@@ -690,9 +708,9 @@ export function TechPremiumShell({
                 </button>
               </form>
             ))}
-            <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+            <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
               Complete Job
-            </a>
+            </Link>
           </div>
         </section>
       ) : null}

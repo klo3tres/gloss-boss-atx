@@ -117,12 +117,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: siteSettings } = await admin
+    const { data: siteSettingsRows } = await admin
       .from('site_settings')
-      .select('accept_public_bookings, allow_free_test_promo')
-      .limit(1)
-      .maybeSingle();
-    if ((siteSettings as { accept_public_bookings?: boolean } | null)?.accept_public_bookings === false) {
+      .select('key, value, accept_public_bookings, allow_free_test_promo')
+      .limit(50);
+    const siteSettings = (siteSettingsRows ?? []) as Array<Record<string, unknown>>;
+    const publicBookingsOff = siteSettings.some((r) => r.accept_public_bookings === false);
+    const allowFreeTestPromo = siteSettings.some(
+      (r) => r.allow_free_test_promo === true || (String(r.key ?? '') === 'allow_free_test_promo' && String(r.value ?? '').toLowerCase() === 'true'),
+    );
+    if (publicBookingsOff) {
       return NextResponse.json(
         { error: 'Online booking is temporarily paused. Please call Gloss Boss ATX to schedule.' },
         { status: 503 },
@@ -136,7 +140,6 @@ export async function POST(request: Request) {
     const priced = quote.breakdown;
     const resolved = quote.resolved;
     const claimed = quote.claimed;
-    const allowFreeTestPromo = (siteSettings as { allow_free_test_promo?: boolean } | null)?.allow_free_test_promo === true;
     if (promoCode === 'FREE' && !allowFreeTestPromo) {
       return NextResponse.json({ error: 'Promo code not available.' }, { status: 400 });
     }

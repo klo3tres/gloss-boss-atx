@@ -87,13 +87,16 @@ export function BookingWizard() {
   const [serviceAddressNotes, setServiceAddressNotes] = useState('');
   const [notes, setNotes] = useState('');
   const [promoCode, setPromoCode] = useState('');
+  const [appliedPromoCode, setAppliedPromoCode] = useState('');
+  const [promoMessage, setPromoMessage] = useState<string | null>(null);
+  const [allowFreeTestPromo, setAllowFreeTestPromo] = useState(false);
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
-  const freePromoRequested = promoCode.trim().toUpperCase() === 'FREE';
+  const freePromoRequested = appliedPromoCode === 'FREE';
 
   useEffect(() => {
     type CatalogPayload = {
@@ -337,13 +340,14 @@ export function BookingWizard() {
     void fetchWithTimeout('/api/public/site-settings', { cache: 'no-store', timeoutMs: 8000 })
       .then(async (r) => {
         try {
-          return (await r.json()) as { bookingAvailability?: BookingAvailabilityConfig };
+          return (await r.json()) as { bookingAvailability?: BookingAvailabilityConfig; allowFreeTestPromo?: boolean };
         } catch {
           return null;
         }
       })
       .then((data) => {
         if (cancelled || !data?.bookingAvailability) return;
+        setAllowFreeTestPromo(data.allowFreeTestPromo === true);
         const b = data.bookingAvailability;
         setBookingRules({
           ...DEFAULT_BOOKING_AVAILABILITY,
@@ -432,6 +436,13 @@ export function BookingWizard() {
     [serviceSlug, vehicleClass, vehicleDescription, vehicleColor, extraVehicles],
   );
 
+  const freePromoEligible =
+    freePromoRequested &&
+    allowFreeTestPromo &&
+    bookingLines.length === 1 &&
+    serviceSlug === 'exterior-wash' &&
+    normalizeVehicleClass(vehicleClass) === 'sedan';
+
   const priceSummary = useMemo(() => {
     const vehicleLineCents: number[] = [];
     const lines: { label: string; cents: number }[] = [];
@@ -474,8 +485,17 @@ export function BookingWizard() {
     });
     if ('kind' in bd) return null;
 
-    return { kind: 'ok' as const, lines, addOnLines, breakdown: bd as BookingPricingBreakdown };
-  }, [bookingLines, prices, services, deals, claimedOfferSnap, selectedAddOnSlugs, addonOptions]);
+    const finalBreakdown = freePromoEligible
+      ? ({
+          ...bd,
+          finalTotalCents: 0,
+          depositCents: 0,
+          offerDiscountCents: bd.prePromoCents,
+        } as BookingPricingBreakdown)
+      : (bd as BookingPricingBreakdown);
+
+    return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, selectedAddOnSlugs, addonOptions, freePromoEligible]);
 
   const pricePreviewText =
     priceSummary?.kind === 'quote'
@@ -502,6 +522,34 @@ export function BookingWizard() {
 
   const removeExtra = (index: number) => {
     setExtraVehicles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const applyPromo = () => {
+    const code = promoCode.trim().toUpperCase();
+    setPromoMessage(null);
+    if (!code) {
+      setAppliedPromoCode('');
+      setPromoMessage('Enter a promo code first.');
+      return;
+    }
+    if (code !== 'FREE') {
+      setAppliedPromoCode(code);
+      setPromoMessage('Promo will be checked at booking.');
+      return;
+    }
+    if (!allowFreeTestPromo) {
+      setAppliedPromoCode('');
+      setPromoMessage('Promo code not available.');
+      return;
+    }
+    if (bookingLines.length !== 1 || serviceSlug !== 'exterior-wash' || normalizeVehicleClass(vehicleClass) !== 'sedan') {
+      setAppliedPromoCode('');
+      setPromoMessage('FREE only applies to a Sedan Exterior Wash test booking.');
+      return;
+    }
+    setAppliedPromoCode('FREE');
+    setPaymentChoice('full');
+    setPromoMessage('FREE test comp applied. Total is $0.00 and Stripe will be bypassed.');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -581,8 +629,8 @@ export function BookingWizard() {
           serviceState: serviceState.trim().toUpperCase(),
           serviceZip: serviceZip.replace(/\D/g, '').slice(0, 5),
           serviceAddressNotes: serviceAddressNotes.trim() || undefined,
-          promoCode: promoCode.trim() || undefined,
-          paymentChoice,
+          promoCode: appliedPromoCode || promoCode.trim() || undefined,
+          paymentChoice: freePromoEligible ? 'full' : paymentChoice,
           notes: notes || undefined,
         }),
       });
@@ -994,15 +1042,28 @@ export function BookingWizard() {
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Promo code (optional)</span>
-              <input
-                value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                placeholder='Enter code'
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
-              />
-              {promoCode.trim().toUpperCase() === 'FREE' ? (
+              <div className='flex gap-2'>
+                <input
+                  value={promoCode}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value.toUpperCase());
+                    setAppliedPromoCode('');
+                    setPromoMessage(null);
+                  }}
+                  placeholder='Enter code'
+                  className='min-w-0 flex-1 rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
+                />
+                <button type='button' onClick={applyPromo} className='rounded-lg border border-gold/40 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft'>
+                  Apply
+                </button>
+              </div>
+              {promoMessage ? (
+                <p className={clsx('mt-2 rounded-lg border p-2 text-xs font-semibold', appliedPromoCode === 'FREE' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100')}>
+                  {promoMessage}
+                </p>
+              ) : promoCode.trim().toUpperCase() === 'FREE' ? (
                 <p className='mt-2 text-xs text-amber-200'>
-                  FREE is gated by admin settings and only applies to a Sedan Exterior Wash test. If enabled, total becomes $0 and Stripe is bypassed.
+                  FREE is gated by admin settings and only applies to a Sedan Exterior Wash test.
                 </p>
               ) : null}
             </label>
@@ -1013,9 +1074,11 @@ export function BookingWizard() {
               <button
                 type='button'
                 onClick={() => setPaymentChoice('deposit')}
+                disabled={freePromoEligible}
                 className={clsx(
                   'rounded-xl border px-4 py-3 text-left transition',
-                  paymentChoice === 'deposit' ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                  paymentChoice === 'deposit' && !freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                  freePromoEligible && 'opacity-50',
                 )}
               >
                 <span className='block text-xs font-black uppercase tracking-wider'>Pay deposit</span>
@@ -1026,15 +1089,15 @@ export function BookingWizard() {
                 onClick={() => setPaymentChoice('full')}
                 className={clsx(
                   'rounded-xl border px-4 py-3 text-left transition',
-                  paymentChoice === 'full' ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                  paymentChoice === 'full' || freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
                 )}
               >
-                <span className='block text-xs font-black uppercase tracking-wider'>Pay full amount now</span>
-                <span className='mt-1 block text-xs text-zinc-400'>No remaining balance after checkout.</span>
+                <span className='block text-xs font-black uppercase tracking-wider'>{freePromoEligible ? 'Comped / Pay full' : 'Pay full amount now'}</span>
+                <span className='mt-1 block text-xs text-zinc-400'>{freePromoEligible ? 'FREE test comp bypasses Stripe.' : 'No remaining balance after checkout.'}</span>
               </button>
             </div>
             <p>
-              After checkout, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.
+              {freePromoEligible ? 'FREE test comp is applied. Stripe will be bypassed and you will continue to agreement signing.' : 'After checkout, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.'}
             </p>
           </section>
 
@@ -1043,7 +1106,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:hidden'
           >
-            {submitting ? 'Redirecting…' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
+            {submitting ? 'Redirecting…' : freePromoEligible ? 'Continue with FREE comp' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
           </button>
         </div>
 
@@ -1067,8 +1130,8 @@ export function BookingWizard() {
             {priceSummary?.kind === 'ok' ? (
               <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
                 {freePromoRequested ? (
-                  <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs font-bold text-amber-100'>
-                    Test comp requested. The server will apply it only when enabled and valid.
+                  <p className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs font-bold text-emerald-100'>
+                    FREE test comp applied. Stripe will be bypassed for this Sedan Exterior Wash.
                   </p>
                 ) : null}
                 <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
@@ -1115,6 +1178,12 @@ export function BookingWizard() {
                     <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
+                {freePromoEligible ? (
+                  <p className='flex justify-between text-xs text-emerald-300'>
+                    <span>FREE test comp</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
                 <div className='border-t border-white/10 pt-3'>
                   <p className='flex flex-wrap items-end justify-between gap-x-3 gap-y-1'>
                     <span className='text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500'>Final total</span>
@@ -1147,7 +1216,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='hidden w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:block'
           >
-            {submitting ? 'Redirecting…' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
+            {submitting ? 'Redirecting…' : freePromoEligible ? 'Continue with FREE comp' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
           </button>
         </aside>
       </div>

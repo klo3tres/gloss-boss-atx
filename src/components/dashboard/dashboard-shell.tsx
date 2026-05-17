@@ -60,6 +60,7 @@ const superLinks = [
 const techLinks = [
   { href: '/tech', label: 'Home' },
   { href: '/tech/workflow', label: 'Walk-in workflow' },
+  { href: '/tech', label: 'Active work orders' },
   { href: '/tech#field-invoice', label: 'Field tools' },
   { href: '/tech/resources', label: 'SOPs' },
 ];
@@ -154,7 +155,8 @@ export function DashboardShell({
 
   return (
     <main className='min-h-screen bg-background text-foreground'>
-      <div className='mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
+      <div className='pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
+      <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='flex items-center justify-between lg:hidden'>
           <p className='text-xs font-bold uppercase tracking-widest text-gold-soft'>Menu</p>
           <button
@@ -173,7 +175,7 @@ export function DashboardShell({
         ) : null}
 
         <aside
-          className={`order-2 z-50 rounded-2xl border border-gold/20 bg-zinc-950 p-5 lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
+          className={`order-2 z-50 rounded-3xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 via-black/95 to-zinc-950/95 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
             navOpen ? 'fixed left-4 right-4 top-20 max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:max-h-none' : 'hidden lg:block'
           }`}
         >
@@ -183,7 +185,8 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-6 lg:order-2'>
-          <header className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+          <header className='overflow-hidden rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-950 p-5 shadow-[0_0_40px_rgba(212,166,77,0.10)]'>
+            <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
             <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
             <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
           </header>
