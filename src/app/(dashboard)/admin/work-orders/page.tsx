@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
 import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../booking-fallback-actions';
 import { adminRecordCashPaymentAction, archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
@@ -168,10 +169,9 @@ export default async function AdminWorkOrdersPage() {
           Customers
         </Link>
         <form action={clearStaleActiveTestRecordsFormAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
-          <input name='confirm' placeholder='CLEAR' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px] text-red-100 placeholder:text-red-200/50' />
-          <button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>
+          <ConfirmSubmitButton message='Clear stale active test timers/sessions/fallbacks?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>
             Clear stale active tests
-          </button>
+          </ConfirmSubmitButton>
         </form>
       </div>
       {appointmentsRes.error ? <p className='mb-3 text-sm text-amber-200'>Appointments: {appointmentsRes.error.message}</p> : null}
@@ -286,13 +286,13 @@ export default async function AdminWorkOrdersPage() {
                         {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={`/agreement?${agreementCaptureParams.toString()}`} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Capture Agreement</Link>}
                         {isFallback ? (
                           <>
-                            <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
-                            <form action={deleteFallbackWorkOrderAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</button></form>
+                            <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><ConfirmSubmitButton message='Archive this fallback work order?' className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</ConfirmSubmitButton></form>
+                            <form action={deleteFallbackWorkOrderAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><ConfirmSubmitButton message='Delete this fallback work order?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</ConfirmSubmitButton></form>
                           </>
                         ) : (
                           <>
-                            <form action={archiveAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='ARCHIVE' className='w-24 rounded border border-amber-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</button></form>
-                            <form action={deleteAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><input name='confirm' placeholder='DELETE' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px]' /><button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</button></form>
+                            <form action={archiveAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><ConfirmSubmitButton message='Archive this work order?' className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</ConfirmSubmitButton></form>
+                            <form action={deleteAppointmentWorkOrderFormAction} className='flex gap-1'><input type='hidden' name='id' value={str(r.id)} /><ConfirmSubmitButton message='Delete this work order?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</ConfirmSubmitButton></form>
                           </>
                         )}
                       </div>

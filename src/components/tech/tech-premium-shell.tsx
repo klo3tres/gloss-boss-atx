@@ -17,6 +17,7 @@ import {
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
@@ -441,14 +442,9 @@ export function TechPremiumShell({
             <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
               {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-              <input
-                name='confirm'
-                placeholder='type ARCHIVE'
-                className='w-28 rounded border border-red-500/20 bg-black px-2 py-1 text-[10px] text-red-100 placeholder:text-red-200/40'
-              />
-              <button type='submit' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
+              <ConfirmSubmitButton message='Archive this test job?' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
                 Archive Test Job
-              </button>
+              </ConfirmSubmitButton>
             </form>
           </div>
         </section>
@@ -518,10 +514,9 @@ export function TechPremiumShell({
                 {l.status !== 'booked' ? (
                   <form className='mt-2 flex gap-2' action={techArchiveOwnLeadAction}>
                     <input type='hidden' name='leadId' value={l.id} />
-                    <input name='confirm' placeholder='ARCHIVE' className='w-24 rounded border border-amber-500/20 bg-black px-2 py-1 text-[10px] text-amber-100' />
-                    <button type='submit' className='text-[10px] font-bold uppercase text-amber-200 underline'>
+                    <ConfirmSubmitButton message='Archive this test lead?' className='text-[10px] font-bold uppercase text-amber-200 underline'>
                       Archive Test Lead
-                    </button>
+                    </ConfirmSubmitButton>
                   </form>
                 ) : null}
               </li>

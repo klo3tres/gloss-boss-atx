@@ -16,8 +16,7 @@ async function requireAdmin() {
 
 export async function archiveAppointmentWorkOrderAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim();
-  if (!id || confirm !== 'ARCHIVE') return { ok: false, error: 'Type ARCHIVE to confirm.' };
+  if (!id) return { ok: false, error: 'Missing work order.' };
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const now = new Date().toISOString();
@@ -33,8 +32,7 @@ export async function archiveAppointmentWorkOrderAction(formData: FormData) {
 
 export async function deleteAppointmentWorkOrderAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim();
-  if (!id || confirm !== 'DELETE') return { ok: false, error: 'Type DELETE to confirm.' };
+  if (!id) return { ok: false, error: 'Missing work order.' };
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const now = new Date().toISOString();
@@ -49,8 +47,6 @@ export async function deleteAppointmentWorkOrderAction(formData: FormData) {
 }
 
 export async function clearStaleActiveTestRecordsAction(formData: FormData) {
-  const confirm = String(formData.get('confirm') ?? '').trim();
-  if (confirm !== 'CLEAR') return { ok: false, error: 'Type CLEAR to confirm.' };
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const now = new Date().toISOString();
@@ -74,6 +70,23 @@ export async function clearStaleActiveTestRecordsAction(formData: FormData) {
     .or('guest_email.ilike.%test%,guest_name.ilike.%test%,guest_phone.ilike.%555%')
     .in('status', ['pending', 'active', 'in_progress']);
 
+  revalidatePath('/admin/work-orders');
+  revalidatePath('/tech');
+  return { ok: true };
+}
+
+export async function bulkWorkOrderAction(formData: FormData) {
+  const action = String(formData.get('bulkAction') ?? '').trim();
+  const ids = formData.getAll('ids').map((v) => String(v).trim()).filter(Boolean);
+  if (!['archive', 'delete'].includes(action) || ids.length === 0) return { ok: false, error: 'Choose work orders first.' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const now = new Date().toISOString();
+  const patch = action === 'delete'
+    ? { archived: true, archived_at: now, deleted_at: now, status: 'deleted', updated_at: now }
+    : { archived: true, archived_at: now, updated_at: now };
+  await gate.admin.from('appointments').update(patch).in('id', ids);
+  await gate.admin.from('booking_fallbacks').update(action === 'delete' ? { status: 'deleted', archived_at: now, updated_at: now } : { archived: true, archived_at: now, status: 'archived', updated_at: now }).in('id', ids);
   revalidatePath('/admin/work-orders');
   revalidatePath('/tech');
   return { ok: true };
@@ -107,7 +120,8 @@ export async function adminRecordCashPaymentAction(formData: FormData) {
   );
   if (amountCents < 1) return { ok: false, error: 'Enter amount received.' };
   const now = new Date().toISOString();
-  await gate.admin.from('payments').insert({
+  const receiptNumber = `CASH-${now.slice(0, 10).replace(/-/g, '')}-${id.slice(0, 8)}`;
+  const paymentRes = await gate.admin.from('payments').insert({
     appointment_id: source === 'fallback' ? null : id,
     fallback_booking_id: source === 'fallback' ? id : null,
     customer_id: row.customer_id ?? null,
@@ -121,8 +135,29 @@ export async function adminRecordCashPaymentAction(formData: FormData) {
       note: note || null,
       cash_received_cents: amountCents,
       change_given_cents: Number.isFinite(change) ? Math.max(0, Math.round(change * 100)) : 0,
-      receipt_number: `CASH-${now.slice(0, 10).replace(/-/g, '')}-${id.slice(0, 8)}`,
+      receipt_number: receiptNumber,
     },
+  }).select('id').maybeSingle();
+  const paymentId = ((paymentRes.data ?? {}) as Record<string, unknown>).id ?? null;
+  await gate.admin.from('receipts').insert({
+    appointment_id: source === 'fallback' ? null : id,
+    fallback_booking_id: source === 'fallback' ? id : null,
+    payment_id: paymentId,
+    customer_id: row.customer_id ?? null,
+    receipt_number: receiptNumber,
+    amount_cents: amountCents,
+    payment_method: 'cash',
+    status: 'issued',
+    metadata: { source: 'admin_cash_payment', note: note || null },
+  });
+  await gate.admin.from('notification_outbox').insert({
+    appointment_id: source === 'fallback' ? null : id,
+    fallback_booking_id: source === 'fallback' ? id : null,
+    channel: 'internal',
+    kind: 'cash_payment_receipt',
+    status: 'skipped',
+    skipped_reason: 'Cash payment was recorded internally.',
+    payload: { payment_id: paymentId, receipt_number: receiptNumber, amount_cents: amountCents },
   });
   await gate.admin
     .from(table)

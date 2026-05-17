@@ -12,6 +12,42 @@ async function requireAdmin() {
   return { ok: true as const, admin };
 }
 
+function isPromoSchemaDrift(message?: string | null) {
+  return /column|schema cache|Could not find|does not exist|discount_value|discount_type|enabled|archived_at|service_restrictions|max_uses|current_uses/i.test(
+    message ?? '',
+  );
+}
+
+function strippedPromoRows(row: Record<string, unknown>) {
+  return [
+    row,
+    Object.fromEntries(
+      Object.entries(row).filter(
+        ([key]) => !['starts_at', 'ends_at', 'max_uses', 'service_restrictions', 'discount_value', 'discount_type', 'archived_at'].includes(key),
+      ),
+    ),
+    Object.fromEntries(Object.entries(row).filter(([key]) => !['enabled', 'updated_at'].includes(key))),
+    Object.fromEntries(Object.entries(row).filter(([key]) => ['code', 'description'].includes(key))),
+  ];
+}
+
+async function updatePromoSafely(
+  admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>,
+  matcher: { id?: string; code?: string },
+  row: Record<string, unknown>,
+) {
+  for (const patch of strippedPromoRows(row)) {
+    let q = admin.from('promo_codes').update(patch);
+    q = matcher.id ? q.eq('id', matcher.id) : q.eq('code', matcher.code ?? '');
+    const { error } = await q;
+    if (!error) return;
+    if (!isPromoSchemaDrift(error.message)) {
+      console.warn('[promotions] update failed', error.message);
+      return;
+    }
+  }
+}
+
 export async function savePromoCodeAction(formData: FormData) {
   const gate = await requireAdmin();
   if (!gate.ok) return;
@@ -35,11 +71,17 @@ export async function savePromoCodeAction(formData: FormData) {
     max_uses: String(formData.get('maxUses') ?? '').trim() ? Number(formData.get('maxUses')) : null,
     updated_at: new Date().toISOString(),
   };
-  if (id) await gate.admin.from('promo_codes').update(row).eq('id', id);
+  if (id) await updatePromoSafely(gate.admin, { id }, row);
   else {
     const existing = await gate.admin.from('promo_codes').select('id').eq('code', code).maybeSingle();
-    if (existing.data?.id) await gate.admin.from('promo_codes').update(row).eq('id', existing.data.id);
-    else await gate.admin.from('promo_codes').insert(row);
+    if (existing.data?.id) await updatePromoSafely(gate.admin, { id: existing.data.id }, row);
+    else {
+      let insert = await gate.admin.from('promo_codes').insert(row);
+      if (insert.error && isPromoSchemaDrift(insert.error.message)) {
+        insert = await gate.admin.from('promo_codes').insert({ code, description: row.description });
+      }
+      if (insert.error) console.warn('[promotions] insert failed', insert.error.message);
+    }
   }
   revalidatePath('/admin/promotions');
 }
@@ -49,24 +91,28 @@ export async function setFreeTestPromoSettingAction(formData: FormData) {
   if (!gate.ok) return;
   const enabled = formData.get('allowFreeTestPromo') === 'on';
   const now = new Date().toISOString();
-  await gate.admin.from('site_settings').update({ allow_free_test_promo: enabled, updated_at: now }).neq('key', '__never__');
+  const settingPatch = await gate.admin.from('site_settings').update({ allow_free_test_promo: enabled, updated_at: now }).neq('key', '__never__');
+  if (settingPatch.error && !isPromoSchemaDrift(settingPatch.error.message)) {
+    console.warn('[promotions] FREE setting column update failed', settingPatch.error.message);
+  }
   await gate.admin
     .from('site_settings')
     .upsert({ key: 'allow_free_test_promo', value: enabled ? 'true' : 'false', updated_at: now }, { onConflict: 'key' });
-  await gate.admin.from('promo_codes').upsert(
-    {
-      code: 'FREE',
-      description: 'FREE test comp for Sedan Exterior Wash only.',
-      enabled,
-      discount_type: 'comp',
-      discount_value: 100,
-      service_restrictions: ['exterior-wash'],
-      archived: false,
-      archived_at: null,
-      updated_at: now,
-    },
-    { onConflict: 'code' },
-  );
+  const lean = await gate.admin
+    .from('promo_codes')
+    .upsert({ code: 'FREE', description: 'Sedan Exterior Wash test promo' }, { onConflict: 'code' });
+  if (lean.error) console.warn('[promotions] FREE lean upsert failed', lean.error.message);
+  await updatePromoSafely(gate.admin, { code: 'FREE' }, {
+    code: 'FREE',
+    description: 'Sedan Exterior Wash test promo',
+    enabled,
+    discount_type: 'comp',
+    discount_value: 100,
+    service_restrictions: ['exterior-wash'],
+    archived: false,
+    archived_at: null,
+    updated_at: now,
+  });
   revalidatePath('/admin/promotions');
   revalidatePath('/book');
 }
@@ -76,9 +122,14 @@ export async function archivePromoCodeAction(formData: FormData) {
   if (!gate.ok) return;
   const id = String(formData.get('id') ?? '').trim();
   if (!id) return;
-  await gate.admin
+  const full = await gate.admin
     .from('promo_codes')
     .update({ archived: true, archived_at: new Date().toISOString(), enabled: false, updated_at: new Date().toISOString() })
     .eq('id', id);
+  if (full.error && isPromoSchemaDrift(full.error.message)) {
+    await gate.admin.from('promo_codes').update({ archived: true }).eq('id', id);
+  } else if (full.error) {
+    console.warn('[promotions] archive failed', full.error.message);
+  }
   revalidatePath('/admin/promotions');
 }

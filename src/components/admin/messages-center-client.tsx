@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { MessageRow } from '@/lib/messages-map';
-import { setMessageStatusAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
+import { replyToMessageAction, setMessageStatusAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
 
 function preview(body: string, max = 120) {
   const t = body.replace(/\s+/g, ' ').trim();
@@ -38,7 +38,15 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
               <li key={m.id}>
                 <button
                   type='button'
-                  onClick={() => setSelectedId(m.id)}
+                  onClick={() => {
+                    setSelectedId(m.id);
+                    if (m.status === 'new') {
+                      const fd = new FormData();
+                      fd.set('id', m.id);
+                      fd.set('status', 'read');
+                      void setMessageStatusAction(fd).then(() => router.refresh());
+                    }
+                  }}
                   className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                     active
                       ? 'border-gold/50 bg-gold/10 shadow-[0_0_22px_rgba(212,166,77,0.18)]'
@@ -83,6 +91,21 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
               <p className='whitespace-pre-wrap text-sm leading-relaxed text-zinc-200'>{selected.body || '(no message body)'}</p>
             </div>
             <footer className='flex flex-wrap gap-2 border-t border-white/10 pt-4'>
+              <form
+                action={async (fd) => {
+                  await replyToMessageAction(fd);
+                  router.refresh();
+                }}
+                className='mb-2 w-full rounded-xl border border-white/10 bg-black/30 p-3'
+              >
+                <input type='hidden' name='id' value={selected.id} />
+                <label className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                  Reply
+                  <textarea name='reply' rows={4} placeholder='Write a customer reply...' className='mt-2 w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm normal-case tracking-normal text-white' />
+                </label>
+                <button className='mt-2 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save / Send Reply</button>
+                <p className='mt-2 text-[10px] text-zinc-500'>Saves the outbound reply and queues email when Resend is configured; otherwise it records a skipped outbox row.</p>
+              </form>
               <form
                 action={async (fd) => {
                   await setMessageStatusAction(fd);

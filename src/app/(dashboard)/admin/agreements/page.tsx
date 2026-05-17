@@ -3,6 +3,8 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
+import { revalidatePath } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,26 @@ type AgreementRow = {
   signed_at: string;
   source: string;
 };
+
+async function archiveAgreementAction(formData: FormData) {
+  'use server';
+  const admin = tryCreateAdminSupabase();
+  const id = String(formData.get('id') ?? '').trim();
+  const source = String(formData.get('source') ?? 'signed_agreements').trim();
+  if (!admin || !id) return;
+  await admin.from(source).update({ archived_at: new Date().toISOString() }).eq('id', id);
+  revalidatePath('/admin/agreements');
+}
+
+async function deleteAgreementAction(formData: FormData) {
+  'use server';
+  const admin = tryCreateAdminSupabase();
+  const id = String(formData.get('id') ?? '').trim();
+  const source = String(formData.get('source') ?? 'signed_agreements').trim();
+  if (!admin || !id) return;
+  await admin.from(source).update({ archived_at: new Date().toISOString(), deleted_at: new Date().toISOString() }).eq('id', id);
+  revalidatePath('/admin/agreements');
+}
 
 export default async function AdminAgreementsPage() {
   const session = await getSessionWithProfile();
@@ -82,7 +104,20 @@ export default async function AdminAgreementsPage() {
                   {new Date(a.signed_at).toLocaleString()} · appt {a.appointment_id.slice(0, 8)}…
                 </p>
               </div>
-              <span className='text-[10px] uppercase text-zinc-600'>{a.source}</span>
+              <div className='flex flex-wrap items-center gap-2'>
+                <span className='text-[10px] uppercase text-zinc-600'>{a.source}</span>
+                <Link href={`/admin/agreements/${encodeURIComponent(`${a.source}:${a.id}`)}`} className='rounded border border-gold/30 px-3 py-1 text-[10px] font-bold uppercase text-gold-soft'>View</Link>
+                <form action={archiveAgreementAction}>
+                  <input type='hidden' name='id' value={a.id} />
+                  <input type='hidden' name='source' value={a.source} />
+                  <ConfirmSubmitButton message='Archive this agreement?' className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</ConfirmSubmitButton>
+                </form>
+                <form action={deleteAgreementAction}>
+                  <input type='hidden' name='id' value={a.id} />
+                  <input type='hidden' name='source' value={a.source} />
+                  <ConfirmSubmitButton message='Delete this agreement?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</ConfirmSubmitButton>
+                </form>
+              </div>
             </li>
           ))}
         </ul>

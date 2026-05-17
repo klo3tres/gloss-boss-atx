@@ -31,6 +31,13 @@ type ApptRow = {
   job_started_at: string | null;
 
   job_completed_at: string | null;
+  booking_vehicles?: unknown;
+  service_address?: string | null;
+  service_city?: string | null;
+  service_state?: string | null;
+  service_zip?: string | null;
+  balance_due_cents?: number | null;
+  payment_status?: string | null;
 
 };
 
@@ -62,6 +69,19 @@ type MediaRow = {
 
 };
 
+type PaymentRow = {
+  appointment_id: string;
+  amount_cents: number;
+  status: string;
+  payment_method: string | null;
+  paid_at: string | null;
+};
+
+type AgreementRow = {
+  appointment_id: string;
+  signed_at: string | null;
+};
+
 
 
 function friendlyEventLabel(t: string): string {
@@ -85,6 +105,8 @@ export default async function CustomerDashboardRootPage() {
   const eventsByAppt = new Map<string, TimelineRow[]>();
 
   const photosByAppt = new Map<string, MediaRow[]>();
+  const paymentsByAppt = new Map<string, PaymentRow[]>();
+  const agreementByAppt = new Map<string, AgreementRow>();
 
 
 
@@ -96,7 +118,7 @@ export default async function CustomerDashboardRootPage() {
 
       .select(
 
-        'id, status, scheduled_start, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, job_started_at, job_completed_at',
+        'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at',
 
       )
 
@@ -112,7 +134,7 @@ export default async function CustomerDashboardRootPage() {
 
     if (ids.length > 0) {
 
-      const [evRes, medRes] = await Promise.all([
+      const [evRes, medRes, payRes, agRes] = await Promise.all([
 
         supabase
 
@@ -137,6 +159,18 @@ export default async function CustomerDashboardRootPage() {
           .order('created_at', { ascending: false })
 
           .limit(200),
+        supabase
+          .from('payments')
+          .select('appointment_id, amount_cents, status, payment_method, paid_at')
+          .in('appointment_id', ids)
+          .order('paid_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('signed_agreements')
+          .select('appointment_id, signed_at')
+          .in('appointment_id', ids)
+          .order('signed_at', { ascending: false })
+          .limit(100),
 
       ]);
 
@@ -164,6 +198,16 @@ export default async function CustomerDashboardRootPage() {
 
         photosByAppt.set(row.appointment_id, list);
 
+      }
+
+      for (const row of (payRes.data ?? []) as PaymentRow[]) {
+        const list = paymentsByAppt.get(row.appointment_id) ?? [];
+        list.push(row);
+        paymentsByAppt.set(row.appointment_id, list);
+      }
+
+      for (const row of (agRes.data ?? []) as AgreementRow[]) {
+        if (!agreementByAppt.has(row.appointment_id)) agreementByAppt.set(row.appointment_id, row);
       }
 
     }
@@ -259,6 +303,9 @@ export default async function CustomerDashboardRootPage() {
             {upcoming.map((a) => {
 
               const ev = eventsByAppt.get(a.id) ?? [];
+              const pays = paymentsByAppt.get(a.id) ?? [];
+              const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
+              const addr = [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ');
 
               return (
 
@@ -267,6 +314,9 @@ export default async function CustomerDashboardRootPage() {
                   <p className='text-sm font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
 
                   <p className='text-xs text-zinc-400'>{new Date(a.scheduled_start).toLocaleString()}</p>
+                  <p className='mt-1 text-xs text-zinc-500'>{vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · {addr || 'Service address pending'}</p>
+                  <p className='mt-1 text-xs text-zinc-500'>Payment: {a.payment_status ?? 'pending'} · Balance ${((a.balance_due_cents ?? 0) / 100).toFixed(2)} · Receipts {pays.length}</p>
+                  <p className='mt-1 text-xs text-zinc-500'>Agreement: {agreementByAppt.has(a.id) ? 'signed' : 'pending'}</p>
 
                   <p className='mt-1 text-[10px] uppercase tracking-wider text-gold-soft'>{a.status.replace(/_/g, ' ')}</p>
 
@@ -305,6 +355,8 @@ export default async function CustomerDashboardRootPage() {
               const ev = eventsByAppt.get(a.id) ?? [];
 
               const photos = photosByAppt.get(a.id) ?? [];
+              const pays = paymentsByAppt.get(a.id) ?? [];
+              const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
 
               return (
 
@@ -316,7 +368,7 @@ export default async function CustomerDashboardRootPage() {
 
                   <p className='mt-1 text-xs text-zinc-500'>
 
-                    Paid deposit ${(a.deposit_amount_cents / 100).toFixed(2)} · Package ${(a.base_price_cents / 100).toFixed(0)}
+                    {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · Paid deposit ${(a.deposit_amount_cents / 100).toFixed(2)} · Package ${(a.base_price_cents / 100).toFixed(0)} · Receipts {pays.length}
 
                   </p>
 

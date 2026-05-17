@@ -78,6 +78,9 @@ export async function POST(request: Request) {
     const customerPhone = String(form.get('customerPhone') ?? '').trim();
     const vehicleSummary = String(form.get('vehicleSummary') ?? '').trim();
     const serviceSlug = String(form.get('serviceSlug') ?? '').trim();
+    const vehicleIndexRaw = Number(String(form.get('vehicleIndex') ?? '').trim());
+    const vehicleIndex = Number.isInteger(vehicleIndexRaw) && vehicleIndexRaw >= 0 ? vehicleIndexRaw : null;
+    const vehicleLabel = String(form.get('vehicleLabel') ?? '').trim();
     const rawCat = String(form.get('photoCategory') ?? 'other')
       .trim()
       .toLowerCase()
@@ -505,6 +508,8 @@ export async function POST(request: Request) {
       publish_to_gallery: false,
       published_to_gallery: false,
     };
+    if (vehicleIndex != null) baseRow.vehicle_index = vehicleIndex;
+    if (vehicleLabel) baseRow.vehicle_label = vehicleLabel;
 
     let mediaId: string | null = null;
     let ins = await admin.from('job_media').insert(baseRow).select('id').maybeSingle();

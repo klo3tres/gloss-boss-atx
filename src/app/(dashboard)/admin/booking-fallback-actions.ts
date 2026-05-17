@@ -46,8 +46,7 @@ export async function reviewBookingFallbackAction(formData: FormData): Promise<{
 
 export async function deleteBookingFallbackAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const id = String(formData.get('id') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim();
-  if (!id || confirm !== 'DELETE') return { ok: false, error: 'Confirmation required' };
+  if (!id) return { ok: false, error: 'Missing id' };
   const gate = await requireAdminAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
   const now = new Date().toISOString();

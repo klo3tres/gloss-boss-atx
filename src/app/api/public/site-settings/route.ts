@@ -15,7 +15,12 @@ export async function GET() {
         bookingAvailability: { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] },
       });
     }
-    const { data: rows, error } = await client.from('site_settings').select('key, value, allow_free_test_promo').in('key', ['navbar_logo', 'booking_availability', 'allow_free_test_promo']);
+    let settings: { data: unknown[] | null; error: { message: string } | null };
+    settings = await client.from('site_settings').select('key, value, allow_free_test_promo').in('key', ['navbar_logo', 'booking_availability', 'allow_free_test_promo']);
+    if (settings.error && /allow_free_test_promo|column|schema cache|Could not find|does not exist/i.test(settings.error.message)) {
+      settings = await client.from('site_settings').select('key, value').in('key', ['navbar_logo', 'booking_availability', 'allow_free_test_promo']);
+    }
+    const { data: rows, error } = settings;
     if (error) {
       console.warn('[site_settings]', error.message);
       return NextResponse.json({
@@ -26,11 +31,12 @@ export async function GET() {
     let navbarLogo: string | null = null;
     let bookingAvailability: BookingAvailabilityConfig = { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] };
     let allowFreeTestPromo = false;
-    for (const row of rows ?? []) {
-      const key = typeof row?.key === 'string' ? row.key : '';
-      const val = typeof row?.value === 'string' ? row.value.trim() : '';
+    for (const raw of rows ?? []) {
+      const row = (raw ?? {}) as Record<string, unknown>;
+      const key = typeof row.key === 'string' ? row.key : '';
+      const val = typeof row.value === 'string' ? row.value.trim() : '';
       if (key === 'navbar_logo' && val) navbarLogo = val;
-      if (row?.allow_free_test_promo === true || (key === 'allow_free_test_promo' && val.toLowerCase() === 'true')) allowFreeTestPromo = true;
+      if (row.allow_free_test_promo === true || (key === 'allow_free_test_promo' && val.toLowerCase() === 'true')) allowFreeTestPromo = true;
       if (key === 'booking_availability' && val) {
         try {
           bookingAvailability = parseBookingAvailabilityConfig(JSON.parse(val));

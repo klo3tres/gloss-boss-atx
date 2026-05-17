@@ -53,12 +53,26 @@ export async function GET(request: Request) {
     else if (fallbackBookingId) apptQuery = apptQuery.eq('fallback_booking_id', fallbackBookingId).order('created_at', { ascending: false }).limit(1);
     else return NextResponse.json({ error: 'Missing booking parameters' }, { status: 400 });
 
-    const { data: appt, error } = await apptQuery.maybeSingle();
-    appointmentId = String((appt as Record<string, unknown> | null)?.id ?? appointmentId);
-    token ||= String((appt as Record<string, unknown> | null)?.access_token ?? '');
-    sessionId ||= String((appt as Record<string, unknown> | null)?.stripe_checkout_session_id ?? '');
+    const { data: apptData, error } = await apptQuery.maybeSingle();
+    let appt = apptData as Record<string, unknown> | null;
+    let resolvedFallbackId = fallbackBookingId;
+    if ((!appt || error) && fallbackBookingId) {
+      const { data: fallback } = await admin
+        .from('booking_fallbacks')
+        .select('id, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, payload, stripe_checkout_session_id')
+        .eq('id', fallbackBookingId)
+        .maybeSingle();
+      const fb = (fallback ?? null) as Record<string, unknown> | null;
+      if (fb) {
+        resolvedFallbackId = String(fb.id ?? fallbackBookingId);
+        appt = { ...fb, id: '', fallback_booking_id: resolvedFallbackId, access_token: token };
+      }
+    }
+    appointmentId = String(appt?.id ?? appointmentId);
+    token ||= String(appt?.access_token ?? '');
+    sessionId ||= String(appt?.stripe_checkout_session_id ?? '');
 
-    if (error || !appt || (token && appt.access_token !== token)) {
+    if (!appt || (appointmentId && token && appt.access_token !== token)) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
@@ -85,11 +99,19 @@ export async function GET(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    const { data: existingSign } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+    let existingSign: Record<string, unknown> | null = null;
+    if (appointmentId) {
+      const { data } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
+      existingSign = (data ?? null) as Record<string, unknown> | null;
+    } else if (resolvedFallbackId) {
+      const { data } = await admin.from('signed_agreements').select('id').eq('fallback_booking_id', resolvedFallbackId).maybeSingle();
+      existingSign = (data ?? null) as Record<string, unknown> | null;
+    }
 
     return NextResponse.json({
       appointment: appt,
       appointmentId,
+      fallbackBookingId: resolvedFallbackId,
       accessToken: token,
       sessionId,
       template: template ?? null,

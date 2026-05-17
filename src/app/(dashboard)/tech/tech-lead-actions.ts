@@ -120,8 +120,7 @@ export async function techUpdateLeadNotesAction(formData: FormData): Promise<voi
 
 export async function techArchiveOwnLeadAction(formData: FormData): Promise<void> {
   const leadId = String(formData.get('leadId') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim().toUpperCase();
-  if (!leadId || confirm !== 'ARCHIVE') return;
+  if (!leadId) return;
   const gate = await requireTechnicianSupabase();
   if (!gate.ok || !gate.supabase || !gate.userId) return;
   const { data: row } = await gate.supabase.from('leads').select('assigned_technician_id, status').eq('id', leadId).maybeSingle();

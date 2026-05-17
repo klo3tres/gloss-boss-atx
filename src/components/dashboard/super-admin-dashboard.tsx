@@ -91,18 +91,27 @@ function SkeletonGrid() {
   );
 }
 
-function StatCard({ label, value, hint, delay }: { label: string; value: string | number; hint?: string; delay: number }) {
+function StatCard({ label, value, hint, delay, href }: { label: string; value: string | number; hint?: string; delay: number; href?: string }) {
+  const content = (
+    <>
+      <p className='text-[10px] font-bold uppercase tracking-[0.2em] text-gold-soft'>{label}</p>
+      <p className='mt-2 text-2xl font-black text-white'>{value}</p>
+      {hint ? <p className='mt-1 text-xs text-zinc-500'>{hint}</p> : null}
+    </>
+  );
   return (
     <motion.div
       initial={{ opacity: 1, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay }}
       whileHover={{ y: -3, transition: { duration: 0.2 } }}
-      className='rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-4 shadow-[0_0_22px_rgba(212,166,77,0.08)] backdrop-blur-md transition hover:border-gold/50 hover:shadow-[0_0_38px_rgba(212,166,77,0.22)]'
+      className='rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 shadow-[0_0_22px_rgba(212,166,77,0.08)] backdrop-blur-md transition hover:border-gold/50 hover:shadow-[0_0_38px_rgba(212,166,77,0.22)]'
     >
-      <p className='text-[10px] font-bold uppercase tracking-[0.2em] text-gold-soft'>{label}</p>
-      <p className='mt-2 text-2xl font-black text-white'>{value}</p>
-      {hint ? <p className='mt-1 text-xs text-zinc-500'>{hint}</p> : null}
+      {href ? (
+        <Link href={href} className='block rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-gold/60'>{content}</Link>
+      ) : (
+        <div className='p-4'>{content}</div>
+      )}
     </motion.div>
   );
 }
@@ -360,21 +369,21 @@ export function SuperAdminDashboard() {
       </section>
 
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} />
-        <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} />
-        <StatCard label='Revenue (month)' value={money(stats.revenueMonthCents)} hint={`${stats.paymentsMonthCount} payment(s)`} delay={0.08} />
+        <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} href='/admin/payments?range=today' />
+        <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} href='/admin/payments?range=week' />
+        <StatCard label='Revenue (month)' value={money(stats.revenueMonthCents)} hint={`${stats.paymentsMonthCount} payment(s)`} delay={0.08} href='/admin/payments?range=month' />
         <StatCard label='Completed (month)' value={stats.completedMonth} hint='Jobs closed this month' delay={0.12} />
       </div>
 
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Jobs today' value={stats.jobsToday} hint='Scheduled start today' delay={0.14} />
-        <StatCard label='Active jobs' value={stats.activeJobs} hint='Confirmed → in progress' delay={0.16} />
+        <StatCard label='Jobs today' value={stats.jobsToday} hint='Scheduled start today' delay={0.14} href='/admin/work-orders?filter=today' />
+        <StatCard label='Active jobs' value={stats.activeJobs} hint='Confirmed → in progress' delay={0.16} href='/admin/work-orders?filter=active' />
         <StatCard label='Completed today' value={stats.completedToday} delay={0.18} />
-        <StatCard label='Technicians (roster)' value={stats.techniciansRoster} hint='Presence not tracked — roster size' delay={0.2} />
+        <StatCard label='Technicians (roster)' value={stats.techniciansRoster} hint='Presence not tracked — roster size' delay={0.2} href='/admin/team' />
       </div>
 
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Open lead pool' value={stats.openPoolLeads} hint='Unclaimed pool leads' delay={0.29} />
+        <StatCard label='Open lead pool' value={stats.openPoolLeads} hint='Unclaimed pool leads' delay={0.29} href='/admin/leads' />
         <StatCard label='Assigned jobs' value={stats.assignedDispatchJobs} hint='With technician · active statuses' delay={0.3} />
         <StatCard label='Avg job time (timers)' value={stats.avgJobMinutesAll != null ? `${stats.avgJobMinutesAll} min` : '—'} hint='Stopped timers sample' delay={0.31} />
         <StatCard

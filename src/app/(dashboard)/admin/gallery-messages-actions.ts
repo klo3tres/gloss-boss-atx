@@ -53,6 +53,40 @@ export async function setMessageStatusAction(formData: FormData) {
   revalidatePath('/admin/messages');
 }
 
+export async function replyToMessageAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '').trim();
+  const reply = String(formData.get('reply') ?? '').trim();
+  if (!id || !reply) return;
+  const gate = await requireAdminSupabase();
+  if (!gate.ok) return;
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  const now = new Date().toISOString();
+  const { data: message } = await client.from('messages').select('*').eq('id', id).maybeSingle();
+  const row = (message ?? {}) as Record<string, unknown>;
+  let { error } = await client
+    .from('messages')
+    .update({ status: 'replied', reply_body: reply, replied_at: now, read_at: now })
+    .eq('id', id);
+  if (error && /reply_body|replied_at|read_at|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('messages').update({ status: 'replied' }).eq('id', id));
+  }
+  await client.from('notification_outbox').insert({
+    channel: 'email',
+    kind: 'message_reply',
+    status: process.env.RESEND_API_KEY ? 'pending' : 'skipped',
+    skipped_reason: process.env.RESEND_API_KEY ? null : 'Skipped - configure Twilio/Resend.',
+    payload: {
+      message_id: id,
+      to: row.from_email ?? null,
+      subject: row.subject ? `Re: ${row.subject}` : 'Re: Gloss Boss ATX message',
+      body: reply,
+    },
+  });
+  if (error) console.error('[replyToMessageAction]', error.message);
+  revalidatePath('/admin/messages');
+}
+
 export async function deleteGalleryImageAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
   if (!id) return;

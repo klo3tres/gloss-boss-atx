@@ -13,30 +13,115 @@ create table if not exists public.promo_codes (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
   description text,
-  enabled boolean not null default false,
-  discount_type text not null default 'percent',
+  enabled boolean not null default true,
+  discount_type text not null default 'fixed',
   discount_value numeric not null default 0,
   service_restrictions jsonb not null default '[]'::jsonb,
   starts_at timestamptz,
   ends_at timestamptz,
   max_uses int,
-  used_count int not null default 0,
+  current_uses int not null default 0,
   archived boolean not null default false,
   archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-insert into public.promo_codes (code, description, enabled, discount_type, discount_value, service_restrictions)
-values ('FREE', 'FREE test comp for Sedan Exterior Wash only.', false, 'comp', 100, '["exterior-wash"]'::jsonb)
-on conflict (code) do update set
-  description = excluded.description,
-  discount_type = excluded.discount_type,
-  discount_value = excluded.discount_value,
-  service_restrictions = excluded.service_restrictions,
-  archived = false,
-  archived_at = null,
-  updated_at = now();
+alter table public.promo_codes
+  add column if not exists discount_value numeric default 0;
+
+alter table public.promo_codes
+  add column if not exists discount_type text default 'fixed';
+
+alter table public.promo_codes
+  add column if not exists enabled boolean default true;
+
+alter table public.promo_codes
+  add column if not exists archived_at timestamptz;
+
+alter table public.promo_codes
+  add column if not exists service_restrictions jsonb default '[]';
+
+alter table public.promo_codes
+  add column if not exists max_uses integer;
+
+alter table public.promo_codes
+  add column if not exists current_uses integer default 0;
+
+insert into public.promo_codes (
+  code,
+  description
+)
+values (
+  'FREE',
+  'Sedan Exterior Wash test promo'
+)
+on conflict do nothing;
+
+do $$
+declare
+  service_restrictions_type text;
+begin
+  update public.promo_codes
+  set description = 'Sedan Exterior Wash test promo'
+  where code = 'FREE';
+
+  update public.promo_codes
+  set enabled = false
+  where code = 'FREE'
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'promo_codes'
+        and column_name = 'enabled'
+    );
+
+  update public.promo_codes
+  set discount_type = 'comp'
+  where code = 'FREE'
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'promo_codes'
+        and column_name = 'discount_type'
+    );
+
+  update public.promo_codes
+  set discount_value = 100
+  where code = 'FREE'
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'promo_codes'
+        and column_name = 'discount_value'
+    );
+
+  select data_type into service_restrictions_type
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'promo_codes'
+    and column_name = 'service_restrictions';
+
+  if service_restrictions_type = 'ARRAY' then
+    update public.promo_codes
+    set service_restrictions = array['exterior-wash']
+    where code = 'FREE';
+  elsif service_restrictions_type = 'jsonb' then
+    update public.promo_codes
+    set service_restrictions = '["exterior-wash"]'::jsonb
+    where code = 'FREE';
+  end if;
+
+  update public.promo_codes
+  set archived_at = null
+  where code = 'FREE'
+    and exists (
+      select 1 from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'promo_codes'
+        and column_name = 'archived_at'
+    );
+end $$;
 
 alter table if exists public.appointments
   add column if not exists payment_choice text,

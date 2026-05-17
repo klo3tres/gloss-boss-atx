@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { PrintButton } from '@/components/ui/print-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,7 +96,8 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
             <p className='mt-3 text-sm text-zinc-500'>No vehicle snapshot attached.</p>
           )}
         </section>
-        <section className='mt-5 rounded-xl border border-white/10 bg-black/30 p-4'>
+        <PrintButton className='mt-5 inline-block rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black'>Download PDF / Print</PrintButton>
+        <section className='mt-5 rounded-xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
           <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Snapshot</p>
           <pre className='mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap text-xs text-zinc-300'>{prettyJson(snapshot)}</pre>
         </section>

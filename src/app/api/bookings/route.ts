@@ -117,10 +117,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: siteSettingsRows } = await admin
+    let siteSettingsQuery: { data: unknown[] | null; error: { message: string } | null } = await admin
       .from('site_settings')
       .select('key, value, accept_public_bookings, allow_free_test_promo')
       .limit(50);
+    if (siteSettingsQuery.error && /accept_public_bookings|allow_free_test_promo|column|schema cache|Could not find|does not exist/i.test(siteSettingsQuery.error.message)) {
+      siteSettingsQuery = await admin.from('site_settings').select('key, value').limit(50);
+    }
+    const siteSettingsRows = siteSettingsQuery.data;
     const siteSettings = (siteSettingsRows ?? []) as Array<Record<string, unknown>>;
     const publicBookingsOff = siteSettings.some((r) => r.accept_public_bookings === false);
     const allowFreeTestPromo = siteSettings.some(
@@ -330,10 +334,14 @@ export async function POST(request: Request) {
           appointment_id: appointment.id,
           customer_id: customerId,
           amount_cents: 0,
-          status: 'manual_comped',
+          status: 'comped',
+          payment_method: 'test_comped',
+          payment_choice: 'comped',
           payment_kind: 'test_comp',
+          paid_at: new Date().toISOString(),
           metadata: {
             promo_code: 'FREE',
+            source: 'free_test_promo',
             service_address: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
             vehicles: bookingVehicles,
           },
@@ -348,7 +356,7 @@ export async function POST(request: Request) {
         depositAmountCents: 0,
         skipPayment: true,
         compStatus: 'test_comped',
-        message: 'Test comp applied.',
+        message: 'FREE test comp applied',
       });
     }
 

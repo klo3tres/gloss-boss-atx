@@ -5,7 +5,9 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { TechJobWorkspace } from '../../tech-job-workspace';
 import { TechTimerControls } from '../../tech-timer-controls';
-import { techCompleteJobAction, techRecordCashPaymentAction, techSendActiveJobNotificationAction } from '../../tech-actions';
+import { WorkOrderPhotoUpload } from '../../work-order-photo-upload';
+import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction, techSendActiveJobNotificationAction } from '../../tech-actions';
+import { revalidatePath } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +37,66 @@ function mapsHref(address: string) {
 async function completeWorkOrderFormAction(formData: FormData) {
   'use server';
   await techCompleteJobAction(null, formData);
+}
+
+async function saveVehicleNotesAction(formData: FormData) {
+  'use server';
+  await techSaveJobNotesAction(formData);
+}
+
+async function updateWorkOrderDetailsAction(formData: FormData) {
+  'use server';
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return;
+  const id = str(formData.get('id')).trim();
+  const source = str(formData.get('source')).trim();
+  if (!id) return;
+  const table = source === 'fallback' ? 'booking_fallbacks' : 'appointments';
+  const patch = {
+    guest_name: str(formData.get('guestName')).trim() || null,
+    guest_email: str(formData.get('guestEmail')).trim().toLowerCase() || null,
+    guest_phone: str(formData.get('guestPhone')).replace(/\D/g, '') || null,
+    service_address: str(formData.get('serviceAddress')).trim() || null,
+    service_city: str(formData.get('serviceCity')).trim() || null,
+    service_state: str(formData.get('serviceState')).trim().toUpperCase() || null,
+    service_zip: str(formData.get('serviceZip')).replace(/\D/g, '').slice(0, 5) || null,
+    updated_at: new Date().toISOString(),
+  };
+  await admin.from(table).update(patch).eq('id', id);
+  revalidatePath(`/tech/work-orders/${id}`);
+  revalidatePath('/tech');
+  revalidatePath('/admin/work-orders');
+}
+
+async function updateWorkOrderVehiclesAction(formData: FormData) {
+  'use server';
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return;
+  const id = str(formData.get('id')).trim();
+  const source = str(formData.get('source')).trim();
+  if (!id) return;
+  const table = source === 'fallback' ? 'booking_fallbacks' : 'appointments';
+  const descriptions = formData.getAll('vehicleDescription').map((v) => str(v).trim());
+  const colors = formData.getAll('vehicleColor').map((v) => str(v).trim());
+  const services = formData.getAll('vehicleService').map((v) => str(v).trim());
+  const classes = formData.getAll('vehicleClass').map((v) => str(v).trim());
+  const vehicles = descriptions.map((description, index) => ({
+    vehicle_description: description || `Vehicle ${index + 1}`,
+    vehicle_color: colors[index] || null,
+    service_slug: services[index] || null,
+    vehicle_class: classes[index] || null,
+  }));
+  const patch = {
+    booking_vehicles: vehicles,
+    vehicle_description: vehicles.map((v) => v.vehicle_description).join(' · '),
+    service_slug: vehicles[0]?.service_slug,
+    vehicle_class: vehicles[0]?.vehicle_class,
+    updated_at: new Date().toISOString(),
+  };
+  await admin.from(table).update(patch).eq('id', id);
+  revalidatePath(`/tech/work-orders/${id}`);
+  revalidatePath('/tech');
+  revalidatePath('/admin/work-orders');
 }
 
 export default async function TechWorkOrderDetailPage({
@@ -111,7 +173,9 @@ export default async function TechWorkOrderDetailPage({
   const before = photos.filter((p) => photoPhase(p) === 'before');
   const after = photos.filter((p) => photoPhase(p) === 'after');
   const fullAddress = [row.service_address, row.service_city, row.service_state, row.service_zip].map(str).filter(Boolean).join(', ');
-  const vehicles = Array.isArray(row.booking_vehicles) ? (row.booking_vehicles as Row[]) : [];
+  const vehicles = Array.isArray(row.booking_vehicles) && row.booking_vehicles.length > 0
+    ? (row.booking_vehicles as Row[])
+    : [{ vehicle_description: row.vehicle_description, vehicle_color: null, service_slug: row.service_slug, vehicle_class: row.vehicle_class }];
   const job = {
     id,
     status: str(row.status || 'in_progress'),
@@ -172,16 +236,88 @@ export default async function TechWorkOrderDetailPage({
             <Link href='/tech' className='rounded-xl border border-white/10 px-4 py-3 text-xs font-black uppercase tracking-wider text-zinc-300'>Back to tech</Link>
           </div>
         </div>
-        {vehicles.length > 0 ? (
-          <div className='mt-5 grid gap-3 sm:grid-cols-2'>
+      </section>
+
+      <section className='grid gap-4 lg:grid-cols-2'>
+        <form action={updateWorkOrderDetailsAction} className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
+          <input type='hidden' name='id' value={id} />
+          <input type='hidden' name='source' value={isFallback ? 'fallback' : 'appointment'} />
+          <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Customer + address</p>
+          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+            <input name='guestName' defaultValue={str(row.guest_name)} placeholder='Customer name' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            <input name='guestPhone' defaultValue={str(row.guest_phone)} placeholder='Phone' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            <input name='guestEmail' defaultValue={str(row.guest_email)} placeholder='Email' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white sm:col-span-2' />
+            <input name='serviceAddress' defaultValue={str(row.service_address)} placeholder='Service address' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white sm:col-span-2' />
+            <input name='serviceCity' defaultValue={str(row.service_city)} placeholder='City' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            <div className='grid grid-cols-2 gap-2'>
+              <input name='serviceState' defaultValue={str(row.service_state) || 'TX'} placeholder='State' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+              <input name='serviceZip' defaultValue={str(row.service_zip)} placeholder='ZIP' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            </div>
+          </div>
+          <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save customer/address</button>
+        </form>
+
+        <form action={updateWorkOrderVehiclesAction} className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
+          <input type='hidden' name='id' value={id} />
+          <input type='hidden' name='source' value={isFallback ? 'fallback' : 'appointment'} />
+          <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Vehicles in this work order</p>
+          <div className='mt-3 space-y-3'>
             {vehicles.map((v, i) => (
-              <div key={i} className='rounded-2xl border border-white/10 bg-black/35 p-3 text-sm'>
-                <p className='font-bold text-white'>Vehicle {i + 1}: {str(v.vehicle_description || v.description) || 'Not provided'}</p>
-                <p className='text-xs text-zinc-500'>{str(v.service_slug).replace(/-/g, ' ')} · {str(v.vehicle_color || v.color) || 'Color not provided'}</p>
+              <div key={i} className='rounded-xl border border-white/10 bg-black/35 p-3'>
+                <p className='mb-2 text-[10px] font-black uppercase tracking-wider text-zinc-500'>Vehicle {i + 1}</p>
+                <div className='grid gap-2 sm:grid-cols-2'>
+                  <input name='vehicleDescription' defaultValue={str(v.vehicle_description || v.description)} placeholder='Year / Make / Model' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+                  <input name='vehicleColor' defaultValue={str(v.vehicle_color || v.color)} placeholder='Color' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+                  <input name='vehicleService' defaultValue={str(v.service_slug || row.service_slug)} placeholder='Service slug' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+                  <input name='vehicleClass' defaultValue={str(v.vehicle_class || row.vehicle_class)} placeholder='Vehicle class' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+                </div>
               </div>
             ))}
           </div>
-        ) : null}
+          <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save vehicles</button>
+        </form>
+      </section>
+
+      <section className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
+        <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Per-vehicle operations</p>
+        <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+          {vehicles.map((v, i) => {
+            const label = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
+            return (
+              <article key={i} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
+                <div className='flex flex-wrap items-center justify-between gap-3'>
+                  <div>
+                    <p className='font-bold text-white'>Vehicle {i + 1}: {label}</p>
+                    <p className='text-xs text-zinc-500'>{str(v.vehicle_color || v.color) || 'Color not provided'} · {str(v.service_slug || row.service_slug).replace(/-/g, ' ')}</p>
+                  </div>
+                  <TechTimerControls
+                    appointmentId={isFallback ? null : id}
+                    fallbackBookingId={isFallback ? id : null}
+                    workflowSessionId={workflowIds[0] ?? null}
+                    initialTimerId={null}
+                  />
+                </div>
+                <div className='mt-3'>
+                  <WorkOrderPhotoUpload
+                    appointmentId={isFallback ? null : id}
+                    fallbackBookingId={isFallback ? id : null}
+                    workflowSessionId={workflowIds[0] ?? null}
+                    vehicleIndex={i}
+                    vehicleLabel={label}
+                  />
+                </div>
+                <form action={saveVehicleNotesAction} className='mt-3 rounded-xl border border-white/10 bg-black/25 p-3'>
+                  {!isFallback ? <input type='hidden' name='appointmentId' value={id} /> : null}
+                  {isFallback ? <input type='hidden' name='fallbackBookingId' value={id} /> : null}
+                  {workflowIds[0] ? <input type='hidden' name='workflowSessionId' value={workflowIds[0]} /> : null}
+                  <input type='hidden' name='vehicleIndex' value={String(i)} />
+                  <textarea name='internalNotes' rows={2} placeholder={`Notes for ${label}`} className='w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+                  <button className='mt-2 rounded border border-gold/40 px-3 py-2 text-[10px] font-black uppercase text-gold-soft'>Save vehicle notes</button>
+                </form>
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       <div className='grid gap-4 lg:grid-cols-2'>

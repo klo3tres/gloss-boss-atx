@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { archivePromoCodeAction, savePromoCodeAction, setFreeTestPromoSettingAction } from './promo-code-actions';
 
@@ -11,18 +12,53 @@ function str(v: unknown) {
   return v == null ? '' : String(v);
 }
 
+function serviceRestrictionsText(v: unknown) {
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v) as unknown;
+      if (Array.isArray(parsed)) return parsed.join(', ');
+    } catch {
+      return v;
+    }
+  }
+  return '';
+}
+
+async function loadPromoRows(admin: ReturnType<typeof tryCreateAdminSupabase>) {
+  if (!admin) return { rows: [] as Row[], error: null as { message: string } | null };
+  const full = await admin.from('promo_codes').select('*').is('archived_at', null).order('created_at', { ascending: false }).limit(100);
+  if (!full.error) return { rows: (full.data ?? []) as Row[], error: null };
+
+  const noArchiveFilter = await admin.from('promo_codes').select('*').order('created_at', { ascending: false }).limit(100);
+  if (!noArchiveFilter.error) {
+    return {
+      rows: ((noArchiveFilter.data ?? []) as Row[]).filter((r) => !r.archived_at && r.archived !== true),
+      error: null,
+    };
+  }
+
+  const lean = await admin.from('promo_codes').select('id, code, description').limit(100);
+  if (!lean.error) return { rows: (lean.data ?? []) as Row[], error: full.error };
+  return { rows: [] as Row[], error: lean.error ?? noArchiveFilter.error ?? full.error };
+}
+
+async function loadFreeSetting(admin: ReturnType<typeof tryCreateAdminSupabase>) {
+  if (!admin) return false;
+  const full = await admin.from('site_settings').select('key, value, allow_free_test_promo').limit(20);
+  if (!full.error) {
+    return ((full.data ?? []) as Row[]).some(
+      (r) => r.allow_free_test_promo === true || (str(r.key) === 'allow_free_test_promo' && str(r.value).toLowerCase() === 'true'),
+    );
+  }
+  const lean = await admin.from('site_settings').select('key, value').eq('key', 'allow_free_test_promo').limit(1);
+  return ((lean.data ?? []) as Row[]).some((r) => str(r.value).toLowerCase() === 'true');
+}
+
 export default async function AdminPromotionsPage() {
   const admin = tryCreateAdminSupabase();
-  const { data, error } = admin
-    ? await admin.from('promo_codes').select('*').is('archived_at', null).order('created_at', { ascending: false }).limit(100)
-    : { data: [] as Row[], error: null };
-  const settingsRes = admin
-    ? await admin.from('site_settings').select('key, value, allow_free_test_promo').limit(20)
-    : { data: [] as Row[] };
-  const rows = (data ?? []) as Row[];
-  const allowFree = ((settingsRes.data ?? []) as Row[]).some(
-    (r) => r.allow_free_test_promo === true || (str(r.key) === 'allow_free_test_promo' && str(r.value).toLowerCase() === 'true'),
-  );
+  const { rows, error } = await loadPromoRows(admin);
+  const allowFree = await loadFreeSetting(admin);
 
   return (
     <DashboardShell title='Promo codes' subtitle='Create, disable, restrict, and archive booking promo codes.' role='admin'>
@@ -82,14 +118,14 @@ export default async function AdminPromotionsPage() {
                   <option value='comp'>Comp / free</option>
                 </select>
                 <input name='discountValue' type='number' min='0' step='0.01' defaultValue={str(r.discount_value)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
-                <input name='serviceRestrictions' defaultValue={Array.isArray(r.service_restrictions) ? r.service_restrictions.join(', ') : ''} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white md:col-span-2' />
+                <input name='serviceRestrictions' defaultValue={serviceRestrictionsText(r.service_restrictions)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white md:col-span-2' />
                 <input name='maxUses' type='number' min='0' defaultValue={str(r.max_uses)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
                 <label className='flex items-center gap-2 text-sm text-zinc-300'><input name='enabled' type='checkbox' defaultChecked={r.enabled === true} /> Enabled</label>
                 <button className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Save</button>
               </form>
               <form action={archivePromoCodeAction} className='mt-2'>
                 <input type='hidden' name='id' value={str(r.id)} />
-                <button className='text-xs font-bold uppercase text-amber-200 underline'>Archive</button>
+                <ConfirmSubmitButton message='Archive this promo code?' className='text-xs font-bold uppercase text-amber-200 underline'>Archive</ConfirmSubmitButton>
               </form>
             </article>
           ))}

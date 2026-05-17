@@ -869,6 +869,30 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
     }
   }
 
+  const receiptNumber = `CASH-${nowIso.slice(0, 10).replace(/-/g, '')}-${(appointmentId || fallbackBookingId).slice(0, 8)}`;
+  if (paymentId) {
+    await db.from('receipts').insert({
+      appointment_id: appointmentId || null,
+      fallback_booking_id: fallbackBookingId || null,
+      payment_id: paymentId,
+      customer_id: row.customer_id ?? null,
+      receipt_number: receiptNumber,
+      amount_cents: amountCents,
+      payment_method: 'cash',
+      status: 'issued',
+      metadata: { source: 'technician_cash_payment', note: cashNote || null, change_given_cents: changeGivenCents },
+    });
+  }
+  await db.from('notification_outbox').insert({
+    appointment_id: appointmentId || null,
+    fallback_booking_id: fallbackBookingId || null,
+    channel: 'internal',
+    kind: 'cash_payment_receipt',
+    status: 'skipped',
+    skipped_reason: 'Cash receipt recorded internally; outbound delivery depends on notification config.',
+    payload: { payment_id: paymentId, receipt_number: receiptNumber, amount_cents: amountCents },
+  });
+
   if (appointmentId) {
     await updateAppointmentSafely(db, appointmentId, [
       { payment_status: 'paid_cash', balance_due_cents: 0, paid_at: nowIso, updated_at: nowIso },
@@ -888,6 +912,7 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
   }
   revalidatePath('/tech');
   revalidatePath('/admin/payments');
+  revalidatePath('/dashboard');
 }
 
 export async function techArchiveTestWorkOrderAction(formData: FormData): Promise<void> {
@@ -895,8 +920,7 @@ export async function techArchiveTestWorkOrderAction(formData: FormData): Promis
   if (!gate.ok) return;
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
-  const confirm = String(formData.get('confirm') ?? '').trim().toUpperCase();
-  if (confirm !== 'ARCHIVE' || (!appointmentId && !fallbackBookingId)) return;
+  if (!appointmentId && !fallbackBookingId) return;
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
   const nowIso = new Date().toISOString();
@@ -1121,6 +1145,7 @@ export async function techSaveJobNotesAction(formData: FormData) {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
+  const vehicleIndexRaw = Number(String(formData.get('vehicleIndex') ?? '').trim());
   const notes = String(formData.get('notes') ?? '').trim();
   const beforeNotes = String(formData.get('beforeNotes') ?? '').trim();
   const afterNotes = String(formData.get('afterNotes') ?? '').trim();
@@ -1168,6 +1193,7 @@ export async function techSaveJobNotesAction(formData: FormData) {
     customer_visible: customerVisible,
     created_at: nowIso,
   };
+  if (Number.isInteger(vehicleIndexRaw) && vehicleIndexRaw >= 0) noteRow.vehicle_index = vehicleIndexRaw;
   const ins = await db.from('tech_job_notes').insert(noteRow);
   if (ins.error && isSchemaDriftError(ins.error.message)) {
     await db.from('tech_job_notes').insert({
