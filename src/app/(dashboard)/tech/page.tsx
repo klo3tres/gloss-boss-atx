@@ -32,6 +32,61 @@ function isAfterPhotoCategory(input: unknown): boolean {
   return String(input ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_') === 'after';
 }
 
+function payloadObject(input: unknown): Record<string, unknown> {
+  return input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+}
+
+function normalizeActiveJob(input: {
+  id: string;
+  source: 'appointment' | 'fallback' | 'workflow_session' | 'timer';
+  row?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  timer?: { id: string; startedAt: string | null; workflowSessionId: string | null } | null;
+  fallbackBookingId?: string | null;
+  workflowSessionId?: string | null;
+  customerAddress?: string | null;
+  counts?: { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] };
+}): TechJob {
+  const row = input.row ?? {};
+  const payload = input.payload ?? {};
+  const vehicleSummary = String(row.vehicle_description ?? payload.vehicle_summary ?? payload.vehicleDescription ?? payload.vehicle_description ?? 'Not provided');
+  const serviceSlug = String(row.service_slug ?? payload.service_slug ?? payload.serviceSlug ?? 'service-not-provided');
+  const status = String(row.status ?? 'in_progress');
+  const created = String(row.scheduled_start ?? row.created_at ?? input.timer?.startedAt ?? new Date().toISOString());
+  const address =
+    [row.service_address, row.service_city, row.service_state, row.service_zip].map((v) => (v == null ? '' : String(v))).filter(Boolean).join(', ') ||
+    String(payload.service_address ?? payload.address ?? payload.customer_address ?? input.customerAddress ?? '') ||
+    null;
+  return {
+    id: input.id,
+    fallback_booking_id: input.fallbackBookingId ?? null,
+    workflowSessionId: input.workflowSessionId ?? input.timer?.workflowSessionId ?? null,
+    status: status === 'assigned' || status === 'confirmed' || input.timer ? 'in_progress' : status,
+    scheduled_start: created,
+    guest_name: row.guest_name != null ? String(row.guest_name) : payload.customer_name != null ? String(payload.customer_name) : 'Not provided',
+    guest_phone: row.guest_phone != null ? String(row.guest_phone) : payload.customer_phone != null ? String(payload.customer_phone) : null,
+    guest_email: row.guest_email != null ? String(row.guest_email) : null,
+    vehicle_description: vehicleSummary,
+    booking_vehicles: Array.isArray(row.booking_vehicles) ? (row.booking_vehicles as Record<string, unknown>[]) : Array.isArray(payload.booking_vehicles) ? (payload.booking_vehicles as Record<string, unknown>[]) : [],
+    service_address: address,
+    service_slug: serviceSlug,
+    vehicle_class: String(row.vehicle_class ?? payload.vehicle_class ?? 'sedan'),
+    base_price_cents: typeof row.base_price_cents === 'number' ? row.base_price_cents : null,
+    notes: row.notes != null ? String(row.notes) : input.source === 'workflow_session' ? 'Active workflow session recovered into work order.' : null,
+    fieldNotesPreview: null,
+    hasIntake: true,
+    beforePhotoCount: input.counts?.before ?? 0,
+    afterPhotoCount: input.counts?.after ?? 0,
+    beforePhotos: input.counts?.beforePhotos.slice(0, 8) ?? [],
+    afterPhotos: input.counts?.afterPhotos.slice(0, 8) ?? [],
+    payment_status: row.payment_status != null ? String(row.payment_status) : 'Not provided',
+    balance_due_cents: typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null,
+    timerId: input.timer?.id ?? null,
+    timerStartedAt: input.timer?.startedAt ?? null,
+    isFallback: input.source === 'fallback' || Boolean(input.fallbackBookingId),
+  };
+}
+
 export default async function TechnicianDashboardPage({
   searchParams,
 }: {
@@ -131,10 +186,21 @@ export default async function TechnicianDashboardPage({
       if (aid && !openTimerByAppt.has(aid)) openTimerByAppt.set(aid, t);
       if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
     }
+    const timerByWorkflow = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
+    for (const timer of timerRows) {
+      const wid = timer.workflow_session_id != null ? String(timer.workflow_session_id) : '';
+      if (wid && !timerByWorkflow.has(wid)) {
+        timerByWorkflow.set(wid, {
+          id: String(timer.id ?? ''),
+          startedAt: timer.started_at != null ? String(timer.started_at) : timer.created_at != null ? String(timer.created_at) : null,
+          workflowSessionId: wid,
+        });
+      }
+    }
 
     const workflowQueryPrimary = await db
       .from('tech_workflow_sessions')
-      .select('id, appointment_id, fallback_booking_id, status, updated_at, created_at')
+      .select('id, appointment_id, fallback_booking_id, status, payload, before_photo_count, after_photo_count, updated_at, created_at')
       .eq('technician_id', uid)
       .in('status', ['active', 'in_progress'])
       .order('updated_at', { ascending: false })
@@ -142,7 +208,7 @@ export default async function TechnicianDashboardPage({
     const workflowQueryFallback = workflowQueryPrimary.error
       ? await db
         .from('tech_workflow_sessions')
-        .select('id, appointment_id, fallback_booking_id, status, created_at')
+        .select('id, appointment_id, fallback_booking_id, status, payload, before_photo_count, after_photo_count, created_at')
         .eq('technician_id', uid)
         .in('status', ['active', 'in_progress'])
         .order('created_at', { ascending: false })
@@ -415,6 +481,60 @@ export default async function TechnicianDashboardPage({
           isFallback: true,
         });
       }
+    }
+
+    const renderedAppointmentIds = new Set(jobs.map((job) => job.id));
+    const renderedFallbackIds = new Set(jobs.map((job) => job.fallback_booking_id ?? '').filter(Boolean));
+    const renderedWorkflowIds = new Set(jobs.map((job) => job.workflowSessionId ?? '').filter(Boolean));
+    for (const sessionRow of workflowRows) {
+      const row = sessionRow as Record<string, unknown>;
+      const wid = row.id != null ? String(row.id) : '';
+      const aid = row.appointment_id != null ? String(row.appointment_id) : '';
+      const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
+      if (!wid || renderedWorkflowIds.has(wid) || (aid && renderedAppointmentIds.has(aid)) || (fid && renderedFallbackIds.has(fid))) continue;
+      const timer = timerByWorkflow.get(wid) ?? {
+        id: `workflow-${wid}`,
+        startedAt: row.updated_at != null ? String(row.updated_at) : row.created_at != null ? String(row.created_at) : null,
+        workflowSessionId: wid,
+      };
+      const before = Number(row.before_photo_count ?? 0);
+      const after = Number(row.after_photo_count ?? 0);
+      jobs.unshift(normalizeActiveJob({
+        id: aid || fid || wid,
+        source: 'workflow_session',
+        row,
+        payload: payloadObject(row.payload),
+        timer,
+        fallbackBookingId: fid || null,
+        workflowSessionId: wid,
+        counts: {
+          before: Number.isFinite(before) ? before : 0,
+          after: Number.isFinite(after) ? after : 0,
+          beforePhotos: [],
+          afterPhotos: [],
+        },
+      }));
+      renderedWorkflowIds.add(wid);
+    }
+    for (const timerRow of timerRows) {
+      const row = timerRow as Record<string, unknown>;
+      const tid = row.id != null ? String(row.id) : '';
+      const aid = row.appointment_id != null ? String(row.appointment_id) : '';
+      const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
+      const wid = row.workflow_session_id != null ? String(row.workflow_session_id) : '';
+      if (!tid || (aid && renderedAppointmentIds.has(aid)) || (fid && renderedFallbackIds.has(fid)) || (wid && renderedWorkflowIds.has(wid))) continue;
+      jobs.unshift(normalizeActiveJob({
+        id: aid || fid || wid || tid,
+        source: 'timer',
+        row,
+        timer: {
+          id: tid,
+          startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null,
+          workflowSessionId: wid || null,
+        },
+        fallbackBookingId: fid || null,
+        workflowSessionId: wid || null,
+      }));
     }
 
     const { data: done } = await db

@@ -9,6 +9,9 @@ type Job = {
   status: string;
   service_slug?: string;
   notes?: string | null;
+  fallback_booking_id?: string | null;
+  workflowSessionId?: string | null;
+  isFallback?: boolean;
 };
 
 export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boolean }) {
@@ -42,7 +45,9 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
     setPhotoMsg(null);
     setPhotoPreview(URL.createObjectURL(file));
     const fd = new FormData();
-    fd.set('appointmentId', job.id);
+    if (!job.isFallback) fd.set('appointmentId', job.id);
+    if (job.fallback_booking_id) fd.set('fallbackBookingId', job.fallback_booking_id);
+    if (job.workflowSessionId) fd.set('workflowSessionId', job.workflowSessionId);
     fd.set('category', photoPhase);
     fd.set('photoCategory', photoCategory);
     fd.set('file', file);
@@ -92,7 +97,8 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
       </div>
 
       <form action={techSaveJobNotesAction} className='space-y-2'>
-        <input type='hidden' name='appointmentId' value={job.id} />
+        {!job.isFallback ? <input type='hidden' name='appointmentId' value={job.id} /> : null}
+        {job.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={job.fallback_booking_id} /> : null}
         <label className='block text-xs text-zinc-400'>
           Job notes
           <textarea

@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
 import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../booking-fallback-actions';
-import { archiveAppointmentWorkOrderAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
+import { archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +92,11 @@ async function deleteAppointmentWorkOrderFormAction(formData: FormData) {
   await deleteAppointmentWorkOrderAction(formData);
 }
 
+async function clearStaleActiveTestRecordsFormAction(formData: FormData) {
+  'use server';
+  await clearStaleActiveTestRecordsAction(formData);
+}
+
 export default async function AdminWorkOrdersPage() {
   const admin = tryCreateAdminSupabase();
   if (!admin) {
@@ -157,6 +162,12 @@ export default async function AdminWorkOrdersPage() {
         <Link href='/admin/customers' className='rounded-lg border border-white/15 px-3 py-2 font-bold uppercase text-zinc-300'>
           Customers
         </Link>
+        <form action={clearStaleActiveTestRecordsFormAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
+          <input name='confirm' placeholder='CLEAR' className='w-20 rounded border border-red-500/30 bg-black px-2 py-1 text-[10px] text-red-100 placeholder:text-red-200/50' />
+          <button className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>
+            Clear stale active tests
+          </button>
+        </form>
       </div>
       {appointmentsRes.error ? <p className='mb-3 text-sm text-amber-200'>Appointments: {appointmentsRes.error.message}</p> : null}
       {fallbacksRes.error ? <p className='mb-3 text-sm text-amber-200'>Fallbacks: {fallbacksRes.error.message}</p> : null}

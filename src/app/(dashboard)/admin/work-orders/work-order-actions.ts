@@ -47,3 +47,34 @@ export async function deleteAppointmentWorkOrderAction(formData: FormData) {
   revalidatePath('/admin/dispatch');
   return { ok: true };
 }
+
+export async function clearStaleActiveTestRecordsAction(formData: FormData) {
+  const confirm = String(formData.get('confirm') ?? '').trim();
+  if (confirm !== 'CLEAR') return { ok: false, error: 'Type CLEAR to confirm.' };
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const now = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  await gate.admin
+    .from('tech_job_timers')
+    .update({ ended_at: now, running: false, status: 'cleared_test' })
+    .is('ended_at', null)
+    .lt('created_at', staleBefore);
+
+  await gate.admin
+    .from('tech_workflow_sessions')
+    .update({ status: 'archived', archived_at: now, updated_at: now })
+    .in('status', ['active', 'in_progress'])
+    .lt('created_at', staleBefore);
+
+  await gate.admin
+    .from('booking_fallbacks')
+    .update({ archived: true, archived_at: now, status: 'archived', updated_at: now })
+    .or('guest_email.ilike.%test%,guest_name.ilike.%test%,guest_phone.ilike.%555%')
+    .in('status', ['pending', 'active', 'in_progress']);
+
+  revalidatePath('/admin/work-orders');
+  revalidatePath('/tech');
+  return { ok: true };
+}

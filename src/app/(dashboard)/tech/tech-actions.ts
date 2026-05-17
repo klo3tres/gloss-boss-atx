@@ -249,6 +249,34 @@ async function ensureOpenTechTimer(
   return { ok: false, error: lastError || 'Could not start timer.' };
 }
 
+async function findExistingOpenTechTimer(
+  db: SupabaseClient | null,
+  refs: { appointmentId?: string; fallbackBookingId?: string; workflowSessionId?: string; technicianId?: string },
+): Promise<{ id: string; startedAt: string | null } | null> {
+  if (!db) return null;
+  const selectCols = 'id, started_at, created_at';
+  const queries = [];
+  if (refs.appointmentId) queries.push(db.from('tech_job_timers').select(selectCols).eq('appointment_id', refs.appointmentId).is('ended_at', null).limit(1));
+  if (refs.fallbackBookingId) queries.push(db.from('tech_job_timers').select(selectCols).eq('fallback_booking_id', refs.fallbackBookingId).is('ended_at', null).limit(1));
+  if (refs.workflowSessionId) queries.push(db.from('tech_job_timers').select(selectCols).eq('workflow_session_id', refs.workflowSessionId).is('ended_at', null).limit(1));
+  if (refs.technicianId) queries.push(db.from('tech_job_timers').select(selectCols).eq('technician_id', refs.technicianId).is('ended_at', null).order('created_at', { ascending: false }).limit(1));
+  for (const query of queries) {
+    const { data, error } = await query;
+    if (error) {
+      if (!isSchemaDriftError(error.message)) console.warn('[tech] existing open timer lookup', error.message);
+      continue;
+    }
+    const row = ((data ?? [])[0] ?? null) as Record<string, unknown> | null;
+    if (row?.id) {
+      return {
+        id: String(row.id),
+        startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null,
+      };
+    }
+  }
+  return null;
+}
+
 async function updateFallbackSafely(db: SupabaseClient | null, fallbackBookingId: string, status: string): Promise<void> {
   if (!db || !fallbackBookingId) return;
   const nowIso = new Date().toISOString();
@@ -554,34 +582,43 @@ export async function techStartJobAction(
     };
   }
 
-  const beforeGate = await countWorkflowPhotos(db, {
-    appointmentId,
-    fallbackBookingId,
-    workflowSessionId,
-    accessToken,
-    jobReference,
-    technicianId: gate.userId,
-    phase: 'before',
-  });
-  const sessionPhotoCount = await countWorkflowSessionPhotos(db, {
+  const existingTimer = await findExistingOpenTechTimer(db, {
     appointmentId,
     fallbackBookingId,
     workflowSessionId,
     technicianId: gate.userId,
-    phase: 'before',
   });
-  if (beforeGate.error) {
-    console.warn('[tech] before photo count', beforeGate.error);
-    if (uploadedProofCount < 1 && sessionPhotoCount < 1) {
+
+  if (!existingTimer) {
+    const beforeGate = await countWorkflowPhotos(db, {
+      appointmentId,
+      fallbackBookingId,
+      workflowSessionId,
+      accessToken,
+      jobReference,
+      technicianId: gate.userId,
+      phase: 'before',
+    });
+    const sessionPhotoCount = await countWorkflowSessionPhotos(db, {
+      appointmentId,
+      fallbackBookingId,
+      workflowSessionId,
+      technicianId: gate.userId,
+      phase: 'before',
+    });
+    if (beforeGate.error) {
+      console.warn('[tech] before photo count', beforeGate.error);
+      if (uploadedProofCount < 1 && sessionPhotoCount < 1) {
+        return {
+          error: `Could not verify before photos. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}`,
+        };
+      }
+    }
+    if (beforeGate.count < 1 && uploadedProofCount < 1 && sessionPhotoCount < 1) {
       return {
-        error: `Could not verify before photos. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}`,
+        error: `Add at least one vehicle photo before starting. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
       };
     }
-  }
-  if (beforeGate.count < 1 && uploadedProofCount < 1 && sessionPhotoCount < 1) {
-    return {
-      error: `Add at least one vehicle photo before starting. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
-    };
   }
 
   const startedAt = new Date().toISOString();
@@ -716,6 +753,107 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
     });
   }
   revalidatePath('/tech');
+}
+
+export async function techRecordCashPaymentAction(formData: FormData): Promise<void> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return;
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  if (!appointmentId && !fallbackBookingId) return;
+
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const nowIso = new Date().toISOString();
+  let row: Record<string, unknown> = {};
+  if (appointmentId) {
+    const { data } = await db
+      .from('appointments')
+      .select('id, customer_id, guest_name, guest_email, guest_phone, service_slug, vehicle_description, base_price_cents, balance_due_cents')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    row = (data ?? {}) as Record<string, unknown>;
+  } else {
+    const { data } = await db
+      .from('booking_fallbacks')
+      .select('id, customer_id, guest_name, guest_email, guest_phone, service_slug, vehicle_description, base_price_cents, balance_due_cents')
+      .eq('id', fallbackBookingId)
+      .maybeSingle();
+    row = (data ?? {}) as Record<string, unknown>;
+  }
+  const balance = typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null;
+  const base = typeof row.base_price_cents === 'number' ? row.base_price_cents : null;
+  const amountCents = Math.max(0, balance ?? base ?? 0);
+  if (amountCents < 1) return;
+
+  const paymentVariants: Record<string, unknown>[] = [
+    {
+      appointment_id: appointmentId || null,
+      fallback_booking_id: fallbackBookingId || null,
+      customer_id: row.customer_id ?? null,
+      amount_cents: amountCents,
+      currency: 'usd',
+      status: 'succeeded',
+      payment_method: 'cash',
+      payment_choice: 'cash',
+      paid_at: nowIso,
+      technician_id: gate.userId,
+      metadata: {
+        source: 'technician_cash_payment',
+        recorded_by: gate.userId,
+        service_slug: row.service_slug ?? null,
+        vehicle_description: row.vehicle_description ?? null,
+      },
+    },
+    {
+      appointment_id: appointmentId || null,
+      fallback_booking_id: fallbackBookingId || null,
+      customer_id: row.customer_id ?? null,
+      amount_cents: amountCents,
+      status: 'succeeded',
+      payment_method: 'cash',
+      payment_choice: 'cash',
+      metadata: { source: 'technician_cash_payment', recorded_by: gate.userId },
+    },
+    {
+      appointment_id: appointmentId || null,
+      fallback_booking_id: fallbackBookingId || null,
+      amount_cents: amountCents,
+      status: 'succeeded',
+    },
+  ];
+  let paymentId: string | null = null;
+  for (const payload of paymentVariants) {
+    const { data, error } = await db.from('payments').insert(payload).select('id').maybeSingle();
+    if (!error) {
+      paymentId = ((data ?? {}) as { id?: string | null }).id ?? null;
+      break;
+    }
+    if (!isSchemaDriftError(error.message)) {
+      console.warn('[tech] cash payment insert', error.message);
+      break;
+    }
+  }
+
+  if (appointmentId) {
+    await updateAppointmentSafely(db, appointmentId, [
+      { payment_status: 'paid_cash', balance_due_cents: 0, paid_at: nowIso, updated_at: nowIso },
+      { payment_status: 'paid_cash', balance_due_cents: 0, updated_at: nowIso },
+      { payment_status: 'paid_cash', balance_due_cents: 0 },
+      { payment_status: 'paid_cash' },
+    ]);
+    await recordJobTimelineEvent(db, {
+      appointmentId,
+      eventType: 'checklist_saved',
+      meta: { notification_kind: 'cash_payment_recorded', amount_cents: amountCents, payment_id: paymentId },
+      createdBy: gate.userId,
+    });
+  } else {
+    await updateFallbackSafely(db, fallbackBookingId, 'in_progress');
+    await db.from('booking_fallbacks').update({ payment_status: 'paid_cash', balance_due_cents: 0 }).eq('id', fallbackBookingId);
+  }
+  revalidatePath('/tech');
+  revalidatePath('/admin/payments');
 }
 
 export async function techArchiveTestWorkOrderAction(formData: FormData): Promise<void> {

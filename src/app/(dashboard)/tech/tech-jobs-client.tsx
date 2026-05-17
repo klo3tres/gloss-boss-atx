@@ -23,6 +23,11 @@ type Job = {
   hasIntake?: boolean;
   beforePhotoCount?: number;
   afterPhotoCount?: number;
+  fallback_booking_id?: string | null;
+  workflowSessionId?: string | null;
+  timerId?: string | null;
+  timerStartedAt?: string | null;
+  isFallback?: boolean;
 };
 
 function mapsUrl(address: string): string {
@@ -71,6 +76,7 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
         const serviceAddress = job.service_address?.trim() || '';
         const phone = job.guest_phone?.trim() || '';
         const vehicles = vehicleLines(job);
+        const isStarted = job.status === 'in_progress' || Boolean(job.timerId) || Boolean(job.timerStartedAt);
 
         return (
           <article key={job.id} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -145,9 +151,11 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                     No Directions
                   </button>
                 )}
-                {['assigned', 'confirmed'].includes(job.status) ? (
+                {['assigned', 'confirmed'].includes(job.status) && !isStarted ? (
                   <form action={startAction}>
-                    <input type='hidden' name='appointmentId' value={job.id} />
+                    {!job.isFallback ? <input type='hidden' name='appointmentId' value={job.id} /> : null}
+                    {job.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={job.fallback_booking_id} /> : null}
+                    {job.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={job.workflowSessionId} /> : null}
                     <button
                       type='submit'
                       disabled={startPending}
@@ -157,9 +165,11 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                     </button>
                   </form>
                 ) : null}
-                {job.status === 'in_progress' ? (
+                {isStarted ? (
                   <form action={completeAction}>
-                    <input type='hidden' name='appointmentId' value={job.id} />
+                    {!job.isFallback ? <input type='hidden' name='appointmentId' value={job.id} /> : null}
+                    {job.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={job.fallback_booking_id} /> : null}
+                    {job.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={job.workflowSessionId} /> : null}
                     <button
                       type='submit'
                       disabled={completePending}

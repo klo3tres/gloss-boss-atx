@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
-import { techArchiveTestWorkOrderAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
@@ -177,7 +177,7 @@ export function TechPremiumShell({
   activeDebug?: { userId: string | null; checked: string[]; adminRead: boolean } | null;
 }) {
   const todayJobs = jobs.filter((j) => isToday(j.scheduled_start));
-  const activeJob = jobs.find((j) => j.status === 'in_progress');
+  const activeJob = jobs.find((j) => j.status === 'in_progress' || Boolean(j.timerId) || Boolean(j.timerStartedAt));
   const todayStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   const initial = (techName || '?').charAt(0).toUpperCase();
   const goalPct =
@@ -374,7 +374,12 @@ export function TechPremiumShell({
                   ))}
                 </div>
               ) : (
-                <p className='mt-2 text-xs text-zinc-500'>No before thumbnails found yet.</p>
+                <div className='mt-2 space-y-2'>
+                  <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
+                  <a href='#field-invoice' className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                    Upload before photo now
+                  </a>
+                </div>
               )}
             </div>
             <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
@@ -407,6 +412,13 @@ export function TechPremiumShell({
                 </button>
               </form>
             ))}
+            <form action={techRecordCashPaymentAction}>
+              {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+              {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+              <button type='submit' className='rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/15'>
+                Paid Cash
+              </button>
+            </form>
             <a href='#field-invoice' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</a>
             <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
