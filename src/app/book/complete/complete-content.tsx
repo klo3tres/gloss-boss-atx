@@ -39,6 +39,7 @@ export default function CompleteContent() {
   const [error, setError] = useState<string | null>(null);
   const [appointment, setAppointment] = useState<ApptLite | null>(null);
   const [resolvedAppointmentId, setResolvedAppointmentId] = useState(appointmentId);
+  const [resolvedFallbackBookingId, setResolvedFallbackBookingId] = useState(fallbackBookingId);
   const [resolvedToken, setResolvedToken] = useState(token);
   const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
   const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
@@ -106,6 +107,7 @@ export default function CompleteContent() {
         template?: { id: string; title: string; body: string; version: number } | null;
         alreadySigned?: boolean;
         paymentVerified?: boolean;
+        fallbackBookingId?: string;
       }) => {
         if (cancelled) return;
         if (data.error) {
@@ -118,6 +120,7 @@ export default function CompleteContent() {
         }
         setAppointment(data.appointment);
         setResolvedAppointmentId(data.appointmentId ?? appointmentId);
+        setResolvedFallbackBookingId(data.fallbackBookingId ?? fallbackBookingId);
         setResolvedToken(data.accessToken ?? token);
         setResolvedSessionId(data.sessionId ?? sessionId);
         setTemplate(data.template ?? null);
@@ -138,7 +141,7 @@ export default function CompleteContent() {
   }, [sessionId, token, appointmentId, fallbackBookingId, customerId, paymentId, email, phone, searchParams]);
 
   const handleSign = async () => {
-    if (!resolvedAppointmentId || !agreementBody.trim()) return;
+    if ((!resolvedAppointmentId && !resolvedFallbackBookingId) || !agreementBody.trim()) return;
     if (!legalName.trim()) {
       setError('Enter your full legal name.');
       return;
@@ -165,6 +168,7 @@ export default function CompleteContent() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         appointmentId: resolvedAppointmentId,
+        fallbackBookingId: resolvedFallbackBookingId,
         accessToken: resolvedToken,
         sessionId: resolvedSessionId,
         templateId: template?.id,
@@ -210,7 +214,7 @@ export default function CompleteContent() {
             <div><dt className='text-xs uppercase text-zinc-500'>Customer</dt><dd>{appointment.guest_name ?? 'Customer'}</dd></div>
             <div><dt className='text-xs uppercase text-zinc-500'>Service</dt><dd>{String(appointment.service_slug ?? '').replace(/-/g, ' ')}</dd></div>
             <div><dt className='text-xs uppercase text-zinc-500'>Vehicle</dt><dd>{appointment.vehicle_description ?? 'Vehicle'}</dd></div>
-            <div><dt className='text-xs uppercase text-zinc-500'>Appointment</dt><dd>{appointment.scheduled_start ? new Date(appointment.scheduled_start).toLocaleString() : 'Scheduling pending'}</dd></div>
+            <div><dt className='text-xs uppercase text-zinc-500'>Appointment</dt><dd>{appointment.scheduled_start ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(appointment.scheduled_start)) : 'Scheduling pending'}</dd></div>
             <div><dt className='text-xs uppercase text-zinc-500'>Deposit paid</dt><dd>${((appointment.deposit_amount_cents ?? 0) / 100).toFixed(2)}</dd></div>
             <div><dt className='text-xs uppercase text-zinc-500'>Total</dt><dd>${((appointment.base_price_cents ?? 0) / 100).toFixed(2)}</dd></div>
             <div className='sm:col-span-2'><dt className='text-xs uppercase text-zinc-500'>Service address</dt><dd>{[appointment.service_address, appointment.service_city, appointment.service_state, appointment.service_zip].filter(Boolean).join(', ') || 'On file'}</dd></div>

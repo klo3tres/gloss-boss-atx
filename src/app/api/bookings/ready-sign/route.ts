@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? '';
-    const fallbackBookingId = searchParams.get('fallbackBookingId') ?? searchParams.get('fallback_booking_id') ?? '';
+    let fallbackBookingId = searchParams.get('fallbackBookingId') ?? searchParams.get('fallback_booking_id') ?? '';
     const customerId = searchParams.get('customerId') ?? searchParams.get('customer_id') ?? '';
     const paymentId = searchParams.get('paymentId') ?? searchParams.get('payment_id') ?? '';
     const email = (searchParams.get('email') ?? '').trim().toLowerCase();
@@ -28,6 +28,7 @@ export async function GET(request: Request) {
         .maybeSingle();
       const p = (payment ?? {}) as Record<string, unknown>;
       appointmentId ||= String(p.appointment_id ?? '');
+      fallbackBookingId ||= String(p.fallback_booking_id ?? '');
       sessionId ||= String(p.stripe_checkout_session_id ?? '');
     }
 

@@ -14,6 +14,15 @@ function pretty(value: string) {
   return (value || 'Photo').replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+function chicago(value: string) {
+  if (!value) return 'Time not provided';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export function WorkOrderGallery({ title, photos }: { title: string; photos: WorkOrderGalleryPhoto[] }) {
   const [active, setActive] = useState<WorkOrderGalleryPhoto | null>(null);
 
@@ -31,7 +40,7 @@ export function WorkOrderGallery({ title, photos }: { title: string; photos: Wor
             <button key={p.id || p.url} type='button' onClick={() => setActive(p)} className='group block rounded-xl border border-white/10 bg-zinc-950 p-2 text-left transition hover:border-gold/50 hover:shadow-[0_0_24px_rgba(212,166,77,0.18)]'>
               <img src={p.url} alt={`${pretty(p.category)} ${title}`} className='aspect-square w-full rounded-lg object-cover' />
               <p className='mt-2 truncate text-[10px] font-black uppercase tracking-wider text-gold-soft'>{pretty(p.category)}</p>
-              <p className='text-[10px] text-zinc-500'>{p.createdAt ? new Date(p.createdAt).toLocaleString() : 'Time not provided'}</p>
+              <p className='text-[10px] text-zinc-500'>{chicago(p.createdAt)}</p>
               <p className='truncate text-[10px] text-zinc-600'>By {p.uploader || 'Unknown'}</p>
             </button>
           ))}
@@ -43,7 +52,7 @@ export function WorkOrderGallery({ title, photos }: { title: string; photos: Wor
             <div className='mb-3 flex items-center justify-between gap-3'>
               <div>
                 <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>{pretty(active.category)}</p>
-                <p className='text-xs text-zinc-500'>{active.createdAt ? new Date(active.createdAt).toLocaleString() : 'Time not provided'} · By {active.uploader || 'Unknown'}</p>
+                <p className='text-xs text-zinc-500'>{chicago(active.createdAt)} · By {active.uploader || 'Unknown'}</p>
               </div>
               <button type='button' onClick={() => setActive(null)} className='rounded-full border border-white/15 px-4 py-2 text-xs font-black uppercase text-white'>Close</button>
             </div>

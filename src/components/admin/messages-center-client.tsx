@@ -11,11 +11,26 @@ function preview(body: string, max = 120) {
   return t.length <= max ? t : `${t.slice(0, max)}…`;
 }
 
+function chicago(value: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(rows[0]?.id ?? null);
+  const [tab, setTab] = useState<'inbox' | 'sent' | 'drafts' | 'archived'>('inbox');
 
-  const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? null, [rows, selectedId]);
+  const filteredRows = useMemo(() => rows.filter((r) => {
+    if (tab === 'archived') return r.status === 'archived' || Boolean(r.archived_at);
+    if (tab === 'sent') return r.status === 'replied' || Boolean(r.replied_at);
+    if (tab === 'drafts') return r.status === 'draft';
+    return r.status !== 'archived' && !r.archived_at;
+  }), [rows, tab]);
+  const selected = useMemo(() => filteredRows.find((r) => r.id === selectedId) ?? filteredRows[0] ?? null, [filteredRows, selectedId]);
 
   const unread = rows.filter((r) => r.status === 'new').length;
 
@@ -23,15 +38,22 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
     <div className='grid min-h-[480px] gap-4 lg:grid-cols-[minmax(280px,340px)_1fr]'>
       <aside className='rounded-2xl border border-gold/20 bg-gradient-to-b from-black via-zinc-950 to-black p-3 shadow-[0_0_40px_rgba(212,166,77,0.08)]'>
         <div className='flex items-center justify-between border-b border-white/10 px-2 py-2'>
-          <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>Inbox</p>
+          <p className='text-sm font-black uppercase tracking-[0.18em] text-gold-soft'>Messages</p>
           {unread > 0 ? (
             <span className='rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold text-gold-soft'>{unread} new</span>
           ) : (
             <span className='text-[10px] text-zinc-500'>All caught up</span>
           )}
         </div>
+        <div className='mt-3 grid grid-cols-2 gap-2'>
+          {(['inbox', 'sent', 'drafts', 'archived'] as const).map((t) => (
+            <button key={t} type='button' onClick={() => setTab(t)} className={`rounded-xl border px-3 py-2 text-xs font-black uppercase ${tab === t ? 'border-gold/50 bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-400'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
         <ul className='mt-2 max-h-[70vh] space-y-1 overflow-y-auto pr-1'>
-          {rows.map((m) => {
+          {filteredRows.map((m) => {
             const active = m.id === selectedId;
             const isNew = m.status === 'new';
             return (
@@ -60,7 +82,7 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
                   <p className='truncate text-[11px] text-gold-soft/90'>{m.from_email}</p>
                   {m.from_phone ? <p className='truncate text-[10px] text-zinc-500'>{m.from_phone}</p> : null}
                   <p className='mt-1 line-clamp-2 text-[11px] text-zinc-400'>{preview(m.body)}</p>
-                  <p className='mt-1 text-[9px] uppercase tracking-wider text-zinc-600'>{new Date(m.created_at).toLocaleString()}</p>
+                  <p className='mt-1 text-[10px] uppercase tracking-wider text-zinc-600'>{chicago(m.created_at)}</p>
                 </button>
               </li>
             );
@@ -76,7 +98,7 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
             <header className='border-b border-white/10 pb-4'>
               <div className='flex flex-wrap items-start justify-between gap-3'>
                 <div>
-                  <p className='text-xs text-zinc-500'>{new Date(selected.created_at).toLocaleString()}</p>
+                  <p className='text-xs text-zinc-500'>{chicago(selected.created_at)}</p>
                   <h2 className='mt-1 text-2xl font-black text-white'>{selected.from_name}</h2>
                   <p className='text-sm text-gold-soft'>{selected.from_email}</p>
                   {selected.from_phone ? <p className='text-sm text-zinc-400'>{selected.from_phone}</p> : null}
@@ -88,7 +110,20 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
               </div>
             </header>
             <div className='min-h-0 flex-1 overflow-y-auto py-4'>
-              <p className='whitespace-pre-wrap text-sm leading-relaxed text-zinc-200'>{selected.body || '(no message body)'}</p>
+              <div className='space-y-3'>
+                <article className='rounded-2xl border border-white/10 bg-black/35 p-4'>
+                  <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>From {selected.from_name}</p>
+                  <p className='mt-1 text-[11px] text-zinc-500'>{chicago(selected.created_at)}</p>
+                  <p className='mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200'>{selected.body || '(no message body)'}</p>
+                </article>
+                {selected.reply_body ? (
+                  <article className='ml-auto rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4'>
+                    <p className='text-xs font-black uppercase tracking-wider text-emerald-200'>Gloss Boss reply</p>
+                    <p className='mt-1 text-[11px] text-zinc-500'>{selected.replied_at ? chicago(selected.replied_at) : 'Saved reply'}</p>
+                    <p className='mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-100'>{selected.reply_body}</p>
+                  </article>
+                ) : null}
+              </div>
             </div>
             <footer className='flex flex-wrap gap-2 border-t border-white/10 pt-4'>
               <form

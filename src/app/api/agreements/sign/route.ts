@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       appointmentId?: string;
+      fallbackBookingId?: string;
       accessToken?: string;
       sessionId?: string;
       templateId?: string;
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
 
     const {
       appointmentId,
+      fallbackBookingId,
       accessToken,
       sessionId,
       templateId,
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
       acknowledged,
     } = body;
 
-    if (!appointmentId || !signerLegalName || !signatureType || !acknowledged) {
+    if ((!appointmentId && !fallbackBookingId) || !signerLegalName || !signatureType || !acknowledged) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -52,15 +54,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: appt, error: apptErr } = await admin
-      .from('appointments')
-      .select(
-        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id, assigned_technician_id',
-      )
-      .eq('id', appointmentId)
-      .maybeSingle();
+    let { data: appt, error: apptErr } = appointmentId
+      ? await admin
+          .from('appointments')
+          .select(
+            'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id, assigned_technician_id',
+          )
+          .eq('id', appointmentId)
+          .maybeSingle()
+      : { data: null, error: null };
+    let resolvedFallbackId = fallbackBookingId ?? '';
+    if (!appt && fallbackBookingId) {
+      const fb = await admin
+        .from('booking_fallbacks')
+        .select('id, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, assigned_technician_id, access_token')
+        .eq('id', fallbackBookingId)
+        .maybeSingle();
+      appt = fb.data as typeof appt;
+      apptErr = fb.error as typeof apptErr;
+      resolvedFallbackId = fallbackBookingId;
+    }
 
-    if (apptErr || !appt || (accessToken && appt.access_token !== accessToken)) {
+    if (apptErr || !appt || (appointmentId && accessToken && appt.access_token !== accessToken)) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
@@ -71,7 +86,7 @@ export async function POST(request: Request) {
     const { data: existing } = await admin
       .from('signed_agreements')
       .select('id')
-      .eq('appointment_id', appointmentId)
+      .eq(appointmentId ? 'appointment_id' : 'fallback_booking_id', appointmentId || resolvedFallbackId)
       .maybeSingle();
 
     if (existing) {
@@ -142,7 +157,8 @@ export async function POST(request: Request) {
     const ua = request.headers.get('user-agent') ?? null;
 
     const signPayload: Record<string, unknown> = {
-      appointment_id: appointmentId,
+      appointment_id: appointmentId || null,
+      fallback_booking_id: resolvedFallbackId || null,
       template_id: template?.id ?? null,
       template_version: template?.version ?? 1,
       agreement_snapshot: snapshot,
@@ -186,7 +202,8 @@ export async function POST(request: Request) {
     }
 
     const ja = await insertJobAgreementFlexible(admin, {
-      appointment_id: appointmentId,
+      appointment_id: appointmentId || null,
+      fallback_booking_id: resolvedFallbackId || null,
       signer_legal_name: signerLegalName.trim(),
       agreement_snapshot: snapshot,
       signature_type: signatureType,
@@ -199,10 +216,17 @@ export async function POST(request: Request) {
       console.warn('[agreements/sign] job_agreements', ja.error.message);
     }
 
-    await admin
-      .from('appointments')
-      .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-      .eq('id', appointmentId);
+    if (appointmentId) {
+      await admin
+        .from('appointments')
+        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .eq('id', appointmentId);
+    } else if (resolvedFallbackId) {
+      await admin
+        .from('booking_fallbacks')
+        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .eq('id', resolvedFallbackId);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -63,6 +63,15 @@ function formatMoney(cents: number | null) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function chicago(value: string | null) {
+  if (!value) return 'Schedule TBD';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 const COLS: { id: ColId; label: string; hint: string }[] = [
   { id: 'unassigned', label: 'Unassigned', hint: 'Needs technician' },
   { id: 'assigned', label: 'Assigned', hint: 'Tech locked in' },
@@ -196,7 +205,7 @@ export function DispatchBoardClient({
                 <p className='mt-2 font-bold text-white'>{f.guest_name ?? 'Guest'}</p>
                 <p className='text-zinc-300'>{f.guest_email ?? '—'}</p>
                 <p>{f.guest_phone ?? '—'}</p>
-                <p className='mt-2 text-gold-soft/90'>{f.scheduled_start ? new Date(f.scheduled_start).toLocaleString() : 'Schedule TBD'}</p>
+                <p className='mt-2 text-gold-soft/90'>{chicago(f.scheduled_start)}</p>
                 <p className='mt-1'>
                   <span className='text-zinc-500'>Est.: </span>
                   {formatMoney(f.base_price_cents)}
@@ -284,7 +293,7 @@ export function DispatchBoardClient({
                         Field notes: {jobNotes[j.id]}
                       </p>
                     ) : null}
-                    <p className='mt-2 text-gold-soft'>{new Date(j.scheduled_start).toLocaleString()}</p>
+                    <p className='mt-2 text-gold-soft'>{chicago(j.scheduled_start)}</p>
                     <p className='mt-1'>
                       <span className='text-zinc-500'>Value: </span>
                       {formatMoney(j.base_price_cents)}

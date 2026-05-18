@@ -9,6 +9,7 @@ import { WorkOrderPhotoUpload } from '../../work-order-photo-upload';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction, techSendActiveJobNotificationAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
+import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,19 @@ function photoUrl(row: Row) {
 
 function mapsHref(address: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+function chicago(v: unknown) {
+  if (!v) return 'Not provided';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(str(v)));
+}
+
+function payloadObject(v: unknown): Row {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {};
 }
 
 async function completeWorkOrderFormAction(formData: FormData) {
@@ -159,7 +173,81 @@ export default async function TechWorkOrderDetailPage({
     row = (fb.data ?? null) as Row | null;
     isFallback = Boolean(row);
   }
-  if (!row) notFound();
+  if (!row) {
+    const wf = await admin
+      .from('tech_workflow_sessions')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    const wfRow = (wf.data ?? null) as Row | null;
+    const wfAppointmentId = str(wfRow?.appointment_id);
+    const wfFallbackId = str(wfRow?.fallback_booking_id);
+    if (wfAppointmentId) {
+      const linked = await admin
+        .from('appointments')
+        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at')
+        .eq('id', wfAppointmentId)
+        .maybeSingle();
+      row = (linked.data ?? null) as Row | null;
+    } else if (wfFallbackId) {
+      const linked = await admin
+        .from('booking_fallbacks')
+        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, created_at')
+        .eq('id', wfFallbackId)
+        .maybeSingle();
+      row = (linked.data ?? null) as Row | null;
+      isFallback = Boolean(row);
+    } else if (wfRow) {
+      const payload = payloadObject(wfRow.payload);
+      row = {
+        id,
+        status: wfRow.status ?? 'in_progress',
+        assigned_technician_id: wfRow.technician_id,
+        guest_name: payload.guest_name ?? payload.customerName ?? 'Operational work order',
+        guest_phone: payload.guest_phone ?? payload.customerPhone,
+        guest_email: payload.guest_email ?? payload.customerEmail,
+        service_slug: payload.service_slug ?? payload.serviceSlug,
+        vehicle_description: payload.vehicle_description ?? payload.vehicleDescription,
+        booking_vehicles: payload.booking_vehicles ?? payload.vehicles ?? [],
+        service_address: payload.service_address ?? payload.serviceAddress,
+        service_city: payload.service_city,
+        service_state: payload.service_state,
+        service_zip: payload.service_zip,
+        vehicle_class: payload.vehicle_class ?? payload.vehicleClass,
+        base_price_cents: payload.base_price_cents ?? payload.total_cents,
+        balance_due_cents: payload.balance_due_cents ?? 0,
+        payment_status: payload.payment_status ?? 'pending',
+        notes: payload.notes,
+      };
+    }
+  }
+  if (!row) {
+    const timer = await admin.from('tech_job_timers').select('*').eq('id', id).maybeSingle();
+    const timerRow = (timer.data ?? null) as Row | null;
+    const timerAppointmentId = str(timerRow?.appointment_id);
+    const timerFallbackId = str(timerRow?.fallback_booking_id);
+    if (timerAppointmentId) {
+      const linked = await admin
+        .from('appointments')
+        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at')
+        .eq('id', timerAppointmentId)
+        .maybeSingle();
+      row = (linked.data ?? null) as Row | null;
+    } else if (timerFallbackId) {
+      const linked = await admin
+        .from('booking_fallbacks')
+        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, created_at')
+        .eq('id', timerFallbackId)
+        .maybeSingle();
+      row = (linked.data ?? null) as Row | null;
+      isFallback = Boolean(row);
+    } else if (timerRow) {
+      row = { id, status: 'in_progress', assigned_technician_id: timerRow.technician_id, guest_name: 'Operational work order', payment_status: 'pending', balance_due_cents: 0 };
+    }
+  }
+  if (!row) {
+    row = { id, status: 'in_progress', guest_name: 'Operational work order', payment_status: 'pending', balance_due_cents: 0 };
+  }
 
   const assigned = str(row.assigned_technician_id);
   if (assigned && assigned !== session.user.id && session.profile?.role === 'technician') notFound();
@@ -214,7 +302,7 @@ export default async function TechWorkOrderDetailPage({
   };
   const openTimer = await admin
     .from('tech_job_timers')
-    .select('id')
+    .select('id, started_at, created_at')
     .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', id)
     .is('ended_at', null)
     .order('created_at', { ascending: false })
@@ -234,7 +322,15 @@ export default async function TechWorkOrderDetailPage({
   const timeline = ((timelineRes.data ?? []) as Row[]);
   const notes = ((notesRes.data ?? []) as Row[]);
   const outbox = ((outboxRes.data ?? []) as Row[]);
-  const agreementSigned = Boolean((agreementRes.data as Row | null)?.id);
+  const agreementRow = (agreementRes.data as Row | null) ?? null;
+  const agreementSigned = Boolean(agreementRow?.id);
+  const agreementCaptureHref = `/agreement?${[
+    isFallback ? `fallbackBookingId=${encodeURIComponent(id)}` : `appointmentId=${encodeURIComponent(id)}`,
+    row.customer_id ? `customerId=${encodeURIComponent(str(row.customer_id))}` : '',
+    row.guest_email ? `email=${encodeURIComponent(str(row.guest_email))}` : '',
+    row.guest_phone ? `phone=${encodeURIComponent(str(row.guest_phone))}` : '',
+  ].filter(Boolean).join('&')}`;
+  const agreementDetailHref = agreementRow?.id ? `/admin/agreements/${encodeURIComponent(`signed_agreements:${str(agreementRow.id)}`)}` : agreementCaptureHref;
   const checklistSaved = timeline.some((t) => str(t.event_type) === 'checklist_saved');
   const paymentComplete = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(str(row.payment_status).toLowerCase()) || Number(row.balance_due_cents ?? 0) === 0;
   const requirements = [
@@ -301,7 +397,11 @@ export default async function TechWorkOrderDetailPage({
         <div className='rounded-3xl border border-white/10 bg-zinc-950/80 p-4'>
           <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Agreement</p>
           <p className={`mt-3 text-sm font-bold ${agreementSigned ? 'text-emerald-300' : 'text-amber-200'}`}>{agreementSigned ? 'Agreement Signed' : 'Agreement Missing'}</p>
-          <Link href={`/agreement?${isFallback ? `fallbackBookingId=${encodeURIComponent(id)}` : `appointmentId=${encodeURIComponent(id)}`}`} className='mt-3 inline-block rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Capture Agreement</Link>
+          <div className='mt-3 flex flex-wrap gap-2'>
+            <Link href={agreementCaptureHref} className='rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Capture Agreement</Link>
+            <Link href={agreementDetailHref} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200'>View Agreement</Link>
+            <Link href={agreementDetailHref} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200'>Print / PDF</Link>
+          </div>
         </div>
         <div className='rounded-3xl border border-white/10 bg-zinc-950/80 p-4'>
           <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Completion Requirements</p>
@@ -321,7 +421,7 @@ export default async function TechWorkOrderDetailPage({
             {timeline.slice(0, 8).map((t) => (
               <li key={str(t.id)} className='rounded-xl border border-white/10 bg-black/35 px-3 py-2'>
                 <p className='font-bold text-white'>{label(t.event_type)}</p>
-                <p className='text-[10px] text-zinc-500'>{t.created_at ? new Date(str(t.created_at)).toLocaleString() : 'No timestamp'}</p>
+                <p className='text-[10px] text-zinc-500'>{t.created_at ? chicago(t.created_at) : 'No timestamp'}</p>
               </li>
             ))}
           </ul>
@@ -431,7 +531,7 @@ export default async function TechWorkOrderDetailPage({
               <article key={str(n.id)} className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs'>
                 <div className='flex flex-wrap items-center justify-between gap-2'>
                   <p className='font-black uppercase tracking-wider text-gold-soft'>Vehicle {Number(n.vehicle_index ?? -1) >= 0 ? Number(n.vehicle_index) + 1 : 'All'}</p>
-                  <p className='text-zinc-500'>{n.created_at ? new Date(str(n.created_at)).toLocaleString() : 'No timestamp'}</p>
+                  <p className='text-zinc-500'>{n.created_at ? chicago(n.created_at) : 'No timestamp'}</p>
                 </div>
                 {[n.internal_notes, n.notes, n.before_notes, n.after_notes, n.damage_notes, n.upsell_notes].map((text, idx) => str(text).trim() ? (
                   <p key={idx} className='mt-2 whitespace-pre-wrap text-zinc-300'>{str(text)}</p>
@@ -450,7 +550,7 @@ export default async function TechWorkOrderDetailPage({
                   <p className='font-black uppercase tracking-wider text-white'>{label(n.kind)}</p>
                   <p className={str(n.status) === 'skipped' ? 'text-amber-200' : str(n.status) === 'failed' ? 'text-red-300' : 'text-emerald-300'}>{label(n.status)}</p>
                 </div>
-                <p className='mt-1 text-zinc-500'>{n.created_at ? new Date(str(n.created_at)).toLocaleString() : 'No timestamp'} · {label(n.channel)}</p>
+                <p className='mt-1 text-zinc-500'>{n.created_at ? chicago(n.created_at) : 'No timestamp'} · {label(n.channel)}</p>
                 {n.skipped_reason ? <p className='mt-2 text-amber-200'>{str(n.skipped_reason)}</p> : null}
               </article>
             ))}
@@ -466,9 +566,9 @@ export default async function TechWorkOrderDetailPage({
               <input type='hidden' name='kind' value={kind} />
               {!isFallback ? <input type='hidden' name='appointmentId' value={id} /> : null}
               {isFallback ? <input type='hidden' name='fallbackBookingId' value={id} /> : null}
-              <button className='rounded-lg border border-emerald-400/30 bg-black/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200'>
+              <SubmitStatusButton pendingText='Sending...' className='rounded-lg border border-emerald-400/30 bg-black/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 disabled:opacity-60'>
                 {label(kind === 'payment_link' ? 'send_pay_now' : kind)}
-              </button>
+              </SubmitStatusButton>
             </form>
           ))}
         </div>

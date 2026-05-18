@@ -90,6 +90,14 @@ function friendlyEventLabel(t: string): string {
 
 }
 
+function chicago(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 
 
 export default async function CustomerDashboardRootPage() {
@@ -262,7 +270,7 @@ export default async function CustomerDashboardRootPage() {
 
           <p className='mt-1 text-sm text-zinc-300'>
 
-            {liveJob.service_slug.replace(/-/g, ' ')} · {new Date(liveJob.scheduled_start).toLocaleString()}
+            {liveJob.service_slug.replace(/-/g, ' ')} · {chicago(liveJob.scheduled_start)}
 
           </p>
 
@@ -276,7 +284,7 @@ export default async function CustomerDashboardRootPage() {
 
                   <span className='text-gold-soft'>{friendlyEventLabel(e.event_type)}</span>{' '}
 
-                  · {new Date(e.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  · {chicago(e.created_at)}
 
                 </li>
 
@@ -336,7 +344,7 @@ export default async function CustomerDashboardRootPage() {
 
                   <p className='text-sm font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
 
-                  <p className='text-xs text-zinc-400'>{new Date(a.scheduled_start).toLocaleString()}</p>
+                  <p className='text-xs text-zinc-400'>{chicago(a.scheduled_start)}</p>
                   <p className='mt-1 text-xs text-zinc-500'>{vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · {addr || 'Service address pending'}</p>
                   <p className='mt-1 text-xs text-zinc-500'>Payment: {a.payment_status ?? 'pending'} · Balance ${((a.balance_due_cents ?? 0) / 100).toFixed(2)} · Receipts {pays.length}</p>
                   <p className='mt-1 text-xs text-zinc-500'>Agreement: {agreementByAppt.has(a.id) ? 'signed' : 'pending'}</p>
@@ -349,7 +357,7 @@ export default async function CustomerDashboardRootPage() {
 
                       Latest: {friendlyEventLabel(ev[0]!.event_type)} ·{' '}
 
-                      {new Date(ev[0]!.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                      {chicago(ev[0]!.created_at)}
 
                     </p>
 
@@ -387,7 +395,7 @@ export default async function CustomerDashboardRootPage() {
 
                   <p className='text-sm font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
 
-                  <p className='text-xs text-zinc-400'>{new Date(a.scheduled_start).toLocaleDateString()}</p>
+                  <p className='text-xs text-zinc-400'>{chicago(a.scheduled_start)}</p>
 
                   <p className='mt-1 text-xs text-zinc-500'>
 
@@ -407,11 +415,7 @@ export default async function CustomerDashboardRootPage() {
 
                       Completed log ·{' '}
 
-                      {new Date(
-
-                        ev.find((x) => x.event_type === 'job_completed')?.created_at ?? a.scheduled_start,
-
-                      ).toLocaleString()}
+                      {chicago(ev.find((x) => x.event_type === 'job_completed')?.created_at ?? a.scheduled_start)}
 
                     </p>
 

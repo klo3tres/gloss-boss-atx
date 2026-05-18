@@ -12,6 +12,7 @@ export type MessageRow = {
   read_at?: string | null;
   replied_at?: string | null;
   archived_at?: string | null;
+  reply_body?: string | null;
 };
 function str(v: unknown): string {
   if (v == null) return '';
@@ -49,6 +50,7 @@ export function mapMessageRow(raw: Record<string, unknown>): MessageRow | null {
     read_at: raw.read_at != null ? String(raw.read_at) : null,
     replied_at: raw.replied_at != null ? String(raw.replied_at) : null,
     archived_at: raw.archived_at != null ? String(raw.archived_at) : null,
+    reply_body: raw.reply_body != null ? String(raw.reply_body) : null,
   };
 }
 
