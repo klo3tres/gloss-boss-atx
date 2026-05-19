@@ -111,6 +111,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <Link href='/admin/work-orders' className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Work Order</Link>
           {str(p.appointment_id || linked.id) ? <Link href={`/admin/work-orders?appointment=${encodeURIComponent(str(p.appointment_id || linked.id))}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Appointment</Link> : null}
           {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${agreementSource}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Agreement</Link> : null}
+          <Link href={`/admin/receipts/${id}`} className='rounded border border-emerald-500/40 px-4 py-2 text-xs font-black uppercase text-emerald-200'>Receipt</Link>
           {sessionId ? (
             <form action={reconcileStripeSessionAction}>
               <input type='hidden' name='sessionId' value={sessionId} />

@@ -110,21 +110,25 @@ export async function GET() {
       .from('appointments')
       .select('id', { count: 'exact', head: true })
       .gte('scheduled_start', t0)
-      .lte('scheduled_start', t1),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).in('status', ['confirmed', 'assigned', 'in_progress']),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', t0).lte('updated_at', t1),
+      .lte('scheduled_start', t1)
+      .is('archived_at', null)
+      .neq('status', 'deleted'),
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).in('status', ['confirmed', 'assigned', 'in_progress']).is('archived_at', null),
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').is('archived_at', null).gte('updated_at', t0).lte('updated_at', t1),
     supabase.from('payments').select('amount_cents').eq('status', 'succeeded').gte('created_at', t0).lte('created_at', t1),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'awaiting_payment'),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'deposit_paid'),
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'awaiting_payment').is('archived_at', null),
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'deposit_paid').is('archived_at', null),
     supabase.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     supabase.from('services').select('id', { count: 'exact', head: true }).eq('active', true),
     supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', ['admin', 'super_admin', 'technician']),
     sumSucceededPayments(supabase, weekStart, now),
     sumSucceededPayments(supabase, monthStart, now),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').gte('updated_at', monthStart).lte('updated_at', now),
+    supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').is('archived_at', null).gte('updated_at', monthStart).lte('updated_at', now),
     supabase
       .from('appointments')
       .select('id, guest_name, scheduled_start, status, service_slug, created_at')
+      .is('archived_at', null)
+      .neq('status', 'deleted')
       .order('created_at', { ascending: false })
       .limit(8),
     supabase.from('customers').select('id, full_name, email, created_at').order('created_at', { ascending: false }).limit(8),

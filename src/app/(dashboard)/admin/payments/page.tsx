@@ -82,7 +82,10 @@ export default async function AdminPaymentsPage() {
       {!canView ? <p className='text-sm text-amber-200'>Admin access required.</p> : null}
       {loadError ? <p className='rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100'>{loadError}</p> : null}
       <section className='rounded-2xl border border-gold/25 bg-zinc-950/90 p-5 shadow-[0_0_30px_rgba(212,166,77,0.08)]'>
-        <h2 className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Stripe ledger</h2>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <h2 className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Stripe ledger</h2>
+          <Link href='/admin/receipts' className='rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Open Receipts</Link>
+        </div>
         <div className='mt-4 overflow-x-auto'>
           <table className='min-w-[1100px] w-full text-left text-xs text-zinc-300'>
             <thead className='text-[10px] uppercase tracking-wider text-zinc-500'>
@@ -125,6 +128,7 @@ export default async function AdminPaymentsPage() {
                     <td className='p-2 font-mono'>
                       <p>{str(r.appointment_id) ? `appt ${str(r.appointment_id).slice(0, 8)}` : str(r.fallback_booking_id) ? `fb ${str(r.fallback_booking_id).slice(0, 8)}` : '—'}</p>
                       {str(r.id) ? <Link href={`/admin/payments/${str(r.id)}`} className='font-sans text-gold-soft underline'>Detail</Link> : null}
+                      {str(r.id) ? <Link href={`/admin/receipts/${str(r.id)}`} className='block font-sans text-emerald-200 underline'>Receipt</Link> : null}
                     </td>
                     <td className='p-2'>{chicago(r.created_at)}</td>
                     <td className='space-y-2 p-2'>

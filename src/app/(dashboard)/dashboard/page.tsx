@@ -77,6 +77,14 @@ type PaymentRow = {
   paid_at: string | null;
 };
 
+type ReceiptRow = {
+  appointment_id: string;
+  receipt_number: string | null;
+  amount_cents: number;
+  payment_method: string | null;
+  created_at: string;
+};
+
 type AgreementRow = {
   appointment_id: string;
   signed_at: string | null;
@@ -114,6 +122,7 @@ export default async function CustomerDashboardRootPage() {
 
   const photosByAppt = new Map<string, MediaRow[]>();
   const paymentsByAppt = new Map<string, PaymentRow[]>();
+  const receiptsByAppt = new Map<string, ReceiptRow[]>();
   const agreementByAppt = new Map<string, AgreementRow>();
 
 
@@ -142,7 +151,7 @@ export default async function CustomerDashboardRootPage() {
 
     if (ids.length > 0) {
 
-      const [evRes, medRes, payRes, agRes] = await Promise.all([
+      const [evRes, medRes, payRes, agRes, receiptRes] = await Promise.all([
 
         supabase
 
@@ -178,6 +187,12 @@ export default async function CustomerDashboardRootPage() {
           .select('appointment_id, signed_at')
           .in('appointment_id', ids)
           .order('signed_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('receipts')
+          .select('appointment_id, receipt_number, amount_cents, payment_method, created_at')
+          .in('appointment_id', ids)
+          .order('created_at', { ascending: false })
           .limit(100),
 
       ]);
@@ -218,6 +233,12 @@ export default async function CustomerDashboardRootPage() {
         if (!agreementByAppt.has(row.appointment_id)) agreementByAppt.set(row.appointment_id, row);
       }
 
+      for (const row of (receiptRes.data ?? []) as ReceiptRow[]) {
+        const list = receiptsByAppt.get(row.appointment_id) ?? [];
+        list.push(row);
+        receiptsByAppt.set(row.appointment_id, list);
+      }
+
     }
 
   }
@@ -234,7 +255,7 @@ export default async function CustomerDashboardRootPage() {
 
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   const vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
-  const receiptTotal = Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
+  const receiptTotal = Array.from(receiptsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0) || Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
   const photoTotal = Array.from(photosByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
   const agreementTotal = agreementByAppt.size;
 
@@ -335,6 +356,7 @@ export default async function CustomerDashboardRootPage() {
 
               const ev = eventsByAppt.get(a.id) ?? [];
               const pays = paymentsByAppt.get(a.id) ?? [];
+              const receipts = receiptsByAppt.get(a.id) ?? [];
               const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
               const addr = [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ');
 
@@ -346,7 +368,8 @@ export default async function CustomerDashboardRootPage() {
 
                   <p className='text-xs text-zinc-400'>{chicago(a.scheduled_start)}</p>
                   <p className='mt-1 text-xs text-zinc-500'>{vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · {addr || 'Service address pending'}</p>
-                  <p className='mt-1 text-xs text-zinc-500'>Payment: {a.payment_status ?? 'pending'} · Balance ${((a.balance_due_cents ?? 0) / 100).toFixed(2)} · Receipts {pays.length}</p>
+                  <p className='mt-1 text-xs text-zinc-500'>Payment: {a.payment_status ?? 'pending'} · Balance ${((a.balance_due_cents ?? 0) / 100).toFixed(2)} · Receipts {receipts.length || pays.length}</p>
+                  {receipts[0] ? <p className='mt-1 text-xs text-emerald-300'>Receipt {receipts[0].receipt_number ?? 'issued'} · {chicago(receipts[0].created_at)}</p> : null}
                   <p className='mt-1 text-xs text-zinc-500'>Agreement: {agreementByAppt.has(a.id) ? 'signed' : 'pending'}</p>
 
                   <p className='mt-1 text-[10px] uppercase tracking-wider text-gold-soft'>{a.status.replace(/_/g, ' ')}</p>
@@ -387,6 +410,7 @@ export default async function CustomerDashboardRootPage() {
 
               const photos = photosByAppt.get(a.id) ?? [];
               const pays = paymentsByAppt.get(a.id) ?? [];
+              const receipts = receiptsByAppt.get(a.id) ?? [];
               const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
 
               return (
@@ -399,7 +423,7 @@ export default async function CustomerDashboardRootPage() {
 
                   <p className='mt-1 text-xs text-zinc-500'>
 
-                    {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · Paid deposit ${(a.deposit_amount_cents / 100).toFixed(2)} · Package ${(a.base_price_cents / 100).toFixed(0)} · Receipts {pays.length}
+                    {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · Paid deposit ${(a.deposit_amount_cents / 100).toFixed(2)} · Package ${(a.base_price_cents / 100).toFixed(0)} · Receipts {receipts.length || pays.length}
 
                   </p>
 

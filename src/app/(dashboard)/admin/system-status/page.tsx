@@ -160,6 +160,10 @@ export default function SystemStatusPage() {
               Remove localhost URLs from production Supabase settings.
             </p>
             <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+              <Row label='NEXT_PUBLIC_APP_URL' ok={Boolean(data.env.nextPublicAppUrl && !data.env.nextPublicAppUrl.includes('localhost'))} detail={data.env.nextPublicAppUrl ?? 'Set this to the production domain in Vercel.'} />
+              <Row label='Supabase Site URL' ok={Boolean(data.env.nextPublicAppUrl && !data.env.nextPublicAppUrl.includes('localhost'))} detail='Set Supabase Auth Site URL to the exact production NEXT_PUBLIC_APP_URL.' />
+              <Row label='Redirect URLs' ok detail='Add /login, /dashboard, /customer, /reset-password, /agreement, and /book/complete production URLs.' />
+              <Row label='Resend domain verification' ok={Boolean(data.resend.ready)} detail='If customer email returns 403, verify the sending domain in Resend.' />
               <Row label='Confirm subject' ok detail='Gloss Boss ATX — Confirm Your Account' />
               <Row label='Reset subject' ok detail='Gloss Boss ATX — Reset Your Password' />
             </div>

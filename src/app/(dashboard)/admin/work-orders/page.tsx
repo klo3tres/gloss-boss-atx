@@ -283,6 +283,8 @@ export default async function AdminWorkOrdersPage() {
                           <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
                         )}
                         {(str(r.stripe_checkout_session_id) || payment) ? <Link href={paymentHref} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
+                        <Link href={`/admin/work-orders/${str(r.id)}${isFallback ? '?source=fallback' : ''}`} className='rounded border border-gold/40 bg-gold/10 px-3 py-1 text-[10px] font-bold uppercase text-gold-soft'>Open Work Order</Link>
+                        {payment?.id ? <Link href={`/admin/receipts/${str(payment.id)}`} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Receipt</Link> : null}
                         {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={`/agreement?${agreementCaptureParams.toString()}`} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Capture Agreement</Link>}
                         {isFallback ? (
                           <>

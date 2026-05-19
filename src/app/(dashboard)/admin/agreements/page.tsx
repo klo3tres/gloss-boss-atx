@@ -14,6 +14,7 @@ type AgreementRow = {
   signer_legal_name: string;
   signed_at: string;
   source: string;
+  fallback_booking_id?: string;
 };
 
 async function archiveAgreementAction(formData: FormData) {
@@ -79,6 +80,25 @@ export default async function AdminAgreementsPage() {
           source: 'job_agreements',
         });
       }
+      const { data: intakes } = await admin
+        .from('intake_submissions')
+        .select('id, appointment_id, fallback_booking_id, form_data, created_at')
+        .order('created_at', { ascending: false })
+        .limit(160);
+      for (const r of intakes ?? []) {
+        const row = r as Record<string, unknown>;
+        const form = row.form_data && typeof row.form_data === 'object' ? (row.form_data as Record<string, unknown>) : {};
+        const apptId = String(row.appointment_id ?? '');
+        if (apptId && rows.some((x) => x.appointment_id === apptId)) continue;
+        rows.push({
+          id: String(row.id),
+          appointment_id: apptId,
+          fallback_booking_id: String(row.fallback_booking_id ?? ''),
+          signer_legal_name: String(form.signer_legal_name ?? form.customer_name ?? form.name ?? 'Intake / liability acknowledgement'),
+          signed_at: String(row.created_at ?? ''),
+          source: 'intake_submissions',
+        });
+      }
     }
   } catch {
     /* table may not exist */
@@ -87,7 +107,7 @@ export default async function AdminAgreementsPage() {
   rows.sort((a, b) => (a.signed_at < b.signed_at ? 1 : -1));
 
   return (
-    <DashboardShell title='Signed agreements' subtitle='Search and open customer liability acknowledgements.' role='admin'>
+    <DashboardShell title='Agreements & Intake' subtitle='Unified liability acknowledgements, signed agreements, and intake submissions.' role='admin'>
       <Link href='/admin/cms' className='mb-4 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
         ← CMS
       </Link>
