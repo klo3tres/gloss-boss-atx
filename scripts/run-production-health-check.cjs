@@ -109,7 +109,11 @@ async function main() {
   }
 
   const resendOk = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
-  const twilioOk = Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER);
+  const twilioOk = Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      (process.env.TWILIO_MESSAGING_SERVICE_SID || process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_FROM),
+  );
   pass('Resend email (optional)', resendOk ? 'configured for transactional mail' : 'not configured — booking emails log only');
   pass('Twilio SMS (optional)', twilioOk ? 'configured for job SMS' : 'not configured — SMS hooks log only');
 

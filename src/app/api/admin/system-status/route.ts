@@ -4,6 +4,7 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { tryCreateServerSupabase } from '@/lib/supabase/safeClient.server';
 import { resendConfigured, twilioConfigured, businessNotifyDestination } from '@/lib/email-send';
+import { twilioMessagingServiceSid, twilioFromNumber } from '@/lib/twilio-config';
 
 export const runtime = 'nodejs';
 
@@ -84,7 +85,8 @@ export async function GET() {
     twilio: {
       accountSidConfigured: Boolean(process.env.TWILIO_ACCOUNT_SID?.trim()),
       authTokenConfigured: Boolean(process.env.TWILIO_AUTH_TOKEN?.trim()),
-      fromNumberConfigured: Boolean(process.env.TWILIO_FROM_NUMBER?.trim()),
+      messagingServiceConfigured: Boolean(twilioMessagingServiceSid()),
+      fromNumberConfigured: Boolean(twilioFromNumber()),
       ready: twilioReady,
     },
     readiness: {

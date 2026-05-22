@@ -18,7 +18,11 @@ export async function GET() {
   const twilio =
     Boolean(process.env.TWILIO_ACCOUNT_SID?.trim()) &&
     Boolean(process.env.TWILIO_AUTH_TOKEN?.trim()) &&
-    Boolean(process.env.TWILIO_FROM_NUMBER?.trim() ?? process.env.TWILIO_FROM?.trim());
+    Boolean(
+      process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() ||
+        process.env.TWILIO_FROM_NUMBER?.trim() ||
+        process.env.TWILIO_FROM?.trim(),
+    );
 
   if (!admin) {
     return NextResponse.json({

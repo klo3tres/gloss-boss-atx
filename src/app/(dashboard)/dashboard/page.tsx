@@ -1,9 +1,6 @@
-import Link from 'next/link';
-
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-
+import { CustomerDashboardClient } from '@/components/dashboard/customer-dashboard-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
-
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 
@@ -260,279 +257,36 @@ export default async function CustomerDashboardRootPage() {
   const photoTotal = Array.from(photosByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
   const agreementTotal = agreementByAppt.size;
 
-
+  const mapToRecord = <T,>(m: Map<string, T[]>) => {
+    const o: Record<string, T[]> = {};
+    m.forEach((v, k) => {
+      o[k] = v;
+    });
+    return o;
+  };
+  const agreementRecord: Record<string, boolean> = {};
+  agreementByAppt.forEach((_, k) => {
+    agreementRecord[k] = true;
+  });
 
   return (
-
-    <DashboardShell
-
-      title='Your Gloss Boss dashboard'
-
-      subtitle='Appointments, deposits, and live job updates — synced from Supabase.'
-
-      role='customer'
-
-    >
-
-      {liveJob ? (
-
-        <div
-
-          className='mb-6 rounded-2xl border border-emerald-500/40 bg-emerald-950/25 p-5'
-
-          role='status'
-
-          aria-live='polite'
-
-        >
-
-          <p className='text-xs font-bold uppercase tracking-wider text-emerald-300'>Live service</p>
-
-          <p className='mt-2 text-lg font-bold text-white'>Your Gloss Boss service has started.</p>
-
-          <p className='mt-1 text-sm text-zinc-300'>
-
-            {liveJob.service_slug.replace(/-/g, ' ')} · {chicago(liveJob.scheduled_start)}
-
-          </p>
-
-          {liveEvents.length > 0 ? (
-
-            <ul className='mt-3 space-y-1 text-xs text-zinc-400'>
-
-              {liveEvents.slice(0, 6).map((e) => (
-
-                <li key={`${e.event_type}-${e.created_at}`}>
-
-                  <span className='text-gold-soft'>{friendlyEventLabel(e.event_type)}</span>{' '}
-
-                  · {chicago(e.created_at)}
-
-                </li>
-
-              ))}
-
-            </ul>
-
-          ) : (
-
-            <p className='mt-2 text-xs text-zinc-500'>Live milestones (start, timer, checklist) will appear here as your tech updates the job.</p>
-
-          )}
-
-        </div>
-
-      ) : null}
-
-      <section className='mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-        {[
-          ['Overview', `${appointments.length} appointment(s)`, 'Bookings and service history'],
-          ['Vehicle garage', `${vehicleTotal} vehicle(s)`, 'Saved from booking records'],
-          ['Invoices / receipts', `${receiptTotal} receipt(s)`, 'Stripe, cash, and comped records'],
-          ['Photos', `${photoTotal} approved`, 'Before/after gallery items'],
-          ['Signed agreements', `${agreementTotal} signed`, 'Legal acknowledgements'],
-          ['Messages', 'Inbox ready', 'Replies and job updates'],
-          ['Reviews', 'Leave feedback', 'Review CTA after completion'],
-          ['Gift cards', 'Available', 'Book again or gift a detail'],
-        ].map(([title, value, hint]) => (
-          <article key={title} className='rounded-2xl border border-gold/20 bg-gradient-to-br from-zinc-950/95 to-black/80 p-4 shadow-[0_0_24px_rgba(212,166,77,0.08)]'>
-            <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>{title}</p>
-            <p className='mt-2 text-xl font-black text-white'>{value}</p>
-            <p className='mt-1 text-xs text-zinc-500'>{hint}</p>
-          </article>
-        ))}
-      </section>
-
-      <div className='grid gap-6 lg:grid-cols-2'>
-
-        <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Upcoming</p>
-
-          <ul className='mt-4 space-y-3'>
-
-            {upcoming.length === 0 ? <li className='text-sm text-zinc-500'>No upcoming appointments.</li> : null}
-
-            {upcoming.map((a) => {
-
-              const ev = eventsByAppt.get(a.id) ?? [];
-              const pays = paymentsByAppt.get(a.id) ?? [];
-              const receipts = receiptsByAppt.get(a.id) ?? [];
-              const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
-              const addr = [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ');
-
-              return (
-
-                <li key={a.id} className='rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-
-                  <p className='text-sm font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
-
-                  <p className='text-xs text-zinc-400'>{chicago(a.scheduled_start)}</p>
-                  <p className='mt-1 text-xs text-zinc-500'>{vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · {addr || 'Service address pending'}</p>
-                  <p className='mt-1 text-xs text-zinc-500'>Payment: {a.payment_status ?? 'pending'} · Balance ${((a.balance_due_cents ?? 0) / 100).toFixed(2)} · Receipts {receipts.length || pays.length}</p>
-                  {receipts[0] ? <p className='mt-1 text-xs text-emerald-300'>Receipt {receipts[0].receipt_number ?? 'issued'} · {chicago(receipts[0].created_at)}</p> : null}
-                  <p className='mt-1 text-xs text-zinc-500'>Agreement: {agreementByAppt.has(a.id) ? 'signed' : 'pending'}</p>
-
-                  <p className='mt-1 text-[10px] uppercase tracking-wider text-gold-soft'>{a.status.replace(/_/g, ' ')}</p>
-
-                  {ev.length > 0 ? (
-
-                    <p className='mt-2 text-[10px] text-zinc-500'>
-
-                      Latest: {friendlyEventLabel(ev[0]!.event_type)} ·{' '}
-
-                      {chicago(ev[0]!.created_at)}
-
-                    </p>
-
-                  ) : null}
-
-                </li>
-
-              );
-
-            })}
-
-          </ul>
-
-        </section>
-
-        <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>History</p>
-
-          <ul className='mt-4 space-y-3'>
-
-            {history.length === 0 ? <li className='text-sm text-zinc-500'>No completed visits yet.</li> : null}
-
-            {history.map((a) => {
-
-              const ev = eventsByAppt.get(a.id) ?? [];
-
-              const photos = photosByAppt.get(a.id) ?? [];
-              const pays = paymentsByAppt.get(a.id) ?? [];
-              const receipts = receiptsByAppt.get(a.id) ?? [];
-              const vehicleCount = Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1;
-
-              return (
-
-                <li key={a.id} className='rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-
-                  <p className='text-sm font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
-
-                  <p className='text-xs text-zinc-400'>{chicago(a.scheduled_start)}</p>
-
-                  <p className='mt-1 text-xs text-zinc-500'>
-
-                    {vehicleCount} vehicle{vehicleCount === 1 ? '' : 's'} · Paid deposit ${(a.deposit_amount_cents / 100).toFixed(2)} · Package ${(a.base_price_cents / 100).toFixed(0)} · Receipts {receipts.length || pays.length}
-
-                  </p>
-
-                  {a.status === 'completed' ? (
-
-                    <p className='mt-1 text-[10px] uppercase tracking-wider text-emerald-400'>Completed</p>
-
-                  ) : null}
-
-                  {ev.filter((x) => x.event_type === 'job_completed').length > 0 ? (
-
-                    <p className='mt-1 text-[10px] text-zinc-500'>
-
-                      Completed log ·{' '}
-
-                      {chicago(ev.find((x) => x.event_type === 'job_completed')?.created_at ?? a.scheduled_start)}
-
-                    </p>
-
-                  ) : null}
-
-                  {photos.length > 0 ? (
-
-                    <div className='mt-2 flex flex-wrap gap-2'>
-
-                      {photos.map((p) => (
-
-                        <a
-
-                          key={p.file_url}
-
-                          href={p.file_url}
-
-                          target='_blank'
-
-                          rel='noopener noreferrer'
-
-                          className='text-[10px] font-semibold uppercase tracking-wider text-gold-soft underline'
-
-                        >
-
-                          View {p.category} photo
-
-                        </a>
-
-                      ))}
-
-                    </div>
-
-                  ) : a.status === 'completed' ? (
-
-                    <p className='mt-2 text-[10px] text-zinc-600'>After photos appear here when QC is approved for customer viewing.</p>
-
-                  ) : null}
-
-                </li>
-
-              );
-
-            })}
-
-          </ul>
-
-        </section>
-
-      </div>
-
-      <div className='mt-6 flex flex-wrap gap-3'>
-
-        <Link href='/book' className='rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black'>
-
-          Rebook service
-
-        </Link>
-
-        <Link
-
-          href='/gift-cards'
-
-          className='rounded-lg border border-gold/40 px-5 py-3 text-sm font-bold uppercase tracking-wider text-gold-soft'
-
-        >
-
-          Gift cards
-
-        </Link>
-
-        <Link
-
-          href={
-            appointments[0]?.id
-              ? `/agreement?appointmentId=${encodeURIComponent(appointments[0].id)}${appointments[0].guest_email ? `&email=${encodeURIComponent(appointments[0].guest_email)}` : ''}`
-              : '/agreement'
-          }
-
-          className='rounded-lg border border-white/15 px-5 py-3 text-sm font-bold uppercase tracking-wider text-zinc-300'
-
-        >
-
-          Liability acknowledgment
-
-        </Link>
-
-      </div>
-
+    <DashboardShell title='Your dashboard' subtitle='Garage, appointments, receipts, agreements, and live updates.' role='customer'>
+      <CustomerDashboardClient
+        liveJob={liveJob ?? null}
+        liveEvents={liveEvents}
+        upcoming={upcoming}
+        history={history}
+        eventsByAppt={mapToRecord(eventsByAppt)}
+        paymentsByAppt={mapToRecord(paymentsByAppt)}
+        receiptsByAppt={mapToRecord(receiptsByAppt)}
+        agreementByAppt={agreementRecord}
+        photosByAppt={mapToRecord(photosByAppt)}
+        vehicleTotal={vehicleTotal}
+        receiptTotal={receiptTotal}
+        photoTotal={photoTotal}
+        agreementTotal={agreementTotal}
+        appointmentCount={appointments.length}
+      />
     </DashboardShell>
-
   );
-
 }
-

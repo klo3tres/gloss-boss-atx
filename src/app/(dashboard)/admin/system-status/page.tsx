@@ -213,9 +213,13 @@ export default function SystemStatusPage() {
                 <>
                   <Row label='TWILIO_ACCOUNT_SID' ok={data.twilio.accountSidConfigured} />
                   <Row label='TWILIO_AUTH_TOKEN' ok={data.twilio.authTokenConfigured} />
-                  <Row label='TWILIO_FROM_NUMBER' ok={data.twilio.fromNumberConfigured} />
+                  <Row
+                    label='TWILIO_MESSAGING_SERVICE_SID'
+                    ok={Boolean((data.twilio as { messagingServiceConfigured?: boolean }).messagingServiceConfigured)}
+                  />
+                  <Row label='TWILIO_FROM_NUMBER (fallback)' ok={data.twilio.fromNumberConfigured} />
                   {typeof data.twilio.ready === 'boolean' ? (
-                    <Row label='Ready to send SMS' ok={data.twilio.ready} detail='All three values required for job SMS hooks.' />
+                    <Row label='Ready to send SMS' ok={data.twilio.ready} detail='SID + token + Messaging Service SID (or From number).' />
                   ) : null}
                 </>
               ) : (
@@ -262,7 +266,7 @@ export default function SystemStatusPage() {
               <li>SUPABASE_SERVICE_ROLE_KEY — server-only; required for messages, some admin writes, booking fallbacks</li>
               <li>STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</li>
               <li>RESEND_API_KEY, RESEND_FROM_EMAIL</li>
-              <li>TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (optional)</li>
+              <li>TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID (preferred) or TWILIO_FROM_NUMBER (optional)</li>
               <li>NEXT_PUBLIC_APP_URL — canonical site URL for redirects</li>
             </ul>
           </details>

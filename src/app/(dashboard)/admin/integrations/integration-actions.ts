@@ -5,8 +5,11 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { glossBossEmailShell } from '@/lib/email-brand';
-import { resendConfigured, sendResendHtml, sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { resendConfigured, sendResendHtml, twilioConfigured } from '@/lib/email-send';
 import { parseResendError, resendDomainWarning } from '@/lib/resend-config';
+import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import { sendCustomerSms } from '@/lib/sms-send';
+import { twilioSendMode } from '@/lib/twilio-config';
 
 async function gate() {
   const session = await getSessionWithProfile();
@@ -15,13 +18,36 @@ async function gate() {
   return { admin, email: session.user.email ?? null, userId: session.user.id };
 }
 
-export async function sendIntegrationTestAction(formData: FormData) {
+async function logIntegrationTest(
+  admin: NonNullable<Awaited<ReturnType<typeof gate>>>['admin'],
+  row: {
+    kind: string;
+    status: string;
+    destination: string | null;
+    error_message: string | null;
+    actor_id: string;
+  },
+) {
+  await admin.from('integration_test_events').insert({
+    kind: row.kind,
+    status: row.status,
+    destination: row.destination,
+    error_message: row.error_message,
+    actor_id: row.actor_id,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export async function sendIntegrationTestAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const g = await gate();
-  if (!g) return;
+  if (!g) return actionErr('Not authorized.');
+
   const kind = String(formData.get('kind') ?? '').trim();
   const destination = String(formData.get('destination') ?? '').trim();
   let status = 'skipped';
   let error: string | null = null;
+  let providerMessageId: string | null = null;
+
   if (kind === 'resend_test') {
     if (!resendConfigured()) error = 'Resend missing RESEND_API_KEY or RESEND_FROM_EMAIL.';
     else {
@@ -38,22 +64,47 @@ export async function sendIntegrationTestAction(formData: FormData) {
       }
     }
   } else if (kind === 'twilio_test') {
-    if (!twilioConfigured()) error = 'Twilio missing SID, token, or from number.';
-    else if (!destination) error = 'Enter a test phone number.';
-    else {
-      const sent = await sendTwilioSms({ to: destination, body: 'Gloss Boss ATX test SMS: Twilio is connected.' });
-      status = sent.ok ? 'sent' : 'failed';
+    if (!twilioConfigured()) {
+      error = 'Twilio missing SID, token, and Messaging Service SID or From number.';
+    } else if (!destination) {
+      error = 'Enter a test phone number.';
+    } else {
+      const sent = await sendCustomerSms({
+        db: g.admin,
+        kind: 'twilio_test',
+        to: destination,
+        body: 'Gloss Boss ATX test SMS: Twilio Messaging Service is connected.',
+        extraPayload: { integration_test: true },
+      });
+      status = sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed';
       error = sent.ok ? null : sent.error ?? 'Twilio send failed.';
+      providerMessageId = sent.sid ?? null;
     }
+  } else {
+    return actionErr('Unknown test type.');
   }
+
   if (error && status === 'skipped') status = 'skipped';
-  await g.admin.from('integration_test_events').insert({
+
+  const testNote =
+    kind === 'twilio_test' && providerMessageId
+      ? `${error ?? ''} mode=${twilioSendMode()} sid=${providerMessageId}`.trim()
+      : error;
+  await logIntegrationTest(g.admin, {
     kind,
     status,
     destination: destination || g.email,
-    error_message: error,
+    error_message: status === 'sent' ? (kind === 'twilio_test' ? `mode=${twilioSendMode()} sid=${providerMessageId}` : null) : testNote,
     actor_id: g.userId,
-    created_at: new Date().toISOString(),
   });
+
   revalidatePath('/admin/integrations');
+
+  if (status === 'sent') {
+    return actionOk(kind === 'twilio_test' ? 'Test SMS sent. Check the handset in a few seconds.' : 'Test email sent.');
+  }
+  if (status === 'skipped') {
+    return actionErr(error ?? 'Send skipped.');
+  }
+  return actionErr(error ?? 'Send failed.');
 }

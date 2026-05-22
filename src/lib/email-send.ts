@@ -1,5 +1,12 @@
 import { glossBossEmailShell, bookingConfirmationEmailHtml } from '@/lib/email-brand';
 import { parseResendError } from '@/lib/resend-config';
+import {
+  twilioAccountSid,
+  twilioAuthToken,
+  twilioFromNumber,
+  twilioMessagingServiceSid,
+  twilioSenderReady,
+} from '@/lib/twilio-config';
 
 export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
@@ -32,20 +39,30 @@ export async function sendResendHtml(params: { to: string; subject: string; html
 }
 
 export function twilioConfigured(): boolean {
-  return Boolean(
-    process.env.TWILIO_ACCOUNT_SID?.trim() &&
-      process.env.TWILIO_AUTH_TOKEN?.trim() &&
-      process.env.TWILIO_FROM_NUMBER?.trim(),
-  );
+  return twilioSenderReady();
 }
 
-export async function sendTwilioSms(params: { to: string; body: string }): Promise<{ ok: boolean; error?: string }> {
-  const sid = process.env.TWILIO_ACCOUNT_SID?.trim();
-  const token = process.env.TWILIO_AUTH_TOKEN?.trim();
-  const from = process.env.TWILIO_FROM_NUMBER?.trim();
-  if (!sid || !token || !from) {
-    console.info('[sms] Twilio skipped', params.to.slice(0, 6));
-    return { ok: true };
+function parseTwilioError(text: string): string {
+  try {
+    const j = JSON.parse(text) as { message?: string; code?: number };
+    if (j.message) return j.code ? `${j.message} (${j.code})` : j.message;
+  } catch {
+    /* raw text */
+  }
+  return text.slice(0, 400) || 'Twilio request failed';
+}
+
+export async function sendTwilioSms(params: {
+  to: string;
+  body: string;
+}): Promise<{ ok: boolean; error?: string; sid?: string }> {
+  const sid = twilioAccountSid();
+  const token = twilioAuthToken();
+  const messagingServiceSid = twilioMessagingServiceSid();
+  const from = twilioFromNumber();
+  if (!sid || !token || (!messagingServiceSid && !from)) {
+    console.info('[sms] Twilio skipped (missing credentials or sender)', params.to.slice(0, 6));
+    return { ok: false, error: 'twilio_not_configured' };
   }
   const to = params.to.replace(/\D/g, '');
   if (to.length < 10) {
@@ -54,7 +71,16 @@ export async function sendTwilioSms(params: { to: string; body: string }): Promi
   const dest = to.length === 10 ? `+1${to}` : `+${to}`;
   try {
     const auth = Buffer.from(`${sid}:${token}`).toString('base64');
-    const body = new URLSearchParams({ From: from, To: dest, Body: params.body.slice(0, 1400) });
+    const fields: Record<string, string> = {
+      To: dest,
+      Body: params.body.slice(0, 1400),
+    };
+    if (messagingServiceSid) {
+      fields.MessagingServiceSid = messagingServiceSid;
+    } else if (from) {
+      fields.From = from;
+    }
+    const body = new URLSearchParams(fields);
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -62,13 +88,22 @@ export async function sendTwilioSms(params: { to: string; body: string }): Promi
     });
     const text = await res.text();
     if (!res.ok) {
-      console.warn('[sms] Twilio HTTP', res.status, text.slice(0, 200));
-      return { ok: false, error: text };
+      const err = parseTwilioError(text);
+      console.warn('[sms] Twilio HTTP', res.status, err);
+      return { ok: false, error: err };
     }
-    return { ok: true };
+    let messageSid: string | undefined;
+    try {
+      const j = JSON.parse(text) as { sid?: string };
+      messageSid = j.sid;
+    } catch {
+      /* ignore */
+    }
+    console.info('[sms] Twilio sent', messageSid ?? 'ok', messagingServiceSid ? 'messaging_service' : 'from_number');
+    return { ok: true, sid: messageSid };
   } catch (e) {
     console.warn('[sms] Twilio', e);
-    return { ok: false };
+    return { ok: false, error: e instanceof Error ? e.message : 'network_error' };
   }
 }
 

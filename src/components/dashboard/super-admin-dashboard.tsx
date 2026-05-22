@@ -116,6 +116,34 @@ function StatCard({ label, value, hint, delay, href }: { label: string; value: s
   );
 }
 
+function RevenueChart({ stats }: { stats: Stats }) {
+  const bars = [
+    { label: 'Today', cents: stats.revenueTodayCents, href: '/admin/payments?range=today' },
+    { label: 'Week', cents: stats.revenueWeekCents, href: '/admin/payments?range=week' },
+    { label: 'Month', cents: stats.revenueMonthCents, href: '/admin/payments?range=month' },
+  ];
+  const max = Math.max(1, ...bars.map((b) => b.cents));
+  return (
+    <div className='rounded-3xl border border-gold/25 bg-zinc-950/90 p-6 shadow-[0_0_32px_rgba(212,166,77,0.08)] backdrop-blur-md'>
+      <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Revenue</p>
+      <p className='mt-1 text-sm text-zinc-400'>Click a bar to open payments for that period.</p>
+      <div className='mt-8 flex h-48 items-end justify-between gap-4'>
+        {bars.map((b) => (
+          <Link key={b.label} href={b.href} className='group flex flex-1 flex-col items-center gap-2'>
+            <motion.div
+              whileHover={{ scale: 1.03 }}
+              style={{ height: `${Math.max(12, Math.round((b.cents / max) * 100))}%` }}
+              className='w-full max-w-[72px] min-h-[12px] rounded-t-xl bg-gradient-to-t from-gold/25 via-gold/60 to-gold shadow-[0_0_24px_rgba(212,175,55,0.25)] transition group-hover:shadow-[0_0_36px_rgba(212,175,55,0.4)]'
+            />
+            <span className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>{b.label}</span>
+            <span className='font-mono text-sm font-bold text-gold-soft group-hover:underline'>{money(b.cents)}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PulseChart({ stats }: { stats: Stats }) {
   const max = Math.max(1, stats.jobsToday + stats.activeJobs + stats.completedToday, stats.pendingDeposits);
   const bars = [
@@ -414,6 +442,7 @@ export function SuperAdminDashboard() {
       </div>
 
       <div className='grid gap-4 lg:grid-cols-2'>
+        <RevenueChart stats={stats} />
         <PulseChart stats={stats} />
         <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Longest timer sessions</p>
@@ -442,12 +471,22 @@ export function SuperAdminDashboard() {
               <li className='text-sm text-zinc-500'>No technician completions yet.</li>
             ) : (
               stats.technicianPerformance.map((t) => (
-                <li key={t.id} className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm'>
-                  <span className='text-zinc-200'>{t.full_name ?? 'Technician'}</span>
-                  <span className='font-mono text-gold-soft'>
-                    {t.completed_jobs} done
-                    {t.avg_job_minutes != null ? ` · ~${t.avg_job_minutes}m avg` : ''}
-                  </span>
+                <li key={t.id}>
+                  <Link
+                    href={`/admin/team`}
+                    className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm transition hover:border-gold/40 hover:bg-gold/5'
+                  >
+                    <span className='flex items-center gap-3'>
+                      <span className='flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-xs font-black text-gold-soft'>
+                        {(t.full_name ?? 'T').slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className='text-zinc-200'>{t.full_name ?? 'Technician'}</span>
+                    </span>
+                    <span className='font-mono text-gold-soft'>
+                      {t.completed_jobs} done
+                      {t.avg_job_minutes != null ? ` · ~${t.avg_job_minutes}m` : ''}
+                    </span>
+                  </Link>
                 </li>
               ))
             )}

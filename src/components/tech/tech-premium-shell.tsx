@@ -18,7 +18,8 @@ import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
-import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction, techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/app/(dashboard)/tech/tech-actions';
+import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
@@ -420,14 +421,15 @@ export function TechPremiumShell({
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
             {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-              <form key={`top-${kind}`} action={techSendActiveJobNotificationAction}>
-                <input type='hidden' name='kind' value={kind} />
-                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                <button type='submit' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110'>
-                  {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-                </button>
-              </form>
+              <NotificationSendForm
+                key={`top-${kind}`}
+                kind={kind}
+                appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
+              >
+                {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+              </NotificationSendForm>
             ))}
             <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
@@ -694,14 +696,15 @@ export function TechPremiumShell({
             </Link>
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
             {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-              <form key={kind} action={techSendActiveJobNotificationAction}>
-                <input type='hidden' name='kind' value={kind} />
-                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                <button type='submit' className='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110'>
-                  {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-                </button>
-              </form>
+              <NotificationSendForm
+                key={kind}
+                kind={kind}
+                appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
+              >
+                {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+              </NotificationSendForm>
             ))}
             <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
               Complete Job

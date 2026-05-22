@@ -107,6 +107,30 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
   const vehicleRows = vehicles(job, paymentMeta);
   const fullPaid = paidRows.filter((p) => !str(p.payment_kind).toLowerCase().includes('deposit')).reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
 
+  const techId = str(job.assigned_technician_id);
+  let technicianName: string | undefined;
+  if (techId) {
+    const { data: techProfile } = await admin.from('profiles').select('full_name, email').eq('id', techId).maybeSingle();
+    technicianName = str((techProfile as Row | null)?.full_name) || str((techProfile as Row | null)?.email) || undefined;
+  }
+
+  function formatDuration(start: unknown, end: unknown) {
+    if (!start || !end) return undefined;
+    const ms = new Date(str(end)).getTime() - new Date(str(start)).getTime();
+    if (ms <= 0) return undefined;
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins} min`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  const serviceDuration = formatDuration(job.job_started_at, job.job_completed_at || job.completed_at);
+  const taxCents =
+    typeof pricing.taxCents === 'number'
+      ? pricing.taxCents
+      : typeof pricing.tax_cents === 'number'
+        ? pricing.tax_cents
+        : undefined;
+
   const docProps = {
     receiptNumber,
     paidAt: chicago(payment?.paid_at || payment?.created_at || receipt?.created_at),
@@ -132,6 +156,9 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
     stripeSession: str(payment?.stripe_checkout_session_id || job.stripe_checkout_session_id) || 'Not provided',
     stripePaymentIntent: str(payment?.stripe_payment_intent_id) || 'Not provided',
     paymentRowId: paymentId || 'Not provided',
+    technicianName,
+    serviceDuration,
+    taxAmount: taxCents != null ? money(taxCents) : undefined,
   };
 
   return (

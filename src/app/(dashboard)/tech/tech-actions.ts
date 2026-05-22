@@ -9,9 +9,11 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
-import { resendConfigured, sendResendHtml, sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { resendConfigured, sendResendHtml, twilioConfigured } from '@/lib/email-send';
 import { resendDomainWarning } from '@/lib/resend-config';
 import { glossBossEmailShell } from '@/lib/email-brand';
+import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import { sendCustomerSms } from '@/lib/sms-send';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -685,39 +687,48 @@ export async function techStartJobAction(
   });
 
   const smsOk = await hasSmsConsent(gate.supabase, appointmentId);
-  await writeNotificationOutbox(gate.supabase, {
-    kind: 'job_started',
-    appointment_id: appointmentId,
-    customer_id: (appt as { customer_id?: string | null }).customer_id ?? null,
-    technician_id: gate.userId,
-    channel: 'customer',
-    status: smsOk || appt.guest_email ? 'queued' : 'skipped',
-    payload: {
-      message: `Your Gloss Boss ATX service has started on your ${String((appt as { vehicle_description?: string | null }).vehicle_description ?? 'vehicle')}. You can follow updates in your customer dashboard.`,
-      guest_email: appt.guest_email ?? null,
-      guest_phone: appt.guest_phone ?? null,
-    },
-  });
-
-  void notifyJobStartedPlaceholder(smsOk && appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
+  await notifyJobStartedPlaceholder(smsOk && appt.guest_phone != null ? String(appt.guest_phone) : null, appointmentId, {
     guestEmail: appt.guest_email != null ? String(appt.guest_email) : null,
     guestName: appt.guest_name != null ? String(appt.guest_name) : null,
     serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',
     scheduledIso: appt.scheduled_start != null ? String(appt.scheduled_start) : undefined,
+    customerId: (appt as { customer_id?: string | null }).customer_id ?? null,
+    technicianId: gate.userId,
   });
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
   return null;
 }
 
-export async function techSendActiveJobNotificationAction(formData: FormData): Promise<void> {
+const NOTIFY_LABELS: Record<string, string> = {
+  job_started: 'Job started',
+  last_touches: 'Last touches',
+  payment_link: 'Pay now',
+  review_request: 'Review request',
+  job_completed: 'Job complete',
+  appointment_confirmed: 'Booking confirmation',
+  booking_confirmation: 'Booking confirmation',
+};
+
+export async function techSendActiveJobNotificationAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const gate = await requireTechSupabase();
-  if (!gate.ok) return;
+  if (!gate.ok) return actionErr('Not signed in.');
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const kind = String(formData.get('kind') ?? '').trim();
-  const allowed = new Set(['job_started', 'last_touches', 'payment_link', 'review_request', 'job_completed', 'technician_assigned', 'work_started', 'appointment_reminder', 'appointment_confirmed']);
-  if (!allowed.has(kind) || (!appointmentId && !fallbackBookingId)) return;
+  const allowed = new Set([
+    'job_started',
+    'last_touches',
+    'payment_link',
+    'review_request',
+    'job_completed',
+    'technician_assigned',
+    'work_started',
+    'appointment_reminder',
+    'appointment_confirmed',
+    'booking_confirmation',
+  ]);
+  if (!allowed.has(kind) || (!appointmentId && !fallbackBookingId)) return actionErr('Invalid notification request.');
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
   let vehicle = 'your vehicle';
@@ -773,55 +784,83 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
               ? `Gloss Boss ATX update: Your technician has been assigned for ${vehicle}. Track your appointment here: ${dashboardUrl}`
               : kind === 'appointment_reminder'
                 ? `Gloss Boss ATX reminder: Your appointment for ${vehicle} is coming up. Details: ${dashboardUrl}`
-                : kind === 'appointment_confirmed'
-                  ? `Gloss Boss ATX update: Your appointment for ${vehicle} is confirmed. Details: ${dashboardUrl}`
+                : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
+                  ? `Gloss Boss ATX: Your appointment for ${vehicle} is confirmed. Details: ${dashboardUrl}`
                   : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
-  let sendSummary: Record<string, unknown> = {};
+  let smsResult: Awaited<ReturnType<typeof sendCustomerSms>> | null = null;
+  let emailResult: Awaited<ReturnType<typeof sendResendHtml>> | null = null;
   if (outboxStatus !== 'skipped') {
-    const smsTo = String(guestPhone ?? '').replace(/\D/g, '');
-    const smsResult = smsTo && twilioConfigured() ? await sendTwilioSms({ to: smsTo, body: message }) : null;
-    const emailResult = guestEmail && resendConfigured()
-      ? await sendResendHtml({
-          to: guestEmail,
-          subject: kind === 'payment_link' ? 'Gloss Boss ATX - Payment link' : kind === 'last_touches' ? 'Gloss Boss ATX - Last touches' : 'Gloss Boss ATX - Review request',
-          html: glossBossEmailShell({
-            title: kind === 'payment_link' ? 'Payment link ready' : kind === 'last_touches' ? 'Last touches' : 'Review request',
-            bodyHtml: `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">${escapeEmailText(message)}</p>`,
-          }),
-        })
-      : null;
-    sendSummary = { sms: smsResult, email: emailResult };
+    const smsTo = String(guestPhone ?? '').trim();
+    if (smsTo && twilioConfigured()) {
+      smsResult = await sendCustomerSms({
+        db,
+        kind,
+        template_key: kind,
+        to: smsTo,
+        body: message,
+        appointment_id: appointmentId || null,
+        fallback_booking_id: fallbackBookingId || null,
+        customer_id: customerId,
+        technician_id: gate.userId,
+        extraPayload: { payment_url: paymentUrl, dashboard_url: dashboardUrl },
+      });
+    }
+    if (guestEmail && resendConfigured()) {
+      emailResult = await sendResendHtml({
+        to: guestEmail,
+        subject:
+          kind === 'payment_link'
+            ? 'Gloss Boss ATX - Payment link'
+            : kind === 'last_touches'
+              ? 'Gloss Boss ATX - Last touches'
+              : kind === 'job_started' || kind === 'work_started'
+                ? 'Gloss Boss ATX - Service started'
+                : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
+                  ? 'Gloss Boss ATX - Booking confirmed'
+                  : 'Gloss Boss ATX - Update',
+        html: glossBossEmailShell({
+          title: NOTIFY_LABELS[kind] ?? 'Customer update',
+          bodyHtml: `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">${escapeEmailText(message)}</p>`,
+        }),
+      });
+      await writeNotificationOutbox(db, {
+        kind: `${kind}_email`,
+        appointment_id: appointmentId || null,
+        fallback_booking_id: fallbackBookingId || null,
+        customer_id: customerId,
+        technician_id: gate.userId,
+        channel: 'email',
+        status: emailResult.ok ? 'sent' : 'failed',
+        skipped_reason: emailResult.ok ? null : emailResult.error ?? 'Email send failed.',
+        payload: { message, guest_email: guestEmail, dashboard_url: dashboardUrl, payment_url: paymentUrl },
+      });
+    }
     if (smsResult?.ok === false || emailResult?.ok === false) {
       outboxStatus = 'failed';
       skippedReason = smsResult?.error || emailResult?.error || resendDomainWarning() || 'Provider send failed.';
     } else if (!smsResult && !emailResult) {
       outboxStatus = 'skipped';
-      skippedReason = 'Skipped - configure Twilio/Resend.';
+      skippedReason = 'Skipped — configure Twilio Messaging Service (or From number) and/or Resend.';
     } else {
       outboxStatus = 'sent';
       skippedReason = null;
     }
   }
-  await writeNotificationOutbox(db, {
-    kind,
-    appointment_id: appointmentId || null,
-    fallback_booking_id: fallbackBookingId || null,
-    customer_id: customerId,
-    technician_id: gate.userId,
-    channel: 'customer',
-    status: outboxStatus,
-    skipped_reason: skippedReason,
-    payload: { message, guest_email: guestEmail, guest_phone: guestPhone, dashboard_url: dashboardUrl, payment_url: paymentUrl, send_summary: sendSummary },
-  });
   if (appointmentId) {
     await recordJobTimelineEvent(db, {
       appointmentId,
       eventType: 'checklist_saved',
-      meta: { notification_kind: kind, message, channel: guestEmail || guestPhone ? 'queued' : 'skipped' },
+      meta: { notification_kind: kind, message, status: outboxStatus },
       createdBy: gate.userId,
     });
   }
   revalidatePath('/tech');
+  if (appointmentId) revalidatePath(`/tech/work-orders/${appointmentId}`);
+
+  const label = NOTIFY_LABELS[kind] ?? kind.replace(/_/g, ' ');
+  if (outboxStatus === 'sent') return actionOk(`${label} sent.`);
+  if (outboxStatus === 'skipped') return actionErr(skippedReason ?? `${label} skipped.`);
+  return actionErr(skippedReason ?? `${label} failed.`);
 }
 
 export async function techRecordCashPaymentAction(formData: FormData): Promise<void> {

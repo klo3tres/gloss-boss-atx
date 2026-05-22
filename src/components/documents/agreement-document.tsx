@@ -40,8 +40,8 @@ export function AgreementDocument(props: AgreementDocumentProps) {
       : null;
 
   return (
-    <article className='gb-print-document mx-auto max-w-4xl rounded-3xl border border-gold/30 bg-zinc-950 p-6 text-white print:max-w-none print:rounded-none print:border-zinc-300 print:bg-white print:text-black print:shadow-none'>
-      <header className='border-b border-white/10 pb-5 print:border-zinc-300'>
+    <article className='gb-print-document mx-auto max-w-4xl rounded-3xl border border-gold/30 bg-zinc-950 p-8 text-white print:max-w-none print:rounded-none print:border-zinc-300 print:bg-white print:text-black print:shadow-none'>
+      <header className='border-b border-white/10 pb-6 print:border-zinc-300'>
         <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
           <div className='flex items-start gap-4'>
             <Image src='/branding/gloss-boss-atx-logo.png' alt={GLOSS_BOSS_BRAND_NAME} width={160} height={80} className='h-auto w-36' unoptimized />
@@ -51,7 +51,12 @@ export function AgreementDocument(props: AgreementDocumentProps) {
               <p className='mt-1 text-xs text-zinc-500 print:text-zinc-600'>{GLOSS_BOSS_SUPPORT_EMAIL}</p>
             </div>
           </div>
-          <p className='text-sm text-zinc-400 print:text-zinc-700'>Signed {props.signedAt}</p>
+          <div className='text-right'>
+            <span className='inline-block rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-200 print:border-zinc-400 print:bg-zinc-100 print:text-zinc-800'>
+              Immutable legal snapshot
+            </span>
+            <p className='mt-3 text-sm text-zinc-400 print:text-zinc-700'>Signed {props.signedAt}</p>
+          </div>
         </div>
       </header>
 
@@ -75,14 +80,14 @@ export function AgreementDocument(props: AgreementDocumentProps) {
         </div>
       </section>
 
-      <section className='mt-5 rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Legal terms</p>
-        <div className='mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200 print:text-zinc-900'>
+      <section className='mt-6 rounded-2xl border border-white/10 bg-black/30 p-5 print:border-zinc-300 print:bg-white'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Legal terms (full text as signed)</p>
+        <div className='mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200 print:text-zinc-900'>
           {body || 'Agreement text not available in snapshot.'}
         </div>
       </section>
 
-      <section className='mt-5 grid gap-4 md:grid-cols-2'>
+      <section className='gb-page-break mt-6 grid gap-4 md:grid-cols-2'>
         <div className='rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
           <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Signature</p>
           <p className='mt-2 font-serif text-2xl text-white print:text-black'>{props.signerLegalName}</p>

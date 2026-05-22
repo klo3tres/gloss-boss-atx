@@ -91,7 +91,7 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
         </Link>
       </div>
 
-      <PrintDocumentActions />
+      <PrintDocumentActions variant='agreement' />
 
       <AgreementDocument
         title={fields.title}

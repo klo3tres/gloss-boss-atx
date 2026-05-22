@@ -4,8 +4,9 @@ import {
   sendBusinessNewBookingEmailIfConfigured,
   sendJobCompletedEmailIfConfigured,
   sendJobStartedEmailIfConfigured,
-  sendTwilioSms,
 } from '@/lib/email-send';
+import { sendCustomerSms } from '@/lib/sms-send';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 /**
  * Safe notification hooks — never throw; no-op with logs when providers are missing.
@@ -13,12 +14,19 @@ import {
 
 export async function notifyBookingConfirmationQueued(params: {
   toEmail: string;
+  toPhone?: string | null;
   guestName: string;
   whenIso: string;
   totalCents: number;
   depositCents: number;
   vehicles: string;
+  appointmentId?: string;
 }): Promise<void> {
+  const whenLabel = new Date(params.whenIso).toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
   try {
     await sendBookingConfirmationEmailIfConfigured({
       to: params.toEmail.trim().toLowerCase(),
@@ -29,24 +37,56 @@ export async function notifyBookingConfirmationQueued(params: {
       vehicles: params.vehicles,
     });
   } catch (e) {
-    console.warn('[notify] booking_confirmation', e);
+    console.warn('[notify] booking_confirmation email', e);
+  }
+  try {
+    const phone = String(params.toPhone ?? '').trim();
+    if (phone) {
+      const admin = tryCreateAdminSupabase();
+      await sendCustomerSms({
+        db: admin,
+        kind: 'booking_confirmation',
+        template_key: 'booking_confirmation',
+        to: phone,
+        appointment_id: params.appointmentId ?? null,
+        body: `Gloss Boss ATX: Booking confirmed for ${whenLabel}. ${params.vehicles.slice(0, 80)}. Deposit $${(params.depositCents / 100).toFixed(2)}. Total $${(params.totalCents / 100).toFixed(2)}.`,
+        extraPayload: { guest_name: params.guestName, when_iso: params.whenIso },
+      });
+    }
+  } catch (e) {
+    console.warn('[notify] booking_confirmation SMS', e);
   }
 }
 
 export async function notifyJobStartedPlaceholder(
   customerPhone: string | null | undefined,
   apptId: string,
-  opts?: { guestEmail?: string | null; guestName?: string | null; serviceLabel?: string; scheduledIso?: string },
+  opts?: {
+    guestEmail?: string | null;
+    guestName?: string | null;
+    serviceLabel?: string;
+    scheduledIso?: string;
+    customerId?: string | null;
+    technicianId?: string | null;
+  },
 ): Promise<void> {
+  const vehicleRef = apptId.slice(0, 8);
   try {
     const digits = String(customerPhone ?? '').replace(/\D/g, '');
     if (digits.length >= 10) {
-      await sendTwilioSms({
+      const admin = tryCreateAdminSupabase();
+      await sendCustomerSms({
+        db: admin,
+        kind: 'job_started',
+        template_key: 'job_started',
         to: digits,
-        body: `Gloss Boss ATX: Your detail has started. Reference ${apptId.slice(0, 8)}… We’ll update you when it wraps.`,
+        appointment_id: apptId,
+        customer_id: opts?.customerId ?? null,
+        technician_id: opts?.technicianId ?? null,
+        body: `Gloss Boss ATX: Your detail has started (${opts?.serviceLabel ?? 'mobile detailing'}). Ref ${vehicleRef}. Track progress in your dashboard.`,
       });
     } else {
-      console.info('[notify] job_started SMS skipped (no valid phone)', apptId.slice(0, 8));
+      console.info('[notify] job_started SMS skipped (no valid phone)', vehicleRef);
     }
   } catch (e) {
     console.warn('[notify] job_started SMS', e);
@@ -66,17 +106,31 @@ export async function notifyJobStartedPlaceholder(
 export async function notifyJobCompletedPlaceholder(
   customerPhone: string | null | undefined,
   apptId: string,
-  opts?: { guestEmail?: string | null; guestName?: string | null; serviceLabel?: string },
+  opts?: {
+    guestEmail?: string | null;
+    guestName?: string | null;
+    serviceLabel?: string;
+    customerId?: string | null;
+    technicianId?: string | null;
+  },
 ): Promise<void> {
+  const vehicleRef = apptId.slice(0, 8);
   try {
     const digits = String(customerPhone ?? '').replace(/\D/g, '');
     if (digits.length >= 10) {
-      await sendTwilioSms({
+      const admin = tryCreateAdminSupabase();
+      await sendCustomerSms({
+        db: admin,
+        kind: 'job_completed',
+        template_key: 'job_completed',
         to: digits,
-        body: `Gloss Boss ATX: Your detail is complete. Thanks for choosing us — reference ${apptId.slice(0, 8)}… Photos may be available in your dashboard.`,
+        appointment_id: apptId,
+        customer_id: opts?.customerId ?? null,
+        technician_id: opts?.technicianId ?? null,
+        body: `Gloss Boss ATX: Your detail is complete. Thanks for choosing us — ref ${vehicleRef}. Photos may be in your dashboard.`,
       });
     } else {
-      console.info('[notify] job_completed SMS skipped (no valid phone)', apptId.slice(0, 8));
+      console.info('[notify] job_completed SMS skipped (no valid phone)', vehicleRef);
     }
   } catch (e) {
     console.warn('[notify] job_completed SMS', e);

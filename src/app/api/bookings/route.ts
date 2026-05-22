@@ -383,11 +383,13 @@ export async function POST(request: Request) {
 
     void notifyBookingConfirmationQueued({
       toEmail: emailNorm,
+      toPhone: phoneDigits,
       guestName: guestName.trim(),
       whenIso: scheduled.toISOString(),
       totalCents: priced.finalTotalCents,
       depositCents: depositAmountCents,
       vehicles: vehicleDescriptionJoined,
+      appointmentId: appointment.id,
     }).catch(() => {});
 
     void notifyBusinessNewBookingQueued({

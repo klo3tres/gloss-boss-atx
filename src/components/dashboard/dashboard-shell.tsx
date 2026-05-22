@@ -190,7 +190,7 @@ export function DashboardShell({
           {NavLinks}
         </aside>
 
-        <section className='order-1 min-w-0 flex-1 space-y-6 lg:order-2'>
+        <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
           <header className='gb-no-print overflow-hidden rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-950 p-5 shadow-[0_0_40px_rgba(212,166,77,0.10)]'>
             <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
             <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>

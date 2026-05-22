@@ -1,5 +1,6 @@
 import Image from 'next/image';
-import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_LOGO_URL, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
+import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
+import { PremiumBadge } from '@/components/ui/premium';
 
 export type ReceiptDocumentVehicle = {
   name: string;
@@ -13,6 +14,8 @@ export type ReceiptDocumentProps = {
   paidAt: string;
   serviceAt?: string;
   completedAt?: string;
+  serviceDuration?: string;
+  technicianName?: string;
   method: string;
   status: string;
   customerName: string;
@@ -29,6 +32,7 @@ export type ReceiptDocumentProps = {
   cashPaid: string;
   fullPaid: string;
   remainingBalance: string;
+  taxAmount?: string;
   finalTotal: string;
   stripeSession: string;
   stripePaymentIntent: string;
@@ -36,96 +40,141 @@ export type ReceiptDocumentProps = {
 };
 
 export function ReceiptDocument(props: ReceiptDocumentProps) {
+  const paid = ['paid', 'succeeded', 'full_paid', 'comped'].some((s) => props.status.toLowerCase().includes(s));
+
   return (
-    <article className='gb-print-document mx-auto max-w-4xl rounded-3xl border border-gold/30 bg-zinc-950 p-6 text-white shadow-[0_0_50px_rgba(212,166,77,0.12)] print:max-w-none print:rounded-none print:border-zinc-300 print:bg-white print:text-black print:shadow-none'>
-      <header className='flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-start sm:justify-between print:border-zinc-300'>
-        <div className='flex items-start gap-4'>
-          <Image src='/branding/gloss-boss-atx-logo.png' alt={GLOSS_BOSS_BRAND_NAME} width={160} height={80} className='h-auto w-36 print:w-32' unoptimized />
-          <div>
-            <p className='text-xs font-black uppercase tracking-[0.35em] text-gold-soft print:text-black'>{GLOSS_BOSS_BRAND_NAME}</p>
-            <h1 className='mt-2 text-3xl font-black uppercase text-white print:text-black'>Receipt</h1>
-            <p className='mt-1 text-sm text-zinc-400 print:text-zinc-700'>Luxury mobile detailing · Austin, TX</p>
-            <p className='mt-1 text-xs text-zinc-500 print:text-zinc-600'>{GLOSS_BOSS_SUPPORT_EMAIL}</p>
+    <article className='gb-print-document mx-auto max-w-4xl overflow-hidden rounded-3xl border border-gold/25 bg-white text-zinc-900 shadow-[0_0_60px_rgba(212,175,55,0.15)] print:shadow-none'>
+      <header className='border-b-4 border-gold bg-gradient-to-r from-black via-zinc-900 to-black px-8 py-8 text-white print:bg-black'>
+        <div className='flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex items-center gap-5'>
+            <Image src='/branding/gloss-boss-atx-logo.png' alt={GLOSS_BOSS_BRAND_NAME} width={140} height={70} className='h-auto w-32' unoptimized />
+            <div>
+              <p className='text-xs font-black uppercase tracking-[0.35em] text-gold-soft'>Invoice</p>
+              <h1 className='text-2xl font-black'>{GLOSS_BOSS_BRAND_NAME}</h1>
+              <p className='text-sm text-zinc-400'>Luxury mobile detailing · Austin, TX</p>
+            </div>
           </div>
-        </div>
-        <div className='sm:text-right'>
-          <p className='font-mono text-lg font-black text-white print:text-black'>{props.receiptNumber}</p>
-          <p className='text-sm text-zinc-400 print:text-zinc-700'>Paid {props.paidAt}</p>
-          {props.serviceAt ? <p className='text-sm text-zinc-400 print:text-zinc-700'>Service {props.serviceAt}</p> : null}
-          {props.completedAt ? <p className='text-sm text-zinc-400 print:text-zinc-700'>Completed {props.completedAt}</p> : null}
-          <p className='text-sm text-zinc-400 print:text-zinc-700'>
-            {props.method} · {props.status}
-          </p>
+          <div className='text-right'>
+            <p className='font-mono text-2xl font-black text-gold-soft'>{props.receiptNumber}</p>
+            <PremiumBadge tone={paid ? 'emerald' : 'amber'}>{paid ? 'Paid in full' : props.status}</PremiumBadge>
+          </div>
         </div>
       </header>
 
-      <div className='mt-6 grid gap-4 md:grid-cols-2'>
-        <section className='rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
-          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Customer</p>
-          <p className='mt-2 text-lg font-bold text-white print:text-black'>{props.customerName}</p>
-          <p className='text-sm text-zinc-400 print:text-zinc-700'>{props.customerEmail}</p>
-          <p className='text-sm text-zinc-400 print:text-zinc-700'>{props.customerPhone}</p>
-          <p className='mt-2 text-sm text-zinc-300 print:text-zinc-700'>{props.serviceAddress}</p>
+      <div className='grid gap-0 border-b border-zinc-200 sm:grid-cols-2'>
+        <section className='border-b border-zinc-200 p-6 sm:border-b-0 sm:border-r'>
+          <p className='text-[10px] font-black uppercase tracking-widest text-zinc-500'>Bill to</p>
+          <p className='mt-2 text-lg font-bold'>{props.customerName}</p>
+          <p className='text-sm text-zinc-600'>{props.customerEmail}</p>
+          <p className='text-sm text-zinc-600'>{props.customerPhone}</p>
+          <p className='mt-3 text-sm text-zinc-700'>{props.serviceAddress}</p>
         </section>
-        <section className='rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
-          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Payment IDs</p>
-          <p className='mt-2 break-all font-mono text-xs text-zinc-300 print:text-zinc-700'>Stripe session: {props.stripeSession}</p>
-          <p className='mt-1 break-all font-mono text-xs text-zinc-300 print:text-zinc-700'>Payment intent: {props.stripePaymentIntent}</p>
-          <p className='mt-1 break-all font-mono text-xs text-zinc-300 print:text-zinc-700'>Payment row: {props.paymentRowId}</p>
+        <section className='p-6'>
+          <dl className='space-y-2 text-sm'>
+            <div className='flex justify-between gap-4'>
+              <dt className='text-zinc-500'>Paid</dt>
+              <dd className='font-semibold'>{props.paidAt}</dd>
+            </div>
+            {props.serviceAt ? (
+              <div className='flex justify-between gap-4'>
+                <dt className='text-zinc-500'>Service</dt>
+                <dd>{props.serviceAt}</dd>
+              </div>
+            ) : null}
+            {props.completedAt ? (
+              <div className='flex justify-between gap-4'>
+                <dt className='text-zinc-500'>Completed</dt>
+                <dd>{props.completedAt}</dd>
+              </div>
+            ) : null}
+            {props.serviceDuration ? (
+              <div className='flex justify-between gap-4'>
+                <dt className='text-zinc-500'>Duration</dt>
+                <dd>{props.serviceDuration}</dd>
+              </div>
+            ) : null}
+            {props.technicianName ? (
+              <div className='flex justify-between gap-4'>
+                <dt className='text-zinc-500'>Technician</dt>
+                <dd>{props.technicianName}</dd>
+              </div>
+            ) : null}
+            <div className='flex justify-between gap-4'>
+              <dt className='text-zinc-500'>Method</dt>
+              <dd>{props.method}</dd>
+            </div>
+          </dl>
         </section>
       </div>
 
-      <section className='mt-5 rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Vehicles / Services</p>
-        <div className='mt-3 grid gap-3'>
-          {props.vehicles.map((v, i) => (
-            <div key={`${v.name}-${i}`} className='rounded-xl border border-white/10 bg-black/30 p-3 print:border-zinc-300 print:bg-white'>
-              <p className='font-bold text-white print:text-black'>
-                Vehicle {i + 1}: {v.name}
-              </p>
-              <p className='text-sm text-zinc-400 print:text-zinc-700'>
-                {v.color} · {v.service} · {v.price}
-              </p>
+      <section className='p-6'>
+        <table className='gb-invoice-table w-full text-sm'>
+          <thead>
+            <tr className='border-b-2 border-zinc-800 text-left text-[10px] font-black uppercase tracking-wider'>
+              <th>Vehicle / service</th>
+              <th>Details</th>
+              <th className='text-right'>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {props.vehicles.map((v, i) => (
+              <tr key={i} className='border-b border-zinc-200'>
+                <td className='font-semibold'>{v.name}</td>
+                <td className='text-zinc-600'>
+                  {v.service} · {v.color}
+                </td>
+                <td className='text-right font-mono'>{v.price}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className='border-t border-zinc-200 bg-zinc-50 p-6'>
+        <div className='ml-auto max-w-sm space-y-2 text-sm'>
+          <div className='flex justify-between'>
+            <span>Subtotal</span>
+            <span className='font-mono'>{props.baseTotal}</span>
+          </div>
+          <div className='flex justify-between text-zinc-600'>
+            <span>Online discount</span>
+            <span className='font-mono'>{props.onlineDiscount}</span>
+          </div>
+          <div className='flex justify-between text-zinc-600'>
+            <span>Multi-car</span>
+            <span className='font-mono'>{props.multiCarDiscount}</span>
+          </div>
+          <div className='flex justify-between text-zinc-600'>
+            <span>{props.promoLabel}</span>
+            <span className='font-mono'>{props.promoDiscount}</span>
+          </div>
+          {props.taxAmount ? (
+            <div className='flex justify-between text-zinc-600'>
+              <span>Tax</span>
+              <span className='font-mono'>{props.taxAmount}</span>
             </div>
-          ))}
+          ) : null}
+          <div className='flex justify-between border-t border-zinc-300 pt-3 text-lg font-black'>
+            <span>Total due</span>
+            <span className='font-mono text-gold'>{props.finalTotal}</span>
+          </div>
+          <div className='flex justify-between text-xs text-zinc-500'>
+            <span>Deposit · Cash · Paid</span>
+            <span>
+              {props.depositPaid} · {props.cashPaid} · {props.fullPaid}
+            </span>
+          </div>
+          <div className='flex justify-between font-semibold'>
+            <span>Balance</span>
+            <span className='font-mono'>{props.remainingBalance}</span>
+          </div>
         </div>
       </section>
 
-      <section className='mt-5 rounded-2xl border border-white/10 bg-black/30 p-4 print:border-zinc-300 print:bg-white'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Pricing Breakdown</p>
-        <div className='mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2 print:text-zinc-800'>
-          <p>
-            Base total: <strong>{props.baseTotal}</strong>
-          </p>
-          <p>
-            Online booking discount: <strong>{props.onlineDiscount}</strong>
-          </p>
-          <p>
-            Multi-car discount: <strong>{props.multiCarDiscount}</strong>
-          </p>
-          <p>
-            Promo / offer: <strong>{props.promoLabel}</strong>
-          </p>
-          <p>
-            Offer discount: <strong>{props.promoDiscount}</strong>
-          </p>
-          <p>
-            Deposit paid: <strong>{props.depositPaid}</strong>
-          </p>
-          <p>
-            Cash paid: <strong>{props.cashPaid}</strong>
-          </p>
-          <p>
-            Full paid: <strong>{props.fullPaid}</strong>
-          </p>
-          <p>
-            Remaining balance: <strong>{props.remainingBalance}</strong>
-          </p>
-          <p className='text-lg text-white sm:col-span-2 print:text-black'>
-            Final total: <strong>{props.finalTotal}</strong>
-          </p>
-        </div>
-      </section>
+      <footer className='border-t border-zinc-200 px-6 py-4 text-center text-xs text-zinc-500'>
+        <p>{GLOSS_BOSS_SUPPORT_EMAIL} · Stripe {props.stripePaymentIntent !== 'Not provided' ? props.stripePaymentIntent.slice(0, 20) + '…' : '—'}</p>
+        <p className='mt-1 font-mono'>Payment ref {props.paymentRowId}</p>
+      </footer>
     </article>
   );
 }

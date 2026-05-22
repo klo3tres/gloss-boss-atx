@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 type Row = Record<string, unknown>;
 
 const defaults = [
+  ['booking_confirmation', 'Booking Confirmation', 'Gloss Boss ATX: Your appointment is confirmed for {{appointment_time}}. {{vehicle}}'],
   ['job_started', 'Job Started', 'Gloss Boss ATX: Your {{service}} has started for {{vehicle}}.'],
   ['last_touches', 'Last Touches', 'Gloss Boss ATX: We are doing the last touches on {{vehicle}}.'],
   ['payment_link', 'Send Pay Now', 'Gloss Boss ATX: Your balance is ready. Pay here: {{payment_link}}'],

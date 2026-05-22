@@ -171,10 +171,17 @@ export function LeadsAdminClient({
                   return (
                     <li
                       key={id}
-                      className='rounded-xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/50 p-2.5 text-[11px] text-zinc-300 shadow-sm transition hover:border-gold/25 hover:shadow-[0_0_12px_rgba(212,175,55,0.08)]'
+                      className='gb-glass rounded-2xl border border-white/10 p-4 text-sm text-zinc-300 transition hover:border-gold/30 hover:shadow-[0_0_20px_rgba(212,175,55,0.1)]'
                     >
+                      <div className='flex items-start gap-3'>
+                        <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold/30 to-gold/5 text-sm font-black text-gold-soft'>
+                          {String(r.name ?? '?').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className='min-w-0 flex-1'>
                       <p className='font-bold text-white'>{String(r.name ?? '')}</p>
-                      <p className='mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-gold-soft/90'>{st.replace(/_/g, ' ')}</p>
+                      <span className='mt-1 inline-block rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-gold-soft'>
+                        {st.replace(/_/g, ' ')}
+                      </span>
                       {tid ? (
                         <p className='text-[9px] text-zinc-400'>
                           Tech: <span className='text-amber-100/90'>{techLabel}</span>
@@ -221,6 +228,8 @@ export function LeadsAdminClient({
                           Apply
                         </button>
                       </form>
+                        </div>
+                      </div>
                     </li>
                   );
                 })}
@@ -234,31 +243,68 @@ export function LeadsAdminClient({
         </div>
       ) : null}
 
-      <ul className={`space-y-4 ${view === 'list' ? '' : 'hidden'}`}>
+      <ul className={`space-y-6 ${view === 'list' ? '' : 'hidden'}`}>
         {leads.map((r) => {
           const id = String(r.id);
           const name = String(r.name ?? '');
           const assigned = r.assigned_technician_id != null ? String(r.assigned_technician_id) : '';
           const inPool = Boolean(r.in_pool);
           const evs = eventsByLead[id] ?? [];
+          const status = String(r.status ?? 'new');
+          const notesPreview = r.notes != null ? String(r.notes).trim() : '';
           return (
-            <li key={id} id={`lead-${id}`} className='rounded-2xl border border-white/10 bg-zinc-950 p-4 text-sm scroll-mt-24'>
-              <div className='flex flex-wrap items-start justify-between gap-3'>
-                <div>
-                  <p className='text-lg font-bold text-white'>{name}</p>
-                  <p className='text-xs text-zinc-500'>
-                    {String(r.status)} · attempts {String(r.contact_attempts ?? 0)} ·{' '}
-                    {r.created_at ? new Date(String(r.created_at)).toLocaleString() : ''}
-                  </p>
-                  {r.email ? <p className='text-zinc-400'>{String(r.email)}</p> : null}
-                  {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
-                  {r.vehicle ? <p className='text-xs text-zinc-500'>Vehicle: {String(r.vehicle)}</p> : null}
-                  <p className='mt-2 text-xs text-zinc-500'>
-                    Pool: {inPool ? 'open (techs can claim)' : 'closed'} · Assigned:{' '}
-                    {assigned ? <span className='text-amber-100/90'>{techById[assigned] ?? `${assigned.slice(0, 8)}…`}</span> : '—'}
-                  </p>
+            <li key={id} id={`lead-${id}`} className='gb-glass scroll-mt-24 rounded-3xl border border-gold/20 p-6 text-sm shadow-[0_0_32px_rgba(0,0,0,0.35)]'>
+              <div className='flex flex-wrap items-start justify-between gap-6'>
+                <div className='flex min-w-0 flex-1 gap-4'>
+                  <div className='flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-gold/35 to-gold/5 text-lg font-black text-gold-soft'>
+                    {name.slice(0, 2).toUpperCase() || '?'}
+                  </div>
+                  <div className='min-w-0 flex-1'>
+                    <p className='text-xl font-black text-white'>{name}</p>
+                    <div className='mt-2 flex flex-wrap gap-2'>
+                      <span className='rounded-full border border-gold/35 bg-gold/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-gold-soft'>
+                        {status.replace(/_/g, ' ')}
+                      </span>
+                      {inPool ? (
+                        <span className='rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase text-cyan-200'>
+                          Open pool
+                        </span>
+                      ) : null}
+                      <span className='rounded-full border border-white/10 px-2.5 py-0.5 text-[10px] text-zinc-400'>
+                        {String(r.contact_attempts ?? 0)} contacts
+                      </span>
+                    </div>
+                    {r.email ? <p className='mt-3 text-zinc-300'>{String(r.email)}</p> : null}
+                    {r.phone ? <p className='text-zinc-400'>{String(r.phone)}</p> : null}
+                    {r.vehicle ? <p className='mt-1 text-xs text-zinc-500'>Vehicle · {String(r.vehicle)}</p> : null}
+                    {notesPreview ? (
+                      <p className='mt-3 line-clamp-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs italic text-zinc-400'>
+                        {notesPreview}
+                      </p>
+                    ) : null}
+                    <p className='mt-2 text-[10px] text-zinc-600'>
+                      Created {r.created_at ? new Date(String(r.created_at)).toLocaleString() : '—'} · Tech{' '}
+                      {assigned ? techById[assigned] ?? assigned.slice(0, 8) : 'unassigned'}
+                    </p>
+                    {evs.length > 0 ? (
+                      <div className='mt-4 border-t border-white/10 pt-4'>
+                        <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Contact timeline</p>
+                        <ul className='mt-2 space-y-2'>
+                          {evs.slice(0, 4).map((e) => (
+                            <li key={e.id} className='flex gap-3 text-xs text-zinc-400'>
+                              <span className='mt-1 h-2 w-2 shrink-0 rounded-full bg-gold/60' aria-hidden />
+                              <span>
+                                <span className='text-zinc-300'>{new Date(e.created_at).toLocaleString()}</span> — {e.action}
+                                {e.technician_id ? ` · ${techById[e.technician_id] ?? e.technician_id.slice(0, 8)}` : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <div className='flex flex-col gap-2'>
+                <div className='flex shrink-0 flex-col gap-2 rounded-2xl border border-white/10 bg-black/30 p-3'>
                   <form
                     className='flex flex-wrap items-end gap-2'
                     action={async (fd) => {

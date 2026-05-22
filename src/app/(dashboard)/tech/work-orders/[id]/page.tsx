@@ -3,14 +3,10 @@ import { notFound } from 'next/navigation';
 import { DashboardShell, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { TechJobWorkspace } from '../../tech-job-workspace';
-import { TechTimerControls } from '../../tech-timer-controls';
-import { WorkOrderPhotoUpload } from '../../work-order-photo-upload';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '../../work-order-gallery';
-import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction, techSendActiveJobNotificationAction } from '../../tech-actions';
+import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
-import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
+import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -352,255 +348,82 @@ export default async function TechWorkOrderDetailPage({
     uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? 'Unknown',
   }));
 
+  const consoleData: WorkOrderConsoleData = {
+    id,
+    isFallback,
+    shellBackHref: shellRole === 'admin' ? '/admin/work-orders' : '/tech',
+    guestName: str(row.guest_name) || 'Customer',
+    guestPhone: str(row.guest_phone),
+    guestEmail: str(row.guest_email),
+    serviceLabel: label(row.service_slug),
+    statusLabel: label(row.status) || 'In progress',
+    fullAddress,
+    serviceAddress: str(row.service_address),
+    serviceCity: str(row.service_city),
+    serviceState: str(row.service_state) || 'TX',
+    serviceZip: str(row.service_zip),
+    mapsHref: fullAddress ? mapsHref(fullAddress) : '#',
+    baseTotal: money(row.base_price_cents),
+    balanceDue: money(row.balance_due_cents),
+    paymentStatus: label(row.payment_status),
+    paymentComplete,
+    agreementSigned,
+    agreementCaptureHref,
+    agreementDetailHref,
+    requirements,
+    timeline: timeline.map((t) => ({
+      id: str(t.id),
+      title: label(t.event_type),
+      time: t.created_at ? chicago(t.created_at) : '—',
+    })),
+    notes: notes.map((n) => ({
+      id: str(n.id),
+      vehicleLabel: `Vehicle ${Number(n.vehicle_index ?? -1) >= 0 ? Number(n.vehicle_index) + 1 : 'All'}`,
+      time: n.created_at ? chicago(n.created_at) : '—',
+      body: [n.internal_notes, n.notes, n.before_notes, n.after_notes, n.damage_notes, n.upsell_notes].map((t) => str(t).trim()).filter(Boolean).join('\n'),
+    })),
+    outbox: outbox.map((n) => ({
+      id: str(n.id),
+      kind: label(n.kind),
+      status: label(n.status),
+      time: n.created_at ? chicago(n.created_at) : '—',
+      skipped: str(n.skipped_reason) || undefined,
+    })),
+    beforePhotos: toGallery(before),
+    afterPhotos: toGallery(after),
+    vehicles: vehicles.map((v, i) => {
+      const p = vehicleParts(v);
+      const vehicleLabel = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
+      return {
+        year: p.year === 'Not provided' ? '' : p.year,
+        make: p.make === 'Not provided' ? '' : p.make,
+        model: p.model === 'Not provided' ? '' : p.model,
+        description: str(v.vehicle_description || v.description),
+        color: str(v.vehicle_color || v.color),
+        service: str(v.service_slug || row.service_slug),
+        vehicleClass: str(v.vehicle_class || row.vehicle_class),
+        label: vehicleLabel,
+        partsLine: `${p.year} · ${p.make} · ${p.model}`,
+      };
+    }),
+    job,
+    hasIntake: Boolean(row.intake_completed_at) || isFallback,
+    workflowSessionId: workflowIds[0] ?? null,
+    openTimerId: str((openTimer.data as Row | null)?.id),
+    openTimerStartedAt: str((openTimer.data as Row | null)?.started_at || (openTimer.data as Row | null)?.created_at),
+    vehicleForms: { defaultService: str(row.service_slug), defaultClass: str(row.vehicle_class) },
+  };
+
   return (
-    <DashboardShell title='Active work order' subtitle='Photos, notes, checklist, payment, timer, and completion controls.' role={shellRole}>
-      <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-950 p-5 shadow-[0_0_45px_rgba(212,166,77,0.12)]'>
-        <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-          <div>
-            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>{label(row.status) || 'In Progress'}</p>
-            <h1 className='mt-2 text-2xl font-black uppercase text-white'>{str(row.guest_name) || 'Not provided'}</h1>
-            <p className='mt-1 text-sm text-zinc-400'>{label(row.service_slug)} · {str(row.vehicle_description) || 'Vehicle not provided'}</p>
-            <p className='mt-2 text-sm text-zinc-500'>{money(row.base_price_cents)} total · {money(row.balance_due_cents)} balance · {str(row.payment_status) || 'payment pending'}</p>
-          </div>
-          <div className='flex flex-wrap gap-2'>
-            {str(row.guest_phone) ? <a href={`tel:${str(row.guest_phone)}`} className='rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black'>Call</a> : null}
-            {fullAddress ? <a href={mapsHref(fullAddress)} target='_blank' rel='noreferrer' className='rounded-xl border border-gold/35 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft'>Directions</a> : null}
-            <Link href='/tech' className='rounded-xl border border-white/10 px-4 py-3 text-xs font-black uppercase tracking-wider text-zinc-300'>Back to tech</Link>
-          </div>
-        </div>
-      </section>
-
-      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
-        <div className='rounded-3xl border border-gold/20 bg-white/[0.035] p-4 shadow-[0_0_28px_rgba(212,166,77,0.08)] backdrop-blur'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Customer</p>
-          <p className='mt-3 text-lg font-black text-white'>{str(row.guest_name) || 'Not provided'}</p>
-          <p className='text-xs text-zinc-400'>{str(row.guest_phone) || 'No phone'}</p>
-          <p className='text-xs text-zinc-500'>{str(row.guest_email) || 'No email'}</p>
-        </div>
-        <div className='rounded-3xl border border-gold/20 bg-white/[0.035] p-4 shadow-[0_0_28px_rgba(212,166,77,0.08)] backdrop-blur'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Service</p>
-          <p className='mt-3 text-lg font-black text-white'>{label(row.service_slug)}</p>
-          <p className='text-xs text-zinc-400'>{vehicles.length} vehicle{vehicles.length === 1 ? '' : 's'} in scope</p>
-          <p className='text-xs text-zinc-500'>{label(row.status)}</p>
-        </div>
-        <div className='rounded-3xl border border-gold/20 bg-white/[0.035] p-4 shadow-[0_0_28px_rgba(212,166,77,0.08)] backdrop-blur'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Address</p>
-          <p className='mt-3 text-sm font-bold text-white'>{fullAddress || 'Not provided'}</p>
-          {fullAddress ? <a href={mapsHref(fullAddress)} target='_blank' rel='noreferrer' className='mt-2 inline-block text-xs font-bold uppercase text-gold-soft underline'>Open directions</a> : null}
-        </div>
-        <div className='rounded-3xl border border-gold/20 bg-white/[0.035] p-4 shadow-[0_0_28px_rgba(212,166,77,0.08)] backdrop-blur'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Payment</p>
-          <p className='mt-3 text-lg font-black text-white'>{money(row.balance_due_cents)} due</p>
-          <p className='text-xs text-zinc-400'>{label(row.payment_status)}</p>
-          <p className={`mt-2 text-xs font-bold ${paymentComplete ? 'text-emerald-300' : 'text-amber-200'}`}>{paymentComplete ? 'Ready' : 'Needs payment'}</p>
-        </div>
-      </section>
-
-      <section className='grid gap-4 lg:grid-cols-3'>
-        <div className='rounded-3xl border border-white/10 bg-zinc-950/80 p-4'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Agreement</p>
-          <p className={`mt-3 text-sm font-bold ${agreementSigned ? 'text-emerald-300' : 'text-amber-200'}`}>{agreementSigned ? 'Agreement Signed' : 'Agreement Missing'}</p>
-          <div className='mt-3 flex flex-wrap gap-2'>
-            <Link href={agreementCaptureHref} className='rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Capture Agreement</Link>
-            <Link href={agreementDetailHref} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200'>View Agreement</Link>
-            <Link href={agreementDetailHref} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200'>Print / PDF</Link>
-          </div>
-        </div>
-        <div className='rounded-3xl border border-white/10 bg-zinc-950/80 p-4'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Completion Requirements</p>
-          <ul className='mt-3 space-y-2'>
-            {requirements.map((r) => (
-              <li key={r.label} className='flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-xs'>
-                <span className='text-zinc-300'>{r.label}</span>
-                <span className={r.ok ? 'text-emerald-300' : 'text-red-300'}>{r.ok ? 'Ready' : 'Missing'}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className='rounded-3xl border border-white/10 bg-zinc-950/80 p-4'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Timeline</p>
-          <ul className='mt-3 max-h-44 space-y-2 overflow-y-auto text-xs'>
-            {timeline.length === 0 ? <li className='text-zinc-500'>No timeline events yet.</li> : null}
-            {timeline.slice(0, 8).map((t) => (
-              <li key={str(t.id)} className='rounded-xl border border-white/10 bg-black/35 px-3 py-2'>
-                <p className='font-bold text-white'>{label(t.event_type)}</p>
-                <p className='text-[10px] text-zinc-500'>{t.created_at ? chicago(t.created_at) : 'No timestamp'}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className='grid gap-4 lg:grid-cols-2'>
-        <form action={updateWorkOrderDetailsAction} className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
-          <input type='hidden' name='id' value={id} />
-          <input type='hidden' name='source' value={isFallback ? 'fallback' : 'appointment'} />
-          <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Customer + address</p>
-          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <input name='guestName' defaultValue={str(row.guest_name)} placeholder='Customer name' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <input name='guestPhone' defaultValue={str(row.guest_phone)} placeholder='Phone' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <input name='guestEmail' defaultValue={str(row.guest_email)} placeholder='Email' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white sm:col-span-2' />
-            <input name='serviceAddress' defaultValue={str(row.service_address)} placeholder='Service address' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white sm:col-span-2' />
-            <input name='serviceCity' defaultValue={str(row.service_city)} placeholder='City' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <div className='grid grid-cols-2 gap-2'>
-              <input name='serviceState' defaultValue={str(row.service_state) || 'TX'} placeholder='State' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-              <input name='serviceZip' defaultValue={str(row.service_zip)} placeholder='ZIP' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            </div>
-          </div>
-          <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save customer/address</button>
-        </form>
-
-        <WorkOrderVehiclesForm
-          id={id}
-          source={isFallback ? 'fallback' : 'appointment'}
-          defaultService={str(row.service_slug)}
-          defaultClass={str(row.vehicle_class)}
-          saveAction={updateWorkOrderVehiclesAction}
-          initialVehicles={vehicles.map((v) => {
-            const p = vehicleParts(v);
-            return {
-              year: p.year === 'Not provided' ? '' : p.year,
-              make: p.make === 'Not provided' ? '' : p.make,
-              model: p.model === 'Not provided' ? '' : p.model,
-              description: str(v.vehicle_description || v.description),
-              color: str(v.vehicle_color || v.color),
-              service: str(v.service_slug || row.service_slug),
-              vehicleClass: str(v.vehicle_class || row.vehicle_class),
-            };
-          })}
-        />
-      </section>
-
-      <section className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
-        <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Per-vehicle operations</p>
-        <div className='mt-4 grid gap-4 lg:grid-cols-2'>
-          {vehicles.map((v, i) => {
-            const vehicleLabel = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
-            const parts = vehicleParts(v);
-            return (
-              <article key={i} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
-                <div className='flex flex-wrap items-center justify-between gap-3'>
-                  <div>
-                    <p className='font-bold text-white'>Vehicle {i + 1}: {vehicleLabel}</p>
-                    <p className='text-xs text-zinc-500'>{parts.year} · {parts.make} · {parts.model}</p>
-                    <p className='text-xs text-zinc-500'>{str(v.vehicle_color || v.color) || 'Color not provided'} · {label(v.service_slug || row.service_slug)} · {money(v.price_cents || row.base_price_cents)} · {label(v.status || row.status)}</p>
-                  </div>
-                  <TechTimerControls
-                    appointmentId={isFallback ? null : id}
-                    fallbackBookingId={isFallback ? id : null}
-                    workflowSessionId={workflowIds[0] ?? null}
-                    initialTimerId={null}
-                    initialStartedAt={null}
-                    compact
-                  />
-                </div>
-                <div className='mt-3'>
-                  <WorkOrderPhotoUpload
-                    appointmentId={isFallback ? null : id}
-                    fallbackBookingId={isFallback ? id : null}
-                    workflowSessionId={workflowIds[0] ?? null}
-                    vehicleIndex={i}
-                    vehicleLabel={vehicleLabel}
-                  />
-                </div>
-                <form action={saveVehicleNotesAction} className='mt-3 rounded-xl border border-white/10 bg-black/25 p-3'>
-                  {!isFallback ? <input type='hidden' name='appointmentId' value={id} /> : null}
-                  {isFallback ? <input type='hidden' name='fallbackBookingId' value={id} /> : null}
-                  {workflowIds[0] ? <input type='hidden' name='workflowSessionId' value={workflowIds[0]} /> : null}
-                  <input type='hidden' name='vehicleIndex' value={String(i)} />
-                  <textarea name='internalNotes' rows={2} placeholder={`Notes for ${vehicleLabel}`} className='w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <button className='mt-2 rounded border border-gold/40 px-3 py-2 text-[10px] font-black uppercase text-gold-soft'>Save vehicle notes</button>
-                </form>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <WorkOrderGallery title='Before Photos' photos={toGallery(before)} />
-        <WorkOrderGallery title='After Photos' photos={toGallery(after)} />
-      </div>
-
-      <section className='grid gap-4 lg:grid-cols-2'>
-        <div className='rounded-3xl border border-gold/20 bg-zinc-950/85 p-4'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Notes history</p>
-          <div className='mt-3 max-h-72 space-y-2 overflow-y-auto'>
-            {notes.length === 0 ? <p className='rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-500'>No saved notes yet.</p> : null}
-            {notes.map((n) => (
-              <article key={str(n.id)} className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <p className='font-black uppercase tracking-wider text-gold-soft'>Vehicle {Number(n.vehicle_index ?? -1) >= 0 ? Number(n.vehicle_index) + 1 : 'All'}</p>
-                  <p className='text-zinc-500'>{n.created_at ? chicago(n.created_at) : 'No timestamp'}</p>
-                </div>
-                {[n.internal_notes, n.notes, n.before_notes, n.after_notes, n.damage_notes, n.upsell_notes].map((text, idx) => str(text).trim() ? (
-                  <p key={idx} className='mt-2 whitespace-pre-wrap text-zinc-300'>{str(text)}</p>
-                ) : null)}
-              </article>
-            ))}
-          </div>
-        </div>
-        <div className='rounded-3xl border border-gold/20 bg-zinc-950/85 p-4'>
-          <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Notification history</p>
-          <div className='mt-3 max-h-72 space-y-2 overflow-y-auto'>
-            {outbox.length === 0 ? <p className='rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-500'>No notifications sent or queued yet.</p> : null}
-            {outbox.map((n) => (
-              <article key={str(n.id)} className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <p className='font-black uppercase tracking-wider text-white'>{label(n.kind)}</p>
-                  <p className={str(n.status) === 'skipped' ? 'text-amber-200' : str(n.status) === 'failed' ? 'text-red-300' : 'text-emerald-300'}>{label(n.status)}</p>
-                </div>
-                <p className='mt-1 text-zinc-500'>{n.created_at ? chicago(n.created_at) : 'No timestamp'} · {label(n.channel)}</p>
-                {n.skipped_reason ? <p className='mt-2 text-amber-200'>{str(n.skipped_reason)}</p> : null}
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className='rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5'>
-        <p className='mb-3 text-xs font-black uppercase tracking-[0.22em] text-emerald-300'>Work order controls</p>
-        <div className='mb-4 flex flex-wrap gap-2'>
-          {(['job_started', 'technician_assigned', 'work_started', 'last_touches', 'payment_link', 'appointment_reminder', 'appointment_confirmed', 'job_completed', 'review_request'] as const).map((kind) => (
-            <form key={kind} action={techSendActiveJobNotificationAction}>
-              <input type='hidden' name='kind' value={kind} />
-              {!isFallback ? <input type='hidden' name='appointmentId' value={id} /> : null}
-              {isFallback ? <input type='hidden' name='fallbackBookingId' value={id} /> : null}
-              <SubmitStatusButton pendingText='Sending...' className='rounded-lg border border-emerald-400/30 bg-black/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 disabled:opacity-60'>
-                {label(kind === 'payment_link' ? 'send_pay_now' : kind)}
-              </SubmitStatusButton>
-            </form>
-          ))}
-        </div>
-        <form action={techRecordCashPaymentAction} className='mb-4 grid gap-2 rounded-xl border border-white/10 bg-black/30 p-3 sm:grid-cols-4'>
-          {!isFallback ? <input type='hidden' name='appointmentId' value={id} /> : null}
-          {isFallback ? <input type='hidden' name='fallbackBookingId' value={id} /> : null}
-          <input name='amountReceived' inputMode='decimal' placeholder='Amount received' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <input name='changeGiven' inputMode='decimal' placeholder='Change given' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <input name='cashNote' placeholder='Cash note' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <button className='rounded bg-emerald-500 px-4 py-2 text-xs font-black uppercase text-black'>Paid Cash</button>
-        </form>
-        <div className='mb-4 rounded-xl border border-white/10 bg-black/30 p-3'>
-          <p className='mb-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Timer controls</p>
-          <TechTimerControls
-            appointmentId={isFallback ? null : id}
-            fallbackBookingId={isFallback ? id : null}
-            workflowSessionId={workflowIds[0] ?? null}
-            initialTimerId={str((openTimer.data as Row | null)?.id)}
-            initialStartedAt={str((openTimer.data as Row | null)?.started_at || (openTimer.data as Row | null)?.created_at)}
-          />
-        </div>
-        <TechJobWorkspace job={job} hasIntake={Boolean(row.intake_completed_at) || isFallback} />
-        {!isFallback ? (
-          <form action={completeWorkOrderFormAction} className='mt-4'>
-            <input type='hidden' name='appointmentId' value={id} />
-            {workflowIds[0] ? <input type='hidden' name='workflowSessionId' value={workflowIds[0]} /> : null}
-            <button className='w-full rounded-xl bg-gold px-5 py-4 text-sm font-black uppercase tracking-wider text-black'>Complete Job</button>
-          </form>
-        ) : (
-          <p className='mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100'>Fallback work orders can capture photos/notes/payment here. Convert or link to an appointment before final completion.</p>
-        )}
-      </section>
+    <DashboardShell title='Work order' subtitle='Timeline, progress, photos, agreement, and payment.' role={shellRole}>
+      <WorkOrderConsoleClient
+        data={consoleData}
+        updateDetailsAction={updateWorkOrderDetailsAction}
+        updateVehiclesAction={updateWorkOrderVehiclesAction}
+        saveVehicleNotesAction={saveVehicleNotesAction}
+        recordCashAction={techRecordCashPaymentAction}
+        completeJobAction={completeWorkOrderFormAction}
+      />
     </DashboardShell>
   );
 }

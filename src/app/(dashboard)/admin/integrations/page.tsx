@@ -1,8 +1,8 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { IntegrationResendTestForm, IntegrationTwilioTestForm } from '@/components/admin/integration-test-forms';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendDomainVerified, resendDomainWarning, resendFromEmail } from '@/lib/resend-config';
-import { sendIntegrationTestAction } from './integration-actions';
+import { twilioMessagingServiceSid, twilioFromNumber, twilioSenderReady } from '@/lib/twilio-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,31 +90,27 @@ export default async function AdminIntegrationsPage() {
           alert={resendWarn}
         >
           {fromEmail ? <p className='mb-3 font-mono text-xs text-zinc-400'>RESEND_FROM_EMAIL={fromEmail}</p> : null}
-          <form action={sendIntegrationTestAction} className='flex flex-wrap gap-2'>
-            <input type='hidden' name='kind' value='resend_test' />
-            <input name='destination' placeholder='test@email.com' className='min-w-0 flex-1 rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <SubmitStatusButton pendingText='Sending...' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-60'>
-              Send Test Email
-            </SubmitStatusButton>
-          </form>
+          <IntegrationResendTestForm />
         </Card>
         <Card
           name='Twilio'
-          ok={configured(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN, process.env.TWILIO_FROM_NUMBER)}
+          ok={twilioSenderReady()}
           vars={[
             ['TWILIO_ACCOUNT_SID', Boolean(process.env.TWILIO_ACCOUNT_SID)],
             ['TWILIO_AUTH_TOKEN', Boolean(process.env.TWILIO_AUTH_TOKEN)],
-            ['TWILIO_FROM_NUMBER', Boolean(process.env.TWILIO_FROM_NUMBER)],
+            ['TWILIO_MESSAGING_SERVICE_SID (preferred)', Boolean(twilioMessagingServiceSid())],
+            ['TWILIO_FROM_NUMBER (fallback)', Boolean(twilioFromNumber())],
           ]}
           last={last('twilio_test')}
+          alert={
+            twilioMessagingServiceSid()
+              ? 'Using Messaging Service SID for outbound SMS (recommended).'
+              : twilioFromNumber()
+                ? 'Using direct From number. Add TWILIO_MESSAGING_SERVICE_SID if sends fail.'
+                : null
+          }
         >
-          <form action={sendIntegrationTestAction} className='flex flex-wrap gap-2'>
-            <input type='hidden' name='kind' value='twilio_test' />
-            <input name='destination' placeholder='5125551212' className='min-w-0 flex-1 rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <SubmitStatusButton pendingText='Sending...' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-60'>
-              Send Test SMS
-            </SubmitStatusButton>
-          </form>
+          <IntegrationTwilioTestForm />
         </Card>
         <Card name='Stripe' ok={Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_LIVE)} vars={[['STRIPE_SECRET_KEY / LIVE', Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_LIVE)], ['STRIPE_WEBHOOK_SECRET', Boolean(process.env.STRIPE_WEBHOOK_SECRET)], ['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)]]} />
         <Card name='Supabase' ok={Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY)} vars={[['NEXT_PUBLIC_SUPABASE_URL', Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL)], ['NEXT_PUBLIC_SUPABASE_ANON_KEY', Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)], ['SUPABASE_SERVICE_ROLE_KEY', Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)]]} />
