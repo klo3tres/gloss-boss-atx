@@ -1,6 +1,10 @@
 import { notFound } from 'next/navigation';
 import { DashboardShell, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { isAdminLevel } from '@/lib/auth/roles';
+import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
+import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
+import { generateWorkOrderReceiptAction, sendWorkOrderReceiptAction } from '../../work-order-payment-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
@@ -70,6 +74,8 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
   const source = str(formData.get('source')).trim();
   if (!id) return;
   const table = source === 'fallback' ? 'booking_fallbacks' : 'appointments';
+  const { data: jobRow } = await admin.from(table).select('scheduled_start, deposit_amount_cents, payment_status').eq('id', id).maybeSingle();
+  const scheduledIso = str((jobRow as Row | null)?.scheduled_start) || new Date().toISOString();
   const descriptions = formData.getAll('vehicleDescription').map((v) => str(v).trim());
   const years = formData.getAll('vehicleYear').map((v) => str(v).trim());
   const makes = formData.getAll('vehicleMake').map((v) => str(v).trim());
@@ -98,7 +104,19 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
     vehicle_class: vehicles[0]?.vehicle_class,
     updated_at: new Date().toISOString(),
   };
-  if (baseTotal > 0) patch.base_price_cents = baseTotal;
+  if (baseTotal > 0) {
+    patch.base_price_cents = baseTotal;
+    const { data: existing } = await admin.from(table).select('deposit_amount_cents, payment_status').eq('id', id).maybeSingle();
+    const deposit = typeof (existing as Row | null)?.deposit_amount_cents === 'number' ? Number((existing as Row).deposit_amount_cents) : 0;
+    const paid = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(str((existing as Row | null)?.payment_status).toLowerCase());
+    if (!paid) patch.balance_due_cents = Math.max(0, baseTotal - deposit);
+    const scheduleLines = vehicles.map((v) => ({
+      serviceSlug: str(v.service_slug) || 'exterior-wash',
+      vehicleClass: str(v.vehicle_class) || 'sedan',
+    }));
+    Object.assign(patch, buildAppointmentScheduleFields(scheduledIso, scheduleLines));
+    patch.estimated_duration_minutes = totalBookingDurationMinutes(scheduleLines);
+  }
   await admin.from(table).update(patch).eq('id', id);
   revalidatePath(`/tech/work-orders/${id}`);
   revalidatePath('/tech');
@@ -126,7 +144,8 @@ export default async function TechWorkOrderDetailPage({
   const queryId = canonicalId;
 
   const assigned = str(row.assigned_technician_id);
-  if (assigned && assigned !== session.user.id && session.profile?.role === 'technician') notFound();
+  const role = session.profile?.role;
+  if (assigned && assigned !== session.user.id && role === 'technician' && !isAdminLevel(role)) notFound();
 
   const mediaRows: Row[] = [];
   for (const table of ['job_media', 'job_photos']) {
@@ -179,7 +198,12 @@ export default async function TechWorkOrderDetailPage({
     !isFallback
       ? admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle()
       : admin.from('signed_agreements').select('id, signed_at').eq('fallback_booking_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle(),
-    admin.from('payments').select('id, amount_cents, status, payment_method, paid_at').eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId).order('paid_at', { ascending: false }).limit(5),
+    admin
+      .from('payments')
+      .select('id, amount_cents, status, payment_method, payment_kind, paid_at, stripe_payment_intent_id')
+      .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
+      .order('paid_at', { ascending: false })
+      .limit(20),
   ]);
 
   const agreementRow = (agreementRes.data as Row | null) ?? null;
@@ -217,6 +241,15 @@ export default async function TechWorkOrderDetailPage({
       uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? resolved.technicianName ?? 'Technician',
     }));
 
+  const depositPaid = displayMoney(row.deposit_amount_cents);
+  const scheduledStart = displayChicago(row.scheduled_start);
+  const scheduledEnd = displayChicago(row.estimated_end);
+  const accessLocation = displayLabel(row.service_location_type);
+  const accessWater = displayLabel(row.water_access);
+  const accessPower = displayLabel(row.power_access);
+  const accessParking = displayLabel(row.parking_access);
+  const gateNotes = displayText(row.gate_access_notes || row.service_address_notes);
+
   const consoleData: WorkOrderConsoleData = {
     id,
     canonicalId: queryId,
@@ -236,7 +269,17 @@ export default async function TechWorkOrderDetailPage({
     mapsHref: fullAddress ? mapsHref(fullAddress) : '#',
     baseTotal: displayMoney(row.base_price_cents),
     balanceDue: displayMoney(row.balance_due_cents),
+    depositPaid,
+    finalTotal: displayMoney(row.base_price_cents),
+    paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
     paymentStatus: displayLabel(row.payment_status, 'Pending'),
+    scheduledStart,
+    scheduledEnd,
+    accessLocation,
+    accessWater,
+    accessPower,
+    accessParking,
+    gateNotes,
     paymentComplete,
     agreementSigned,
     agreementCaptureHref,
@@ -298,11 +341,14 @@ export default async function TechWorkOrderDetailPage({
     openTimerStartedAt: str((openTimer.data as Row | null)?.started_at || (openTimer.data as Row | null)?.created_at),
     vehicleForms: { defaultService: str(row.service_slug), defaultClass: str(row.vehicle_class) },
     recentPayments: ((paymentsRes.data ?? []) as Row[]).map((p) => ({
+      id: str(p.id),
       amount: displayMoney(p.amount_cents),
       status: displayLabel(p.status),
-      method: displayLabel(p.payment_method),
+      method: displayLabel(p.payment_method || p.payment_kind),
       at: displayChicago(p.paid_at),
+      stripe: str(p.stripe_payment_intent_id) ? 'Stripe' : '',
     })),
+    receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`,
   };
 
   return (
@@ -313,6 +359,8 @@ export default async function TechWorkOrderDetailPage({
         updateVehiclesAction={updateWorkOrderVehiclesAction}
         recordCashAction={techRecordCashPaymentAction}
         completeJobAction={completeWorkOrderFormAction}
+        generateReceiptAction={generateWorkOrderReceiptAction}
+        sendReceiptAction={sendWorkOrderReceiptAction}
       />
     </DashboardShell>
   );

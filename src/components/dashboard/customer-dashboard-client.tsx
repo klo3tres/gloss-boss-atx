@@ -24,6 +24,7 @@ export type CustomerAppt = {
 };
 
 export type CustomerDashboardProps = {
+  googleReviewUrl?: string;
   liveJob: CustomerAppt | null;
   liveEvents: Array<{ event_type: string; created_at: string }>;
   upcoming: CustomerAppt[];
@@ -95,7 +96,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
         <IconTile icon={<Car className='h-5 w-5' />} label='Vehicle garage' value={`${props.vehicleTotal}`} />
         <IconTile icon={<Receipt className='h-5 w-5' />} label='Receipts' value={`${props.receiptTotal}`} />
         <IconTile icon={<FileText className='h-5 w-5' />} label='Agreements' value={`${props.agreementTotal} signed`} />
-        <IconTile icon={<MessageSquare className='h-5 w-5' />} label='Messages' value='Inbox' href='/dashboard' />
+        <IconTile icon={<MessageSquare className='h-5 w-5' />} label='Messages' value='Inbox' href='/dashboard/messages' />
       </section>
 
       <div className='grid gap-6 lg:grid-cols-3'>
@@ -152,14 +153,18 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           <GlassCard>
             <SectionEyebrow>Reviews</SectionEyebrow>
             <p className='mt-3 text-sm text-zinc-400'>Share how we did after your last visit.</p>
-            <a
-              href='https://www.google.com/search?q=Gloss+Boss+ATX+reviews'
-              target='_blank'
-              rel='noreferrer'
-              className='mt-4 inline-flex items-center gap-2 text-xs font-black uppercase text-gold-soft'
-            >
-              <Star className='h-4 w-4' /> Leave a review
-            </a>
+            {props.googleReviewUrl ? (
+              <a
+                href={props.googleReviewUrl}
+                target='_blank'
+                rel='noreferrer'
+                className='mt-4 inline-flex items-center gap-2 text-xs font-black uppercase text-gold-soft'
+              >
+                <Star className='h-4 w-4' /> Leave a review
+              </a>
+            ) : (
+              <p className='mt-4 text-xs text-zinc-500'>Google review link will appear once configured in admin CMS.</p>
+            )}
           </GlassCard>
 
           <GlassCard>

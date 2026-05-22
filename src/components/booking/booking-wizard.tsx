@@ -14,6 +14,8 @@ import {
 } from '@/lib/booking-availability';
 import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { getBookableDateKeys, getTimeSlotsForDate, dateKeyLocal } from '@/lib/booking-schedule-slots';
+import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
+import { slotConflictsWithBlocks, type BookedBlock } from '@/lib/booking-slot-blocking';
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
@@ -85,6 +87,11 @@ export function BookingWizard() {
   const [serviceState, setServiceState] = useState('TX');
   const [serviceZip, setServiceZip] = useState('');
   const [serviceAddressNotes, setServiceAddressNotes] = useState('');
+  const [serviceLocationType, setServiceLocationType] = useState<'house' | 'apartment' | 'business' | 'other' | ''>('');
+  const [waterAccess, setWaterAccess] = useState<'yes' | 'no' | 'unsure' | ''>('');
+  const [powerAccess, setPowerAccess] = useState<'yes' | 'no' | 'unsure' | ''>('');
+  const [parkingAccess, setParkingAccess] = useState<'yes' | 'no' | 'unsure' | ''>('');
+  const [bookedBlocks, setBookedBlocks] = useState<BookedBlock[]>([]);
   const [notes, setNotes] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromoCode, setAppliedPromoCode] = useState('');
@@ -361,6 +368,24 @@ export function BookingWizard() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
+    void fetchWithTimeout(`/api/public/booked-slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+      cache: 'no-store',
+      timeoutMs: 8000,
+    })
+      .then((r) => r.json())
+      .then((data: { blocks?: BookedBlock[] }) => {
+        if (!cancelled) setBookedBlocks(Array.isArray(data.blocks) ? data.blocks : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const bookableDateKeys = useMemo(
     () => getBookableDateKeys(bookingRules, { limit: 56, maxScanDays: 180 }),
     [bookingRules],
@@ -375,42 +400,6 @@ export function BookingWizard() {
     () => (bookingDateKey ? getTimeSlotsForDate(bookingDateKey, bookingRules) : []),
     [bookingDateKey, bookingRules],
   );
-
-  const filteredSlotOpts = useMemo(() => {
-    if (!bookingDateKey) return [];
-    const now = new Date();
-    const todayKey = dateKeyLocal(now);
-    return slotOpts.filter((s) => {
-      const d = new Date(`${bookingDateKey}T${s.value}:00`);
-      if (Number.isNaN(d.getTime())) return false;
-      if (bookingDateKey === todayKey && d.getTime() < now.getTime() - 60_000) return false;
-      return isBookingSlotAllowed(d, bookingRules);
-    });
-  }, [bookingDateKey, slotOpts, bookingRules]);
-
-  useEffect(() => {
-    if (!bookingDateKey || filteredSlotOpts.length === 0) {
-      setBookingTimeValue('');
-      return;
-    }
-    const now = Date.now();
-    const pickFirst = () => {
-      const hit = filteredSlotOpts.find((s) => {
-        const d = new Date(`${bookingDateKey}T${s.value}:00`);
-        return !Number.isNaN(d.getTime()) && d.getTime() >= now - 60_000 && isBookingSlotAllowed(d, bookingRules);
-      });
-      return hit?.value ?? '';
-    };
-    setBookingTimeValue((prev) => {
-      if (prev) {
-        const d = new Date(`${bookingDateKey}T${prev}:00`);
-        if (!Number.isNaN(d.getTime()) && isBookingSlotAllowed(d, bookingRules) && d.getTime() >= now - 60_000) {
-          return prev;
-        }
-      }
-      return pickFirst();
-    });
-  }, [bookingDateKey, bookingRules, filteredSlotOpts]);
 
   const claimedOfferSnap = useMemo(() => {
     if (!offerFromUrl) return null;
@@ -435,6 +424,60 @@ export function BookingWizard() {
     () => [{ serviceSlug, vehicleClass, vehicleDescription, vehicleColor }, ...extraVehicles],
     [serviceSlug, vehicleClass, vehicleDescription, vehicleColor, extraVehicles],
   );
+
+  const bookingDurationMinutes = useMemo(
+    () =>
+      totalBookingDurationMinutes(
+        bookingLines.map((l) => ({
+          serviceSlug: l.serviceSlug,
+          vehicleClass: normalizeVehicleClass(l.vehicleClass),
+        })),
+      ),
+    [bookingLines],
+  );
+
+  const filteredSlotOpts = useMemo(() => {
+    if (!bookingDateKey) return [];
+    const now = new Date();
+    const todayKey = dateKeyLocal(now);
+    return slotOpts.filter((s) => {
+      const d = new Date(`${bookingDateKey}T${s.value}:00`);
+      if (Number.isNaN(d.getTime())) return false;
+      if (bookingDateKey === todayKey && d.getTime() < now.getTime() - 60_000) return false;
+      if (!isBookingSlotAllowed(d, bookingRules)) return false;
+      if (slotConflictsWithBlocks(d.toISOString(), bookingDurationMinutes, bookedBlocks)) return false;
+      return true;
+    });
+  }, [bookingDateKey, slotOpts, bookingRules, bookedBlocks, bookingDurationMinutes]);
+
+  useEffect(() => {
+    if (!bookingDateKey || filteredSlotOpts.length === 0) {
+      setBookingTimeValue('');
+      return;
+    }
+    const now = Date.now();
+    const pickFirst = () => {
+      const hit = filteredSlotOpts.find((s) => {
+        const d = new Date(`${bookingDateKey}T${s.value}:00`);
+        return !Number.isNaN(d.getTime()) && d.getTime() >= now - 60_000 && isBookingSlotAllowed(d, bookingRules);
+      });
+      return hit?.value ?? '';
+    };
+    setBookingTimeValue((prev) => {
+      if (prev) {
+        const d = new Date(`${bookingDateKey}T${prev}:00`);
+        if (
+          !Number.isNaN(d.getTime()) &&
+          isBookingSlotAllowed(d, bookingRules) &&
+          d.getTime() >= now - 60_000 &&
+          !slotConflictsWithBlocks(d.toISOString(), bookingDurationMinutes, bookedBlocks)
+        ) {
+          return prev;
+        }
+      }
+      return pickFirst();
+    });
+  }, [bookingDateKey, bookingRules, filteredSlotOpts, bookedBlocks, bookingDurationMinutes]);
 
   const freePromoEligible =
     freePromoRequested &&
@@ -622,6 +665,13 @@ export function BookingWizard() {
         return;
       }
 
+      if (!serviceLocationType || !waterAccess || !powerAccess || !parkingAccess) {
+        setError('Answer service location type and water, power, and parking access before checkout.');
+        document.getElementById('service-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setSubmitting(false);
+        return;
+      }
+
       const startIso = scheduled.toISOString();
       const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
@@ -639,6 +689,11 @@ export function BookingWizard() {
           serviceState: serviceState.trim().toUpperCase(),
           serviceZip: serviceZip.replace(/\D/g, '').slice(0, 5),
           serviceAddressNotes: serviceAddressNotes.trim() || undefined,
+          gateAccessNotes: serviceAddressNotes.trim() || undefined,
+          serviceLocationType,
+          waterAccess,
+          powerAccess,
+          parkingAccess,
           promoCode: appliedPromoCode || promoCode.trim() || undefined,
           paymentChoice: freePromoEligible ? 'full' : paymentChoice,
           notes: notes || undefined,
@@ -899,9 +954,54 @@ export function BookingWizard() {
 
           <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-black/45 p-4 md:grid-cols-2'>
             <div className='md:col-span-2'>
-              <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Service address</p>
+              <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Service address & access</p>
               <p className='mt-1 text-xs text-zinc-500'>Required before payment so we can confirm drive distance and arrival details.</p>
+              <p className='mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100'>
+                Gloss Boss ATX is a mobile detailing service. At this time, service requires safe access to the vehicle, water access, and power access. Apartment, condo, and shared parking locations may not be serviceable unless water, power, and working space are available. If access is limited, we may contact you to adjust or reschedule your appointment.
+              </p>
             </div>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Service location type</span>
+              <select
+                value={serviceLocationType}
+                onChange={(e) => setServiceLocationType(e.target.value as typeof serviceLocationType)}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                required
+              >
+                <option value=''>Select…</option>
+                <option value='house'>House</option>
+                <option value='apartment'>Apartment / condo</option>
+                <option value='business'>Business / office</option>
+                <option value='other'>Other</option>
+              </select>
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>Water access available?</span>
+              <select value={waterAccess} onChange={(e) => setWaterAccess(e.target.value as typeof waterAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
+                <option value=''>Select…</option>
+                <option value='yes'>Yes</option>
+                <option value='no'>No</option>
+                <option value='unsure'>Unsure</option>
+              </select>
+            </label>
+            <label className='text-sm'>
+              <span className='mb-2 block text-zinc-300'>Power outlet access?</span>
+              <select value={powerAccess} onChange={(e) => setPowerAccess(e.target.value as typeof powerAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
+                <option value=''>Select…</option>
+                <option value='yes'>Yes</option>
+                <option value='no'>No</option>
+                <option value='unsure'>Unsure</option>
+              </select>
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Parking / service space available?</span>
+              <select value={parkingAccess} onChange={(e) => setParkingAccess(e.target.value as typeof parkingAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
+                <option value=''>Select…</option>
+                <option value='yes'>Yes</option>
+                <option value='no'>No</option>
+                <option value='unsure'>Unsure</option>
+              </select>
+            </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Street address</span>
               <input value={serviceAddress} onChange={(e) => setServiceAddress(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' placeholder='123 Main St' required />

@@ -66,9 +66,12 @@ export async function replyToMessageAction(formData: FormData) {
   const row = (message ?? {}) as Record<string, unknown>;
   let { error } = await client
     .from('messages')
-    .update({ status: 'replied', reply_body: reply, replied_at: now, read_at: now })
+    .update({ status: 'replied', admin_reply: reply, reply_body: reply, replied_at: now, read_at: now })
     .eq('id', id);
-  if (error && /reply_body|replied_at|read_at|column|schema cache|Could not find/i.test(error.message)) {
+  if (error && /reply_body|admin_reply|replied_at|read_at|replied_by|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('messages').update({ status: 'replied', admin_reply: reply, replied_at: now }).eq('id', id));
+  }
+  if (error && /column|schema cache|Could not find/i.test(error.message)) {
     ({ error } = await client.from('messages').update({ status: 'replied' }).eq('id', id));
   }
   await client.from('notification_outbox').insert({
@@ -85,6 +88,7 @@ export async function replyToMessageAction(formData: FormData) {
   });
   if (error) console.error('[replyToMessageAction]', error.message);
   revalidatePath('/admin/messages');
+  revalidatePath('/dashboard/messages');
 }
 
 export async function deleteGalleryImageAction(formData: FormData) {

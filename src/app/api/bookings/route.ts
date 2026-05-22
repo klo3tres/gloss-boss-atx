@@ -6,6 +6,9 @@ import {
   saveBookingFallback,
 } from '@/lib/booking-diagnostics';
 import { isBookingSlotAllowed } from '@/lib/booking-availability';
+import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
+import { fetchBookedBlocks, slotConflictsWithBlocks } from '@/lib/booking-slot-blocking';
+import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import {
   computeQuoteFromInputs,
   insertAppointmentResilient,
@@ -33,6 +36,11 @@ type Body = {
   serviceState?: string;
   serviceZip?: string;
   serviceAddressNotes?: string;
+  serviceLocationType?: string;
+  waterAccess?: string;
+  powerAccess?: string;
+  parkingAccess?: string;
+  gateAccessNotes?: string;
   promoCode?: string;
   paymentChoice?: 'deposit' | 'full';
   notes?: string;
@@ -49,6 +57,13 @@ export async function POST(request: Request) {
     const serviceState = String(body.serviceState ?? 'TX').trim().toUpperCase();
     const serviceZip = String(body.serviceZip ?? '').replace(/\D/g, '').slice(0, 5);
     const serviceAddressNotes = String(body.serviceAddressNotes ?? '').trim();
+    const gateAccessNotes = String(body.gateAccessNotes ?? body.serviceAddressNotes ?? '').trim();
+    const serviceLocationType = String(body.serviceLocationType ?? '').trim();
+    const waterAccess = String(body.waterAccess ?? '').trim();
+    const powerAccess = String(body.powerAccess ?? '').trim();
+    const parkingAccess = String(body.parkingAccess ?? '').trim();
+    const ACCESS_VALUES = new Set(['yes', 'no', 'unsure']);
+    const LOCATION_TYPES = new Set(['house', 'apartment', 'business', 'other']);
     const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
     const paymentChoice = body.paymentChoice === 'full' ? 'full' : 'deposit';
     const addOns = Array.isArray(body.addOns)
@@ -103,6 +118,22 @@ export async function POST(request: Request) {
       )
     ) {
       return NextResponse.json({ error: 'Missing required fields or invalid vehicle class' }, { status: 400 });
+    }
+
+    if (
+      !serviceLocationType ||
+      !LOCATION_TYPES.has(serviceLocationType) ||
+      !waterAccess ||
+      !ACCESS_VALUES.has(waterAccess) ||
+      !powerAccess ||
+      !ACCESS_VALUES.has(powerAccess) ||
+      !parkingAccess ||
+      !ACCESS_VALUES.has(parkingAccess)
+    ) {
+      return NextResponse.json(
+        { error: 'Service location type and water, power, and parking access answers are required.' },
+        { status: 400 },
+      );
     }
 
     const admin = tryCreateAdminSupabase();
@@ -185,6 +216,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const durationLines = resolved.map((r) => ({ serviceSlug: r.serviceSlug, vehicleClass: r.vehicleClass }));
+    const durationMinutes = totalBookingDurationMinutes(durationLines);
+    const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
+    const bookedBlocks = await fetchBookedBlocks(admin, rangeStart, rangeEnd);
+    if (slotConflictsWithBlocks(scheduled.toISOString(), durationMinutes, bookedBlocks)) {
+      return NextResponse.json(
+        { error: 'That time slot is no longer available. Please choose another time.' },
+        { status: 409 },
+      );
+    }
+
+    const scheduleFields = buildAppointmentScheduleFields(scheduled.toISOString(), durationLines);
+
     const emailNorm = guestEmail.trim().toLowerCase();
     let customerId: string | null = null;
     try {
@@ -210,6 +255,11 @@ export async function POST(request: Request) {
             service_city: serviceCity,
             service_state: serviceState,
             service_zip: serviceZip,
+            service_location_type: serviceLocationType,
+            water_access: waterAccess,
+            power_access: powerAccess,
+            parking_access: parkingAccess,
+            gate_access_notes: gateAccessNotes || null,
           })
           .eq('id', customerId);
         if (upErr) {
@@ -230,6 +280,11 @@ export async function POST(request: Request) {
             service_city: serviceCity,
             service_state: serviceState,
             service_zip: serviceZip,
+            service_location_type: serviceLocationType,
+            water_access: waterAccess,
+            power_access: powerAccess,
+            parking_access: parkingAccess,
+            gate_access_notes: gateAccessNotes || null,
           })
           .select('id')
           .single();
@@ -268,12 +323,19 @@ export async function POST(request: Request) {
       deposit_percent: priced.depositPercent,
       deposit_amount_cents: depositAmountCents,
       scheduled_start: scheduled.toISOString(),
+      estimated_duration_minutes: scheduleFields.estimated_duration_minutes,
+      estimated_end: scheduleFields.estimated_end,
       notes: notes ?? null,
       service_address: serviceAddress,
       service_city: serviceCity,
       service_state: serviceState,
       service_zip: serviceZip,
-      service_address_notes: serviceAddressNotes || null,
+      service_address_notes: serviceAddressNotes || gateAccessNotes || null,
+      gate_access_notes: gateAccessNotes || serviceAddressNotes || null,
+      service_location_type: serviceLocationType,
+      water_access: waterAccess,
+      power_access: powerAccess,
+      parking_access: parkingAccess,
       status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
       payment_status: freePromoApplied ? 'comped' : 'awaiting_deposit',
       payment_choice: paymentChoice,

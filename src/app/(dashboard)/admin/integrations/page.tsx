@@ -110,6 +110,11 @@ export default async function AdminIntegrationsPage() {
                 : null
           }
         >
+          {twilioMessagingServiceSid() ? (
+            <p className='mb-3 font-mono text-xs text-zinc-400 break-all'>Messaging Service SID: {twilioMessagingServiceSid()}</p>
+          ) : twilioFromNumber() ? (
+            <p className='mb-3 font-mono text-xs text-zinc-400'>From number: {twilioFromNumber()}</p>
+          ) : null}
           <IntegrationTwilioTestForm />
         </Card>
         <Card name='Stripe' ok={Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_LIVE)} vars={[['STRIPE_SECRET_KEY / LIVE', Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_LIVE)], ['STRIPE_WEBHOOK_SECRET', Boolean(process.env.STRIPE_WEBHOOK_SECRET)], ['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)]]} />

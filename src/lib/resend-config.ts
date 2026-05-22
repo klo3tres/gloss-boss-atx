@@ -14,7 +14,7 @@ export function resendDomainWarning(): string | null {
   const from = resendFromEmail();
   if (!from) return 'RESEND_FROM_EMAIL is not set.';
   if (!resendDomainVerified()) {
-    return 'Resend domain is not verified yet. Verify glossbossatx.com in Resend before sending to customers.';
+    return 'Resend DNS not verified yet. Emails to customers will fail until verification completes.';
   }
   return null;
 }

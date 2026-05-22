@@ -112,8 +112,17 @@ export async function GET() {
       .gte('scheduled_start', t0)
       .lte('scheduled_start', t1)
       .is('archived_at', null)
-      .neq('status', 'deleted'),
-    supabase.from('appointments').select('id', { count: 'exact', head: true }).in('status', ['confirmed', 'assigned', 'in_progress']).is('archived_at', null),
+      .is('deleted_at', null)
+      .neq('status', 'deleted')
+      .neq('status', 'test_comped')
+      .not('guest_name', 'ilike', '%test%'),
+    supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['confirmed', 'assigned', 'in_progress'])
+      .is('archived_at', null)
+      .is('deleted_at', null)
+      .neq('status', 'test_comped'),
     supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').is('archived_at', null).gte('updated_at', t0).lte('updated_at', t1),
     supabase.from('payments').select('amount_cents').eq('status', 'succeeded').gte('created_at', t0).lte('created_at', t1),
     supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'awaiting_payment').is('archived_at', null),
@@ -151,7 +160,7 @@ export async function GET() {
     supabase.from('tech_job_timers').select('duration_seconds').not('duration_seconds', 'is', null).limit(800),
     supabase
       .from('tech_job_timers')
-      .select('duration_seconds, appointment_id')
+      .select('duration_seconds, appointment_id, started_at, created_at')
       .not('duration_seconds', 'is', null)
       .order('duration_seconds', { ascending: false })
       .limit(8),
@@ -196,20 +205,46 @@ export async function GET() {
     .filter((n): n is number => typeof n === 'number' && n > 0);
   const avgJobMinutesAll = durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 60) : null;
 
-  const ltRows = (longTimerRows.data ?? []) as { duration_seconds: number; appointment_id: string | null }[];
+  const ltRows = (longTimerRows.data ?? []) as {
+    duration_seconds: number;
+    appointment_id: string | null;
+    started_at?: string | null;
+    created_at?: string | null;
+  }[];
   const apptIdsForLong = [...new Set(ltRows.map((r) => r.appointment_id).filter(Boolean))] as string[];
-  const slugByAppt = new Map<string, string>();
+  const apptMeta = new Map<string, { service_slug: string; guest_name: string; vehicle_description: string; scheduled_start: string }>();
   if (apptIdsForLong.length > 0) {
-    const { data: apptSlugRows } = await supabase.from('appointments').select('id, service_slug').in('id', apptIdsForLong);
+    const { data: apptSlugRows } = await supabase
+      .from('appointments')
+      .select('id, service_slug, guest_name, vehicle_description, scheduled_start')
+      .in('id', apptIdsForLong);
     for (const row of apptSlugRows ?? []) {
-      const a = row as { id: string; service_slug?: string | null };
-      slugByAppt.set(a.id, String(a.service_slug ?? '—'));
+      const a = row as {
+        id: string;
+        service_slug?: string | null;
+        guest_name?: string | null;
+        vehicle_description?: string | null;
+        scheduled_start?: string | null;
+      };
+      apptMeta.set(a.id, {
+        service_slug: String(a.service_slug ?? '—'),
+        guest_name: String(a.guest_name ?? 'Customer'),
+        vehicle_description: String(a.vehicle_description ?? '—'),
+        scheduled_start: String(a.scheduled_start ?? a.id),
+      });
     }
   }
-  const longestTimerSessions = ltRows.map((r) => ({
-    minutes: Math.round((r.duration_seconds ?? 0) / 60),
-    serviceSlug: r.appointment_id ? slugByAppt.get(r.appointment_id) ?? '—' : '—',
-  }));
+  const longestTimerSessions = ltRows.map((r) => {
+    const meta = r.appointment_id ? apptMeta.get(r.appointment_id) : undefined;
+    return {
+      minutes: Math.round((r.duration_seconds ?? 0) / 60),
+      serviceSlug: meta?.service_slug ?? '—',
+      guestName: meta?.guest_name ?? '—',
+      vehicle: meta?.vehicle_description ?? '—',
+      scheduledStart: meta?.scheduled_start ?? r.started_at ?? r.created_at ?? '',
+      appointmentId: r.appointment_id,
+    };
+  });
 
   const leadsTotalCount = leadsTotal.count ?? 0;
   const leadsBookedCount = leadsBooked.count ?? 0;

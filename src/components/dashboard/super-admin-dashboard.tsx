@@ -40,7 +40,14 @@ type Stats = {
   leadsBooked: number;
   leadConversionPercent: number | null;
   avgJobMinutesAll: number | null;
-  longestTimerSessions: Array<{ minutes: number; serviceSlug: string }>;
+  longestTimerSessions: Array<{
+    minutes: number;
+    serviceSlug: string;
+    guestName?: string;
+    vehicle?: string;
+    scheduledStart?: string;
+    appointmentId?: string | null;
+  }>;
   techniciansRoster: number;
   latestAppointments: Array<{
     id: string;
@@ -452,9 +459,20 @@ export function SuperAdminDashboard() {
               <li className='text-sm text-zinc-500'>No completed timers yet.</li>
             ) : (
               stats.longestTimerSessions.map((row, i) => (
-                <li key={i} className='flex justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-200'>
-                  <span>{row.serviceSlug.replace(/-/g, ' ')}</span>
-                  <span className='font-mono text-gold-soft'>{row.minutes} min</span>
+                <li key={i} className='rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-200'>
+                  <div className='flex justify-between gap-2'>
+                    <span className='font-bold text-white'>{row.guestName ?? 'Customer'}</span>
+                    <span className='font-mono text-gold-soft'>{row.minutes} min</span>
+                  </div>
+                  <p className='mt-1 text-xs text-zinc-500'>
+                    {row.vehicle ?? '—'} · {row.serviceSlug.replace(/-/g, ' ')}
+                    {row.scheduledStart ? ` · ${new Date(row.scheduledStart).toLocaleString()}` : ''}
+                  </p>
+                  {row.appointmentId ? (
+                    <Link href={`/admin/work-orders/${row.appointmentId}`} className='mt-2 inline-block text-[10px] font-black uppercase text-gold-soft'>
+                      Open work order
+                    </Link>
+                  ) : null}
                 </li>
               ))
             )}

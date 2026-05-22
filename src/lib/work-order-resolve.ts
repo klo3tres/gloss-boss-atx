@@ -5,10 +5,10 @@ export type WorkOrderSource = 'appointment' | 'fallback';
 export type Row = Record<string, unknown>;
 
 const APPT_SELECT =
-  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at, scheduled_start, job_started_at, job_completed_at, completed_at, booking_pricing_breakdown, deposit_amount_cents';
+  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_address_notes, service_location_type, water_access, power_access, parking_access, gate_access_notes, vehicle_class, base_price_cents, balance_due_cents, payment_status, payment_choice, notes, intake_completed_at, scheduled_start, estimated_end, estimated_duration_minutes, job_started_at, job_completed_at, completed_at, booking_pricing_breakdown, deposit_amount_cents';
 
 const FB_SELECT =
-  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, created_at, scheduled_start, job_started_at, job_completed_at, deposit_amount_cents';
+  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_address_notes, service_location_type, water_access, power_access, parking_access, gate_access_notes, vehicle_class, base_price_cents, balance_due_cents, payment_status, payment_choice, payload, created_at, scheduled_start, estimated_end, estimated_duration_minutes, job_started_at, job_completed_at, deposit_amount_cents';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -36,37 +36,73 @@ function mergePayloadIntoRow(base: Row, payload: Row): Row {
     balance_due_cents: base.balance_due_cents ?? payload.balance_due_cents ?? 0,
     payment_status: base.payment_status ?? payload.payment_status ?? 'pending',
     scheduled_start: base.scheduled_start ?? payload.scheduled_start,
+    estimated_end: base.estimated_end ?? payload.estimated_end,
+    estimated_duration_minutes: base.estimated_duration_minutes ?? payload.estimated_duration_minutes,
+    service_location_type: base.service_location_type ?? payload.service_location_type,
+    water_access: base.water_access ?? payload.water_access,
+    power_access: base.power_access ?? payload.power_access,
+    parking_access: base.parking_access ?? payload.parking_access,
+    gate_access_notes: base.gate_access_notes ?? payload.gate_access_notes ?? payload.service_address_notes,
+    service_address_notes: base.service_address_notes ?? payload.service_address_notes,
   };
 }
 
+const APPT_SELECT_LEAN =
+  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at, scheduled_start, job_started_at, job_completed_at, completed_at, booking_pricing_breakdown, deposit_amount_cents';
+
+const FB_SELECT_LEAN =
+  'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, created_at, scheduled_start, job_started_at, job_completed_at, deposit_amount_cents';
+
+function isSelectDrift(msg: string) {
+  return /column|schema cache|Could not find/i.test(msg);
+}
+
 async function loadAppointment(admin: SupabaseClient, id: string): Promise<Row | null> {
-  const { data } = await admin.from('appointments').select(APPT_SELECT).eq('id', id).maybeSingle();
-  return (data ?? null) as Row | null;
+  let res = await admin.from('appointments').select(APPT_SELECT).eq('id', id).maybeSingle();
+  if (res.error && isSelectDrift(res.error.message)) {
+    res = await admin.from('appointments').select(APPT_SELECT_LEAN).eq('id', id).maybeSingle();
+  }
+  return (res.data ?? null) as Row | null;
 }
 
 async function loadFallback(admin: SupabaseClient, id: string): Promise<Row | null> {
-  const { data } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('id', id).maybeSingle();
+  let res = await admin.from('booking_fallbacks').select(FB_SELECT).eq('id', id).maybeSingle();
+  if (res.error && isSelectDrift(res.error.message)) {
+    res = await admin.from('booking_fallbacks').select(FB_SELECT_LEAN).eq('id', id).maybeSingle();
+  }
+  const data = res.data;
   const row = (data ?? null) as Row | null;
   if (!row) return null;
   return mergePayloadIntoRow(row, payloadObject(row.payload));
 }
 
+async function loadAppointmentList(admin: SupabaseClient, filter: { column: string; value: string }) {
+  let res = await admin.from('appointments').select(APPT_SELECT).eq(filter.column, filter.value).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (res.error && isSelectDrift(res.error.message)) {
+    res = await admin.from('appointments').select(APPT_SELECT_LEAN).eq(filter.column, filter.value).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  }
+  return (res.data ?? null) as Row | null;
+}
+
 async function loadByCustomer(admin: SupabaseClient, customerId: string): Promise<{ row: Row; source: WorkOrderSource } | null> {
-  const appt = await admin
-    .from('appointments')
-    .select(APPT_SELECT)
-    .eq('customer_id', customerId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (appt.data) return { row: appt.data as Row, source: 'appointment' };
-  const fb = await admin
+  const apptRow = await loadAppointmentList(admin, { column: 'customer_id', value: customerId });
+  if (apptRow) return { row: apptRow, source: 'appointment' };
+  let fb = await admin
     .from('booking_fallbacks')
     .select(FB_SELECT)
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (fb.error && isSelectDrift(fb.error.message)) {
+    fb = await admin
+      .from('booking_fallbacks')
+      .select(FB_SELECT_LEAN)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+  }
   if (fb.data) {
     const row = mergePayloadIntoRow(fb.data as Row, payloadObject((fb.data as Row).payload));
     return { row, source: 'fallback' };

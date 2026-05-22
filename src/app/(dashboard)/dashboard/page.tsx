@@ -2,6 +2,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { CustomerDashboardClient } from '@/components/dashboard/customer-dashboard-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 
 
@@ -272,9 +273,30 @@ export default async function CustomerDashboardRootPage() {
     agreementHrefByAppt[k] = `/dashboard/agreements/${encodeURIComponent(`signed_agreements:${row.id}`)}`;
   });
 
+  let googleReviewUrl = '';
+  const adminDb = tryCreateAdminSupabase();
+  if (adminDb) {
+    const ss = await adminDb.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
+    const raw = ss.data?.value;
+    if (typeof raw === 'string' && raw.startsWith('http')) googleReviewUrl = raw.trim();
+    else if (raw && typeof raw === 'object' && 'url' in (raw as object)) {
+      const u = (raw as { url?: unknown }).url;
+      if (typeof u === 'string' && u.startsWith('http')) googleReviewUrl = u.trim();
+    }
+    if (!googleReviewUrl) {
+      const gb = await adminDb.from('site_settings').select('value').eq('key', 'google_business').maybeSingle();
+      const rv = gb.data?.value;
+      if (rv && typeof rv === 'object' && 'review_url' in (rv as object)) {
+        const u = (rv as { review_url?: unknown }).review_url;
+        if (typeof u === 'string') googleReviewUrl = u.trim();
+      }
+    }
+  }
+
   return (
     <DashboardShell title='Your dashboard' subtitle='Garage, appointments, receipts, agreements, and live updates.' role='customer'>
       <CustomerDashboardClient
+        googleReviewUrl={googleReviewUrl}
         liveJob={liveJob ?? null}
         liveEvents={liveEvents}
         upcoming={upcoming}

@@ -72,8 +72,8 @@ const techLinks = [
 ];
 
 const customerLinks = [
-  { href: '/dashboard', label: 'Home' },
   { href: '/dashboard', label: 'Overview' },
+  { href: '/dashboard/messages', label: 'Messages' },
   { href: '/book', label: 'Book again' },
   { href: '/gift-cards', label: 'Gift cards' },
   { href: '/services', label: 'Services' },
