@@ -7,13 +7,15 @@ export type SmsSendResult = {
   skipped?: boolean;
   error?: string;
   sid?: string;
+  deliveryStatus?: string;
+  carrierError?: string;
 };
 
 export async function logSmsOutbox(
   db: SupabaseClient | null | undefined,
   row: {
     kind: string;
-    status: 'sent' | 'failed' | 'skipped';
+    status: 'sent' | 'delivered' | 'queued' | 'failed' | 'skipped';
     appointment_id?: string | null;
     fallback_booking_id?: string | null;
     customer_id?: string | null;
@@ -95,18 +97,27 @@ export async function sendCustomerSms(params: {
 
   const sent = await sendTwilioSms({ to: digits, body: params.body });
   if (sent.ok) {
+    const delivery = (sent.status ?? 'queued').toLowerCase();
+    const delivered = delivery === 'delivered' || delivery === 'sent';
+    const outboxStatus = delivered ? 'delivered' : delivery === 'failed' || delivery === 'undelivered' ? 'failed' : 'queued';
     await logSmsOutbox(params.db, {
       kind: params.kind,
-      status: 'sent',
+      status: outboxStatus,
       appointment_id: params.appointment_id,
       fallback_booking_id: params.fallback_booking_id,
       customer_id: params.customer_id,
       technician_id: params.technician_id,
       template_key: params.template_key,
       provider_message_id: sent.sid ?? null,
-      payload: basePayload,
+      error_message: sent.errorMessage ?? sent.error ?? null,
+      payload: {
+        ...basePayload,
+        twilio_status: delivery,
+        twilio_sid: sent.sid ?? null,
+        carrier_error: sent.errorMessage ?? null,
+      },
     });
-    return { ok: true, sid: sent.sid };
+    return { ok: true, sid: sent.sid, deliveryStatus: delivery, carrierError: sent.errorMessage };
   }
 
   await logSmsOutbox(params.db, {

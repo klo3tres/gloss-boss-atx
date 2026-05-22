@@ -6,6 +6,8 @@ import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
+import { syncVehiclesForCustomerRecord } from '@/lib/crm-vehicle-sync';
+import { workOrderPath } from '@/lib/work-order-links';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +27,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const { data: customer } = await admin.from('customers').select('*').eq('id', id).maybeSingle();
   if (!customer) notFound();
+
+  await syncVehiclesForCustomerRecord(admin, id);
 
   const c = customer as Record<string, unknown>;
 
@@ -280,7 +284,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {apptRows.length === 0 ? <li className='text-zinc-500'>No work orders yet.</li> : null}
           {apptRows.map((a) => (
             <li key={`wo-${a.id}`} className='rounded border border-white/10 px-3 py-2'>
-              <Link href={`/admin/work-orders/${a.id}?shell=admin`} className='font-semibold text-gold-soft underline'>
+              <Link href={workOrderPath(a.id, { shell: 'admin' })} className='font-semibold text-gold-soft underline'>
                 {a.service_slug}
               </Link>
               <span className='ml-2 text-xs text-zinc-500'>{a.status}</span>

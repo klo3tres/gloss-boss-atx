@@ -19,6 +19,7 @@ import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
+import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-vehicle-sync';
 
 type Body = {
   serviceSlug?: string;
@@ -395,6 +396,18 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    if (customerId) {
+      void syncVehiclesToCustomer(admin, {
+        customerId,
+        bookingVehicles,
+        vehicleDescription: vehicleDescriptionJoined,
+        serviceSlug: primary.serviceSlug,
+        vehicleClass: primary.vehicleClass,
+      });
+    } else {
+      void syncVehiclesForAppointment(admin, String(appointment.id));
+    }
 
     if (freePromoApplied) {
       const compPayment = await admin

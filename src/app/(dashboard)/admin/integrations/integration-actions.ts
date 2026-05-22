@@ -94,8 +94,19 @@ export async function sendIntegrationTestAction(_prev: ActionResult | null, form
         body: 'Gloss Boss ATX test SMS: Twilio Messaging Service is connected.',
         extraPayload: { integration_test: true },
       });
-      status = sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed';
-      error = sent.ok ? null : sent.error ?? 'Twilio send failed.';
+      const delivery = (sent.deliveryStatus ?? '').toLowerCase();
+      const confirmed = delivery === 'delivered' || delivery === 'sent';
+      status = sent.skipped ? 'skipped' : sent.ok ? (confirmed ? 'delivered' : 'queued') : 'failed';
+      error = sent.ok
+        ? [
+            `sid=${sent.sid ?? 'none'}`,
+            `status=${sent.deliveryStatus ?? 'unknown'}`,
+            sent.carrierError ? `carrier=${sent.carrierError}` : null,
+            confirmed ? null : 'awaiting_delivery_confirmation',
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : sent.error ?? 'Twilio send failed.';
       providerMessageId = sent.sid ?? null;
     }
   } else {
@@ -112,7 +123,7 @@ export async function sendIntegrationTestAction(_prev: ActionResult | null, form
     kind,
     status,
     destination: destination || g.email,
-    error_message: status === 'sent' ? (kind === 'twilio_test' ? `mode=${twilioSendMode()} sid=${providerMessageId}` : null) : testNote,
+    error_message: kind === 'twilio_test' ? testNote : status === 'sent' ? null : testNote,
     actor_id: g.userId,
     provider_message_id: kind === 'resend_test' ? providerMessageId : null,
     event_type: kind === 'resend_test' && providerMessageId ? 'email.sent' : null,

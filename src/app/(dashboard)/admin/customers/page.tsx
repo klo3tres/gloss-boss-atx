@@ -5,6 +5,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { createCustomerAction, deleteCustomerAction, updateCustomerAction, archiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { backfillAllAppointmentVehicles } from '@/lib/crm-vehicle-sync';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,10 @@ export default async function AdminCustomersPage() {
   let qErr: string | null = null;
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
     const client = tryCreateAdminSupabase() ?? supabase;
+    const { count: vehicleCount } = await client.from('vehicles').select('id', { count: 'exact', head: true });
+    if ((vehicleCount ?? 0) < 3) {
+      await backfillAllAppointmentVehicles(client);
+    }
     const full = await client
       .from('customers')
       .select('id, email, full_name, phone, created_at, archived')

@@ -63,10 +63,37 @@ function parseTwilioError(text: string): string {
   return text.slice(0, 400) || 'Twilio request failed';
 }
 
+export async function fetchTwilioMessageStatus(messageSid: string): Promise<{
+  status: string;
+  errorCode?: string | null;
+  errorMessage?: string;
+} | null> {
+  const accountSid = twilioAccountSid();
+  const token = twilioAuthToken();
+  if (!accountSid || !token || !messageSid) return null;
+  try {
+    const auth = Buffer.from(`${accountSid}:${token}`).toString('base64');
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${encodeURIComponent(messageSid)}.json`,
+      { headers: { Authorization: `Basic ${auth}` } },
+    );
+    const text = await res.text();
+    if (!res.ok) return null;
+    const j = JSON.parse(text) as { status?: string; error_code?: string | null; error_message?: string | null };
+    return {
+      status: String(j.status ?? 'unknown').toLowerCase(),
+      errorCode: j.error_code ?? null,
+      errorMessage: j.error_message ? String(j.error_message) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function sendTwilioSms(params: {
   to: string;
   body: string;
-}): Promise<{ ok: boolean; error?: string; sid?: string }> {
+}): Promise<{ ok: boolean; error?: string; sid?: string; status?: string; errorMessage?: string }> {
   const sid = twilioAccountSid();
   const token = twilioAuthToken();
   const messagingServiceSid = twilioMessagingServiceSid();
@@ -110,8 +137,17 @@ export async function sendTwilioSms(params: {
     } catch {
       /* ignore */
     }
-    console.info('[sms] Twilio sent', messageSid ?? 'ok', messagingServiceSid ? 'messaging_service' : 'from_number');
-    return { ok: true, sid: messageSid };
+    let deliveryStatus = 'queued';
+    let carrierError: string | undefined;
+    if (messageSid) {
+      const statusRes = await fetchTwilioMessageStatus(messageSid);
+      if (statusRes) {
+        deliveryStatus = statusRes.status;
+        carrierError = statusRes.errorMessage;
+      }
+    }
+    console.info('[sms] Twilio accepted', messageSid ?? 'ok', deliveryStatus, messagingServiceSid ? 'messaging_service' : 'from_number');
+    return { ok: true, sid: messageSid, status: deliveryStatus, errorMessage: carrierError };
   } catch (e) {
     console.warn('[sms] Twilio', e);
     return { ok: false, error: e instanceof Error ? e.message : 'network_error' };

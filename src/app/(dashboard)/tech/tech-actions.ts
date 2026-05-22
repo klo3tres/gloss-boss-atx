@@ -14,6 +14,7 @@ import { resendDomainWarning } from '@/lib/resend-config';
 import { glossBossEmailShell } from '@/lib/email-brand';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { sendCustomerSms } from '@/lib/sms-send';
+import { syncVehiclesForAppointment } from '@/lib/crm-vehicle-sync';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -1178,6 +1179,9 @@ export async function techCompleteJobAction(
     console.error('[tech] complete job', completeUpdate.error.message);
     return { error: completeUpdate.error.message || 'Could not update job status.' };
   }
+
+  const adminClient = tryCreateAdminSupabase();
+  if (adminClient) void syncVehiclesForAppointment(adminClient, appointmentId);
 
   const vis = await gate.supabase
     .from('job_media')

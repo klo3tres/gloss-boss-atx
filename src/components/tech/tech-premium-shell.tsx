@@ -76,13 +76,11 @@ function directionsHref(address?: string | null) {
   return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
 }
 
+import { workOrderPath } from '@/lib/work-order-links';
+
 function workOrderHref(job: TechJob) {
   const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
-  const params = new URLSearchParams();
-  if (job.isFallback) params.set('source', 'fallback');
-  if (job.workflowSessionId) params.set('workflowSessionId', job.workflowSessionId);
-  const qs = params.toString();
-  return `/tech/work-orders/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`;
+  return workOrderPath(id, { source: job.isFallback ? 'fallback' : 'appointment' });
 }
 
 export type TechAnalytics = {

@@ -57,13 +57,14 @@ async function logWebhookAudit(
     event_type: string;
     provider_message_id?: string | null;
     error_message?: string | null;
+    destination?: string | null;
     payload: Record<string, unknown>;
   },
 ) {
   await admin.from('integration_test_events').insert({
     kind: row.kind,
     status: row.status,
-    destination: str(row.payload.to) || str(row.payload.from) || null,
+    destination: row.destination ?? (str(row.payload.to) || str(row.payload.from) || null),
     error_message: row.error_message ?? null,
     event_type: row.event_type,
     provider_message_id: row.provider_message_id ?? null,
@@ -107,13 +108,19 @@ async function processEmailReceived(
           ? 'forwarded_not_stored'
           : 'failed';
 
+  const fromEmail =
+    str((inboundEvent.data as Record<string, unknown> | undefined)?.from) ||
+    str((rawPayload.data as Record<string, unknown> | undefined)?.from) ||
+    str(rawPayload.from);
+
   await logWebhookAudit(admin, {
     kind: 'resend_inbound_received',
     status,
     event_type: event.type,
     provider_message_id: emailId,
     error_message: result.error ?? null,
-    payload: { ...rawPayload, stored: result.stored, forwarded: result.forwarded },
+    destination: fromEmail || null,
+    payload: { ...rawPayload, stored: result.stored, forwarded: result.forwarded, from: fromEmail },
   });
 
   return {

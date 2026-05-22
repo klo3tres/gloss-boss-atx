@@ -70,6 +70,12 @@ export default async function AdminIntegrationsPage() {
   const last = (kind: string) => tests.find((t) => String(t.kind) === kind);
   const lastInboundWebhook = tests.find((t) => String(t.kind) === 'resend_inbound_received');
   const lastOutboundWebhook = tests.find((t) => String(t.kind) === 'resend_webhook_outbound');
+  const inboundPayload =
+    lastInboundWebhook?.payload && typeof lastInboundWebhook.payload === 'object'
+      ? (lastInboundWebhook.payload as Record<string, unknown>)
+      : null;
+  const inboundFrom = String(lastInboundWebhook?.destination ?? inboundPayload?.from ?? '—');
+  const inboundStatus = String(lastInboundWebhook?.status ?? '—');
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()?.replace(/\/$/, '') ?? '';
   const webhookUrl = appUrl && !appUrl.includes('localhost') ? `${appUrl}${RESEND_WEBHOOK_PATH}` : '';
   const fromEmail = resendFromEmail();
@@ -153,11 +159,26 @@ export default async function AdminIntegrationsPage() {
                 : 'None yet'}
             </p>
             <p>
-              <span className='font-bold text-zinc-300'>Last inbound email webhook:</span>{' '}
-              {lastInboundWebhook
-                ? `${String(lastInboundWebhook.status)} · ${chicago(lastInboundWebhook.created_at)}`
-                : 'None yet'}
+              <span className='font-bold text-zinc-300'>Last inbound email:</span>{' '}
+              {lastInboundWebhook ? chicago(lastInboundWebhook.created_at) : 'None yet'}
             </p>
+            {lastInboundWebhook ? (
+              <>
+                <p>
+                  <span className='font-bold text-zinc-300'>Sender:</span> {inboundFrom}
+                </p>
+                <p>
+                  <span className='font-bold text-zinc-300'>Webhook status:</span> {inboundStatus}
+                  {lastInboundWebhook.error_message ? ` · ${String(lastInboundWebhook.error_message)}` : ''}
+                </p>
+                {inboundPayload ? (
+                  <p className='break-all font-mono text-[10px] text-zinc-500'>
+                    payload: {JSON.stringify(inboundPayload).slice(0, 280)}
+                    {JSON.stringify(inboundPayload).length > 280 ? '…' : ''}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             <p>
               <span className='font-bold text-zinc-300'>Last send test (manual):</span>{' '}
               {last('resend_test') ? `${String(last('resend_test')!.status)} · ${chicago(last('resend_test')!.created_at)}` : 'None yet'}

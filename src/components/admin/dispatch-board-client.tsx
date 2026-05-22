@@ -11,6 +11,7 @@ import {
   updateAppointmentDispatchStatusAction,
 } from '@/app/(dashboard)/admin/dispatch-job-actions';
 import { bulkWorkOrderAction } from '@/app/(dashboard)/admin/work-orders/work-order-actions';
+import { workOrderPath } from '@/lib/work-order-links';
 import {
   archiveBookingFallbackAction,
   clearExpiredFallbacksAction,
@@ -242,7 +243,7 @@ export function DispatchBoardClient({
           <p className='mt-2 text-xs text-gold-soft'>{chicago(j.scheduled_start)}</p>
           <p className='mt-1 text-xs text-zinc-500'>{formatMoney(j.base_price_cents)} · {techLabel[j.assigned_technician_id ?? ''] ?? 'No tech'}</p>
           {jobNotes[j.id] ? <p className='mt-2 line-clamp-2 rounded-lg bg-black/40 px-2 py-1 text-[10px] text-zinc-400'>{jobNotes[j.id]}</p> : null}
-          <Link href={`/admin/work-orders/${j.id}`} className='mt-3 inline-block text-[10px] font-bold uppercase text-gold-soft underline'>
+          <Link href={workOrderPath(j.id, { shell: 'admin' })} className='mt-3 inline-block text-[10px] font-bold uppercase text-gold-soft underline'>
             Open work order
           </Link>
         </div>

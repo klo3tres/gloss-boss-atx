@@ -149,7 +149,7 @@ export default async function TechWorkOrderDetailPage({
     notFound();
   }
 
-  const { row, canonicalId, isFallback, workflowSessionIds, workflowSessionId } = resolved;
+  const { row, canonicalId, isFallback, workflowSessionIds, workflowSessionId, partial: partialLoad } = resolved;
   const queryId = canonicalId;
 
   const assigned = str(row.assigned_technician_id);
@@ -362,6 +362,11 @@ export default async function TechWorkOrderDetailPage({
 
   return (
     <DashboardShell title='Work order' subtitle='Job overview, vehicles, agreement, photos, and payment.' role={shellRole}>
+      {partialLoad ? (
+        <p className='mb-4 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+          Partial work order data loaded — some fields may be missing until the full record syncs. ID: {id}
+        </p>
+      ) : null}
       {showDebug ? (
         <WorkOrderDebugPanel
           workOrderId={id}

@@ -176,7 +176,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 rel='noreferrer'
                 className='mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
               >
-                <Star className='h-4 w-4' /> Leave a Google Review
+                <Star className='h-4 w-4' /> LEAVE GOOGLE REVIEW
               </a>
             ) : null}
           </GlassCard>

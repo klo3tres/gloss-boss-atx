@@ -108,8 +108,14 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <p><span className='text-zinc-500'>Payment status:</span> {str(linked.payment_status || p.status)}</p>
         </div>
         <div className='mt-5 flex flex-wrap gap-3'>
-          <Link href='/admin/work-orders' className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Work Order</Link>
-          {str(p.appointment_id || linked.id) ? <Link href={`/admin/work-orders?appointment=${encodeURIComponent(str(p.appointment_id || linked.id))}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Appointment</Link> : null}
+          {str(p.appointment_id || linked.id) || str(p.fallback_booking_id) ? (
+            <Link
+              href={`/admin/work-orders/${encodeURIComponent(str(p.appointment_id || p.fallback_booking_id || linked.id))}${str(p.fallback_booking_id) && !str(p.appointment_id) ? '?source=fallback&shell=admin' : '?shell=admin'}`}
+              className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'
+            >
+              Open work order
+            </Link>
+          ) : null}
           {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${agreementSource}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Agreement</Link> : null}
           <Link href={`/admin/receipts/${id}`} className='rounded border border-emerald-500/40 px-4 py-2 text-xs font-black uppercase text-emerald-200'>Receipt</Link>
           {sessionId ? (

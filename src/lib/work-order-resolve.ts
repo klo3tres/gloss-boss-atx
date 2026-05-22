@@ -122,20 +122,47 @@ export type ResolvedWorkOrder = {
   technicianName: string | null;
   /** True only when no DB job row exists and URL id is orphan timer/session only */
   orphanSession: boolean;
+  /** Loaded from lean select when full resolver paths failed */
+  partial?: boolean;
 };
 
-export async function resolveWorkOrder(admin: SupabaseClient, workOrderId: string, hintSource?: string): Promise<ResolvedWorkOrder | null> {
+export { workOrderPath } from '@/lib/work-order-links';
+
+async function loadAppointmentPartial(admin: SupabaseClient, id: string): Promise<Row | null> {
+  const { data } = await admin
+    .from('appointments')
+    .select(
+      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, scheduled_start, service_address, service_city, service_state, service_zip',
+    )
+    .eq('id', id)
+    .maybeSingle();
+  return (data ?? null) as Row | null;
+}
+
+async function loadFallbackPartial(admin: SupabaseClient, id: string): Promise<Row | null> {
+  const { data } = await admin
+    .from('booking_fallbacks')
+    .select(
+      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, scheduled_start, service_address, service_city, service_state, service_zip',
+    )
+    .eq('id', id)
+    .maybeSingle();
+  const row = (data ?? null) as Row | null;
+  if (!row) return null;
+  return mergePayloadIntoRow(row, payloadObject(row.payload));
+}
+
+export async function resolveWorkOrder(admin: SupabaseClient, workOrderId: string, _hintSource?: string): Promise<ResolvedWorkOrder | null> {
   const id = str(workOrderId);
   if (!id) return null;
 
-  let source: WorkOrderSource = hintSource === 'fallback' ? 'fallback' : 'appointment';
+  let source: WorkOrderSource = 'appointment';
   let row: Row | null = null;
   let workflowSessionIds: string[] = [];
   let orphanSession = false;
+  let partial = false;
 
-  if (hintSource !== 'fallback') {
-    row = await loadAppointment(admin, id);
-  }
+  row = await loadAppointment(admin, id);
   if (!row) {
     row = await loadFallback(admin, id);
     if (row) source = 'fallback';
@@ -210,6 +237,22 @@ export async function resolveWorkOrder(admin: SupabaseClient, workOrderId: strin
     }
   }
 
+  if (!row) {
+    const partialAppt = await loadAppointmentPartial(admin, id);
+    if (partialAppt) {
+      row = partialAppt;
+      source = 'appointment';
+      partial = true;
+    } else {
+      const partialFb = await loadFallbackPartial(admin, id);
+      if (partialFb) {
+        row = partialFb;
+        source = 'fallback';
+        partial = true;
+      }
+    }
+  }
+
   if (!row) return null;
 
   const canonicalId = str(row.id) || id;
@@ -260,6 +303,7 @@ export async function resolveWorkOrder(admin: SupabaseClient, workOrderId: strin
     customer,
     technicianName,
     orphanSession,
+    partial,
   };
 }
 
