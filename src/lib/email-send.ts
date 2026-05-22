@@ -12,7 +12,11 @@ export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
 }
 
-export async function sendResendHtml(params: { to: string; subject: string; html: string }): Promise<{ ok: boolean; error?: string }> {
+export async function sendResendHtml(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<{ ok: boolean; error?: string; emailId?: string }> {
   const key = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim();
   if (!key || !from) {
@@ -31,7 +35,14 @@ export async function sendResendHtml(params: { to: string; subject: string; html
       console.warn('[email] Resend HTTP', res.status, err.slice(0, 300));
       return { ok: false, error: err };
     }
-    return { ok: true };
+    let emailId: string | undefined;
+    try {
+      const json = JSON.parse(text) as { id?: string };
+      if (json.id) emailId = json.id;
+    } catch {
+      /* ignore */
+    }
+    return { ok: true, emailId };
   } catch (e) {
     console.warn('[email] Resend fetch', e);
     return { ok: false };

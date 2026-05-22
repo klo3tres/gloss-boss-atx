@@ -26,6 +26,8 @@ async function logIntegrationTest(
     destination: string | null;
     error_message: string | null;
     actor_id: string;
+    provider_message_id?: string | null;
+    event_type?: string | null;
   },
 ) {
   await admin.from('integration_test_events').insert({
@@ -34,6 +36,8 @@ async function logIntegrationTest(
     destination: row.destination,
     error_message: row.error_message,
     actor_id: row.actor_id,
+    provider_message_id: row.provider_message_id ?? null,
+    event_type: row.event_type ?? null,
     created_at: new Date().toISOString(),
   });
 }
@@ -61,6 +65,20 @@ export async function sendIntegrationTestAction(_prev: ActionResult | null, form
         });
         status = sent.ok ? 'sent' : 'failed';
         error = sent.ok ? null : (sent.error ? parseResendError(sent.error, 403) : resendDomainWarning() ?? 'Resend send failed.');
+        providerMessageId = sent.emailId ?? null;
+
+        if (sent.ok) {
+          await g.admin.from('notification_outbox').insert({
+            kind: 'resend_test',
+            channel: 'email',
+            provider: 'resend',
+            status: 'pending',
+            template_key: 'resend_test',
+            provider_message_id: sent.emailId ?? null,
+            payload: { to, resend_email_id: sent.emailId, subject: 'Gloss Boss ATX integration test' },
+            created_at: new Date().toISOString(),
+          });
+        }
       }
     }
   } else if (kind === 'twilio_test') {
@@ -96,6 +114,8 @@ export async function sendIntegrationTestAction(_prev: ActionResult | null, form
     destination: destination || g.email,
     error_message: status === 'sent' ? (kind === 'twilio_test' ? `mode=${twilioSendMode()} sid=${providerMessageId}` : null) : testNote,
     actor_id: g.userId,
+    provider_message_id: kind === 'resend_test' ? providerMessageId : null,
+    event_type: kind === 'resend_test' && providerMessageId ? 'email.sent' : null,
   });
 
   revalidatePath('/admin/integrations');

@@ -3,6 +3,8 @@ import { IntegrationResendTestForm, IntegrationTwilioTestForm } from '@/componen
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendDomainVerified, resendDomainWarning, resendFromEmail } from '@/lib/resend-config';
 import { twilioMessagingServiceSid, twilioFromNumber, twilioSenderReady } from '@/lib/twilio-config';
+import { RESEND_WEBHOOK_EVENTS, RESEND_WEBHOOK_PATH } from '@/lib/resend-webhook';
+import { inboundForwardTo, inboundMailboxAddress } from '@/lib/email/inbound-email';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +68,10 @@ export default async function AdminIntegrationsPage() {
   const admin = tryCreateAdminSupabase();
   const tests = admin ? (((await admin.from('integration_test_events').select('*').order('created_at', { ascending: false }).limit(20)).data ?? []) as Row[]) : [];
   const last = (kind: string) => tests.find((t) => String(t.kind) === kind);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() ?? '';
+  const lastInboundWebhook = tests.find((t) => String(t.kind) === 'resend_inbound_received');
+  const lastOutboundWebhook = tests.find((t) => String(t.kind) === 'resend_webhook_outbound');
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()?.replace(/\/$/, '') ?? '';
+  const webhookUrl = appUrl && !appUrl.includes('localhost') ? `${appUrl}${RESEND_WEBHOOK_PATH}` : '';
   const fromEmail = resendFromEmail();
   const domainOk = resendDomainVerified();
   const resendWarn = resendDomainWarning();
@@ -122,20 +127,43 @@ export default async function AdminIntegrationsPage() {
         <Card name='Vercel Domain' ok={Boolean(appUrl && !appUrl.includes('localhost'))} vars={[['NEXT_PUBLIC_APP_URL', Boolean(appUrl)], ['No localhost in production URL', Boolean(appUrl && !appUrl.includes('localhost'))], ['Current URL', Boolean(appUrl)]]} />
         <Card name='Vercel Analytics' ok={Boolean(process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID)} vars={[['VERCEL', Boolean(process.env.VERCEL)], ['NEXT_PUBLIC_VERCEL_ANALYTICS_ID', Boolean(process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID)]]} />
         <Card
-          name='Inbound email (info@)'
-          ok={Boolean(process.env.RESEND_API_KEY && process.env.RESEND_WEBHOOK_SECRET && appUrl)}
+          name='Resend webhook'
+          ok={Boolean(process.env.RESEND_API_KEY && process.env.RESEND_WEBHOOK_SECRET && webhookUrl)}
           vars={[
             ['RESEND_API_KEY', Boolean(process.env.RESEND_API_KEY)],
             ['RESEND_WEBHOOK_SECRET', Boolean(process.env.RESEND_WEBHOOK_SECRET)],
+            ['INBOUND_MAILBOX_EMAIL', Boolean(process.env.INBOUND_MAILBOX_EMAIL || inboundMailboxAddress())],
             ['INBOUND_FORWARD_TO', Boolean(process.env.INBOUND_FORWARD_TO || process.env.CONTACT_NOTIFY_EMAIL)],
-            ['Webhook URL configured', Boolean(appUrl && !appUrl.includes('localhost'))],
           ]}
+          last={lastOutboundWebhook ?? lastInboundWebhook}
           alert={
-            appUrl && !appUrl.includes('localhost')
-              ? `Webhook: ${appUrl}/api/webhooks/resend-inbound — Resend event email.received. Forwards info@glossbossatx.com to glossbossatx1@gmail.com and saves to Message center. See docs/INBOUND_EMAIL.md.`
-              : 'Set NEXT_PUBLIC_APP_URL to show the inbound webhook URL.'
+            webhookUrl
+              ? `Configure ONE webhook in Resend: ${webhookUrl} — Events: ${RESEND_WEBHOOK_EVENTS.join(', ')}. Inbound ${inboundMailboxAddress()} → CRM + ${inboundForwardTo()}. Do not use /api/webhooks/resend-inbound.`
+              : 'Set NEXT_PUBLIC_APP_URL (production, not localhost) to show the webhook URL.'
           }
-        />
+        >
+          {webhookUrl ? (
+            <p className='mb-3 break-all font-mono text-xs text-gold-soft'>{webhookUrl}</p>
+          ) : null}
+          <div className='grid gap-2 text-xs text-zinc-400'>
+            <p>
+              <span className='font-bold text-zinc-300'>Last outbound webhook:</span>{' '}
+              {lastOutboundWebhook
+                ? `${String(lastOutboundWebhook.event_type ?? lastOutboundWebhook.status)} · ${chicago(lastOutboundWebhook.created_at)}`
+                : 'None yet'}
+            </p>
+            <p>
+              <span className='font-bold text-zinc-300'>Last inbound email webhook:</span>{' '}
+              {lastInboundWebhook
+                ? `${String(lastInboundWebhook.status)} · ${chicago(lastInboundWebhook.created_at)}`
+                : 'None yet'}
+            </p>
+            <p>
+              <span className='font-bold text-zinc-300'>Last send test (manual):</span>{' '}
+              {last('resend_test') ? `${String(last('resend_test')!.status)} · ${chicago(last('resend_test')!.created_at)}` : 'None yet'}
+            </p>
+          </div>
+        </Card>
       </section>
     </DashboardShell>
   );

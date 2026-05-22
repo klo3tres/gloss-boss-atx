@@ -129,13 +129,22 @@ export async function storeInboundCrmMessage(
     emailId: string;
     fromName: string;
     fromEmail: string;
+    toEmail: string;
     subject: string;
     body: string;
     appointmentId?: string | null;
     customerId?: string | null;
+    rawPayload?: Record<string, unknown>;
+    webhookEventId?: string | null;
   },
 ): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
-  const { emailId, fromName, fromEmail, subject, body, appointmentId, customerId } = params;
+  const { emailId, fromName, fromEmail, toEmail, subject, body, appointmentId, customerId, rawPayload, webhookEventId } =
+    params;
+
+  if (webhookEventId) {
+    const { data: dupSvix } = await admin.from('messages').select('id').eq('resend_webhook_event_id', webhookEventId).maybeSingle();
+    if (dupSvix?.id) return { ok: true, duplicate: true };
+  }
 
   const { data: existing } = await admin
     .from('messages')
@@ -148,6 +157,22 @@ export async function storeInboundCrmMessage(
     {
       from_name: fromName,
       from_email: fromEmail,
+      to_email: toEmail,
+      subject,
+      body,
+      message: body,
+      status: 'new',
+      direction: 'inbound',
+      source: 'inbound_email',
+      inbound_email_id: emailId,
+      resend_webhook_event_id: webhookEventId ?? null,
+      raw_payload: rawPayload ?? null,
+      appointment_id: appointmentId ?? null,
+      customer_id: customerId ?? null,
+    },
+    {
+      from_name: fromName,
+      from_email: fromEmail,
       subject,
       body,
       message: body,
@@ -156,7 +181,6 @@ export async function storeInboundCrmMessage(
       source: 'inbound_email',
       inbound_email_id: emailId,
       appointment_id: appointmentId ?? null,
-      customer_id: customerId ?? null,
     },
     {
       from_name: fromName,
@@ -270,7 +294,8 @@ export async function resolveCustomerContext(
 export async function processInboundEmailEvent(
   admin: SupabaseClient,
   event: ResendInboundWebhookEvent,
-): Promise<{ stored: boolean; forwarded: boolean; skipped?: string }> {
+  opts?: { rawPayload?: Record<string, unknown>; webhookEventId?: string | null },
+): Promise<{ stored: boolean; forwarded: boolean; skipped?: string; error?: string }> {
   if (event.type !== 'email.received' || !event.data?.email_id) {
     return { stored: false, forwarded: false, skipped: 'not_email_received' };
   }
@@ -291,14 +316,20 @@ export async function processInboundEmailEvent(
 
   const { customerId, appointmentId } = await resolveCustomerContext(admin, fromEmail);
 
+  const toList = Array.isArray(event.data?.to) ? event.data!.to! : [];
+  const toEmail = toList.map((t) => parseEmailAddress(t).email).join(', ') || inboundMailboxAddress();
+
   const store = await storeInboundCrmMessage(admin, {
     emailId,
     fromName,
     fromEmail,
+    toEmail,
     subject,
     body: bodyText,
     customerId,
     appointmentId,
+    rawPayload: opts?.rawPayload ?? { type: event.type, created_at: event.created_at, data: event.data },
+    webhookEventId: opts?.webhookEventId ?? null,
   });
 
   const forward = await forwardInboundToGmail({
@@ -314,5 +345,6 @@ export async function processInboundEmailEvent(
     stored: store.ok,
     forwarded: forward.sent,
     skipped: store.duplicate ? 'duplicate' : undefined,
+    error: store.error,
   };
 }

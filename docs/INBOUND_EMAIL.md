@@ -1,52 +1,78 @@
-# Inbound email: info@glossbossatx.com → Gmail + CRM
+# Resend email: inbound + outbound webhooks
 
-## What the app does
+## One webhook URL (required)
 
-When mail arrives at **info@glossbossatx.com** through [Resend Inbound](https://resend.com/docs/dashboard/receiving/introduction):
+Configure **exactly one** webhook in the [Resend dashboard](https://resend.com/webhooks):
 
-1. Resend sends a webhook to `POST /api/webhooks/resend-inbound`
-2. The app loads the full message body from Resend’s Receiving API
-3. A row is inserted into **`messages`** (Admin → Message center) with `source: inbound_email`
-4. A copy is forwarded to **glossbossatx1@gmail.com** (or `INBOUND_FORWARD_TO`) via Resend outbound
+```
+https://glossbossatx.com/api/resend/webhook
+```
 
-Website contact form messages still use the same CRM table and the same forward address via `CONTACT_NOTIFY_EMAIL`.
+(Use your production `NEXT_PUBLIC_APP_URL` + `/api/resend/webhook` in other environments.)
 
-## Resend setup (required)
+### Enable these events
 
-1. **Domain** — In Resend, enable **Receiving** for `glossbossatx.com` and add the MX records Resend provides (replace or prioritize over other MX if you want all `@glossbossatx.com` mail in Resend).
-2. **Address** — Ensure `info@glossbossatx.com` is routed to your inbound domain (catch-all or explicit alias per Resend docs).
-3. **Webhook** — Resend → Webhooks → Add endpoint:
-   - URL: `https://<your-production-domain>/api/webhooks/resend-inbound`
-   - Event: **`email.received`**
-   - Copy the **signing secret** into `RESEND_WEBHOOK_SECRET`
+- `email.sent`
+- `email.delivered`
+- `email.bounced`
+- `email.failed`
+- `email.received`
+- `email.opened` (optional)
+- `email.clicked` (optional)
 
-## Environment variables
+### Signing secret
+
+Copy the webhook signing secret into:
+
+```env
+RESEND_WEBHOOK_SECRET=whsec_...
+```
+
+## What happens per event
+
+### `email.received` (inbound to info@glossbossatx.com)
+
+1. Webhook metadata arrives (body is fetched via Resend Receiving API).
+2. Row saved to **`messages`** with `source: inbound_email`, `status: new`, `direction: inbound`, plus from/to/subject/body and `raw_payload`.
+3. Dedupe by Resend receiving `email_id` and Svix event id (`resend_webhook_event_id`).
+4. Copy forwarded to **`INBOUND_FORWARD_TO`** (default `glossbossatx1@gmail.com`) with **Reply-To** = original sender.
+
+### Outbound events (`email.sent`, `email.delivered`, etc.)
+
+- Updates **`notification_outbox`** rows matched by `provider_message_id` (Resend email id).
+- Updates recent **`integration_test_events`** for Admin “Send test email” when applicable.
+- Logs audit rows under `resend_webhook_outbound` / `resend_inbound_received`.
+
+## Environment
 
 ```env
 RESEND_API_KEY=re_...
-RESEND_FROM_EMAIL=info@glossbossatx.com   # verified sender for forwards
-RESEND_WEBHOOK_SECRET=whsec_...           # from Resend webhook settings
+RESEND_FROM_EMAIL=info@glossbossatx.com
+RESEND_WEBHOOK_SECRET=whsec_...
 
-# Optional overrides (defaults shown)
 INBOUND_MAILBOX_EMAIL=info@glossbossatx.com
 INBOUND_FORWARD_TO=glossbossatx1@gmail.com
 CONTACT_NOTIFY_EMAIL=glossbossatx1@gmail.com
 ```
 
+## Resend receiving (MX)
+
+Inbound mail must reach Resend: enable **Receiving** on `glossbossatx.com` and add Resend MX records. See [Resend receiving docs](https://resend.com/docs/dashboard/receiving/introduction).
+
 ## Database
 
-Apply migration `000051_inbound_email_crm.sql` for `inbound_email_id` dedupe and `source` on `messages`.
+Apply migrations:
+
+- `000051_inbound_email_crm.sql`
+- `000052_resend_webhook_messages.sql`
 
 ## Verify
 
-1. `GET https://your-domain/api/webhooks/resend-inbound` — should return mailbox + forward addresses.
-2. Send a test email to **info@glossbossatx.com** from an external account.
-3. Check **glossbossatx1@gmail.com** for `[Inbox info@glossbossatx.com] …` subject.
-4. Check **Admin → Message center** for a new message with status `new`.
+1. `GET https://glossbossatx.com/api/resend/webhook` — shows canonical URL and required events.
+2. Admin → **Integrations** — Resend Webhook card shows one URL and last inbound/outbound activity.
+3. Email **info@glossbossatx.com** → Message center + Gmail forward.
+4. Admin “Send test email” → webhook updates status when `email.delivered` fires.
 
-## Note on Google Workspace / other MX
+## Legacy endpoint (do not configure)
 
-If **info@** is still on Google Workspace with its own inbox, you can either:
-
-- Point MX to Resend for CRM + forward (this app), or
-- Keep Google forwarding to Gmail manually **and** BCC a Resend inbound address — but the supported path for CRM + forward in one flow is **Resend inbound + this webhook**.
+`/api/webhooks/resend-inbound` is **deprecated**. `GET` returns `410`. `POST` still works temporarily but logs a warning — remove this URL from Resend if it was added earlier.
