@@ -84,6 +84,7 @@ type ReceiptRow = {
 };
 
 type AgreementRow = {
+  id: string;
   appointment_id: string;
   signed_at: string | null;
 };
@@ -182,7 +183,7 @@ export default async function CustomerDashboardRootPage() {
           .limit(100),
         supabase
           .from('signed_agreements')
-          .select('appointment_id, signed_at')
+          .select('id, appointment_id, signed_at')
           .in('appointment_id', ids)
           .order('signed_at', { ascending: false })
           .limit(100),
@@ -265,8 +266,10 @@ export default async function CustomerDashboardRootPage() {
     return o;
   };
   const agreementRecord: Record<string, boolean> = {};
-  agreementByAppt.forEach((_, k) => {
+  const agreementHrefByAppt: Record<string, string> = {};
+  agreementByAppt.forEach((row, k) => {
     agreementRecord[k] = true;
+    agreementHrefByAppt[k] = `/dashboard/agreements/${encodeURIComponent(`signed_agreements:${row.id}`)}`;
   });
 
   return (
@@ -280,6 +283,7 @@ export default async function CustomerDashboardRootPage() {
         paymentsByAppt={mapToRecord(paymentsByAppt)}
         receiptsByAppt={mapToRecord(receiptsByAppt)}
         agreementByAppt={agreementRecord}
+        agreementHrefByAppt={agreementHrefByAppt}
         photosByAppt={mapToRecord(photosByAppt)}
         vehicleTotal={vehicleTotal}
         receiptTotal={receiptTotal}

@@ -263,6 +263,8 @@ export async function techSignWalkInAgreementAction(input: {
   smsConsent?: boolean;
   technicianWitnessName?: string | null;
   technicianWitnessRole?: string | null;
+  /** When set (e.g. work order recapture), stored as immutable agreement_snapshot text. */
+  agreementSnapshotOverride?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const appointmentId = String(input.appointmentId ?? '').trim();
   const fallbackBookingId = String(input.fallbackBookingId ?? '').trim();
@@ -408,9 +410,11 @@ export async function techSignWalkInAgreementAction(input: {
   const classLabel = A.vehicle_class === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
   const serviceLabel = (A.service_slug ?? 'service').replace(/-/g, ' ');
 
-  const snapshot = template?.body?.trim()
-    ? String(template.body)
-    : buildNativeAgreementSnapshot({
+  const snapshot = input.agreementSnapshotOverride?.trim()
+    ? input.agreementSnapshotOverride.trim()
+    : template?.body?.trim()
+      ? String(template.body)
+      : buildNativeAgreementSnapshot({
         customerName: String(A.guest_name ?? signerLegalName).trim() || signerLegalName,
         customerEmail: A.guest_email,
         customerPhone: formatUsPhoneDisplay(A.guest_phone),

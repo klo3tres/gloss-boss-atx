@@ -174,6 +174,15 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
         ) : null}
       </div>
 
+      <div className='gb-no-print mb-4 flex flex-wrap gap-2'>
+        <a
+          href={`/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId))}/pdf`}
+          className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'
+        >
+          Download invoice PDF
+        </a>
+      </div>
+
       <PrintDocumentActions
         sendForm={
           <form action={sendReceiptAction}>

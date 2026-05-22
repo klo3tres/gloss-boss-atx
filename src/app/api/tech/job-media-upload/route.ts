@@ -457,7 +457,11 @@ export async function POST(request: Request) {
     const ext = MIME_TO_EXT[file.type];
     const bucket = process.env.JOB_MEDIA_BUCKET?.trim() || 'job-media';
     linkedAppointmentId = appointmentUsable ? linkedAppointmentId : '';
-    const path = `${user.id}/${linkedAppointmentId || `fallback-${fallbackBookingId}`}/${Date.now()}-${randomUUID()}.${ext}`;
+    const jobKey = linkedAppointmentId || `fallback-${fallbackBookingId}`;
+    const phase = category === 'after' ? 'after' : 'before';
+    const slot = ['front', 'rear', 'driver_side', 'passenger_side'].includes(photoCategory) ? photoCategory : photoCategory === 'before' || photoCategory === 'after' ? 'other' : photoCategory;
+    const path = `jobs/${jobKey}/${phase}/${slot}/${Date.now()}-${randomUUID()}.${ext}`;
+    const thumbPath = `jobs/${jobKey}/${phase}/${slot}/thumbs/${Date.now()}-${randomUUID()}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     let { error: uploadError } = await admin.storage.from(bucket).upload(path, buffer, {
       contentType: file.type,
@@ -484,6 +488,15 @@ export async function POST(request: Request) {
     const { data: pub } = admin.storage.from(bucket).getPublicUrl(path);
     const fileUrl = pub.publicUrl;
 
+    let thumbnailUrl = fileUrl;
+    const { error: thumbErr } = await admin.storage.from(bucket).upload(thumbPath, buffer, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (!thumbErr) {
+      thumbnailUrl = admin.storage.from(bucket).getPublicUrl(thumbPath).data.publicUrl;
+    }
+
     const baseRow: Record<string, unknown> = {
       appointment_id: linkedAppointmentId || null,
       fallback_booking_id: fallbackBookingId || null,
@@ -496,8 +509,10 @@ export async function POST(request: Request) {
       file_url: fileUrl,
       media_url: fileUrl,
       public_url: fileUrl,
+      thumbnail_url: thumbnailUrl,
       storage_bucket: bucket,
       storage_path: path,
+      thumbnail_path: thumbPath,
       file_path: path,
       mime_type: file.type,
       content_type: file.type,

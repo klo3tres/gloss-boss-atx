@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
+import { resolveWorkOrder } from '@/lib/work-order-resolve';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? searchParams.get('workOrderId') ?? '';
+    let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? '';
     let fallbackBookingId = searchParams.get('fallbackBookingId') ?? searchParams.get('fallback_booking_id') ?? '';
+    const workOrderId = searchParams.get('workOrderId') ?? searchParams.get('work_order_id') ?? '';
     const customerId = searchParams.get('customerId') ?? searchParams.get('customer_id') ?? '';
     const paymentId = searchParams.get('paymentId') ?? searchParams.get('payment_id') ?? '';
     const email = (searchParams.get('email') ?? '').trim().toLowerCase();
@@ -18,6 +20,14 @@ export async function GET(request: Request) {
     const admin = tryCreateAdminSupabase();
     if (!admin) {
       return NextResponse.json({ error: 'Database not configured', code: 'SUPABASE_NOT_READY' }, { status: 503 });
+    }
+
+    if (workOrderId && !appointmentId && !fallbackBookingId) {
+      const resolved = await resolveWorkOrder(admin, workOrderId);
+      if (resolved) {
+        appointmentId = resolved.isFallback ? '' : resolved.canonicalId;
+        fallbackBookingId = resolved.isFallback ? resolved.canonicalId : '';
+      }
     }
 
     if (paymentId) {

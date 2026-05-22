@@ -32,6 +32,7 @@ export type CustomerDashboardProps = {
   paymentsByAppt: Record<string, Array<{ amount_cents: number; status: string }>>;
   receiptsByAppt: Record<string, Array<{ receipt_number: string | null; created_at: string }>>;
   agreementByAppt: Record<string, boolean>;
+  agreementHrefByAppt: Record<string, string>;
   photosByAppt: Record<string, Array<{ file_url: string; category: string }>>;
   vehicleTotal: number;
   receiptTotal: number;
@@ -112,9 +113,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                       <p className='text-lg font-bold text-white'>{a.service_slug.replace(/-/g, ' ')}</p>
                       <p className='text-sm text-gold-soft'>{chicago(a.scheduled_start)}</p>
                     </div>
-                    <PremiumBadge tone={props.agreementByAppt[a.id] ? 'emerald' : 'amber'}>
-                      {props.agreementByAppt[a.id] ? 'Agreement signed' : 'Agreement pending'}
-                    </PremiumBadge>
+                    {props.agreementByAppt[a.id] && props.agreementHrefByAppt[a.id] ? (
+                      <Link href={props.agreementHrefByAppt[a.id]} className='text-xs font-black uppercase text-gold-soft underline'>
+                        View agreement PDF
+                      </Link>
+                    ) : (
+                      <PremiumBadge tone='amber'>Agreement pending</PremiumBadge>
+                    )}
                   </div>
                   <p className='mt-3 text-sm text-zinc-400'>{addr || 'Address pending'}</p>
                   <div className='mt-3 flex flex-wrap gap-2'>
@@ -195,16 +200,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
         <Link href='/book' className='rounded-2xl bg-gold px-6 py-3 text-xs font-black uppercase text-black'>
           Rebook service
         </Link>
-        <Link
-          href={
-            props.upcoming[0]?.id
-              ? `/agreement?appointmentId=${encodeURIComponent(props.upcoming[0].id)}${props.upcoming[0].guest_email ? `&email=${encodeURIComponent(props.upcoming[0].guest_email)}` : ''}`
-              : '/agreement'
-          }
-          className='rounded-2xl border border-white/15 px-6 py-3 text-xs font-black uppercase text-zinc-300'
-        >
-          Agreements
-        </Link>
+        {Object.keys(props.agreementHrefByAppt).length > 0 ? (
+          <Link
+            href={props.agreementHrefByAppt[Object.keys(props.agreementHrefByAppt)[0]!]}
+            className='rounded-2xl border border-white/15 px-6 py-3 text-xs font-black uppercase text-zinc-300'
+          >
+            View signed agreement
+          </Link>
+        ) : null}
       </div>
     </div>
   );
