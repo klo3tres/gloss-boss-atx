@@ -1,4 +1,5 @@
 import { glossBossEmailShell, bookingConfirmationEmailHtml } from '@/lib/email-brand';
+import { parseResendError } from '@/lib/resend-config';
 
 export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
@@ -19,8 +20,9 @@ export async function sendResendHtml(params: { to: string; subject: string; html
     });
     const text = await res.text();
     if (!res.ok) {
-      console.warn('[email] Resend HTTP', res.status, text.slice(0, 300));
-      return { ok: false, error: text };
+      const err = parseResendError(text, res.status);
+      console.warn('[email] Resend HTTP', res.status, err.slice(0, 300));
+      return { ok: false, error: err };
     }
     return { ok: true };
   } catch (e) {

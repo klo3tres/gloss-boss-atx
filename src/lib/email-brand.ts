@@ -3,6 +3,8 @@
  * Replace with Resend/Twilio integrations when API keys are configured.
  */
 
+import { GLOSS_BOSS_LOGO_URL, GLOSS_BOSS_SUPPORT_EMAIL, GLOSS_BOSS_SUPPORT_MAILTO } from '@/lib/branding';
+
 export function glossBossEmailShell(params: {
   title: string;
   preview?: string;
@@ -16,12 +18,13 @@ export function glossBossEmailShell(params: {
   <table role="presentation" width="100%" style="background:#0a0a0a;padding:24px 12px;">
     <tr><td align="center">
       <table role="presentation" width="600" style="max-width:600px;border:1px solid #c9a962;background:#111;border-radius:12px;overflow:hidden;">
-        <tr><td style="padding:24px 28px;background:linear-gradient(90deg,#0a0a0a,#14110a);border-bottom:1px solid #c9a96244;">
+        <tr><td style="padding:24px 28px;background:linear-gradient(90deg,#0a0a0a,#14110a);border-bottom:1px solid #c9a96244;text-align:center;">
+          <img src="${GLOSS_BOSS_LOGO_URL}" alt="Gloss Boss ATX" width="200" style="display:block;margin:0 auto 14px;max-width:200px;height:auto;border:0;" />
           <p style="margin:0;font-size:11px;letter-spacing:0.35em;text-transform:uppercase;color:#d4a64d;">Gloss Boss ATX</p>
           <p style="margin:8px 0 0;font-size:20px;font-weight:800;color:#fafafa;text-transform:uppercase;">Premium Auto Care</p>
         </td></tr>
         <tr><td style="padding:28px;">${bodyHtml}</td></tr>
-        <tr><td style="padding:16px 28px;border-top:1px solid #27272a;font-size:12px;color:#a1a1aa;">Austin mobile detailing</td></tr>
+        <tr><td style="padding:16px 28px;border-top:1px solid #27272a;font-size:12px;color:#a1a1aa;text-align:center;">Austin mobile detailing · <a href="${GLOSS_BOSS_SUPPORT_MAILTO}" style="color:#d4a64d;">${GLOSS_BOSS_SUPPORT_EMAIL}</a></td></tr>
       </table>
     </td></tr>
   </table>

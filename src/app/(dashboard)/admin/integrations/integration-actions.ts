@@ -6,6 +6,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { glossBossEmailShell } from '@/lib/email-brand';
 import { resendConfigured, sendResendHtml, sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { parseResendError, resendDomainWarning } from '@/lib/resend-config';
 
 async function gate() {
   const session = await getSessionWithProfile();
@@ -33,7 +34,7 @@ export async function sendIntegrationTestAction(formData: FormData) {
           html: glossBossEmailShell({ title: 'Integration test', bodyHtml: '<p style="color:#fafafa;">Resend is connected.</p>' }),
         });
         status = sent.ok ? 'sent' : 'failed';
-        error = sent.ok ? null : /403|domain/i.test(sent.error ?? '') ? 'Resend domain not verified. Verify domain before sending to customers.' : sent.error ?? 'Resend send failed.';
+        error = sent.ok ? null : (sent.error ? parseResendError(sent.error, 403) : resendDomainWarning() ?? 'Resend send failed.');
       }
     }
   } else if (kind === 'twilio_test') {

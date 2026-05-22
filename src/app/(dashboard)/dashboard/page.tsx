@@ -38,6 +38,7 @@ type ApptRow = {
   service_zip?: string | null;
   balance_due_cents?: number | null;
   payment_status?: string | null;
+  guest_email?: string | null;
 
 };
 
@@ -513,7 +514,11 @@ export default async function CustomerDashboardRootPage() {
 
         <Link
 
-          href={appointments[0]?.id ? `/agreement?appointment_id=${encodeURIComponent(appointments[0].id)}` : '/agreement'}
+          href={
+            appointments[0]?.id
+              ? `/agreement?appointmentId=${encodeURIComponent(appointments[0].id)}${appointments[0].guest_email ? `&email=${encodeURIComponent(appointments[0].guest_email)}` : ''}`
+              : '/agreement'
+          }
 
           className='rounded-lg border border-white/15 px-5 py-3 text-sm font-bold uppercase tracking-wider text-zinc-300'
 

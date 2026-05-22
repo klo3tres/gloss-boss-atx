@@ -10,6 +10,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
 import { resendConfigured, sendResendHtml, sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { resendDomainWarning } from '@/lib/resend-config';
 import { glossBossEmailShell } from '@/lib/email-brand';
 
 async function requireTechSupabase() {
@@ -792,7 +793,7 @@ export async function techSendActiveJobNotificationAction(formData: FormData): P
     sendSummary = { sms: smsResult, email: emailResult };
     if (smsResult?.ok === false || emailResult?.ok === false) {
       outboxStatus = 'failed';
-      skippedReason = smsResult?.error || emailResult?.error || 'Provider send failed.';
+      skippedReason = smsResult?.error || emailResult?.error || resendDomainWarning() || 'Provider send failed.';
     } else if (!smsResult && !emailResult) {
       outboxStatus = 'skipped';
       skippedReason = 'Skipped - configure Twilio/Resend.';

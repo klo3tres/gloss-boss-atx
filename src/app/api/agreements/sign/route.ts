@@ -75,7 +75,10 @@ export async function POST(request: Request) {
       resolvedFallbackId = fallbackBookingId;
     }
 
-    if (apptErr || !appt || (appointmentId && accessToken && appt.access_token !== accessToken)) {
+    if (apptErr || !appt) {
+      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+    }
+    if (accessToken && appt.access_token && String(appt.access_token) !== accessToken) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 

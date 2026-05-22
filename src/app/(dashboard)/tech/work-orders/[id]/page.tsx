@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { DashboardShell, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { TechJobWorkspace } from '../../tech-job-workspace';
@@ -10,6 +10,7 @@ import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '../../work-order-g
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction, techSendActiveJobNotificationAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,6 +151,7 @@ export default async function TechWorkOrderDetailPage({
   const { id } = await params;
   const sp = searchParams ? await searchParams : {};
   const source = str(sp.source);
+  const shellRole: DashboardShellRole = str(sp.shell) === 'admin' ? 'admin' : 'technician';
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   if (!session.user || !admin) notFound();
@@ -159,7 +161,7 @@ export default async function TechWorkOrderDetailPage({
   if (!isFallback) {
     const appt = await admin
       .from('appointments')
-      .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at')
+      .select('id, status, access_token, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at, scheduled_start, job_completed_at, completed_at')
       .eq('id', id)
       .maybeSingle();
     row = (appt.data ?? null) as Row | null;
@@ -185,7 +187,7 @@ export default async function TechWorkOrderDetailPage({
     if (wfAppointmentId) {
       const linked = await admin
         .from('appointments')
-        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at')
+        .select('id, status, access_token, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at, scheduled_start, job_completed_at, completed_at')
         .eq('id', wfAppointmentId)
         .maybeSingle();
       row = (linked.data ?? null) as Row | null;
@@ -229,7 +231,7 @@ export default async function TechWorkOrderDetailPage({
     if (timerAppointmentId) {
       const linked = await admin
         .from('appointments')
-        .select('id, status, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at')
+        .select('id, status, access_token, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, vehicle_class, base_price_cents, balance_due_cents, payment_status, notes, intake_completed_at, scheduled_start, job_completed_at, completed_at')
         .eq('id', timerAppointmentId)
         .maybeSingle();
       row = (linked.data ?? null) as Row | null;
@@ -327,6 +329,7 @@ export default async function TechWorkOrderDetailPage({
   const agreementCaptureHref = `/agreement?${[
     isFallback ? `fallbackBookingId=${encodeURIComponent(id)}` : `appointmentId=${encodeURIComponent(id)}`,
     row.customer_id ? `customerId=${encodeURIComponent(str(row.customer_id))}` : '',
+    str(row.access_token) ? `token=${encodeURIComponent(str(row.access_token))}` : '',
     row.guest_email ? `email=${encodeURIComponent(str(row.guest_email))}` : '',
     row.guest_phone ? `phone=${encodeURIComponent(str(row.guest_phone))}` : '',
   ].filter(Boolean).join('&')}`;
@@ -350,7 +353,7 @@ export default async function TechWorkOrderDetailPage({
   }));
 
   return (
-    <DashboardShell title='Active work order' subtitle='Photos, notes, checklist, payment, timer, and completion controls.' role='technician'>
+    <DashboardShell title='Active work order' subtitle='Photos, notes, checklist, payment, timer, and completion controls.' role={shellRole}>
       <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-950 p-5 shadow-[0_0_45px_rgba(212,166,77,0.12)]'>
         <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
           <div>
@@ -447,28 +450,25 @@ export default async function TechWorkOrderDetailPage({
           <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save customer/address</button>
         </form>
 
-        <form action={updateWorkOrderVehiclesAction} className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>
-          <input type='hidden' name='id' value={id} />
-          <input type='hidden' name='source' value={isFallback ? 'fallback' : 'appointment'} />
-          <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Vehicles in this work order</p>
-          <div className='mt-3 space-y-3'>
-            {vehicles.map((v, i) => (
-              <div key={i} className='rounded-xl border border-white/10 bg-black/35 p-3'>
-                <p className='mb-2 text-[10px] font-black uppercase tracking-wider text-zinc-500'>Vehicle {i + 1}</p>
-                <div className='grid gap-2 sm:grid-cols-3'>
-                  <input name='vehicleYear' defaultValue={vehicleParts(v).year === 'Not provided' ? '' : vehicleParts(v).year} placeholder='Year' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleMake' defaultValue={vehicleParts(v).make === 'Not provided' ? '' : vehicleParts(v).make} placeholder='Make' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleModel' defaultValue={vehicleParts(v).model === 'Not provided' ? '' : vehicleParts(v).model} placeholder='Model' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleDescription' defaultValue={str(v.vehicle_description || v.description)} placeholder='Year / Make / Model' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleColor' defaultValue={str(v.vehicle_color || v.color)} placeholder='Color' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleService' defaultValue={str(v.service_slug || row.service_slug)} placeholder='Service' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                  <input name='vehicleClass' defaultValue={str(v.vehicle_class || row.vehicle_class)} placeholder='Vehicle class' className='rounded border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-                </div>
-              </div>
-            ))}
-          </div>
-          <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save vehicles</button>
-        </form>
+        <WorkOrderVehiclesForm
+          id={id}
+          source={isFallback ? 'fallback' : 'appointment'}
+          defaultService={str(row.service_slug)}
+          defaultClass={str(row.vehicle_class)}
+          saveAction={updateWorkOrderVehiclesAction}
+          initialVehicles={vehicles.map((v) => {
+            const p = vehicleParts(v);
+            return {
+              year: p.year === 'Not provided' ? '' : p.year,
+              make: p.make === 'Not provided' ? '' : p.make,
+              model: p.model === 'Not provided' ? '' : p.model,
+              description: str(v.vehicle_description || v.description),
+              color: str(v.vehicle_color || v.color),
+              service: str(v.service_slug || row.service_slug),
+              vehicleClass: str(v.vehicle_class || row.vehicle_class),
+            };
+          })}
+        />
       </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4'>

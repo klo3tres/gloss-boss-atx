@@ -5,6 +5,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { mapMessageRow, MESSAGE_SELECT_FALLBACK, MESSAGE_SELECT_LEAN, MESSAGE_SELECT_WITH_PHONE, type MessageRow } from '@/lib/messages-map';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { MessagesCenterClient } from '@/components/admin/messages-center-client';
+import { resendDomainWarning } from '@/lib/resend-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,8 +49,13 @@ export default async function AdminMessagesPage() {
     }
   }
 
+  const resendWarn = resendDomainWarning();
+
   return (
-    <DashboardShell title='Message center' subtitle='Contact form submissions — premium inbox view.' role='admin'>
+    <DashboardShell title='Message center' subtitle='Inbox, sent, drafts, archived, compose, and reply with Resend when verified.' role='admin'>
+      {resendWarn ? (
+        <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>{resendWarn}</p>
+      ) : null}
       {messagesError ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
           {messagesError}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 const categories = ['front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels', 'damage', 'other'];
@@ -22,6 +23,7 @@ export function WorkOrderPhotoUpload({
   const [preview, setPreview] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
 
   const upload = async (file: File | undefined | null) => {
     if (!file) return;
@@ -49,6 +51,7 @@ export function WorkOrderPhotoUpload({
     }
     if (json.url) setPreview(json.url);
     setMessage(`${phase} ${category.replace(/_/g, ' ')} photo saved for ${vehicleLabel}.`);
+    router.refresh();
   };
 
   return (

@@ -33,3 +33,27 @@ body {
 .tech-workflow-form button {
   font-size: 16px;
 }
+
+@media print {
+  .gb-no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .gb-print-document {
+    display: block !important;
+    box-shadow: none !important;
+  }
+
+  main.min-h-screen {
+    background: #fff !important;
+  }
+
+  main.min-h-screen > .pointer-events-none {
+    display: none !important;
+  }
+}

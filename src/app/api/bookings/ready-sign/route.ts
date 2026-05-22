@@ -6,7 +6,7 @@ import { getStripeSdk } from '@/lib/stripe/stripeService';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? '';
+    let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? searchParams.get('workOrderId') ?? '';
     let fallbackBookingId = searchParams.get('fallbackBookingId') ?? searchParams.get('fallback_booking_id') ?? '';
     const customerId = searchParams.get('customerId') ?? searchParams.get('customer_id') ?? '';
     const paymentId = searchParams.get('paymentId') ?? searchParams.get('payment_id') ?? '';
@@ -73,7 +73,10 @@ export async function GET(request: Request) {
     token ||= String(appt?.access_token ?? '');
     sessionId ||= String(appt?.stripe_checkout_session_id ?? '');
 
-    if (!appt || (appointmentId && token && appt.access_token !== token)) {
+    if (!appt) {
+      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+    }
+    if (token && appt.access_token && String(appt.access_token) !== token) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
