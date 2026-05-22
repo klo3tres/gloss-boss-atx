@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { canAccessCustomerPortal } from '@/lib/auth/customer-portal';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notifyBusinessOfContactMessage } from '@/lib/email/contact-notify';
+import { resendDomainVerified } from '@/lib/resend-config';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -10,7 +12,7 @@ function str(v: unknown) {
 export async function GET() {
   const session = await getSessionWithProfile();
   const email = session.user?.email?.trim().toLowerCase();
-  if (!email || session.profile?.role !== 'customer') {
+  if (!email || !canAccessCustomerPortal(session.profile?.role)) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
   const admin = tryCreateAdminSupabase();
@@ -43,7 +45,7 @@ export async function POST(request: Request) {
   const session = await getSessionWithProfile();
   const email = session.user?.email?.trim().toLowerCase();
   const name = session.profile?.full_name || session.user?.email?.split('@')[0] || 'Customer';
-  if (!email || session.profile?.role !== 'customer') {
+  if (!email || !canAccessCustomerPortal(session.profile?.role)) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
 
@@ -77,12 +79,22 @@ export async function POST(request: Request) {
     if (err2) return NextResponse.json({ error: 'Could not send message' }, { status: 500 });
   }
 
-  void notifyBusinessOfContactMessage({
+  const notify = await notifyBusinessOfContactMessage({
     fromName: name,
     fromEmail: email,
     subject: row.subject,
     body: message,
   });
 
-  return NextResponse.json({ ok: true });
+  const emailSkipped = !notify.sent;
+  const emailNote =
+    emailSkipped && !process.env.RESEND_API_KEY?.trim()
+      ? 'email notification skipped (Resend not configured)'
+      : emailSkipped && !resendDomainVerified()
+        ? 'email notification skipped (domain not verified)'
+        : emailSkipped
+          ? 'email notification skipped'
+          : null;
+
+  return NextResponse.json({ ok: true, emailNotificationSkipped: emailSkipped, note: emailNote });
 }

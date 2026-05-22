@@ -69,16 +69,16 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
     });
   }
 
-  const captureHref = `/agreement?${[
-    appointmentId ? `appointmentId=${encodeURIComponent(appointmentId)}` : '',
-    fallbackId ? `fallbackBookingId=${encodeURIComponent(fallbackId)}` : '',
-    customerId ? `customerId=${encodeURIComponent(customerId)}` : '',
-    str(appt.access_token) ? `token=${encodeURIComponent(str(appt.access_token))}` : '',
-    fields.customerEmail ? `email=${encodeURIComponent(fields.customerEmail)}` : '',
-    fields.customerPhone ? `phone=${encodeURIComponent(fields.customerPhone)}` : '',
-  ]
-    .filter(Boolean)
-    .join('&')}`;
+  const workOrderId = appointmentId || fallbackId;
+  const captureHref = workOrderId
+    ? `/tech/work-orders/${encodeURIComponent(workOrderId)}/recapture-agreement?shell=admin${fallbackId && !appointmentId ? '&source=fallback' : ''}`
+    : `/agreement?${[
+        customerId ? `customerId=${encodeURIComponent(customerId)}` : '',
+        fields.customerEmail ? `email=${encodeURIComponent(fields.customerEmail)}` : '',
+        fields.customerPhone ? `phone=${encodeURIComponent(fields.customerPhone)}` : '',
+      ]
+        .filter(Boolean)
+        .join('&')}`;
 
   return (
     <DashboardShell title='Agreement detail' subtitle='Signed legal document snapshot — print shows only the agreement.' role='admin'>

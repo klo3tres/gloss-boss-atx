@@ -13,7 +13,6 @@ export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
 export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'customer';
 
 const adminLinks = [
-  { href: '/admin', label: 'Home' },
   { href: '/admin', label: 'Overview' },
   { href: '/admin/payments', label: 'Payments / Receipts' },
   { href: '/admin/receipts', label: 'Receipts' },
@@ -38,7 +37,6 @@ const adminLinks = [
 ];
 
 const superLinks = [
-  { href: '/admin/super', label: 'Home' },
   { href: '/admin/super', label: 'Command center' },
   { href: '/admin/booking-health', label: 'Booking health' },
   { href: '/admin', label: 'Operations (admin)' },
@@ -64,9 +62,8 @@ const superLinks = [
 ];
 
 const techLinks = [
-  { href: '/tech', label: 'Home' },
-  { href: '/tech/workflow', label: 'Walk-in workflow' },
   { href: '/tech', label: 'Active work orders' },
+  { href: '/tech/workflow', label: 'Walk-in workflow' },
   { href: '/tech#field-invoice', label: 'Field tools' },
   { href: '/tech/resources', label: 'SOPs' },
 ];
@@ -145,7 +142,7 @@ export function DashboardShell({
     <nav className='mt-6 space-y-2'>
       {links.map((link) => (
         <Link
-          key={link.href}
+          key={`${link.href}-${link.label}`}
           href={link.href}
           className={`block rounded-lg border px-3 py-2 text-sm transition ${
             pathname === link.href || pathname.startsWith(`${link.href}/`)

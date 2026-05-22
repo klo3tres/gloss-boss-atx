@@ -46,7 +46,7 @@ export function CustomerMessagesClient({ customerEmail }: { customerEmail: strin
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subject: subject.trim() || 'Question', message: body.trim() }),
     });
-    const json = (await res.json()) as { ok?: boolean; error?: string };
+    const json = (await res.json()) as { ok?: boolean; error?: string; note?: string | null };
     setBusy(false);
     if (!res.ok) {
       setError(json.error ?? 'Send failed');
@@ -54,7 +54,11 @@ export function CustomerMessagesClient({ customerEmail }: { customerEmail: strin
     }
     setBody('');
     setSubject('');
-    setOk('Message sent. We usually reply within 24–48 hours.');
+    setOk(
+      json.note
+        ? `Message saved. ${json.note}. We usually reply within 24–48 hours.`
+        : 'Message sent. We usually reply within 24–48 hours.',
+    );
     void load();
   };
 

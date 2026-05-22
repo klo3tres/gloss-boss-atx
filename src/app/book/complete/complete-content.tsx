@@ -32,6 +32,7 @@ export default function CompleteContent() {
   const fallbackBookingId = searchParams.get('fallback_booking_id') ?? searchParams.get('fallbackBookingId') ?? '';
   const customerId = searchParams.get('customer_id') ?? searchParams.get('customerId') ?? '';
   const paymentId = searchParams.get('payment_id') ?? searchParams.get('paymentId') ?? '';
+  const workOrderId = searchParams.get('work_order_id') ?? searchParams.get('workOrderId') ?? '';
   const email = searchParams.get('email') ?? '';
   const phone = searchParams.get('phone') ?? '';
 
@@ -80,7 +81,7 @@ export default function CompleteContent() {
   const agreementTitle = template?.title?.trim() ? template.title : DEFAULT_AGREEMENT_TITLE;
 
   useEffect(() => {
-    if (!sessionId && !token && !appointmentId && !fallbackBookingId && !customerId && !paymentId && !email && !phone) {
+    if (!sessionId && !token && !appointmentId && !fallbackBookingId && !customerId && !paymentId && !workOrderId && !email && !phone) {
       setError('Missing booking parameters.');
       setLoading(false);
       return;
@@ -94,6 +95,7 @@ export default function CompleteContent() {
     if (fallbackBookingId) q.set('fallbackBookingId', fallbackBookingId);
     if (customerId) q.set('customerId', customerId);
     if (paymentId) q.set('paymentId', paymentId);
+    if (workOrderId) q.set('workOrderId', workOrderId);
     if (email) q.set('email', email);
     if (phone) q.set('phone', phone);
     fetch(`/api/bookings/ready-sign?${q.toString()}`)
@@ -138,7 +140,7 @@ export default function CompleteContent() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, token, appointmentId, fallbackBookingId, customerId, paymentId, email, phone, searchParams]);
+  }, [sessionId, token, appointmentId, fallbackBookingId, customerId, paymentId, workOrderId, email, phone, searchParams]);
 
   const handleSign = async () => {
     if ((!resolvedAppointmentId && !resolvedFallbackBookingId) || !agreementBody.trim()) return;

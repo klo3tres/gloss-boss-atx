@@ -22,11 +22,17 @@ export function displayLabel(v: unknown, empty = ''): string {
 
 export function displayChicago(v: unknown, empty = '—'): string {
   if (!v) return empty;
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(str(v)));
+  const d = new Date(str(v));
+  if (Number.isNaN(d.getTime())) return empty;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(d);
+  } catch {
+    return empty;
+  }
 }
 
 export function displayPhone(v: unknown): string {

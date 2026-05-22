@@ -28,6 +28,8 @@ export type CustomerDashboardProps = {
   liveJob: CustomerAppt | null;
   liveEvents: Array<{ event_type: string; created_at: string }>;
   upcoming: CustomerAppt[];
+  inFlight?: CustomerAppt[];
+  pending?: CustomerAppt[];
   history: CustomerAppt[];
   eventsByAppt: Record<string, Array<{ event_type: string; created_at: string }>>;
   paymentsByAppt: Record<string, Array<{ amount_cents: number; status: string }>>;
@@ -43,7 +45,13 @@ export type CustomerDashboardProps = {
 };
 
 function chicago(value: string) {
-  return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  } catch {
+    return '—';
+  }
 }
 
 function friendlyEvent(t: string) {
@@ -102,8 +110,16 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
       <div className='grid gap-6 lg:grid-cols-3'>
         <GlassCard className='lg:col-span-2' glow>
           <SectionEyebrow>Upcoming appointments</SectionEyebrow>
+          {(props.inFlight?.length ?? 0) > 0 ? (
+            <p className='mt-2 text-xs text-emerald-300'>{props.inFlight!.length} in progress right now</p>
+          ) : null}
+          {(props.pending?.length ?? 0) > 0 ? (
+            <p className='mt-1 text-xs text-amber-200'>{props.pending!.length} pending confirmation or payment</p>
+          ) : null}
           <ul className='mt-5 space-y-4'>
-            {props.upcoming.length === 0 ? <li className='text-sm text-zinc-500'>No upcoming appointments.</li> : null}
+            {props.upcoming.length === 0 && (props.inFlight?.length ?? 0) === 0 && (props.pending?.length ?? 0) === 0 ? (
+              <li className='text-sm text-zinc-500'>No upcoming appointments.</li>
+            ) : null}
             {props.upcoming.map((a) => {
               const receipts = props.receiptsByAppt[a.id] ?? [];
               const addr = [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ');
@@ -158,13 +174,11 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 href={props.googleReviewUrl}
                 target='_blank'
                 rel='noreferrer'
-                className='mt-4 inline-flex items-center gap-2 text-xs font-black uppercase text-gold-soft'
+                className='mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
               >
-                <Star className='h-4 w-4' /> Leave a review
+                <Star className='h-4 w-4' /> Leave a Google Review
               </a>
-            ) : (
-              <p className='mt-4 text-xs text-zinc-500'>Google review link will appear once configured in admin CMS.</p>
-            )}
+            ) : null}
           </GlassCard>
 
           <GlassCard>

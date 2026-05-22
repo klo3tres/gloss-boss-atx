@@ -4,6 +4,20 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
 
+const APPT_SELECT =
+  'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
+
+const FB_SELECT =
+  'id, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, payload, stripe_checkout_session_id, payment_status, access_token';
+
+function str(v: unknown) {
+  return v == null ? '' : String(v).trim();
+}
+
+function apptFromFallback(fb: Record<string, unknown>, fallbackId: string): Record<string, unknown> {
+  return { ...fb, id: '', fallback_booking_id: fallbackId, access_token: fb.access_token ?? '' };
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -37,61 +51,91 @@ export async function GET(request: Request) {
         .eq('id', paymentId)
         .maybeSingle();
       const p = (payment ?? {}) as Record<string, unknown>;
-      appointmentId ||= String(p.appointment_id ?? '');
-      fallbackBookingId ||= String(p.fallback_booking_id ?? '');
-      sessionId ||= String(p.stripe_checkout_session_id ?? '');
+      appointmentId ||= str(p.appointment_id);
+      fallbackBookingId ||= str(p.fallback_booking_id);
+      sessionId ||= str(p.stripe_checkout_session_id);
     }
 
-    if (sessionId && !appointmentId) {
+    if (sessionId && !appointmentId && !fallbackBookingId) {
       const { data: apptBySession } = await admin
         .from('appointments')
         .select('id, access_token')
         .or(`stripe_checkout_session_id.eq.${sessionId},final_payment_checkout_session_id.eq.${sessionId}`)
         .maybeSingle();
-      appointmentId = String((apptBySession as Record<string, unknown> | null)?.id ?? '');
-      token ||= String((apptBySession as Record<string, unknown> | null)?.access_token ?? '');
+      appointmentId = str((apptBySession as Record<string, unknown> | null)?.id);
+      token ||= str((apptBySession as Record<string, unknown> | null)?.access_token);
     }
 
-    let apptQuery = admin
-      .from('appointments')
-      .select(
-        'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id',
-      );
-    if (appointmentId) apptQuery = apptQuery.eq('id', appointmentId);
-    else if (customerId) apptQuery = apptQuery.eq('customer_id', customerId).order('created_at', { ascending: false }).limit(1);
-    else if (email) apptQuery = apptQuery.eq('guest_email', email).order('created_at', { ascending: false }).limit(1);
-    else if (phone) apptQuery = apptQuery.eq('guest_phone', phone).order('created_at', { ascending: false }).limit(1);
-    else if (fallbackBookingId) apptQuery = apptQuery.eq('fallback_booking_id', fallbackBookingId).order('created_at', { ascending: false }).limit(1);
-    else return NextResponse.json({ error: 'Missing booking parameters' }, { status: 400 });
-
-    const { data: apptData, error } = await apptQuery.maybeSingle();
-    let appt = apptData as Record<string, unknown> | null;
+    let appt: Record<string, unknown> | null = null;
     let resolvedFallbackId = fallbackBookingId;
-    if ((!appt || error) && fallbackBookingId) {
-      const { data: fallback } = await admin
-        .from('booking_fallbacks')
-        .select('id, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, payload, stripe_checkout_session_id')
-        .eq('id', fallbackBookingId)
-        .maybeSingle();
-      const fb = (fallback ?? null) as Record<string, unknown> | null;
+
+    if (fallbackBookingId && !appointmentId) {
+      const { data: fb } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('id', fallbackBookingId).maybeSingle();
       if (fb) {
-        resolvedFallbackId = String(fb.id ?? fallbackBookingId);
-        appt = { ...fb, id: '', fallback_booking_id: resolvedFallbackId, access_token: token };
+        resolvedFallbackId = str((fb as Record<string, unknown>).id) || fallbackBookingId;
+        appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
+      }
+    } else if (appointmentId) {
+      const { data } = await admin.from('appointments').select(APPT_SELECT).eq('id', appointmentId).maybeSingle();
+      appt = (data as Record<string, unknown> | null) ?? null;
+    } else if (customerId) {
+      const { data } = await admin.from('appointments').select(APPT_SELECT).eq('customer_id', customerId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      appt = (data as Record<string, unknown> | null) ?? null;
+      if (!appt) {
+        const { data: fb } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('customer_id', customerId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (fb) {
+          resolvedFallbackId = str((fb as Record<string, unknown>).id);
+          appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
+        }
+      }
+    } else if (email) {
+      const { data } = await admin.from('appointments').select(APPT_SELECT).eq('guest_email', email).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      appt = (data as Record<string, unknown> | null) ?? null;
+      if (!appt) {
+        const { data: fb } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('guest_email', email).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (fb) {
+          resolvedFallbackId = str((fb as Record<string, unknown>).id);
+          appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
+        }
+      }
+    } else if (phone) {
+      const { data } = await admin.from('appointments').select(APPT_SELECT).eq('guest_phone', phone).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      appt = (data as Record<string, unknown> | null) ?? null;
+      if (!appt) {
+        const { data: fb } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('guest_phone', phone).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (fb) {
+          resolvedFallbackId = str((fb as Record<string, unknown>).id);
+          appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
+        }
+      }
+    } else {
+      return NextResponse.json({ error: 'Missing booking parameters' }, { status: 400 });
+    }
+
+    if (!appt && fallbackBookingId) {
+      const { data: fb } = await admin.from('booking_fallbacks').select(FB_SELECT).eq('id', fallbackBookingId).maybeSingle();
+      if (fb) {
+        resolvedFallbackId = str((fb as Record<string, unknown>).id) || fallbackBookingId;
+        appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
       }
     }
-    appointmentId = String(appt?.id ?? appointmentId);
-    token ||= String(appt?.access_token ?? '');
-    sessionId ||= String(appt?.stripe_checkout_session_id ?? '');
 
     if (!appt) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
-    if (token && appt.access_token && String(appt.access_token) !== token) {
+
+    appointmentId = str(appt.id) || appointmentId;
+    token ||= str(appt.access_token);
+    sessionId ||= str(appt.stripe_checkout_session_id);
+    const rowToken = str(appt.access_token);
+    if (token && rowToken && rowToken !== token) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
     let paymentVerified = false;
-    if (sessionId && !['awaiting_payment', 'pending', 'assigned', 'confirmed'].includes(String(appt.status))) {
+    const status = str(appt.status).toLowerCase();
+    const payStatus = str(appt.payment_status).toLowerCase();
+    if (sessionId && !['awaiting_payment', 'pending', 'assigned', 'confirmed', 'in_progress', 'completed'].includes(status)) {
       const stripe = await getStripeSdk(admin);
       if (stripe) {
         const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -101,7 +145,10 @@ export async function GET(request: Request) {
         paymentVerified = true;
       }
     }
-    if (['deposit_paid', 'paid', 'full_paid', 'test_comped', 'manual_comped'].includes(String(appt.status)) || ['deposit_paid', 'paid', 'full_paid', 'comped'].includes(String((appt as Record<string, unknown>).payment_status))) {
+    if (
+      ['deposit_paid', 'paid', 'full_paid', 'test_comped', 'manual_comped', 'comped', 'in_progress', 'completed', 'confirmed', 'assigned'].includes(status) ||
+      ['deposit_paid', 'paid', 'full_paid', 'comped'].includes(payStatus)
+    ) {
       paymentVerified = true;
     }
 

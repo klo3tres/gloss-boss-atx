@@ -172,6 +172,14 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
             Payment Detail
           </Link>
         ) : null}
+        {appointmentId || fallbackId ? (
+          <Link
+            href={`/admin/work-orders/${encodeURIComponent(appointmentId || fallbackId)}${fallbackId && !appointmentId ? '?source=fallback&shell=admin' : '?shell=admin'}`}
+            className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'
+          >
+            Edit work order
+          </Link>
+        ) : null}
       </div>
 
       <div className='gb-no-print mb-4 flex flex-wrap gap-2'>

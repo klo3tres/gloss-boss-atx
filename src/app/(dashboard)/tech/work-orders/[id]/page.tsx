@@ -11,6 +11,8 @@ import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, 
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
 import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
+import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
+import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 
 export const dynamic = 'force-dynamic';
@@ -137,8 +139,15 @@ export default async function TechWorkOrderDetailPage({
   const admin = tryCreateAdminSupabase();
   if (!session.user || !admin) notFound();
 
+  const showDebug = isAdminLevel(session.profile?.role ?? null);
+  const backHref = shellRole === 'admin' ? '/admin/work-orders' : '/tech';
+
+  try {
   const resolved = await resolveWorkOrder(admin, id, str(sp.source));
-  if (!resolved) notFound();
+  if (!resolved) {
+    console.warn('[work-order] not found', { workOrderId: id, source: str(sp.source), userId: session.user.id });
+    notFound();
+  }
 
   const { row, canonicalId, isFallback, workflowSessionIds, workflowSessionId } = resolved;
   const queryId = canonicalId;
@@ -353,6 +362,21 @@ export default async function TechWorkOrderDetailPage({
 
   return (
     <DashboardShell title='Work order' subtitle='Job overview, vehicles, agreement, photos, and payment.' role={shellRole}>
+      {showDebug ? (
+        <WorkOrderDebugPanel
+          workOrderId={id}
+          canonicalId={queryId}
+          source={isFallback ? 'fallback' : 'appointment'}
+          appointmentId={!isFallback ? queryId : ''}
+          fallbackId={isFallback ? queryId : ''}
+          customerId={str(row.customer_id)}
+          paymentIds={((paymentsRes.data ?? []) as Row[]).map((p) => str(p.id)).filter(Boolean)}
+          agreementId={str(agreementRow?.id)}
+          vehicleCount={vehicles.length}
+          photoCount={photos.length}
+          workflowSessionIds={workflowSessionIds}
+        />
+      ) : null}
       <WorkOrderConsoleClient
         data={consoleData}
         updateDetailsAction={updateWorkOrderDetailsAction}
@@ -364,4 +388,18 @@ export default async function TechWorkOrderDetailPage({
       />
     </DashboardShell>
   );
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error('[work-order] render failed', { workOrderId: id, role: session.profile?.role, detail, stack: e instanceof Error ? e.stack : undefined });
+    return (
+      <DashboardShell title='Work order' subtitle='Recoverable error — partial data may be unavailable.' role={shellRole}>
+        <WorkOrderErrorCard
+          workOrderId={id}
+          message='This work order could not be fully loaded. You can retry or return to the list.'
+          detail={detail}
+          backHref={backHref}
+        />
+      </DashboardShell>
+    );
+  }
 }

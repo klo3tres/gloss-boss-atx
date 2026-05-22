@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerEditForm } from '@/components/admin/customer-edit-form';
+import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 
@@ -259,25 +260,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Vehicles on file</h2>
-        <ul className='mt-3 space-y-2 text-sm'>
-          {vehicles.length === 0 ? (
-            <li className='rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-zinc-500'>
-              {apptVehicles.length ? 'Vehicles found on appointments below.' : 'No vehicles on file'}
-            </li>
-          ) : null}
-          {vehicles.map((v) => (
-            <li key={v.id} className='rounded border border-white/10 px-3 py-2'>
-              <p className='text-white'>{v.description}</p>
-              {v.notes ? <p className='text-xs text-zinc-500'>{v.notes}</p> : null}
-            </li>
-          ))}
-          {apptVehicles.slice(0, 12).map((description, i) => (
-            <li key={`appt-vehicle-${i}`} className='rounded border border-white/10 bg-black/20 px-3 py-2'>
-              <p className='text-white'>{description}</p>
-              <p className='text-xs text-zinc-500'>Captured from appointment/work order</p>
-            </li>
-          ))}
-        </ul>
+        <CustomerVehiclesManager customerId={id} vehicles={vehicles} />
+        {apptVehicles.length > 0 ? (
+          <p className='mt-4 text-xs text-zinc-500'>Appointment captures: {apptVehicles.slice(0, 8).join(' · ')}</p>
+        ) : null}
       </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -294,7 +280,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {apptRows.length === 0 ? <li className='text-zinc-500'>No work orders yet.</li> : null}
           {apptRows.map((a) => (
             <li key={`wo-${a.id}`} className='rounded border border-white/10 px-3 py-2'>
-              <span className='text-white'>{a.service_slug}</span>
+              <Link href={`/admin/work-orders/${a.id}?shell=admin`} className='font-semibold text-gold-soft underline'>
+                {a.service_slug}
+              </Link>
               <span className='ml-2 text-xs text-zinc-500'>{a.status}</span>
               {a.payment_status ? <span className='ml-2 text-xs text-emerald-300'>{a.payment_status}</span> : null}
               <p className='mt-1 text-xs text-zinc-500'>

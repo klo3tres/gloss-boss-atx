@@ -78,11 +78,26 @@ export async function POST(request: Request) {
     if (apptErr || !appt) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
-    if (accessToken && appt.access_token && String(appt.access_token) !== accessToken) {
+    const rowToken = appt.access_token ? String(appt.access_token) : '';
+    if (accessToken && rowToken && rowToken !== accessToken) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
-    if (!['awaiting_payment', 'pending', 'deposit_paid', 'confirmed', 'assigned', 'in_progress', 'test_comped', 'manual_comped'].includes(String(appt.status))) {
+    const signableStatuses = [
+      'awaiting_payment',
+      'pending',
+      'deposit_paid',
+      'confirmed',
+      'assigned',
+      'in_progress',
+      'completed',
+      'test_comped',
+      'manual_comped',
+      'paid',
+      'full_paid',
+      'comped',
+    ];
+    if (!signableStatuses.includes(String(appt.status))) {
       return NextResponse.json({ error: 'Deposit must be completed before signing' }, { status: 400 });
     }
 

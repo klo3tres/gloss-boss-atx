@@ -113,7 +113,7 @@ export function WorkOrderConsoleClient({
   const jobId = data.canonicalId;
 
   return (
-    <div className='gb-page-pad space-y-5 pb-28 md:space-y-8 md:pb-32'>
+    <div className='gb-page-pad space-y-5 pb-40 md:space-y-8 md:pb-24'>
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -155,7 +155,7 @@ export function WorkOrderConsoleClient({
         </div>
       </motion.section>
 
-      <div className='sticky top-2 z-20 rounded-2xl border border-gold/30 bg-black/90 px-4 py-3 backdrop-blur-md md:static md:border-white/10 md:bg-transparent md:px-0 md:py-0'>
+      <div className='rounded-2xl border border-white/10 bg-black/50 px-4 py-3 lg:sticky lg:top-2 lg:z-10 lg:border-gold/30 lg:bg-black/90 lg:backdrop-blur-md'>
         <div className='flex items-center gap-2'>
           <Clock className='h-4 w-4 text-gold-soft' />
           <SectionEyebrow>Timer</SectionEyebrow>
@@ -211,7 +211,7 @@ export function WorkOrderConsoleClient({
             <input name='serviceCity' defaultValue={data.serviceCity} placeholder='City' className='gb-input' />
             <input name='serviceState' defaultValue={data.serviceState} placeholder='State' className='gb-input' />
             <input name='serviceZip' defaultValue={data.serviceZip} placeholder='ZIP' className='gb-input' />
-            <button type='submit' className='sm:col-span-2 rounded-2xl border border-gold/40 px-4 py-3 text-xs font-black uppercase text-gold-soft'>
+            <button type='submit' className='scroll-mt-32 sm:col-span-2 rounded-2xl border border-gold/40 px-4 py-3 text-xs font-black uppercase text-gold-soft'>
               Save customer
             </button>
           </form>
@@ -341,7 +341,7 @@ export function WorkOrderConsoleClient({
             <form action={completeJobAction} className='mt-4'>
               <input type='hidden' name='appointmentId' value={jobId} />
               {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
-              <button type='submit' className='flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
+              <button type='submit' className='scroll-mt-36 flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
                 <CheckCircle2 className='h-5 w-5' /> Complete job
               </button>
             </form>

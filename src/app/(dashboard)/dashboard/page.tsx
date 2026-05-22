@@ -113,6 +113,7 @@ export default async function CustomerDashboardRootPage() {
   const session = await getSessionWithProfile();
 
   const supabase = await createSupabaseServerClient();
+  const adminDb = tryCreateAdminSupabase();
 
 
 
@@ -127,22 +128,30 @@ export default async function CustomerDashboardRootPage() {
 
 
 
-  if (supabase && session.user) {
+  const userEmail = session.user?.email?.trim().toLowerCase() ?? '';
 
-    const { data } = await supabase
+  if (supabase && session.user && userEmail) {
+    let customerId = '';
+    if (adminDb) {
+      const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
+      customerId = cust?.id ? String(cust.id) : '';
+    }
 
+    let query = supabase
       .from('appointments')
-
       .select(
-
-        'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at',
-
+        'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at, guest_email',
       )
-
       .order('scheduled_start', { ascending: false })
-
       .limit(40);
 
+    if (customerId) {
+      query = query.or(`guest_email.eq.${userEmail},customer_id.eq.${customerId}`);
+    } else {
+      query = query.eq('guest_email', userEmail);
+    }
+
+    const { data } = await query;
     appointments = (data ?? []) as ApptRow[];
 
 
@@ -245,16 +254,35 @@ export default async function CustomerDashboardRootPage() {
 
 
 
-  const upcoming = appointments.filter((a) => !['completed', 'cancelled'].includes(a.status)).slice(0, 8);
+  const now = Date.now();
+  const history = appointments.filter((a) => ['completed', 'cancelled'].includes(a.status)).slice(0, 12);
+  const inFlight = appointments.filter(
+    (a) => !['completed', 'cancelled'].includes(a.status) && (a.status === 'in_progress' || (a.job_started_at && !a.job_completed_at)),
+  );
+  const pending = appointments.filter(
+    (a) =>
+      !['completed', 'cancelled', 'in_progress'].includes(a.status) &&
+      !a.job_started_at &&
+      ['awaiting_payment', 'pending', 'assigned', 'deposit_paid', 'confirmed'].includes(a.status),
+  );
+  const upcoming = appointments
+    .filter((a) => !['completed', 'cancelled'].includes(a.status) && new Date(a.scheduled_start).getTime() >= now - 3600000)
+    .filter((a) => !inFlight.some((j) => j.id === a.id))
+    .slice(0, 8);
 
-  const history = appointments.filter((a) => ['completed', 'cancelled'].includes(a.status)).slice(0, 8);
-
-  const liveJob = upcoming.find((a) => a.status === 'in_progress' || (a.job_started_at && !a.job_completed_at));
+  const liveJob = inFlight[0] ?? upcoming.find((a) => a.status === 'in_progress' || (a.job_started_at && !a.job_completed_at)) ?? null;
 
 
 
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
-  const vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
+  let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
+  if (adminDb && userEmail) {
+    const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
+    if (cust?.id) {
+      const { count } = await adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id);
+      if (typeof count === 'number' && count > 0) vehicleTotal = count;
+    }
+  }
   const receiptTotal = Array.from(receiptsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0) || Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
   const photoTotal = Array.from(photosByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
   const agreementTotal = agreementByAppt.size;
@@ -274,7 +302,6 @@ export default async function CustomerDashboardRootPage() {
   });
 
   let googleReviewUrl = '';
-  const adminDb = tryCreateAdminSupabase();
   if (adminDb) {
     const ss = await adminDb.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
     const raw = ss.data?.value;
@@ -300,6 +327,8 @@ export default async function CustomerDashboardRootPage() {
         liveJob={liveJob ?? null}
         liveEvents={liveEvents}
         upcoming={upcoming}
+        inFlight={inFlight}
+        pending={pending}
         history={history}
         eventsByAppt={mapToRecord(eventsByAppt)}
         paymentsByAppt={mapToRecord(paymentsByAppt)}

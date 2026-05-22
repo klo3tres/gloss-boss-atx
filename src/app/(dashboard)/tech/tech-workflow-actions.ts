@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { isAdminLevel } from '@/lib/auth/roles';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { computeQuoteFromInputs, insertAppointmentResilient, type VehicleLineInput } from '@/lib/booking-server-shared';
@@ -304,7 +305,7 @@ export async function techSignWalkInAgreementAction(input: {
       .maybeSingle();
     if (fbErr || !fb?.id) return { ok: false, error: 'Fallback job not found' };
     const assigned = typeof fb.assigned_technician_id === 'string' ? fb.assigned_technician_id : null;
-    if (assigned && assigned !== session.user.id) return { ok: false, error: 'This fallback job is not assigned to you' };
+    if (assigned && assigned !== session.user.id && !isAdminLevel(role)) return { ok: false, error: 'This fallback job is not assigned to you' };
     const prevPayload = ((fb as { payload?: unknown }).payload && typeof (fb as { payload?: unknown }).payload === 'object'
       ? ((fb as { payload?: Record<string, unknown> }).payload ?? {})
       : {}) as Record<string, unknown>;
@@ -340,7 +341,7 @@ export async function techSignWalkInAgreementAction(input: {
   }
   const A = appt;
 
-  if (A.assigned_technician_id !== session.user.id) {
+  if (A.assigned_technician_id !== session.user.id && !isAdminLevel(role)) {
     const srcRow = await admin.from('appointments').select('booking_source').eq('id', appointmentId).maybeSingle();
     const bookingSource = String((srcRow.data as { booking_source?: string } | null)?.booking_source ?? '');
     const isWalkIn = bookingSource === 'tech_workflow';
