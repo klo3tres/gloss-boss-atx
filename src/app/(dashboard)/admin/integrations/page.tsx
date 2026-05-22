@@ -121,6 +121,21 @@ export default async function AdminIntegrationsPage() {
         <Card name='Supabase' ok={Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY)} vars={[['NEXT_PUBLIC_SUPABASE_URL', Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL)], ['NEXT_PUBLIC_SUPABASE_ANON_KEY', Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)], ['SUPABASE_SERVICE_ROLE_KEY', Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)]]} />
         <Card name='Vercel Domain' ok={Boolean(appUrl && !appUrl.includes('localhost'))} vars={[['NEXT_PUBLIC_APP_URL', Boolean(appUrl)], ['No localhost in production URL', Boolean(appUrl && !appUrl.includes('localhost'))], ['Current URL', Boolean(appUrl)]]} />
         <Card name='Vercel Analytics' ok={Boolean(process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID)} vars={[['VERCEL', Boolean(process.env.VERCEL)], ['NEXT_PUBLIC_VERCEL_ANALYTICS_ID', Boolean(process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID)]]} />
+        <Card
+          name='Inbound email (info@)'
+          ok={Boolean(process.env.RESEND_API_KEY && process.env.RESEND_WEBHOOK_SECRET && appUrl)}
+          vars={[
+            ['RESEND_API_KEY', Boolean(process.env.RESEND_API_KEY)],
+            ['RESEND_WEBHOOK_SECRET', Boolean(process.env.RESEND_WEBHOOK_SECRET)],
+            ['INBOUND_FORWARD_TO', Boolean(process.env.INBOUND_FORWARD_TO || process.env.CONTACT_NOTIFY_EMAIL)],
+            ['Webhook URL configured', Boolean(appUrl && !appUrl.includes('localhost'))],
+          ]}
+          alert={
+            appUrl && !appUrl.includes('localhost')
+              ? `Webhook: ${appUrl}/api/webhooks/resend-inbound — Resend event email.received. Forwards info@glossbossatx.com to glossbossatx1@gmail.com and saves to Message center. See docs/INBOUND_EMAIL.md.`
+              : 'Set NEXT_PUBLIC_APP_URL to show the inbound webhook URL.'
+          }
+        />
       </section>
     </DashboardShell>
   );
