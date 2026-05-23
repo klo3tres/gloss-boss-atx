@@ -12,6 +12,7 @@ import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 
@@ -53,23 +54,15 @@ async function upsertWorkOrderReceipt(
 
 ) {
 
-  const { data: payments } = await admin
+  const payments = await fetchPaymentsForJob(admin, jobRow, {
+    appointmentId,
+    fallbackBookingId,
+    isFallback: Boolean(fallbackBookingId),
+  });
 
-    .from('payments')
+  const pricing = resolveJobPricing(jobRow, payments);
 
-    .select('*')
-
-    .eq(fallbackBookingId ? 'fallback_booking_id' : 'appointment_id', jobId)
-
-    .order('paid_at', { ascending: false })
-
-    .limit(20);
-
-
-
-  const pricing = resolveJobPricing(jobRow, (payments ?? []) as Record<string, unknown>[]);
-
-  const lastPay = (payments ?? [])[0] as Record<string, unknown> | undefined;
+  const lastPay = payments[0] as Record<string, unknown> | undefined;
 
   const receiptNumber = `WO-${jobId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
 

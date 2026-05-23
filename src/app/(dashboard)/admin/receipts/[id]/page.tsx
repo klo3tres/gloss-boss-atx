@@ -8,6 +8,7 @@ import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { sendReceiptActionState } from '../receipt-actions';
 
 export const dynamic = 'force-dynamic';
@@ -81,32 +82,25 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
 
   const appointmentId = str(receipt?.appointment_id || payment?.appointment_id);
   const fallbackId = str(receipt?.fallback_booking_id || payment?.fallback_booking_id);
-  const [apptRes, fallbackRes, customerRes, allPaymentsRes] = await Promise.all([
+  const [apptRes, fallbackRes, customerRes] = await Promise.all([
     appointmentId ? admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle() : Promise.resolve({ data: null }),
     fallbackId ? admin.from('booking_fallbacks').select('*').eq('id', fallbackId).maybeSingle() : Promise.resolve({ data: null }),
     str(receipt?.customer_id || payment?.customer_id)
       ? admin.from('customers').select('*').eq('id', str(receipt?.customer_id || payment?.customer_id)).maybeSingle()
       : Promise.resolve({ data: null }),
-    appointmentId
-      ? admin.from('payments').select('*').eq('appointment_id', appointmentId)
-      : fallbackId
-        ? admin.from('payments').select('*').eq('fallback_booking_id', fallbackId)
-        : Promise.resolve({ data: payment ? [payment] : [] }),
   ]);
   const job = (apptRes.data ?? fallbackRes.data ?? {}) as Row;
   const customer = (customerRes.data ?? {}) as Row;
   const paymentMeta = obj(payment?.metadata);
-  const paidRows = ((allPaymentsRes.data ?? []) as Row[]).filter((p) => ['succeeded', 'paid', 'comped', 'manual_comped'].includes(str(p.status)));
+  const paidRows = await fetchPaymentsForJob(admin, job, {
+    appointmentId,
+    fallbackBookingId: fallbackId,
+    isFallback: Boolean(fallbackId && !appointmentId),
+  });
   const jobPricing = resolveJobPricing(job, paidRows);
   const method = label(payment?.payment_method || payment?.payment_kind || receipt?.payment_method || (payment?.stripe_checkout_session_id ? 'stripe' : 'manual'));
-  const baseTotal = jobPricing.prePromoCents;
-  const finalTotal = jobPricing.finalTotalCents;
-  const depositPaid = jobPricing.depositCents;
-  const cashPaid = jobPricing.cashPaidCents;
-  const remaining = jobPricing.remainingBalanceCents;
   const receiptNumber = str(receipt?.receipt_number) || `RCPT-${(paymentId || appointmentId || fallbackId || id).slice(0, 8).toUpperCase()}`;
   const vehicleRows = vehicles(job, paymentMeta);
-  const fullPaid = paidRows.filter((p) => !str(p.payment_kind).toLowerCase().includes('deposit')).reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
 
   const techId = str(job.assigned_technician_id);
   let technicianName: string | undefined;
@@ -145,16 +139,17 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
     customerPhone: str(job.guest_phone || customer.phone || payment?.phone) || 'Not provided',
     serviceAddress: address(job, paymentMeta) || 'Service address not provided',
     vehicles: vehicleRows,
-    baseTotal: money(baseTotal),
+    baseTotal: money(jobPricing.prePromoCents),
     onlineDiscount: money(jobPricing.onlineDiscountCents),
     multiCarDiscount: money(jobPricing.multiCarDiscountCents),
     promoLabel: str(job.promo_code || paymentMeta.promo_code) || 'None',
     promoDiscount: money(jobPricing.promoDiscountCents),
-    depositPaid: money(depositPaid),
-    cashPaid: money(cashPaid),
-    fullPaid: money(fullPaid),
-    remainingBalance: money(remaining),
-    finalTotal: money(finalTotal),
+    depositPaid: money(jobPricing.depositPaidCents || jobPricing.depositCents),
+    cashPaid: money(jobPricing.cashPaidCents),
+    stripePaid: money(jobPricing.stripePaidCents),
+    fullPaid: money(jobPricing.totalPaidCents),
+    remainingBalance: money(jobPricing.remainingBalanceCents),
+    finalTotal: money(jobPricing.finalTotalCents),
     stripeSession: str(payment?.stripe_checkout_session_id || job.stripe_checkout_session_id) || 'Not provided',
     stripePaymentIntent: str(payment?.stripe_payment_intent_id) || 'Not provided',
     paymentRowId: paymentId || 'Not provided',

@@ -15,6 +15,7 @@ export type ReceiptEmailLine = {
   multiCarDiscount?: string;
   promo?: string;
   depositPaid?: string;
+  stripePaid?: string;
   cashPaid?: string;
   remainingBalance?: string;
   totalPaid?: string;
@@ -56,6 +57,7 @@ export function buildReceiptEmailHtml(input: {
       { label: 'Multi-car discount', value: v.multiCarDiscount },
       { label: 'Promo', value: v.promo },
       { label: 'Deposit paid', value: v.depositPaid },
+      { label: 'Stripe paid', value: v.stripePaid },
       { label: 'Cash paid', value: v.cashPaid },
       { label: 'Total paid', value: v.totalPaid },
       { label: 'Job total', value: v.finalTotal },

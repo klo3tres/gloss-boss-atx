@@ -36,10 +36,14 @@ export type WorkOrderConsoleData = {
   serviceState: string;
   serviceZip: string;
   mapsHref: string;
-  baseTotal: string;
+  baseSubtotal: string;
   balanceDue: string;
+  balanceDueCents: number;
   depositPaid?: string;
+  depositOnFile?: string;
   finalTotal?: string;
+  stripePaid?: string;
+  cashPaid?: string;
   paymentMethod?: string;
   scheduledStart?: string;
   scheduledEnd?: string;
@@ -112,12 +116,14 @@ export function WorkOrderConsoleClient({
   updateVehiclesAction,
   recordCashAction,
   completeJobAction,
+  canAdminOverride = false,
 }: {
   data: WorkOrderConsoleData;
   updateDetailsAction: (formData: FormData) => void | Promise<void>;
   updateVehiclesAction: (formData: FormData) => void | Promise<void>;
   recordCashAction: (formData: FormData) => void | Promise<void>;
   completeJobAction: (formData: FormData) => void | Promise<void>;
+  canAdminOverride?: boolean;
 }) {
   const progressPct = useMemo(() => {
     const ok = data.requirements.filter((r) => r.ok).length;
@@ -187,24 +193,46 @@ export function WorkOrderConsoleClient({
         <WorkOrderCollapsible title='Job summary' defaultOpen>
           <div className='grid gap-2 text-sm sm:grid-cols-2'>
             <p className='text-zinc-400'>
-              Total <span className='font-mono text-white'>{data.finalTotal || data.baseTotal}</span>
+              Base subtotal <span className='font-mono text-white'>{data.baseSubtotal}</span>
+            </p>
+            {data.onlineDiscount ? (
+              <p className='text-zinc-400'>
+                Online booking discount <span className='font-mono text-emerald-300'>−{data.onlineDiscount}</span>
+              </p>
+            ) : null}
+            {data.multiCarDiscount ? (
+              <p className='text-zinc-400'>
+                Multi-car discount <span className='font-mono text-emerald-300'>−{data.multiCarDiscount}</span>
+              </p>
+            ) : null}
+            {data.promoDiscount ? (
+              <p className='text-zinc-400'>
+                Promo discount <span className='font-mono text-emerald-300'>−{data.promoDiscount}</span>
+              </p>
+            ) : null}
+            <p className='text-zinc-400 sm:col-span-2'>
+              Final total <span className='font-mono text-lg text-gold-soft'>{data.finalTotal}</span>
             </p>
             <p className='text-zinc-400'>
-              Deposit <span className='font-mono text-white'>{data.depositPaid || '—'}</span>
+              Deposit paid <span className='font-mono text-white'>{data.depositPaid || '—'}</span>
             </p>
+            {data.stripePaid ? (
+              <p className='text-zinc-400'>
+                Stripe paid <span className='font-mono text-emerald-300'>{data.stripePaid}</span>
+              </p>
+            ) : null}
+            {data.cashPaid ? (
+              <p className='text-zinc-400'>
+                Cash paid <span className='font-mono text-emerald-300'>{data.cashPaid}</span>
+              </p>
+            ) : null}
             <p className='text-zinc-400'>
-              Subtotal <span className='font-mono text-white'>{data.baseTotal}</span>
-            </p>
-            {data.multiCarDiscount ? <p className='text-zinc-400'>Multi-car −{data.multiCarDiscount}</p> : null}
-            {data.onlineDiscount ? <p className='text-zinc-400'>Online −{data.onlineDiscount}</p> : null}
-            {data.promoDiscount ? <p className='text-zinc-400'>Promo −{data.promoDiscount}</p> : null}
-            <p className='text-zinc-400'>
-              Paid <span className='font-mono text-emerald-300'>{data.totalPaid ?? '—'}</span>
+              Total paid <span className='font-mono text-emerald-300'>{data.totalPaid ?? '—'}</span>
             </p>
             <p className='text-zinc-400'>
               Balance due <span className='font-mono text-gold-soft'>{data.balanceDue}</span>
             </p>
-            {data.paymentMethod ? <p className='text-zinc-400'>Payment: {data.paymentMethod}</p> : null}
+            {data.paymentMethod ? <p className='text-zinc-400'>Status: {data.paymentMethod}</p> : null}
             {data.technicianName ? <p className='text-zinc-400'>Tech: {data.technicianName}</p> : null}
           </div>
         </WorkOrderCollapsible>
@@ -290,19 +318,6 @@ export function WorkOrderConsoleClient({
           </WorkOrderCollapsible>
         </div>
 
-        <WorkOrderCollapsible title='Notes'>
-          <ul className='max-h-48 space-y-2 overflow-y-auto text-sm'>
-            {data.notes.length === 0 ? <li className='text-zinc-500'>No notes yet.</li> : null}
-            {data.notes.map((n) => (
-              <li key={n.id} className='rounded-xl border border-white/10 bg-black/30 px-3 py-2'>
-                <p className='text-[10px] font-bold uppercase text-gold-soft'>{n.vehicleLabel}</p>
-                <p className='text-zinc-500'>{n.time}</p>
-                <p className='mt-1 text-zinc-300'>{n.body}</p>
-              </li>
-            ))}
-          </ul>
-        </WorkOrderCollapsible>
-
         <WorkOrderCollapsible title='Payment' defaultOpen>
           <ul className='space-y-2 text-sm'>
             {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
@@ -318,14 +333,19 @@ export function WorkOrderConsoleClient({
             ))}
           </ul>
           <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-            <NotificationSendForm
-              kind='payment_link'
-              appointmentId={!data.isFallback ? jobId : undefined}
-              fallbackBookingId={data.isFallback ? jobId : undefined}
-              buttonClassName='w-full rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
-            >
-              Send balance link
-            </NotificationSendForm>
+            {data.balanceDueCents > 0 && !data.isFallback ? (
+              <NotificationSendForm
+                kind='payment_link'
+                appointmentId={jobId}
+                buttonClassName='w-full rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
+              >
+                Send balance link ({data.balanceDue})
+              </NotificationSendForm>
+            ) : (
+              <p className='rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-center text-xs text-zinc-500 sm:col-span-2'>
+                {data.paymentComplete ? 'Balance paid in full.' : data.isFallback ? 'Balance link requires a live appointment.' : 'No balance due — link not needed.'}
+              </p>
+            )}
             <form action={recordCashAction} className='grid gap-2'>
               {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
               {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
@@ -357,9 +377,15 @@ export function WorkOrderConsoleClient({
             {data.receiptPdfHref ? <ReceiptPdfDownloadButton href={data.receiptPdfHref} /> : null}
           </div>
           {!data.isFallback ? (
-            <form action={completeJobAction} className='mt-4'>
+            <form action={completeJobAction} className='mt-4 space-y-3'>
               <input type='hidden' name='appointmentId' value={jobId} />
               {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
+              {canAdminOverride && !data.paymentComplete ? (
+                <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
+                  <input type='checkbox' name='adminOverride' value='true' className='rounded border-amber-400' />
+                  Admin override — complete with balance due
+                </label>
+              ) : null}
               <button type='submit' className='scroll-mt-36 flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
                 <CheckCircle2 className='h-5 w-5' /> Complete job
               </button>
@@ -375,14 +401,15 @@ export function WorkOrderConsoleClient({
         <a href='#photos' className='flex-1 rounded-xl border border-white/20 px-3 py-3 text-center text-[10px] font-black uppercase text-zinc-200'>
           Photos
         </a>
-        <NotificationSendForm
-          kind='payment_link'
-          appointmentId={!data.isFallback ? jobId : undefined}
-          fallbackBookingId={data.isFallback ? jobId : undefined}
-          buttonClassName='flex-1 rounded-xl bg-gold px-3 py-3 text-center text-[10px] font-black uppercase text-black'
-        >
-          Payment
-        </NotificationSendForm>
+        {data.balanceDueCents > 0 && !data.isFallback ? (
+          <NotificationSendForm
+            kind='payment_link'
+            appointmentId={jobId}
+            buttonClassName='flex-1 rounded-xl bg-gold px-3 py-3 text-center text-[10px] font-black uppercase text-black'
+          >
+            Balance link
+          </NotificationSendForm>
+        ) : null}
         {!data.isFallback ? (
           <form action={completeJobAction} className='flex-1'>
             <input type='hidden' name='appointmentId' value={jobId} />

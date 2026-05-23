@@ -22,6 +22,10 @@ import { actionErr, actionOk, actionWarn, type ActionResult } from '@/lib/action
 import { sendCustomerSms } from '@/lib/sms-send';
 import { describeTwilioDelivery } from '@/lib/twilio-delivery';
 import { syncVehiclesForAppointment } from '@/lib/crm-vehicle-sync';
+import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { isAdminLevel } from '@/lib/auth/roles';
+import { displayMoney } from '@/lib/display-format';
 
 async function requireTechSupabase() {
   const session = await getSessionWithProfile();
@@ -765,6 +769,13 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
     ? notificationConfigured ? null : 'Skipped — configure Twilio/Resend.'
     : 'No customer email or phone on file.';
   if (kind === 'payment_link' && appointmentId) {
+    const { data: apptRow } = await db.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
+    const jobRow = (apptRow ?? {}) as Record<string, unknown>;
+    const pays = await fetchPaymentsForJob(db, jobRow, { appointmentId });
+    const pricing = resolveJobPricing(jobRow, pays);
+    if (pricing.remainingBalanceCents < 50) {
+      return actionErr(`No balance due. Final ${displayMoney(pricing.finalTotalCents)} · paid ${displayMoney(pricing.totalPaidCents)}.`);
+    }
     const checkout = await createCustomerFinalBalanceCheckoutSession({
       admin: db,
       appointmentId,
@@ -773,12 +784,13 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
     });
     if (checkout.ok) {
       paymentUrl = checkout.url;
+      skippedReason = null;
     } else if (checkout.code === 'NO_BALANCE_DUE') {
-      outboxStatus = 'skipped';
-      skippedReason = 'No balance due.';
+      return actionErr(`Balance link blocked: computed balance ${displayMoney(checkout.balanceCents ?? pricing.remainingBalanceCents)}.`);
     } else if (checkout.code === 'STRIPE_NOT_CONFIGURED') {
-      outboxStatus = 'skipped';
-      skippedReason = 'Skipped — configure Stripe before sending payment links.';
+      return actionErr('Stripe is not configured — cannot create balance checkout.');
+    } else {
+      return actionErr(checkout.error || 'Could not create balance checkout.');
     }
   }
   const message =
@@ -914,6 +926,20 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   if (appointmentId) revalidatePath(`/tech/work-orders/${appointmentId}`);
 
   const label = NOTIFY_LABELS[kind] ?? kind.replace(/_/g, ' ');
+  if (kind === 'payment_link' && paymentUrl) {
+    const dest = [guestEmail ? `email: ${guestEmail}` : null, guestPhone ? `SMS: ${guestPhone}` : null].filter(Boolean).join(' · ');
+    if (outboxStatus === 'sent') return actionOk(`Balance link sent to ${dest || 'customer'}.`);
+    if (smsResult && !smsResult.ok) {
+      const smsInfo = describeTwilioDelivery(smsResult.deliveryStatus, {
+        errorMessage: smsResult.carrierError,
+        sid: smsResult.sid,
+      });
+      return actionErr(smsInfo.detail || smsResult.error || 'SMS failed — email may have sent.');
+    }
+    if (emailResult && !emailResult.ok) return actionErr(emailResult.error ?? 'Email failed.');
+    return actionWarn(`Link created: ${paymentUrl.slice(0, 60)}… — confirm delivery in outbox.`);
+  }
+
   if (outboxStatus === 'sent') return actionOk(`${label} delivered.`);
   if (outboxStatus === 'queued') return actionWarn(`${label}: ${skippedReason ?? 'Accepted by Twilio, delivery not confirmed.'}`);
   if (outboxStatus === 'skipped') return actionErr(skippedReason ?? `${label} skipped.`);
@@ -949,9 +975,19 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       .maybeSingle();
     row = (data ?? {}) as Record<string, unknown>;
   }
-  const balance = typeof row.balance_due_cents === 'number' ? row.balance_due_cents : null;
-  const base = typeof row.base_price_cents === 'number' ? row.base_price_cents : null;
-  const amountCents = Math.max(0, Number.isFinite(amountReceivedRaw) && amountReceivedRaw > 0 ? Math.round(amountReceivedRaw * 100) : balance ?? base ?? 0);
+  const paysBefore = await fetchPaymentsForJob(db, row, {
+    appointmentId: appointmentId || undefined,
+    fallbackBookingId: fallbackBookingId || undefined,
+  });
+  const pricingBefore = resolveJobPricing(row, paysBefore);
+  const amountCents = Math.max(
+    0,
+    Number.isFinite(amountReceivedRaw) && amountReceivedRaw > 0
+      ? Math.round(amountReceivedRaw * 100)
+      : pricingBefore.remainingBalanceCents > 0
+        ? pricingBefore.remainingBalanceCents
+        : 0,
+  );
   const changeGivenCents = Math.max(0, Number.isFinite(changeGivenRaw) && changeGivenRaw > 0 ? Math.round(changeGivenRaw * 100) : 0);
   if (amountCents < 1) return;
 
@@ -1033,12 +1069,19 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
   });
 
   if (appointmentId) {
+    const { data: freshAppt } = await db.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
+    const freshRow = (freshAppt ?? row) as Record<string, unknown>;
+    const paysAfter = await fetchPaymentsForJob(db, freshRow, { appointmentId });
+    const pricingAfter = resolveJobPricing(freshRow, paysAfter);
+    const balanceAfter = pricingAfter.remainingBalanceCents;
+    const paidStatus = balanceAfter <= 0 ? 'paid_cash' : 'balance_due';
     await updateAppointmentSafely(db, appointmentId, [
-      { payment_status: 'paid_cash', balance_due_cents: 0, paid_at: nowIso, updated_at: nowIso },
-      { payment_status: 'paid_cash', balance_due_cents: 0, updated_at: nowIso },
-      { payment_status: 'paid_cash', balance_due_cents: 0 },
-      { payment_status: 'paid_cash' },
+      { payment_status: paidStatus, balance_due_cents: balanceAfter, paid_at: nowIso, updated_at: nowIso },
+      { payment_status: paidStatus, balance_due_cents: balanceAfter, updated_at: nowIso },
+      { payment_status: paidStatus, balance_due_cents: balanceAfter },
+      { payment_status: paidStatus },
     ]);
+    if (admin) await syncJobBalanceDue(admin, freshRow, pricingAfter, { appointmentId });
     await recordJobTimelineEvent(db, {
       appointmentId,
       eventType: 'checklist_saved',
@@ -1101,9 +1144,13 @@ export async function techCompleteJobAction(
 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
+  const adminOverride = String(formData.get('adminOverride') ?? '') === 'true';
+  const session = await getSessionWithProfile();
+  const canOverride = adminOverride && isAdminLevel(session.profile?.role ?? null);
+
   const { data: appt, error: fetchErr } = await db
     .from('appointments')
-    .select('id, assigned_technician_id, status, guest_phone, guest_email, guest_name, service_slug, booking_source, vehicle_description, customer_id, notes')
+    .select('*')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -1120,7 +1167,9 @@ export async function techCompleteJobAction(
       })
       .eq('id', appointmentId);
     (appt as { assigned_technician_id?: string }).assigned_technician_id = gate.userId;
-  } else if (fetchErr || !appt || assigned !== gate.userId) {
+  } else if (fetchErr || !appt) {
+    return { error: 'Job not found.' };
+  } else if (assigned !== gate.userId && !isAdminLevel(session.profile?.role ?? null)) {
     console.warn('[tech] complete job denied', appointmentId);
     return { error: 'You cannot complete this job.' };
   }
@@ -1140,16 +1189,17 @@ export async function techCompleteJobAction(
     };
   }
 
-  const { data: intake } = await gate.supabase.from('intake_submissions').select('id').eq('appointment_id', appointmentId).maybeSingle();
-  if (!intake) {
-    const { data: apptIntake } = await gate.supabase
-      .from('appointments')
-      .select('intake_completed_at')
-      .eq('id', appointmentId)
-      .maybeSingle();
-    if (!apptIntake?.intake_completed_at) {
-      return { error: 'Customer intake must be submitted before marking this job complete.' };
-    }
+  const beforeGate = await countWorkflowPhotos(db, {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionId,
+    accessToken,
+    jobReference,
+    technicianId: gate.userId,
+    phase: 'before',
+  });
+  if (beforeGate.error || beforeGate.count < 1) {
+    return { error: 'At least one before photo is required before completing this job.' };
   }
 
   const afterGate = await countWorkflowPhotos(db, {
@@ -1174,6 +1224,21 @@ export async function techCompleteJobAction(
 
   if (!checklistRow) completionMissing.push('checklist incomplete');
 
+  const jobRow = appt as Record<string, unknown>;
+  const pays = await fetchPaymentsForJob(db, jobRow, { appointmentId });
+  const pricing = resolveJobPricing(jobRow, pays);
+  if (!canOverride && pricing.remainingBalanceCents > 0) {
+    return {
+      error: `Balance due ${displayMoney(pricing.remainingBalanceCents)} must be paid before completing (or admin override).`,
+    };
+  }
+
+  if (completionMissing.length > 0) {
+    return {
+      error: `Cannot complete job: ${completionMissing.join('; ')}. ${afterGate.error ? `Photo check: ${afterGate.error}. ` : ''}Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
+    };
+  }
+
   const { data: openTimer } = await gate.supabase
     .from('tech_job_timers')
     .select('id, started_at')
@@ -1182,21 +1247,6 @@ export async function techCompleteJobAction(
     .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!openTimer?.id) completionMissing.push('timer not running');
-
-  const { data: noteRow } = await gate.supabase
-    .from('tech_job_notes')
-    .select('id')
-    .eq('appointment_id', appointmentId)
-    .limit(1)
-    .maybeSingle();
-  if (!noteRow && !String((appt as { notes?: string | null }).notes ?? '').trim()) completionMissing.push('notes not saved');
-
-  if (completionMissing.length > 0) {
-    return {
-      error: `Cannot complete job: ${completionMissing.join('; ')}. ${afterGate.error ? `Photo check: ${afterGate.error}. ` : ''}Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
-    };
-  }
 
   if (openTimer?.id) {
     const endedAt = new Date();

@@ -6,7 +6,8 @@ import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
-import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
@@ -254,13 +255,14 @@ export default async function TechWorkOrderDetailPage({
     !isFallback
       ? admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle()
       : admin.from('signed_agreements').select('id, signed_at').eq('fallback_booking_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle(),
-    admin
-      .from('payments')
-      .select('id, amount_cents, status, payment_method, payment_kind, paid_at, stripe_payment_intent_id')
-      .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
-      .order('paid_at', { ascending: false })
-      .limit(20),
+    Promise.resolve({ data: [] as Row[] }),
   ]);
+
+  const paymentRowsFetched = await fetchPaymentsForJob(admin, row, {
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    isFallback,
+  });
 
   const agreementRow = (agreementRes.data as Row | null) ?? null;
   const agreementSigned = Boolean(agreementRow?.id);
@@ -271,9 +273,15 @@ export default async function TechWorkOrderDetailPage({
       : `/dashboard/agreements/${encodeURIComponent(`signed_agreements:${str(agreementRow.id)}`)}`
     : agreementCaptureHref;
 
-  const paymentComplete =
-    ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(str(row.payment_status).toLowerCase()) ||
-    Number(row.balance_due_cents ?? 0) === 0;
+  const paymentRows = paymentRowsFetched;
+  const pricing = resolveJobPricing(row, paymentRows);
+  await syncJobBalanceDue(admin, row, pricing, {
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    isFallback,
+  });
+
+  const paymentComplete = pricing.remainingBalanceCents <= 0;
 
   const guestName = displayText(row.guest_name, resolved.orphanSession ? 'Walk-in customer' : 'Customer');
   const guestPhone = displayPhone(row.guest_phone);
@@ -297,10 +305,7 @@ export default async function TechWorkOrderDetailPage({
       uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? resolved.technicianName ?? 'Technician',
     }));
 
-  const paymentRows = (paymentsRes.data ?? []) as Row[];
-  const pricing = resolveJobPricing(row, paymentRows);
-
-  const depositPaid = displayMoney(pricing.depositCents);
+  const depositPaid = displayMoney(pricing.depositPaidCents || pricing.depositCents);
   const scheduledStart = displayChicago(row.scheduled_start);
   const scheduledEnd = displayChicago(row.estimated_end);
   const accessLocation = displayLabel(row.service_location_type);
@@ -326,13 +331,17 @@ export default async function TechWorkOrderDetailPage({
     serviceState: str(row.service_state) || 'TX',
     serviceZip: str(row.service_zip),
     mapsHref: fullAddress ? mapsHref(fullAddress) : '#',
-    baseTotal: displayMoney(pricing.prePromoCents),
+    baseSubtotal: displayMoney(pricing.prePromoCents),
     balanceDue: displayMoney(pricing.remainingBalanceCents),
+    balanceDueCents: pricing.remainingBalanceCents,
     depositPaid,
+    depositOnFile: displayMoney(pricing.depositCents),
     finalTotal: displayMoney(pricing.finalTotalCents),
     multiCarDiscount: pricing.multiCarDiscountCents > 0 ? displayMoney(pricing.multiCarDiscountCents) : undefined,
     onlineDiscount: pricing.onlineDiscountCents > 0 ? displayMoney(pricing.onlineDiscountCents) : undefined,
     promoDiscount: pricing.promoDiscountCents > 0 ? displayMoney(pricing.promoDiscountCents) : undefined,
+    stripePaid: pricing.stripePaidCents > 0 ? displayMoney(pricing.stripePaidCents) : undefined,
+    cashPaid: pricing.cashPaidCents > 0 ? displayMoney(pricing.cashPaidCents) : undefined,
     totalPaid: displayMoney(pricing.totalPaidCents),
     paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
     paymentStatus: displayLabel(row.payment_status, 'Pending'),
@@ -412,7 +421,7 @@ export default async function TechWorkOrderDetailPage({
     openTimerId: str((openTimer.data as Row | null)?.id),
     openTimerStartedAt: str((openTimer.data as Row | null)?.started_at || (openTimer.data as Row | null)?.created_at),
     vehicleForms: { defaultService: str(row.service_slug), defaultClass: str(row.vehicle_class) },
-    recentPayments: ((paymentsRes.data ?? []) as Row[]).map((p) => ({
+    recentPayments: paymentRows.map((p) => ({
       id: str(p.id),
       amount: displayMoney(p.amount_cents),
       status: displayLabel(p.status),
@@ -438,7 +447,7 @@ export default async function TechWorkOrderDetailPage({
           appointmentId={!isFallback ? queryId : ''}
           fallbackId={isFallback ? queryId : ''}
           customerId={str(row.customer_id)}
-          paymentIds={((paymentsRes.data ?? []) as Row[]).map((p) => str(p.id)).filter(Boolean)}
+          paymentIds={paymentRows.map((p) => str(p.id)).filter(Boolean)}
           agreementId={str(agreementRow?.id)}
           vehicleCount={vehicles.length}
           photoCount={photos.length}
@@ -451,6 +460,7 @@ export default async function TechWorkOrderDetailPage({
         updateVehiclesAction={updateWorkOrderVehiclesAction}
         recordCashAction={techRecordCashPaymentAction}
         completeJobAction={completeWorkOrderFormAction}
+        canAdminOverride={isAdminLevel(session.profile?.role ?? null)}
       />
     </DashboardShell>
   );

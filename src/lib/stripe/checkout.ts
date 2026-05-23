@@ -5,6 +5,8 @@ import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { notifyBookingCheckoutPaid } from '@/lib/booking-checkout-notify';
+import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob, findDepositPayment } from '@/lib/payments-resolve';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
@@ -316,22 +318,17 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, guest_email, guest_name, base_price_cents, deposit_amount_cents, customer_id, service_slug, vehicle_description')
+      .select('*')
       .eq('id', appointmentId)
       .maybeSingle();
     if (error || !appt) return { ok: false, error: 'Job not found' };
 
-    const totalCents = typeof appt.base_price_cents === 'number' ? appt.base_price_cents : 0;
-    const { data: pays } = await admin
-      .from('payments')
-      .select('amount_cents, status')
-      .eq('appointment_id', appointmentId)
-      .eq('status', 'succeeded');
-    const paidCents = (pays ?? []).reduce((sum, row) => {
-      const cents = (row as { amount_cents?: number }).amount_cents;
-      return sum + (typeof cents === 'number' ? cents : 0);
-    }, 0);
-    const balanceCents = Math.max(0, totalCents - paidCents);
+    const jobRow = appt as Record<string, unknown>;
+    const payments = await fetchPaymentsForJob(admin, jobRow, { appointmentId });
+    const pricing = resolveJobPricing(jobRow, payments);
+    const balanceCents = pricing.remainingBalanceCents;
+    const depositPayment = findDepositPayment(payments);
+
     if (balanceCents < 50) {
       await admin
         .from('appointments')
@@ -364,6 +361,9 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
         access_token: token,
         technician_id: technicianId ?? '',
         stripe_checkout_kind: 'customer_final_balance',
+        payment_type: 'remaining_balance',
+        work_order_id: appointmentId,
+        original_deposit_payment_id: depositPayment?.id ? String(depositPayment.id) : '',
       },
     });
 
@@ -378,6 +378,8 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', appointmentId);
+
+    await syncJobBalanceDue(admin, jobRow, pricing, { appointmentId });
 
     return session.url ? { ok: true, url: session.url, balanceCents } : { ok: false, error: 'No checkout URL returned' };
   } catch (e) {

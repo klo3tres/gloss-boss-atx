@@ -30,6 +30,7 @@ export type ReceiptDocumentProps = {
   promoDiscount: string;
   depositPaid: string;
   cashPaid: string;
+  stripePaid?: string;
   fullPaid: string;
   remainingBalance: string;
   taxAmount?: string;
@@ -158,11 +159,23 @@ export function ReceiptDocument(props: ReceiptDocumentProps) {
             <span>Total due</span>
             <span className='font-mono text-gold'>{props.finalTotal}</span>
           </div>
-          <div className='flex justify-between text-xs text-zinc-500'>
-            <span>Deposit · Cash · Paid</span>
-            <span>
-              {props.depositPaid} · {props.cashPaid} · {props.fullPaid}
-            </span>
+          <div className='flex justify-between text-zinc-600'>
+            <span>Deposit paid</span>
+            <span className='font-mono'>{props.depositPaid}</span>
+          </div>
+          {props.stripePaid ? (
+            <div className='flex justify-between text-zinc-600'>
+              <span>Stripe paid</span>
+              <span className='font-mono'>{props.stripePaid}</span>
+            </div>
+          ) : null}
+          <div className='flex justify-between text-zinc-600'>
+            <span>Cash paid</span>
+            <span className='font-mono'>{props.cashPaid}</span>
+          </div>
+          <div className='flex justify-between font-semibold text-zinc-700'>
+            <span>Total paid</span>
+            <span className='font-mono'>{props.fullPaid}</span>
           </div>
           <div className='flex justify-between font-semibold'>
             <span>Balance</span>

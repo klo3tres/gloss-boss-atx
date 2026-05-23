@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
@@ -131,13 +132,11 @@ export async function resolveReceiptContext(
     payment = (pq.data?.[0] ?? null) as Row | null;
   }
 
-  const allPaymentsRes = await admin
-    .from('payments')
-    .select('*')
-    .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', workOrderId)
-    .order('paid_at', { ascending: false })
-    .limit(20);
-  const payments = (allPaymentsRes.data ?? []) as Row[];
+  const payments = await fetchPaymentsForJob(admin, job, {
+    appointmentId,
+    fallbackBookingId: fallbackId,
+    isFallback,
+  });
 
   if (!receipt && (payment || Object.keys(job).length)) {
     const receiptNumber = `RCPT-${workOrderId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
@@ -217,9 +216,10 @@ export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Ar
     discounts: discountTotal > 0 ? displayMoney(discountTotal) : '',
     taxAmount: '',
     finalTotal: displayMoney(pricing.finalTotalCents),
-    depositPaid: displayMoney(pricing.depositCents),
+    depositPaid: displayMoney(pricing.depositPaidCents || pricing.depositCents),
     fullPaid: displayMoney(pricing.totalPaidCents),
     cashPaid: displayMoney(pricing.cashPaidCents),
+    stripePaid: displayMoney(pricing.stripePaidCents),
     remainingBalance: displayMoney(pricing.remainingBalanceCents),
   };
 

@@ -438,6 +438,14 @@ export default function HomePage() {
             {!googleReviewUrl ? (
               <p className='mt-3 text-xs text-zinc-500'>Add your Google review URL in Admin → Website CMS to show the review button in the footer.</p>
             ) : null}
+            <nav className='mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-5 text-xs font-bold uppercase tracking-wider' aria-label='Legal'>
+              <Link href='/privacy' className='text-zinc-400 transition hover:text-gold-soft'>
+                Privacy Policy
+              </Link>
+              <Link href='/terms' className='text-zinc-400 transition hover:text-gold-soft'>
+                Terms &amp; Conditions
+              </Link>
+            </nav>
           </div>
           <SectionErrorBoundary label='Contact form'>
             <ContactForm />

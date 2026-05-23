@@ -23,6 +23,7 @@ export type ReceiptPdfInput = {
   depositPaid: string;
   fullPaid: string;
   cashPaid?: string;
+  stripePaid?: string;
   remainingBalance: string;
 };
 
@@ -118,8 +119,9 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   doc.setFontSize(9);
   const payLine = [
     `Deposit: ${input.depositPaid}`,
+    input.stripePaid && input.stripePaid !== '$0.00' ? `Stripe: ${input.stripePaid}` : null,
     input.cashPaid && input.cashPaid !== '$0.00' ? `Cash: ${input.cashPaid}` : null,
-    `Paid: ${input.fullPaid}`,
+    `Total paid: ${input.fullPaid}`,
     `Balance: ${input.remainingBalance}`,
   ]
     .filter(Boolean)
