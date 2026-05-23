@@ -91,7 +91,10 @@ export default async function AgreementDetailPage({ params }: { params: Promise<
         </Link>
       </div>
 
-      <PrintDocumentActions variant='agreement' />
+      <PrintDocumentActions
+        variant='agreement'
+        pdfHref={`/api/agreements/${encodeURIComponent(`${source}:${rowId}`)}/pdf`}
+      />
 
       <AgreementDocument
         title={fields.title}

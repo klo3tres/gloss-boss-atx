@@ -68,8 +68,9 @@ function resolveGalleryRows(remote: NormalizedGalleryImage[]): { rows: Normalize
 }
 
 export function HomeGalleryStrip() {
-  const [rows, setRows] = useState<NormalizedGalleryImage[]>(() => resolveGalleryRows([]).rows);
-  const [usedFallback, setUsedFallback] = useState(true);
+  const [rows, setRows] = useState<NormalizedGalleryImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [usedFallback, setUsedFallback] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; caption: string | null } | null>(null);
   const [page, setPage] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,7 @@ export function HomeGalleryStrip() {
     const watchdog = window.setTimeout(() => {
       if (settledRef.current) return;
       settledRef.current = true;
+      setLoading(false);
       const r = resolveGalleryRows([]);
       setRows(r.rows);
       setUsedFallback(r.usedFallback);
@@ -128,6 +130,7 @@ export function HomeGalleryStrip() {
       .catch((e) => {
         if (cancelled) return;
         settledRef.current = true;
+        setLoading(false);
         console.warn('[CRM_DEBUG_UI]', 'gallery_public_fetch', e instanceof Error ? e.message : e);
         const r = resolveGalleryRows([]);
         setRows(r.rows);
@@ -178,6 +181,16 @@ export function HomeGalleryStrip() {
 
   const sliceStart = page * pageSize;
   const visibleSlice = rows.slice(sliceStart, sliceStart + pageSize);
+
+  if (loading && rows.length === 0) {
+    return (
+      <div className='mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3'>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className='aspect-[4/3] animate-pulse rounded-2xl bg-zinc-900/80 ring-1 ring-white/5' />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className='mt-8 space-y-4'>

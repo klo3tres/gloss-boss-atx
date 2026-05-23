@@ -4,6 +4,14 @@ import { useActionState, useEffect } from 'react';
 import type { ActionResult } from '@/lib/action-result';
 
 function ToastBanner({ result }: { result: ActionResult }) {
+  const tone = result.tone ?? (result.ok ? 'success' : 'error');
+  if (tone === 'warning') {
+    return (
+      <p className='mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100' role='status'>
+        {result.message ?? result.error ?? 'Pending confirmation.'}
+      </p>
+    );
+  }
   if (result.ok) {
     return (
       <p className='mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100' role='status'>

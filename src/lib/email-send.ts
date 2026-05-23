@@ -1,4 +1,13 @@
-import { glossBossEmailShell, bookingConfirmationEmailHtml } from '@/lib/email-brand';
+import { bookingConfirmationEmailHtml } from '@/lib/email/templates/booking';
+import { portalButtonHtml } from '@/lib/email/templates/layout';
+import {
+  appointmentReminderEmailHtml,
+  jobCompletedEmailHtml,
+  jobStartedEmailHtml,
+  paymentReceivedEmailHtml,
+  welcomeEmailHtml,
+} from '@/lib/email/templates/transactional';
+import { glossBossEmailLayout } from '@/lib/email/templates/layout';
 import { parseResendError } from '@/lib/resend-config';
 import {
   twilioAccountSid,
@@ -154,13 +163,7 @@ export async function sendTwilioSms(params: {
   }
 }
 
-export function portalButtonHtml(origin: string): string {
-  const base = origin.replace(/\/$/, '') || 'https://glossbossatx.com';
-  const url = `${base}/dashboard`;
-  return `<p style="margin:24px 0 0;text-align:center;">
-    <a href="${url}" style="display:inline-block;padding:14px 28px;border-radius:10px;background:linear-gradient(90deg,#c9a962,#d4a64d);color:#0a0a0a;font-weight:800;text-decoration:none;text-transform:uppercase;letter-spacing:0.12em;font-size:12px;">Open your dashboard</a>
-  </p>`;
-}
+export { portalButtonHtml };
 
 export async function sendBookingConfirmationEmailIfConfigured(params: {
   to: string;
@@ -171,19 +174,18 @@ export async function sendBookingConfirmationEmailIfConfigured(params: {
   vehicles: string;
 }): Promise<void> {
   const whenLabel = new Date(params.whenIso).toLocaleString();
-  const html =
-    bookingConfirmationEmailHtml({
-      guestName: params.guestName,
-      whenLabel,
-      total: `$${(params.totalCents / 100).toFixed(2)}`,
-      deposit: `$${(params.depositCents / 100).toFixed(2)}`,
-      vehicles: params.vehicles,
-    }) + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? '');
+  const html = bookingConfirmationEmailHtml({
+    guestName: params.guestName,
+    whenLabel,
+    total: `$${(params.totalCents / 100).toFixed(2)}`,
+    deposit: `$${(params.depositCents / 100).toFixed(2)}`,
+    vehicles: params.vehicles,
+  });
   if (!resendConfigured()) {
     console.info('[email] booking confirmation queued (no Resend)', params.to);
     return;
   }
-  await sendResendHtml({ to: params.to, subject: 'Gloss Boss ATX — Booking received', html });
+  await sendResendHtml({ to: params.to, subject: 'Gloss Boss ATX — Booking confirmed', html });
 }
 
 export async function sendPaymentReceivedEmailIfConfigured(params: {
@@ -197,15 +199,13 @@ export async function sendPaymentReceivedEmailIfConfigured(params: {
 }): Promise<void> {
   const whenLabel = new Date(params.whenIso).toLocaleString();
   const kind = params.isFieldFull ? 'Field service payment' : 'Deposit received';
-  const body = `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">Hi ${params.guestName},</p>
-    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Thank you — ${kind.toLowerCase()} was processed successfully.</p>
-    <div style="border:1px solid #3f3f46;border-radius:10px;padding:16px;">
-      <p style="margin:0;font-size:14px;color:#fafafa;">Appointment: <strong>${whenLabel}</strong></p>
-      <p style="margin:12px 0 0;font-size:14px;color:#fcd34d;">Paid: <strong>$${(params.paidCents / 100).toFixed(2)}</strong></p>
-      <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">Package total (estimate): $${(params.totalCents / 100).toFixed(2)}</p>
-    </div>`;
-  const html = glossBossEmailShell({ title: 'Payment confirmation', bodyHtml: body + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? '') });
+  const html = paymentReceivedEmailHtml({
+    guestName: params.guestName,
+    whenLabel,
+    paid: `$${(params.paidCents / 100).toFixed(2)}`,
+    total: `$${(params.totalCents / 100).toFixed(2)}`,
+    kindLabel: kind,
+  });
   if (!resendConfigured()) {
     console.info('[email] payment receipt skipped (no Resend)', params.to);
     return;
@@ -214,15 +214,7 @@ export async function sendPaymentReceivedEmailIfConfigured(params: {
 }
 
 export async function sendAccountWelcomeEmailIfConfigured(params: { to: string; name: string }): Promise<void> {
-  const body = `
-    <div style="text-align:center;margin-bottom:20px;">
-      <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.35em;text-transform:uppercase;color:#c9a962;">Gloss Boss ATX</p>
-      <p style="margin:8px 0 0;font-size:14px;color:#a1a1aa;">Austin mobile detailing</p>
-    </div>
-    <p style="margin:0 0 16px;font-size:15px;color:#fafafa;">Hi ${params.name},</p>
-    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Your customer account is ready. Use the portal to book, pay deposits, complete intake, and track job progress.</p>
-    <p style="margin:0;font-size:14px;color:#a1a1aa;">Questions? Reply to this email or call the shop — we’ll take care of your finish.</p>`;
-  const html = glossBossEmailShell({ title: 'Welcome aboard', bodyHtml: body + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? '') });
+  const html = welcomeEmailHtml({ name: params.name });
   if (!resendConfigured()) {
     console.info('[email] welcome skipped (no Resend)', params.to);
     return;
@@ -242,14 +234,10 @@ export async function sendJobStartedEmailIfConfigured(params: {
     return;
   }
   const whenLabel = new Date(params.whenIso).toLocaleString();
-  const inner = `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">Hi ${params.guestName},</p>
-    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Your Gloss Boss ATX service has <strong style="color:#fcd34d;">started</strong>.</p>
-    <p style="margin:0 0 16px;font-size:14px;color:#a1a1aa;">Service: <strong style="color:#fafafa;">${params.serviceLabel}</strong><br/>Scheduled: ${whenLabel}</p>
-    <p style="margin:0;font-size:14px;color:#a1a1aa;">Track live milestones in your customer dashboard anytime.</p>`;
-  const html = glossBossEmailShell({
-    title: 'Service in progress',
-    bodyHtml: inner + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? ''),
+  const html = jobStartedEmailHtml({
+    guestName: params.guestName,
+    serviceLabel: params.serviceLabel,
+    whenLabel,
   });
   if (!resendConfigured()) {
     console.info('[email] job_started skipped (no Resend)', to);
@@ -268,14 +256,9 @@ export async function sendJobCompletedEmailIfConfigured(params: {
     console.info('[email] job_completed skipped (no customer email)');
     return;
   }
-  const inner = `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">Hi ${params.guestName},</p>
-    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">Your detail is <strong style="color:#6ee7b7;">complete</strong>. Thank you for choosing Gloss Boss ATX.</p>
-    <p style="margin:0;font-size:14px;color:#a1a1aa;">Service: <strong style="color:#fafafa;">${params.serviceLabel}</strong></p>
-    <p style="margin:16px 0 0;font-size:14px;color:#a1a1aa;">Approved after photos may appear in your dashboard when published.</p>`;
-  const html = glossBossEmailShell({
-    title: 'Service complete',
-    bodyHtml: inner + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? ''),
+  const html = jobCompletedEmailHtml({
+    guestName: params.guestName,
+    serviceLabel: params.serviceLabel,
   });
   if (!resendConfigured()) {
     console.info('[email] job_completed skipped (no Resend)', to);
@@ -290,7 +273,6 @@ export function businessNotifyDestination(): string | null {
   return a || b || null;
 }
 
-/** Notify shop owner of a new online booking (Resend only; no-op if destination or API not configured). */
 export async function sendBusinessNewBookingEmailIfConfigured(params: {
   guestName: string;
   guestEmail: string;
@@ -321,20 +303,13 @@ export async function sendBusinessNewBookingEmailIfConfigured(params: {
       <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${params.vehicles}</p>
       <p style="margin:8px 0 0;font-size:12px;color:#71717a;font-family:monospace;">Appointment ${params.appointmentId}</p>
     </div>`;
-  const html = glossBossEmailShell({ title: 'New booking', bodyHtml: inner });
+  const html = glossBossEmailLayout({ title: 'New booking', preview: 'New booking', headline: 'New booking', bodyHtml: inner });
   await sendResendHtml({ to, subject: `Gloss Boss ATX — New booking: ${params.guestName}`, html });
 }
 
 export async function sendAppointmentReminderIfConfigured(params: { to: string; whenIso: string }): Promise<void> {
   const whenLabel = new Date(params.whenIso).toLocaleString();
-  const inner = `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">This is a friendly reminder from Gloss Boss ATX.</p>
-    <p style="margin:0 0 16px;font-size:15px;color:#d4d4d8;">You have scheduled service on <strong style="color:#fcd34d;">${whenLabel}</strong>.</p>
-    <p style="margin:0;font-size:14px;color:#a1a1aa;">You can review details or rebook anytime from your dashboard.</p>`;
-  const html = glossBossEmailShell({
-    title: 'Appointment reminder',
-    bodyHtml: inner + portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? ''),
-  });
+  const html = appointmentReminderEmailHtml({ whenLabel });
   if (!resendConfigured()) {
     console.info('[email] reminder skipped (no Resend)', params.to);
     return;

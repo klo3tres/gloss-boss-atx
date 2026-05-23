@@ -4,6 +4,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
+import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 import { syncVehiclesForCustomerRecord } from '@/lib/crm-vehicle-sync';
@@ -265,6 +266,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Vehicles on file</h2>
         <CustomerVehiclesManager customerId={id} vehicles={vehicles} />
+        <SyncCapturedVehiclesButton customerId={id} />
         {apptVehicles.length > 0 ? (
           <p className='mt-4 text-xs text-zinc-500'>Appointment captures: {apptVehicles.slice(0, 8).join(' · ')}</p>
         ) : null}

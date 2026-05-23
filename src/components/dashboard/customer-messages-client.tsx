@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
+import { GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
 
 type Msg = {
   id: string;
@@ -66,7 +67,13 @@ export function CustomerMessagesClient({ customerEmail }: { customerEmail: strin
     <div className='space-y-6'>
       <GlassCard>
         <SectionEyebrow>Send a message</SectionEyebrow>
-        <p className='mt-2 text-sm text-zinc-400'>Messages go to the Gloss Boss team inbox ({customerEmail}). We usually reply within 24–48 hours.</p>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Messages go directly to Gloss Boss ATX support at{' '}
+          <a href={`mailto:${GLOSS_BOSS_SUPPORT_EMAIL}`} className='font-semibold text-gold-soft underline'>
+            {GLOSS_BOSS_SUPPORT_EMAIL}
+          </a>
+          . We usually reply within 24–48 hours.
+        </p>
         <form onSubmit={send} className='mt-4 space-y-3'>
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder='Subject (optional)' className='gb-input w-full' />
           <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder='Your message' required rows={5} className='gb-input w-full' />

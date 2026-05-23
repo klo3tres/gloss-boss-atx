@@ -1,28 +1,86 @@
-<!doctype html>
-<html>
-  <body style="margin:0;background:#050505;font-family:Inter,Segoe UI,Arial,sans-serif;color:#ffffff;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#050505;padding:32px 16px;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;border:1px solid rgba(212,175,55,.35);border-radius:26px;background:#0b0b0b;overflow:hidden;">
-          <tr><td style="padding:30px;text-align:center;background:linear-gradient(135deg,#000,#171109);">
-            <div style="font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:#d4af37;font-weight:900;">Gloss Boss ATX</div>
-            <h1 style="margin:14px 0 0;font-size:28px;line-height:1.1;color:#fff;">Payment Receipt</h1>
-            <div style="margin-top:10px;color:#f7d77c;font-size:20px;">★★★★★</div>
-          </td></tr>
-          <tr><td style="padding:30px;color:#d7d7d7;font-size:15px;line-height:1.7;">
-            <p style="margin:0 0 16px;">Hi {{customer}}, your Gloss Boss ATX payment has been recorded.</p>
-            <div style="border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:18px;background:#111;">
-              <p style="margin:0;color:#fff;"><strong>Vehicle:</strong> {{vehicle}}</p>
-              <p style="margin:10px 0 0;color:#fff;"><strong>Service:</strong> {{service}}</p>
-              <p style="margin:10px 0 0;color:#f1d28a;"><strong>Receipt:</strong> {{receipt_number}}</p>
-            </div>
-            <p style="text-align:center;margin:30px 0;">
-              <a href="{{dashboard_url}}" style="display:inline-block;background:#d4af37;color:#000;text-decoration:none;font-weight:900;text-transform:uppercase;letter-spacing:.08em;border-radius:999px;padding:14px 26px;">Open Dashboard</a>
-            </p>
-          </td></tr>
-          <tr><td style="padding:18px 28px 26px;border-top:1px solid rgba(255,255,255,.08);color:#777;font-size:12px;text-align:center;">Gloss Boss ATX · Luxury mobile detailing · Austin, TX</td></tr>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Receipt {{receipt_number}}</title>
+</head>
+<body style="margin:0;padding:0;background:#050505;color:#e4e4e7;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Receipt {{receipt_number}} from Gloss Boss ATX</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#050505;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;border:1px solid rgba(201,169,98,0.45);border-radius:16px;overflow:hidden;background:#0a0a0a;">
+          <tr>
+            <td style="padding:28px 28px 20px;background:linear-gradient(180deg,#12100a 0%,#0a0a0a 100%);border-bottom:1px solid rgba(201,169,98,0.25);">
+              
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+  <tr>
+    <td align="center" style="padding:0 0 8px;">
+      <img
+        src="https://glossbossatx.com/branding/gloss-boss-atx-logo.png"
+        alt="Gloss Boss ATX — Premium Auto Care"
+        width="200"
+        height="auto"
+        style="display:block;margin:0 auto;max-width:200px;height:auto;border:0;outline:none;text-decoration:none;"
+      />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:0;">
+      <p style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:11px;font-weight:800;letter-spacing:0.35em;text-transform:uppercase;color:#d4af37;">Gloss Boss ATX</p>
+      <p style="margin:6px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:800;color:#fafafa;text-transform:uppercase;line-height:1.2;">Premium Auto Care</p>
+    </td>
+  </tr>
+</table>
+              <h1 style="margin:20px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:800;color:#fafafa;text-align:center;line-height:1.25;">Payment receipt</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 28px 8px;font-family:Arial,Helvetica,sans-serif;">
+              <p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#d4d4d8;">Hi {{customer}}, thank you for choosing Gloss Boss ATX.</p><p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#d4d4d8;">Your payment receipt is below.</p><div style="border:1px solid #3f3f46;border-radius:14px;padding:20px;background:#0c0c0c;margin:20px 0;">
+    <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#d4af37;">Receipt</p>
+    <p style="margin:8px 0 0;font-size:22px;font-weight:800;color:#fafafa;">{{receipt_number}}</p>
+    <p style="margin:12px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Customer:</strong> {{customer}}</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Service:</strong> {{service_at}}</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Address:</strong> {{service_address}}</p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">
+      <tr>
+        <td style="padding:12px 0;border-bottom:1px solid #27272a;">
+          <p style="margin:0;font-size:15px;font-weight:700;color:#fafafa;">{{vehicle}}</p>
+          <p style="margin:4px 0 0;font-size:13px;color:#a1a1aa;">{{service}}</p>
+        </td>
+      </tr></table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px;border-top:1px solid #27272a;padding-top:8px;"><tr>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">Subtotal</td>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#fafafa;font-weight:700;text-align:right;">{{subtotal}}</td>
+        </tr><tr>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">Total paid</td>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#fafafa;font-weight:700;text-align:right;">{{total_paid}}</td>
+        </tr><tr>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a1a1aa;">Payment method</td>
+          <td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#fafafa;font-weight:700;text-align:right;">{{payment_method}}</td>
+        </tr></table>
+    
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:28px 0;">
+  <tr>
+    <td align="center">
+      <a href="{{receipt_url}}" style="display:inline-block;background:linear-gradient(90deg,#c9a962,#d4af37);color:#0a0a0a;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:900;text-decoration:none;text-transform:uppercase;letter-spacing:0.14em;border-radius:999px;padding:14px 28px;">View receipt</a>
+    </td>
+  </tr>
+</table></div>
+              <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;">Questions? <a href="mailto:info@glossbossatx.com" style="color:#d4af37;font-weight:700;text-decoration:none;">info@glossbossatx.com</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 28px 24px;border-top:1px solid #27272a;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#71717a;text-align:center;line-height:1.6;">
+              Austin mobile detailing · Gloss Boss ATX
+            </td>
+          </tr>
         </table>
-      </td></tr>
-    </table>
-  </body>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>

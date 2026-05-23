@@ -11,9 +11,16 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
 import { resendConfigured, sendResendHtml, twilioConfigured } from '@/lib/email-send';
 import { resendDomainWarning } from '@/lib/resend-config';
-import { glossBossEmailShell } from '@/lib/email-brand';
-import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import {
+  jobCompletedEmailHtml,
+  jobStartedEmailHtml,
+  notifyKindEmailHtml,
+  paymentLinkEmailHtml,
+  reviewRequestEmailHtml,
+} from '@/lib/email/templates/transactional';
+import { actionErr, actionOk, actionWarn, type ActionResult } from '@/lib/action-result';
 import { sendCustomerSms } from '@/lib/sms-send';
+import { describeTwilioDelivery } from '@/lib/twilio-delivery';
 import { syncVehiclesForAppointment } from '@/lib/crm-vehicle-sync';
 
 async function requireTechSupabase() {
@@ -733,17 +740,19 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
   let vehicle = 'your vehicle';
+  let guestName = 'there';
   let guestEmail: string | null = null;
   let guestPhone: string | null = null;
   let customerId: string | null = null;
   if (appointmentId) {
     const { data } = await db
       .from('appointments')
-      .select('vehicle_description, guest_email, guest_phone, customer_id')
+      .select('vehicle_description, guest_name, guest_email, guest_phone, customer_id')
       .eq('id', appointmentId)
       .maybeSingle();
     const row = (data ?? {}) as Record<string, unknown>;
     vehicle = row.vehicle_description ? String(row.vehicle_description) : vehicle;
+    guestName = row.guest_name ? String(row.guest_name) : guestName;
     guestEmail = row.guest_email ? String(row.guest_email) : null;
     guestPhone = row.guest_phone ? String(row.guest_phone) : null;
     customerId = row.customer_id ? String(row.customer_id) : null;
@@ -807,22 +816,54 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       });
     }
     if (guestEmail && resendConfigured()) {
+      let reviewUrl = dashboardUrl;
+      if (kind === 'review_request') {
+        const { data: ss } = await db.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
+        const raw = (ss as { value?: unknown } | null)?.value;
+        if (typeof raw === 'string' && raw.trim().startsWith('http')) reviewUrl = raw.trim();
+        else if (raw && typeof raw === 'object' && raw !== null && 'review_url' in raw) {
+          const u = (raw as { review_url?: unknown }).review_url;
+          if (typeof u === 'string' && u.trim().startsWith('http')) reviewUrl = u.trim();
+        }
+      }
+      const emailHtml =
+        kind === 'payment_link' && paymentUrl
+          ? paymentLinkEmailHtml({ guestName, vehicle, paymentUrl })
+          : kind === 'review_request'
+            ? reviewRequestEmailHtml({ guestName, vehicle, reviewUrl })
+            : kind === 'job_started' || kind === 'work_started'
+              ? jobStartedEmailHtml({
+                  guestName,
+                  serviceLabel: vehicle,
+                  whenLabel: new Date().toLocaleString(),
+                })
+              : kind === 'job_completed'
+                ? jobCompletedEmailHtml({ guestName, serviceLabel: vehicle })
+                : notifyKindEmailHtml({
+                    kind,
+                    guestName,
+                    vehicle,
+                    message,
+                    ctaHref: kind === 'payment_link' ? paymentUrl ?? dashboardUrl : undefined,
+                    ctaLabel: kind === 'payment_link' ? 'Pay now' : undefined,
+                  });
       emailResult = await sendResendHtml({
         to: guestEmail,
         subject:
           kind === 'payment_link'
-            ? 'Gloss Boss ATX - Payment link'
+            ? 'Gloss Boss ATX — Payment link'
             : kind === 'last_touches'
-              ? 'Gloss Boss ATX - Last touches'
+              ? 'Gloss Boss ATX — Last touches'
               : kind === 'job_started' || kind === 'work_started'
-                ? 'Gloss Boss ATX - Service started'
-                : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
-                  ? 'Gloss Boss ATX - Booking confirmed'
-                  : 'Gloss Boss ATX - Update',
-        html: glossBossEmailShell({
-          title: NOTIFY_LABELS[kind] ?? 'Customer update',
-          bodyHtml: `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#fafafa;">${escapeEmailText(message)}</p>`,
-        }),
+                ? 'Gloss Boss ATX — Service started'
+                : kind === 'job_completed'
+                  ? 'Gloss Boss ATX — Service complete'
+                  : kind === 'review_request'
+                    ? 'Gloss Boss ATX — How did we do?'
+                    : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
+                      ? 'Gloss Boss ATX — Booking confirmed'
+                      : 'Gloss Boss ATX — Update',
+        html: emailHtml,
       });
       await writeNotificationOutbox(db, {
         kind: `${kind}_email`,
@@ -843,8 +884,22 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       outboxStatus = 'skipped';
       skippedReason = 'Skipped — configure Twilio Messaging Service (or From number) and/or Resend.';
     } else {
-      outboxStatus = 'sent';
-      skippedReason = null;
+      const smsInfo = smsResult?.ok
+        ? describeTwilioDelivery(smsResult.deliveryStatus, {
+            errorMessage: smsResult.carrierError,
+            sid: smsResult.sid,
+          })
+        : null;
+      if (smsInfo?.isFailure) {
+        outboxStatus = 'failed';
+        skippedReason = smsInfo.detail;
+      } else if (smsInfo && !smsInfo.isDelivered) {
+        outboxStatus = 'queued';
+        skippedReason = smsInfo.detail;
+      } else {
+        outboxStatus = 'sent';
+        skippedReason = null;
+      }
     }
   }
   if (appointmentId) {
@@ -859,7 +914,8 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   if (appointmentId) revalidatePath(`/tech/work-orders/${appointmentId}`);
 
   const label = NOTIFY_LABELS[kind] ?? kind.replace(/_/g, ' ');
-  if (outboxStatus === 'sent') return actionOk(`${label} sent.`);
+  if (outboxStatus === 'sent') return actionOk(`${label} delivered.`);
+  if (outboxStatus === 'queued') return actionWarn(`${label}: ${skippedReason ?? 'Accepted by Twilio, delivery not confirmed.'}`);
   if (outboxStatus === 'skipped') return actionErr(skippedReason ?? `${label} skipped.`);
   return actionErr(skippedReason ?? `${label} failed.`);
 }

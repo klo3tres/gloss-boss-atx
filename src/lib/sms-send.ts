@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendTwilioSms, twilioConfigured } from '@/lib/email-send';
 import { twilioSendMode } from '@/lib/twilio-config';
+import { normalizeToE164 } from '@/lib/us-phone';
 
 export type SmsSendResult = {
   ok: boolean;
@@ -62,8 +63,14 @@ export async function sendCustomerSms(params: {
   template_key?: string;
   extraPayload?: Record<string, unknown>;
 }): Promise<SmsSendResult> {
-  const digits = String(params.to ?? '').replace(/\D/g, '');
-  const basePayload = { to_digits: digits.slice(-4), body_preview: params.body.slice(0, 120), ...params.extraPayload };
+  const phone = normalizeToE164(String(params.to ?? ''));
+  const e164 = phone.ok ? phone.e164 : String(params.to ?? '').trim();
+  const basePayload = {
+    destination_e164: phone.ok ? phone.e164 : null,
+    to_last4: phone.ok ? phone.digits10.slice(-4) : String(params.to ?? '').replace(/\D/g, '').slice(-4),
+    body_preview: params.body.slice(0, 120),
+    ...params.extraPayload,
+  };
 
   if (!twilioConfigured()) {
     await logSmsOutbox(params.db, {
@@ -80,7 +87,7 @@ export async function sendCustomerSms(params: {
     return { ok: false, skipped: true, error: 'Twilio not configured.' };
   }
 
-  if (digits.length < 10) {
+  if (!phone.ok) {
     await logSmsOutbox(params.db, {
       kind: params.kind,
       status: 'skipped',
@@ -89,13 +96,13 @@ export async function sendCustomerSms(params: {
       customer_id: params.customer_id,
       technician_id: params.technician_id,
       template_key: params.template_key,
-      skipped_reason: 'Invalid or missing phone number.',
+      skipped_reason: phone.error,
       payload: basePayload,
     });
-    return { ok: false, skipped: true, error: 'Invalid phone number.' };
+    return { ok: false, skipped: true, error: phone.error };
   }
 
-  const sent = await sendTwilioSms({ to: digits, body: params.body });
+  const sent = await sendTwilioSms({ to: e164, body: params.body });
   if (sent.ok) {
     const delivery = (sent.status ?? 'queued').toLowerCase();
     const delivered = delivery === 'delivered' || delivery === 'sent';

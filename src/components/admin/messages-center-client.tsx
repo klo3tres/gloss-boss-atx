@@ -25,10 +25,11 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
   const [tab, setTab] = useState<'inbox' | 'sent' | 'drafts' | 'archived'>('inbox');
 
   const filteredRows = useMemo(() => rows.filter((r) => {
-    if (tab === 'archived') return r.status === 'archived' || Boolean(r.archived_at);
+    if (r.status === 'deleted') return tab === 'archived';
+    if (tab === 'archived') return r.status === 'archived' || r.status === 'deleted' || Boolean(r.archived_at);
     if (tab === 'sent') return r.status === 'replied' || Boolean(r.replied_at);
     if (tab === 'drafts') return r.status === 'draft';
-    return r.status !== 'archived' && !r.archived_at;
+    return r.status !== 'archived' && r.status !== 'deleted' && !r.archived_at;
   }), [rows, tab]);
   const selected = useMemo(() => filteredRows.find((r) => r.id === selectedId) ?? filteredRows[0] ?? null, [filteredRows, selectedId]);
 
@@ -172,6 +173,14 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
                   className='rounded-lg border border-zinc-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 transition hover:border-gold/30'
                 >
                   Archive
+                </button>
+                <button
+                  type='submit'
+                  name='status'
+                  value='deleted'
+                  className='rounded-lg border border-red-500/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-red-300 transition hover:bg-red-500/10'
+                >
+                  Delete
                 </button>
                 <button
                   type='submit'

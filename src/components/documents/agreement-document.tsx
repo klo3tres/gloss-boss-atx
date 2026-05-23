@@ -1,19 +1,11 @@
 import Image from 'next/image';
 import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
+import { resolveAgreementBody } from '@/lib/agreement-legal';
 
 type Row = Record<string, unknown>;
 
 function str(v: unknown) {
   return v == null ? '' : String(v);
-}
-
-function snapshotText(snapshot: unknown): string {
-  if (typeof snapshot === 'string' && snapshot.trim()) return snapshot.trim();
-  const row = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? (snapshot as Row) : {};
-  if (typeof row.body === 'string' && row.body.trim()) return row.body.trim();
-  if (typeof row.agreement_text === 'string' && row.agreement_text.trim()) return row.agreement_text.trim();
-  if (typeof row.terms === 'string' && row.terms.trim()) return row.terms.trim();
-  return '';
 }
 
 export type AgreementDocumentProps = {
@@ -33,7 +25,7 @@ export type AgreementDocumentProps = {
 };
 
 export function AgreementDocument(props: AgreementDocumentProps) {
-  const body = snapshotText(props.snapshot);
+  const { body, legacyTermsWarning } = resolveAgreementBody(props.snapshot);
   const signatureImage =
     props.signatureType === 'drawn' && typeof props.signatureData === 'string' && props.signatureData.startsWith('data:image')
       ? props.signatureData
@@ -82,6 +74,11 @@ export function AgreementDocument(props: AgreementDocumentProps) {
 
       <section className='mt-6 rounded-2xl border border-white/10 bg-black/30 p-5 print:border-zinc-300 print:bg-white'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft print:text-black'>Legal terms (full text as signed)</p>
+        {legacyTermsWarning ? (
+          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 print:border-zinc-400 print:bg-zinc-100 print:text-zinc-900'>
+            Legacy agreement snapshot lacked terms; current legal text shown.
+          </p>
+        ) : null}
         <div className='mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200 print:text-zinc-900'>
           {body || 'Agreement text not available in snapshot.'}
         </div>

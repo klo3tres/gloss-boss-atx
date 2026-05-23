@@ -51,3 +51,13 @@ Each auth template includes:
 - Remove localhost redirect URLs from production Supabase settings.
 
 Mirrored copies for reference also live under `supabase/email-templates/`.
+
+## Regenerate HTML from code
+
+After changing `src/lib/email/templates/`, run:
+
+```bash
+node scripts/generate-email-templates.cjs
+```
+
+Then paste updated files into Supabase Auth email templates if needed.

@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { syncVehiclesForCustomerRecord } from '@/lib/crm-vehicle-sync';
+import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 
 async function gate() {
   const session = await getSessionWithProfile();
@@ -79,6 +81,18 @@ export async function updateCustomerVehicleAction(formData: FormData) {
 
   revalidatePath(`/admin/customers/${customerId}`);
   return { ok: true as const };
+}
+
+export async function syncCapturedVehiclesAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const g = await gate();
+  if (!g.ok) return actionErr(g.error);
+  const customerId = str(formData.get('customerId'));
+  if (!customerId) return actionErr('Missing customer.');
+  const { inserted } = await syncVehiclesForCustomerRecord(g.admin, customerId);
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/customers');
+  revalidatePath('/dashboard');
+  return actionOk(inserted > 0 ? `Synced ${inserted} vehicle(s) from appointments.` : 'No new vehicles to sync — CRM is up to date.');
 }
 
 export async function archiveCustomerVehicleAction(formData: FormData) {

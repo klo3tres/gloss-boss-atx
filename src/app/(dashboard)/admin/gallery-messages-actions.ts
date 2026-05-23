@@ -27,7 +27,7 @@ async function requireAdminSupabase() {
 export async function setMessageStatusAction(formData: FormData) {
   const id = String(formData.get('id') ?? '').trim();
   const status = String(formData.get('status') ?? '').trim();
-  if (!id || !['new', 'read', 'replied', 'archived'].includes(status)) return;
+  if (!id || !['new', 'read', 'replied', 'archived', 'deleted'].includes(status)) return;
 
   const gate = await requireAdminSupabase();
   if (!gate.ok) return;
@@ -39,6 +39,10 @@ export async function setMessageStatusAction(formData: FormData) {
   if (status === 'read') patch.read_at = now;
   if (status === 'replied') patch.replied_at = now;
   if (status === 'archived') patch.archived_at = now;
+  if (status === 'deleted') {
+    patch.archived_at = now;
+    patch.deleted_at = now;
+  }
   if (status === 'new') {
     patch.read_at = null;
     patch.replied_at = null;

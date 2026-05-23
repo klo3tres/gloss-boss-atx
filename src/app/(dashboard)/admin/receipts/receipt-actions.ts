@@ -4,8 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { glossBossEmailShell } from '@/lib/email-brand';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
+import { buildReceiptEmailHtml } from '@/lib/email/templates/receipt';
+import { displayChicago, displayLabel, displayMoney } from '@/lib/display-format';
 
 function str(v: unknown) {
   return v == null ? '' : String(v);
@@ -57,17 +58,54 @@ export async function sendReceiptAction(formData: FormData) {
   } else if (!resendConfigured()) {
     skippedReason = 'Skipped - configure Resend before emailing receipts.';
   } else {
-    const html = glossBossEmailShell({
-      title: 'Payment receipt',
-      bodyHtml: `
-        <p style="margin:0 0 16px;color:#fafafa;font-size:15px;">Hi ${str(job.guest_name || customer.full_name || 'Customer')},</p>
-        <p style="margin:0 0 16px;color:#d4d4d8;font-size:15px;">Your Gloss Boss ATX receipt is ready.</p>
-        <div style="border:1px solid #3f3f46;border-radius:12px;padding:16px;background:#111;">
-          <p style="margin:0;color:#fcd34d;font-weight:800;">Receipt ${receiptNumber}</p>
-          <p style="margin:10px 0 0;color:#fafafa;">Paid: ${money(paid)}</p>
-          <p style="margin:8px 0 0;color:#a1a1aa;">Total: ${money(total)}</p>
-          <p style="margin:8px 0 0;color:#a1a1aa;">Vehicle: ${str(job.vehicle_description) || 'Vehicle on file'}</p>
-        </div>`,
+    const pricing =
+      job.booking_pricing_breakdown && typeof job.booking_pricing_breakdown === 'object'
+        ? (job.booking_pricing_breakdown as Record<string, unknown>)
+        : {};
+    const vehiclesRaw = Array.isArray(job.booking_vehicles) ? (job.booking_vehicles as Record<string, unknown>[]) : [];
+    const vehicleLines = vehiclesRaw.length
+      ? vehiclesRaw.map((v, i) => ({
+          name: str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`,
+          service: displayLabel(v.service_slug || job.service_slug),
+          color: str(v.vehicle_color || v.color) || undefined,
+          price: typeof v.price_cents === 'number' ? displayMoney(v.price_cents) : undefined,
+        }))
+      : [
+          {
+            name: str(job.vehicle_description) || 'Service',
+            service: displayLabel(job.service_slug),
+          },
+        ];
+    const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://glossbossatx.com';
+    const receiptUrl = receiptId
+      ? `${appBase}/admin/receipts/${encodeURIComponent(receiptId)}`
+      : resolvedPaymentId
+        ? `${appBase}/admin/receipts/${encodeURIComponent(resolvedPaymentId)}`
+        : undefined;
+    const html = buildReceiptEmailHtml({
+      customerName: str(job.guest_name || customer.full_name || 'Customer'),
+      receiptNumber,
+      serviceAddress: [job.service_address, job.service_city, job.service_state, job.service_zip].map(str).filter(Boolean).join(', '),
+      serviceAt: displayChicago(job.scheduled_start || job.job_completed_at || payment.created_at),
+      line: {
+        vehicles: vehicleLines,
+        subtotal: displayMoney(pricing.baseTotalCents ?? total),
+        onlineDiscount:
+          typeof pricing.onlineDiscountCents === 'number' && pricing.onlineDiscountCents > 0
+            ? displayMoney(pricing.onlineDiscountCents)
+            : undefined,
+        multiCarDiscount:
+          typeof pricing.multiCarDiscountCents === 'number' && pricing.multiCarDiscountCents > 0
+            ? displayMoney(pricing.multiCarDiscountCents)
+            : undefined,
+        promo: typeof pricing.promoDiscountCents === 'number' ? displayMoney(pricing.promoDiscountCents) : undefined,
+        depositPaid: typeof job.deposit_amount_cents === 'number' ? displayMoney(job.deposit_amount_cents) : undefined,
+        cashPaid: str(payment.payment_method).toLowerCase().includes('cash') ? money(paid) : undefined,
+        totalPaid: money(paid),
+        remainingBalance: typeof job.balance_due_cents === 'number' ? displayMoney(job.balance_due_cents) : undefined,
+        paymentMethod: displayLabel(payment.payment_method || payment.payment_kind || receipt.payment_method),
+        receiptUrl,
+      },
     });
     const sent = await sendResendHtml({ to: email, subject: `Gloss Boss ATX receipt ${receiptNumber}`, html });
     if (sent.ok) status = 'sent';
