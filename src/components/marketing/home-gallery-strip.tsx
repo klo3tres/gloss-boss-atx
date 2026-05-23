@@ -18,37 +18,6 @@ function slidesToGalleryRows(slides: SiteDataFeaturedSlide[]): NormalizedGallery
   }));
 }
 
-/** Stock placeholders when no published CMS images exist */
-const FALLBACK_IMAGES: NormalizedGalleryImage[] = [
-  {
-    id: 'ph-1',
-    url: 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=900&q=80',
-    image_url: 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=900&q=80',
-    caption: null,
-    sort_order: 0,
-    order_index: null,
-    featured: false,
-  },
-  {
-    id: 'ph-2',
-    url: 'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=900&q=80',
-    image_url: 'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=900&q=80',
-    caption: null,
-    sort_order: 1,
-    order_index: null,
-    featured: false,
-  },
-  {
-    id: 'ph-3',
-    url: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=900&q=80',
-    image_url: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=900&q=80',
-    caption: null,
-    sort_order: 2,
-    order_index: null,
-    featured: false,
-  },
-];
-
 function sortGalleryRows(rows: NormalizedGalleryImage[]): NormalizedGalleryImage[] {
   return [...rows].sort((a, b) => {
     const fa = a.featured ? 1 : 0;
@@ -58,19 +27,20 @@ function sortGalleryRows(rows: NormalizedGalleryImage[]): NormalizedGalleryImage
   });
 }
 
-/** Admin images first (featured boosted); placeholders only when nothing published. */
-function resolveGalleryRows(remote: NormalizedGalleryImage[]): { rows: NormalizedGalleryImage[]; usedFallback: boolean } {
+/** Homepage shows CMS featured images only — no stock placeholders. */
+function resolveGalleryRows(remote: NormalizedGalleryImage[]): { rows: NormalizedGalleryImage[]; empty: boolean } {
   const valid = sortGalleryRows(remote.filter((r) => (r.url || r.image_url).trim()));
-  if (valid.length === 0) {
-    return { rows: FALLBACK_IMAGES, usedFallback: true };
+  const featured = valid.filter((r) => r.featured);
+  if (featured.length === 0) {
+    return { rows: [], empty: true };
   }
-  return { rows: valid, usedFallback: false };
+  return { rows: featured, empty: false };
 }
 
 export function HomeGalleryStrip() {
   const [rows, setRows] = useState<NormalizedGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usedFallback, setUsedFallback] = useState(false);
+  const [emptyGallery, setEmptyGallery] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; caption: string | null } | null>(null);
   const [page, setPage] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +56,8 @@ export function HomeGalleryStrip() {
       setLoading(false);
       const r = resolveGalleryRows([]);
       setRows(r.rows);
-      setUsedFallback(r.usedFallback);
+      setEmptyGallery(r.empty);
+      setLoading(false);
     }, 10000);
     return () => clearTimeout(watchdog);
   }, []);
@@ -117,14 +88,16 @@ export function HomeGalleryStrip() {
           const mapped = slidesToGalleryRows(site.featuredShowcase);
           const resolved = resolveGalleryRows(mapped);
           setRows(resolved.rows);
-          setUsedFallback(resolved.usedFallback);
+          setEmptyGallery(resolved.empty);
+          setLoading(false);
           setPage(0);
           return;
         }
         const list = (gal?.images ?? []) as NormalizedGalleryImage[];
         const resolved = resolveGalleryRows(list);
         setRows(resolved.rows);
-        setUsedFallback(resolved.usedFallback);
+        setEmptyGallery(resolved.empty);
+        setLoading(false);
         setPage(0);
       })
       .catch((e) => {
@@ -134,7 +107,8 @@ export function HomeGalleryStrip() {
         console.warn('[CRM_DEBUG_UI]', 'gallery_public_fetch', e instanceof Error ? e.message : e);
         const r = resolveGalleryRows([]);
         setRows(r.rows);
-        setUsedFallback(r.usedFallback);
+        setEmptyGallery(r.empty);
+        setLoading(false);
       });
 
     return () => {
@@ -182,7 +156,7 @@ export function HomeGalleryStrip() {
   const sliceStart = page * pageSize;
   const visibleSlice = rows.slice(sliceStart, sliceStart + pageSize);
 
-  if (loading && rows.length === 0) {
+  if (loading && rows.length === 0 && !emptyGallery) {
     return (
       <div className='mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3'>
         {Array.from({ length: 6 }).map((_, i) => (
@@ -194,8 +168,10 @@ export function HomeGalleryStrip() {
 
   return (
     <div className='mt-8 space-y-4'>
-      {usedFallback ? (
-        <p className='text-xs text-zinc-500'>Showing sample imagery until published photos are available in Admin → Website CMS.</p>
+      {emptyGallery ? (
+        <p className='text-xs text-zinc-500'>
+          Featured gallery photos will appear here once you feature images in Admin → Website CMS.
+        </p>
       ) : null}
 
       {lightbox ? (

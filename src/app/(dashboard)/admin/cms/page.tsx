@@ -211,6 +211,11 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       <section className='mb-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase'>Google review link</h2>
         <p className='mt-2 text-sm text-zinc-400'>Powers the “Leave us a Google Review” button on the homepage. Paste your public review URL.</p>
+        {!googleReviewUrl ? (
+          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='alert'>
+            No Google review URL saved — customers will not see the gold “Leave Google Review” button until you add a link here.
+          </p>
+        ) : null}
         <CmsGoogleReviewClient initialUrl={googleReviewUrl} />
       </section>
 

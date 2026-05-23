@@ -3,6 +3,9 @@ import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { reconcileStripeSessionAction, refundStripePaymentAction } from '../payment-actions';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
+import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,9 +72,17 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
 
   const linked = ((apptRes.data ?? fallbackRes.data ?? {}) as Row);
   const customer = (customerRes.data ?? {}) as Row;
-  const total = typeof linked.base_price_cents === 'number' ? linked.base_price_cents : null;
-  const deposit = typeof linked.deposit_amount_cents === 'number' ? linked.deposit_amount_cents : typeof p.amount_cents === 'number' ? p.amount_cents : null;
-  const balance = total != null && deposit != null ? Math.max(0, total - deposit) : null;
+  const { data: allPayments } = await admin
+    .from('payments')
+    .select('*')
+    .eq(str(p.appointment_id) ? 'appointment_id' : 'fallback_booking_id', str(p.appointment_id || p.fallback_booking_id))
+    .order('paid_at', { ascending: false })
+    .limit(20);
+  const pricing = resolveJobPricing(linked, (allPayments ?? []) as Row[]);
+  const total = pricing.finalTotalCents;
+  const deposit = pricing.depositCents;
+  const balance = pricing.remainingBalanceCents;
+  const pdfHref = `/api/receipts/${encodeURIComponent(id)}/pdf`;
   const sessionId = str(p.stripe_checkout_session_id || linked.stripe_checkout_session_id);
   const paymentIntentId = str(p.stripe_payment_intent_id);
   const agreement = (agreementRes.data ?? intakeRes.data ?? null) as Row | null;
@@ -102,9 +113,9 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <p><span className='text-zinc-500'>Vehicles:</span> {vehicleSummary(linked)}</p>
           <p><span className='text-zinc-500'>Address:</span> {address(linked) || str((p.metadata as Row | undefined)?.service_address) || 'No service address saved'}</p>
           <p><span className='text-zinc-500'>Appointment:</span> {str(p.appointment_id || linked.id) || '—'}</p>
-          <p><span className='text-zinc-500'>Deposit:</span> {deposit != null ? money(deposit) : '—'}</p>
-          <p><span className='text-zinc-500'>Total:</span> {total != null ? money(total) : '—'}</p>
-          <p><span className='text-zinc-500'>Balance:</span> {balance != null ? money(balance) : '—'}</p>
+          <p><span className='text-zinc-500'>Deposit:</span> {money(deposit)}</p>
+          <p><span className='text-zinc-500'>Job total:</span> {money(total)}</p>
+          <p><span className='text-zinc-500'>Balance:</span> {money(balance)}</p>
           <p><span className='text-zinc-500'>Payment status:</span> {str(linked.payment_status || p.status)}</p>
         </div>
         <div className='mt-5 flex flex-wrap gap-3'>
@@ -118,6 +129,8 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           ) : null}
           {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${agreementSource}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Agreement</Link> : null}
           <Link href={`/admin/receipts/${id}`} className='rounded border border-emerald-500/40 px-4 py-2 text-xs font-black uppercase text-emerald-200'>Receipt</Link>
+          <ReceiptPdfDownloadButton href={pdfHref} className='inline-block' label='Download invoice PDF' />
+          <ReceiptSendForm paymentId={id} />
           {sessionId ? (
             <form action={reconcileStripeSessionAction}>
               <input type='hidden' name='sessionId' value={sessionId} />

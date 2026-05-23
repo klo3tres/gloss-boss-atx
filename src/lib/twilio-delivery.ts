@@ -7,6 +7,9 @@ export type TwilioDeliveryInfo = {
   detail: string;
 };
 
+const TOLL_FREE_VERIFY_MSG =
+  'Toll-free verification required. Twilio accepted the request, but carriers blocked delivery until the toll-free number is verified. Complete Twilio Toll-Free Verification for +18664853974.';
+
 export function describeTwilioDelivery(
   status: string | undefined | null,
   opts?: { errorCode?: string | null; errorMessage?: string | null; sid?: string | null },
@@ -14,9 +17,23 @@ export function describeTwilioDelivery(
   const raw = String(status ?? 'unknown').toLowerCase();
   const err = opts?.errorMessage?.trim();
   const code = opts?.errorCode != null && opts.errorCode !== '' ? String(opts.errorCode) : null;
+  const is30032 = code === '30032' || /30032|toll.?free|unverified/i.test(err ?? '');
 
   let label: string;
   let needsTollFreeWarning = false;
+
+  if (is30032 || (raw === 'undelivered' && /toll|30032|unverified/i.test(err ?? ''))) {
+    return {
+      rawStatus: raw,
+      label: TOLL_FREE_VERIFY_MSG,
+      isDelivered: false,
+      isFailure: true,
+      needsTollFreeWarning: true,
+      detail: [`error_code=${code ?? '30032'}`, err ? `carrier=${err}` : null, TOLL_FREE_VERIFY_MSG, opts?.sid ? `sid=${opts.sid}` : null]
+        .filter(Boolean)
+        .join(' · '),
+    };
+  }
 
   switch (raw) {
     case 'delivered':

@@ -446,6 +446,17 @@ export async function POST(request: Request) {
         metadata: { promo_code: 'FREE', source: 'free_test_promo', vehicles: bookingVehicles },
       });
 
+      void notifyBookingConfirmationQueued({
+        toEmail: emailNorm,
+        toPhone: phoneDigits,
+        guestName: guestName.trim(),
+        whenIso: scheduled.toISOString(),
+        totalCents: priced.finalTotalCents,
+        depositCents: 0,
+        vehicles: vehicleDescriptionJoined,
+        appointmentId: appointment.id,
+      }).catch(() => {});
+
       return NextResponse.json({
         appointmentId: appointment.id,
         accessToken: appointment.access_token,
@@ -456,16 +467,7 @@ export async function POST(request: Request) {
       });
     }
 
-    void notifyBookingConfirmationQueued({
-      toEmail: emailNorm,
-      toPhone: phoneDigits,
-      guestName: guestName.trim(),
-      whenIso: scheduled.toISOString(),
-      totalCents: priced.finalTotalCents,
-      depositCents: depositAmountCents,
-      vehicles: vehicleDescriptionJoined,
-      appointmentId: appointment.id,
-    }).catch(() => {});
+    /* Booking confirmation + deposit receipt emails send after Stripe checkout via notifyBookingCheckoutPaid. */
 
     void notifyBusinessNewBookingQueued({
       guestName: guestName.trim(),

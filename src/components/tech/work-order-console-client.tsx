@@ -10,6 +10,14 @@ import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
+import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
+import { ToastActionForm } from '@/components/ui/toast-action-form';
+import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import {
+  generateWorkOrderReceiptActionState,
+  sendWorkOrderReceiptEmailAction,
+} from '@/app/(dashboard)/tech/work-order-payment-actions';
+import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 
 export type WorkOrderConsoleData = {
   id: string;
@@ -51,6 +59,16 @@ export type WorkOrderConsoleData = {
   outbox: Array<{ id: string; kind: string; status: string; time: string; skipped?: string }>;
   beforePhotos: WorkOrderGalleryPhoto[];
   afterPhotos: WorkOrderGalleryPhoto[];
+  photosByVehicle: Array<{
+    vehicleIndex: number;
+    label: string;
+    before: WorkOrderGalleryPhoto[];
+    after: WorkOrderGalleryPhoto[];
+  }>;
+  multiCarDiscount?: string;
+  onlineDiscount?: string;
+  promoDiscount?: string;
+  totalPaid?: string;
   technicianName: string;
   jobStartedAt: string;
   jobCompletedAt: string;
@@ -94,16 +112,12 @@ export function WorkOrderConsoleClient({
   updateVehiclesAction,
   recordCashAction,
   completeJobAction,
-  generateReceiptAction,
-  sendReceiptAction,
 }: {
   data: WorkOrderConsoleData;
   updateDetailsAction: (formData: FormData) => void | Promise<void>;
   updateVehiclesAction: (formData: FormData) => void | Promise<void>;
   recordCashAction: (formData: FormData) => void | Promise<void>;
   completeJobAction: (formData: FormData) => void | Promise<void>;
-  generateReceiptAction?: (formData: FormData) => void | Promise<void>;
-  sendReceiptAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const progressPct = useMemo(() => {
     const ok = data.requirements.filter((r) => r.ok).length;
@@ -169,10 +183,9 @@ export function WorkOrderConsoleClient({
         />
       </div>
 
-      <section className='space-y-8'>
-        <div>
-          <SectionEyebrow>Job summary</SectionEyebrow>
-          <div className='mt-3 grid gap-2 text-sm sm:grid-cols-2'>
+      <section className='space-y-4'>
+        <WorkOrderCollapsible title='Job summary' defaultOpen>
+          <div className='grid gap-2 text-sm sm:grid-cols-2'>
             <p className='text-zinc-400'>
               Total <span className='font-mono text-white'>{data.finalTotal || data.baseTotal}</span>
             </p>
@@ -180,15 +193,23 @@ export function WorkOrderConsoleClient({
               Deposit <span className='font-mono text-white'>{data.depositPaid || '—'}</span>
             </p>
             <p className='text-zinc-400'>
+              Subtotal <span className='font-mono text-white'>{data.baseTotal}</span>
+            </p>
+            {data.multiCarDiscount ? <p className='text-zinc-400'>Multi-car −{data.multiCarDiscount}</p> : null}
+            {data.onlineDiscount ? <p className='text-zinc-400'>Online −{data.onlineDiscount}</p> : null}
+            {data.promoDiscount ? <p className='text-zinc-400'>Promo −{data.promoDiscount}</p> : null}
+            <p className='text-zinc-400'>
+              Paid <span className='font-mono text-emerald-300'>{data.totalPaid ?? '—'}</span>
+            </p>
+            <p className='text-zinc-400'>
               Balance due <span className='font-mono text-gold-soft'>{data.balanceDue}</span>
             </p>
             {data.paymentMethod ? <p className='text-zinc-400'>Payment: {data.paymentMethod}</p> : null}
             {data.technicianName ? <p className='text-zinc-400'>Tech: {data.technicianName}</p> : null}
           </div>
-        </div>
+        </WorkOrderCollapsible>
 
-        <div>
-          <SectionEyebrow>Customer & address</SectionEyebrow>
+        <WorkOrderCollapsible title='Customer & address'>
           {data.guestPhone ? <p className='mt-2 text-sm text-zinc-300'>{data.guestPhone}</p> : null}
           {data.guestEmail ? <p className='text-sm text-zinc-400'>{data.guestEmail}</p> : null}
           {data.fullAddress ? <p className='mt-2 text-sm text-zinc-500'>{data.fullAddress}</p> : null}
@@ -215,9 +236,9 @@ export function WorkOrderConsoleClient({
               Save customer
             </button>
           </form>
-        </div>
+        </WorkOrderCollapsible>
 
-        <div>
+        <WorkOrderCollapsible title='Vehicles' badge={`${data.vehicles.length}`} defaultOpen>
           <WorkOrderVehiclesForm
             id={jobId}
             source={data.source}
@@ -235,11 +256,10 @@ export function WorkOrderConsoleClient({
               priceCents: v.priceCents,
             }))}
           />
-        </div>
+        </WorkOrderCollapsible>
 
-        <div>
-          <SectionEyebrow>Agreement</SectionEyebrow>
-          <div className='mt-3 flex flex-wrap gap-2'>
+        <WorkOrderCollapsible title='Agreement'>
+          <div className='flex flex-wrap gap-2'>
             <Link href={data.agreementCaptureHref} className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'>
               Recapture
             </Link>
@@ -247,29 +267,31 @@ export function WorkOrderConsoleClient({
               View agreement
             </Link>
           </div>
-        </div>
+        </WorkOrderCollapsible>
 
         <div id='photos'>
-          <SectionEyebrow>Photos</SectionEyebrow>
-          <WorkOrderGallery title='Before' photos={data.beforePhotos} />
-          <WorkOrderGallery title='After' photos={data.afterPhotos} />
-          {data.vehicles.map((v, i) => (
-            <div key={i} className='mt-4'>
-              <p className='mb-2 text-xs font-bold text-zinc-400'>{v.label}</p>
-              <WorkOrderPhotoUpload
-                appointmentId={data.isFallback ? null : jobId}
-                fallbackBookingId={data.isFallback ? jobId : null}
-                workflowSessionId={data.workflowSessionId}
-                vehicleIndex={i}
-                vehicleLabel={v.label}
-              />
-            </div>
-          ))}
+          <WorkOrderCollapsible title='Photos' defaultOpen badge={`${data.vehicles.length} vehicles`}>
+            {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
+              <div key={vg.vehicleIndex} className='mb-6 rounded-xl border border-white/10 bg-black/30 p-3'>
+                <p className='text-sm font-bold text-white'>
+                  Vehicle {vg.vehicleIndex + 1}: {vg.label}
+                </p>
+                <WorkOrderGallery title='Before' photos={vg.before} />
+                <WorkOrderGallery title='After' photos={vg.after} />
+                <WorkOrderPhotoUpload
+                  appointmentId={data.isFallback ? null : jobId}
+                  fallbackBookingId={data.isFallback ? jobId : null}
+                  workflowSessionId={data.workflowSessionId}
+                  vehicleIndex={vg.vehicleIndex}
+                  vehicleLabel={vg.label}
+                />
+              </div>
+            ))}
+          </WorkOrderCollapsible>
         </div>
 
-        <div>
-          <SectionEyebrow>Notes</SectionEyebrow>
-          <ul className='mt-3 max-h-48 space-y-2 overflow-y-auto text-sm'>
+        <WorkOrderCollapsible title='Notes'>
+          <ul className='max-h-48 space-y-2 overflow-y-auto text-sm'>
             {data.notes.length === 0 ? <li className='text-zinc-500'>No notes yet.</li> : null}
             {data.notes.map((n) => (
               <li key={n.id} className='rounded-xl border border-white/10 bg-black/30 px-3 py-2'>
@@ -279,11 +301,10 @@ export function WorkOrderConsoleClient({
               </li>
             ))}
           </ul>
-        </div>
+        </WorkOrderCollapsible>
 
-        <div>
-          <SectionEyebrow>Payment</SectionEyebrow>
-          <ul className='mt-3 space-y-2 text-sm'>
+        <WorkOrderCollapsible title='Payment' defaultOpen>
+          <ul className='space-y-2 text-sm'>
             {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
             {data.recentPayments.map((p) => (
               <li key={p.id || p.at} className='flex justify-between gap-2 rounded-xl border border-white/10 px-3 py-2'>
@@ -313,29 +334,27 @@ export function WorkOrderConsoleClient({
                 Mark cash paid
               </button>
             </form>
-            {generateReceiptAction ? (
-              <form action={generateReceiptAction}>
-                {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-                {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-                <button type='submit' className='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'>
-                  Generate receipt
-                </button>
-              </form>
-            ) : null}
-            {sendReceiptAction ? (
-              <form action={sendReceiptAction}>
-                {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-                {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-                <button type='submit' className='w-full rounded-2xl border border-gold/35 px-4 py-3 text-xs font-black uppercase text-gold-soft'>
-                  Send receipt email
-                </button>
-              </form>
-            ) : null}
-            {data.receiptPdfHref ? (
-              <a href={data.receiptPdfHref} target='_blank' rel='noreferrer' className='flex items-center justify-center rounded-2xl border border-white/15 px-4 py-3 text-xs font-black uppercase text-zinc-200'>
-                Download invoice PDF
-              </a>
-            ) : null}
+            <ToastActionForm action={generateWorkOrderReceiptActionState} className='w-full'>
+              {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
+              {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
+              <SubmitStatusButton
+                pendingText='Generating…'
+                className='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'
+              >
+                Generate receipt
+              </SubmitStatusButton>
+            </ToastActionForm>
+            <ToastActionForm action={sendWorkOrderReceiptEmailAction} className='w-full'>
+              {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
+              {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
+              <SubmitStatusButton
+                pendingText='Sending…'
+                className='w-full rounded-2xl border border-gold/35 px-4 py-3 text-xs font-black uppercase text-gold-soft'
+              >
+                Send receipt email
+              </SubmitStatusButton>
+            </ToastActionForm>
+            {data.receiptPdfHref ? <ReceiptPdfDownloadButton href={data.receiptPdfHref} /> : null}
           </div>
           {!data.isFallback ? (
             <form action={completeJobAction} className='mt-4'>
@@ -346,7 +365,7 @@ export function WorkOrderConsoleClient({
               </button>
             </form>
           ) : null}
-        </div>
+        </WorkOrderCollapsible>
       </section>
 
       <StickyActionBar>

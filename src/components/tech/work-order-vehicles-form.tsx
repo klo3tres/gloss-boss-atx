@@ -50,6 +50,12 @@ export function WorkOrderVehiclesForm({
   const [catalog, setCatalog] = useState<ServiceOption[]>([]);
 
   useEffect(() => {
+    if (initialVehicles.length > 0) {
+      setRows(initialVehicles);
+    }
+  }, [initialVehicles]);
+
+  useEffect(() => {
     fetch('/api/services')
       .then((r) => r.json())
       .then((j) => {

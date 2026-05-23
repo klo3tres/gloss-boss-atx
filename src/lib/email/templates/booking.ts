@@ -12,13 +12,17 @@ export function bookingConfirmationEmailHtml(details: {
   total: string;
   deposit: string;
   vehicles: string;
+  serviceAddress?: string;
+  remainingBalance?: string;
 }): string {
   const card = emailCard(`
     <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#d4af37;">Appointment</p>
     <p style="margin:0;font-size:16px;font-weight:700;color:#fafafa;">${escapeEmailHtml(details.whenLabel)}</p>
     <p style="margin:12px 0 0;font-size:13px;color:#a1a1aa;">${escapeEmailHtml(details.vehicles)}</p>
-    <p style="margin:14px 0 0;font-size:14px;color:#fafafa;">Estimated total <strong style="color:#fefce8;">${escapeEmailHtml(details.total)}</strong></p>
-    <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Deposit due <strong>${escapeEmailHtml(details.deposit)}</strong></p>
+    ${details.serviceAddress ? `<p style="margin:10px 0 0;font-size:13px;color:#a1a1aa;">Service address: ${escapeEmailHtml(details.serviceAddress)}</p>` : ''}
+    <p style="margin:14px 0 0;font-size:14px;color:#fafafa;">Job total <strong style="color:#fefce8;">${escapeEmailHtml(details.total)}</strong></p>
+    <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Deposit paid <strong>${escapeEmailHtml(details.deposit)}</strong></p>
+    ${details.remainingBalance ? `<p style="margin:8px 0 0;font-size:14px;color:#fafafa;">Remaining balance <strong>${escapeEmailHtml(details.remainingBalance)}</strong></p>` : ''}
   `);
 
   const bodyHtml =

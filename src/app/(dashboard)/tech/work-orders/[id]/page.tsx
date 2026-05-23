@@ -4,8 +4,9 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
-import { generateWorkOrderReceiptAction, sendWorkOrderReceiptAction } from '../../work-order-payment-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
@@ -24,6 +25,14 @@ function photoPhase(row: Row): 'before' | 'after' {
 
 function photoSlot(row: Row): string {
   return str(row.photo_category || row.category).toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function photoVehicleIndex(row: Row, vehicleCount: number): number {
+  const vi = row.vehicle_index;
+  if (typeof vi === 'number' && vi >= 0 && vi < vehicleCount) return vi;
+  const parsed = Number(vi);
+  if (Number.isFinite(parsed) && parsed >= 0 && parsed < vehicleCount) return parsed;
+  return 0;
 }
 
 function photoUrl(row: Row) {
@@ -107,11 +116,38 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
     updated_at: new Date().toISOString(),
   };
   if (baseTotal > 0) {
-    patch.base_price_cents = baseTotal;
-    const { data: existing } = await admin.from(table).select('deposit_amount_cents, payment_status').eq('id', id).maybeSingle();
+    const { data: existing } = await admin.from(table).select('deposit_amount_cents, payment_status, booking_pricing_breakdown').eq('id', id).maybeSingle();
+    const prevBreakdown =
+      (existing as Row | null)?.booking_pricing_breakdown && typeof (existing as Row).booking_pricing_breakdown === 'object'
+        ? ((existing as Row).booking_pricing_breakdown as Row)
+        : {};
+    const multiCarDiscountCents = typeof prevBreakdown.multiCarDiscountCents === 'number' ? Number(prevBreakdown.multiCarDiscountCents) : 0;
+    const onlineDiscountCents =
+      typeof prevBreakdown.websitePromoDiscountCents === 'number'
+        ? Number(prevBreakdown.websitePromoDiscountCents)
+        : typeof prevBreakdown.onlineDiscountCents === 'number'
+          ? Number(prevBreakdown.onlineDiscountCents)
+          : 0;
+    const promoDiscountCents =
+      typeof prevBreakdown.offerDiscountCents === 'number'
+        ? Number(prevBreakdown.offerDiscountCents)
+        : typeof prevBreakdown.promoDiscountCents === 'number'
+          ? Number(prevBreakdown.promoDiscountCents)
+          : 0;
+    const finalTotalCents = Math.max(0, baseTotal - multiCarDiscountCents - onlineDiscountCents - promoDiscountCents);
+    patch.base_price_cents = finalTotalCents;
+    patch.booking_pricing_breakdown = {
+      ...prevBreakdown,
+      vehicleSubtotalCents: baseTotal,
+      prePromoCents: baseTotal,
+      finalTotalCents,
+      multiCarDiscountCents,
+      websitePromoDiscountCents: onlineDiscountCents,
+      offerDiscountCents: promoDiscountCents,
+    };
     const deposit = typeof (existing as Row | null)?.deposit_amount_cents === 'number' ? Number((existing as Row).deposit_amount_cents) : 0;
     const paid = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(str((existing as Row | null)?.payment_status).toLowerCase());
-    if (!paid) patch.balance_due_cents = Math.max(0, baseTotal - deposit);
+    if (!paid) patch.balance_due_cents = Math.max(0, finalTotalCents - deposit);
     const scheduleLines = vehicles.map((v) => ({
       serviceSlug: str(v.service_slug) || 'exterior-wash',
       vehicleClass: str(v.vehicle_class) || 'sedan',
@@ -120,9 +156,18 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
     patch.estimated_duration_minutes = totalBookingDurationMinutes(scheduleLines);
   }
   await admin.from(table).update(patch).eq('id', id);
+
+  const woSource = source === 'fallback' ? 'fallback' : 'appointment';
+  const sync = await syncVehiclesForWorkOrder(admin, { workOrderId: id, source: woSource });
+  if (sync.customerId) {
+    revalidatePath(`/admin/customers/${sync.customerId}`);
+    revalidatePath('/admin/customers');
+  }
+
   revalidatePath(`/tech/work-orders/${id}`);
   revalidatePath('/tech');
   revalidatePath('/admin/work-orders');
+  revalidatePath('/dashboard');
 }
 
 export default async function TechWorkOrderDetailPage({
@@ -160,14 +205,14 @@ export default async function TechWorkOrderDetailPage({
   for (const table of ['job_media', 'job_photos']) {
     const direct = await admin
       .from(table)
-      .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id')
+      .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id, vehicle_index, vehicle_label')
       .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
       .limit(120);
     if (!direct.error) mediaRows.push(...((direct.data ?? []) as Row[]));
     if (workflowSessionIds.length > 0) {
       const byWorkflow = await admin
         .from(table)
-        .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id')
+        .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id, vehicle_index, vehicle_label')
         .in('workflow_session_id', workflowSessionIds)
         .limit(120);
       if (!byWorkflow.error) mediaRows.push(...((byWorkflow.data ?? []) as Row[]));
@@ -184,10 +229,12 @@ export default async function TechWorkOrderDetailPage({
   }
 
   const photos = Array.from(new Map(mediaRows.filter((p) => photoUrl(p)).map((p) => [photoUrl(p), p])).values());
-  const before = photos.filter((p) => photoPhase(p) === 'before');
-  const after = photos.filter((p) => photoPhase(p) === 'after');
   const fullAddress = [row.service_address, row.service_city, row.service_state, row.service_zip].map(str).filter(Boolean).join(', ');
   const vehicles = vehiclesFromRow(row);
+  const vehicleCount = Math.max(vehicles.length, 1);
+
+  const before = photos.filter((p) => photoPhase(p) === 'before');
+  const after = photos.filter((p) => photoPhase(p) === 'after');
 
   const openTimer = await admin
     .from('tech_job_timers')
@@ -250,7 +297,10 @@ export default async function TechWorkOrderDetailPage({
       uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? resolved.technicianName ?? 'Technician',
     }));
 
-  const depositPaid = displayMoney(row.deposit_amount_cents);
+  const paymentRows = (paymentsRes.data ?? []) as Row[];
+  const pricing = resolveJobPricing(row, paymentRows);
+
+  const depositPaid = displayMoney(pricing.depositCents);
   const scheduledStart = displayChicago(row.scheduled_start);
   const scheduledEnd = displayChicago(row.estimated_end);
   const accessLocation = displayLabel(row.service_location_type);
@@ -276,10 +326,14 @@ export default async function TechWorkOrderDetailPage({
     serviceState: str(row.service_state) || 'TX',
     serviceZip: str(row.service_zip),
     mapsHref: fullAddress ? mapsHref(fullAddress) : '#',
-    baseTotal: displayMoney(row.base_price_cents),
-    balanceDue: displayMoney(row.balance_due_cents),
+    baseTotal: displayMoney(pricing.prePromoCents),
+    balanceDue: displayMoney(pricing.remainingBalanceCents),
     depositPaid,
-    finalTotal: displayMoney(row.base_price_cents),
+    finalTotal: displayMoney(pricing.finalTotalCents),
+    multiCarDiscount: pricing.multiCarDiscountCents > 0 ? displayMoney(pricing.multiCarDiscountCents) : undefined,
+    onlineDiscount: pricing.onlineDiscountCents > 0 ? displayMoney(pricing.onlineDiscountCents) : undefined,
+    promoDiscount: pricing.promoDiscountCents > 0 ? displayMoney(pricing.promoDiscountCents) : undefined,
+    totalPaid: displayMoney(pricing.totalPaidCents),
     paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
     paymentStatus: displayLabel(row.payment_status, 'Pending'),
     scheduledStart,
@@ -317,6 +371,15 @@ export default async function TechWorkOrderDetailPage({
     })),
     beforePhotos: toGallery(before),
     afterPhotos: toGallery(after),
+    photosByVehicle: vehicles.map((v, i) => {
+      const label = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
+      return {
+        vehicleIndex: i,
+        label,
+        before: toGallery(before.filter((p) => photoVehicleIndex(p, vehicleCount) === i)),
+        after: toGallery(after.filter((p) => photoVehicleIndex(p, vehicleCount) === i)),
+      };
+    }),
     vehicles: vehicles.map((v, i) => {
       const p = vehicleParts(v);
       const vehicleLabel = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
@@ -388,8 +451,6 @@ export default async function TechWorkOrderDetailPage({
         updateVehiclesAction={updateWorkOrderVehiclesAction}
         recordCashAction={techRecordCashPaymentAction}
         completeJobAction={completeWorkOrderFormAction}
-        generateReceiptAction={generateWorkOrderReceiptAction}
-        sendReceiptAction={sendWorkOrderReceiptAction}
       />
     </DashboardShell>
   );

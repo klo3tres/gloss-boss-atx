@@ -1,78 +1,284 @@
 'use server';
 
+
+
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+
 import { getSessionWithProfile } from '@/lib/auth/session';
+
 import { isStaffRole } from '@/lib/auth/roles';
+
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+
+import { resolveJobPricing } from '@/lib/job-pricing-display';
+
+import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+
 import { sendReceiptAction } from '@/app/(dashboard)/admin/receipts/receipt-actions';
 
+
+
 function str(v: unknown) {
+
   return v == null ? '' : String(v).trim();
+
 }
+
+
 
 async function requireStaff() {
+
   const session = await getSessionWithProfile();
+
   const admin = tryCreateAdminSupabase();
+
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) return null;
+
   return { admin, userId: session.user.id };
+
 }
 
-export async function generateWorkOrderReceiptAction(formData: FormData) {
+
+
+async function upsertWorkOrderReceipt(
+  admin: SupabaseClient,
+  jobId: string,
+
+  appointmentId: string,
+
+  fallbackBookingId: string,
+
+  jobRow: Record<string, unknown>,
+
+) {
+
+  const { data: payments } = await admin
+
+    .from('payments')
+
+    .select('*')
+
+    .eq(fallbackBookingId ? 'fallback_booking_id' : 'appointment_id', jobId)
+
+    .order('paid_at', { ascending: false })
+
+    .limit(20);
+
+
+
+  const pricing = resolveJobPricing(jobRow, (payments ?? []) as Record<string, unknown>[]);
+
+  const lastPay = (payments ?? [])[0] as Record<string, unknown> | undefined;
+
+  const receiptNumber = `WO-${jobId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
+
+
+
+  const payload = {
+
+    appointment_id: appointmentId || null,
+
+    fallback_booking_id: fallbackBookingId || null,
+
+    customer_id: str(jobRow.customer_id) || null,
+
+    payment_id: str(lastPay?.id) || null,
+
+    receipt_number: receiptNumber,
+
+    amount_cents: pricing.finalTotalCents,
+
+    payment_method: str(lastPay?.payment_method || lastPay?.payment_kind || jobRow.payment_choice || 'cash'),
+
+    status: 'issued',
+
+    metadata: {
+
+      source: 'work_order_generate',
+
+      final_total_cents: pricing.finalTotalCents,
+
+      total_paid_cents: pricing.totalPaidCents,
+
+      remaining_balance_cents: pricing.remainingBalanceCents,
+
+    },
+
+    updated_at: new Date().toISOString(),
+
+  };
+
+
+
+  const existing = appointmentId
+
+    ? await admin.from('receipts').select('id').eq('appointment_id', appointmentId).order('created_at', { ascending: false }).limit(1)
+
+    : await admin.from('receipts').select('id').eq('fallback_booking_id', fallbackBookingId).order('created_at', { ascending: false }).limit(1);
+
+
+
+  const existingId = str((existing.data?.[0] as { id?: string } | undefined)?.id);
+
+  if (existingId) {
+
+    await admin.from('receipts').update(payload).eq('id', existingId);
+
+    return existingId;
+
+  }
+
+
+
+  const { data: inserted } = await admin.from('receipts').insert({ ...payload, created_at: new Date().toISOString() }).select('id').maybeSingle();
+
+  return str((inserted as { id?: string } | null)?.id);
+
+}
+
+
+
+export async function generateWorkOrderReceiptActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+
   const gate = await requireStaff();
-  if (!gate) return;
+
+  if (!gate) return actionErr('Not authorized.');
+
   const appointmentId = str(formData.get('appointmentId'));
+
   const fallbackBookingId = str(formData.get('fallbackBookingId'));
-  if (!appointmentId && !fallbackBookingId) return;
+
+  if (!appointmentId && !fallbackBookingId) return actionErr('Missing work order.');
+
+
 
   const table = fallbackBookingId ? 'booking_fallbacks' : 'appointments';
+
   const jobId = fallbackBookingId || appointmentId;
-  const { data: job } = await gate.admin.from(table).select('id, customer_id, guest_email, base_price_cents, deposit_amount_cents, payment_status').eq('id', jobId).maybeSingle();
-  if (!job) return;
 
-  const { data: lastPay } = await gate.admin
-    .from('payments')
-    .select('id, amount_cents, payment_method, status')
-    .eq(fallbackBookingId ? 'fallback_booking_id' : 'appointment_id', jobId)
-    .order('paid_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: job } = await gate.admin.from(table).select('*').eq('id', jobId).maybeSingle();
 
-  const pay = (lastPay ?? {}) as Record<string, unknown>;
-  const amount =
-    typeof pay.amount_cents === 'number'
-      ? pay.amount_cents
-      : typeof (job as Record<string, unknown>).base_price_cents === 'number'
-        ? Number((job as Record<string, unknown>).base_price_cents)
-        : 0;
+  if (!job) return actionErr('Work order not found.');
 
-  await gate.admin.from('receipts').insert({
-    appointment_id: appointmentId || null,
-    fallback_booking_id: fallbackBookingId || null,
-    customer_id: str((job as Record<string, unknown>).customer_id) || null,
-    payment_id: str(pay.id) || null,
-    receipt_number: `WO-${jobId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`,
-    amount_cents: amount,
-    payment_method: str(pay.payment_method) || 'stripe',
-    status: 'issued',
-    metadata: { source: 'work_order_generate' },
-  });
 
-  revalidatePath(`/tech/work-orders/${appointmentId || fallbackBookingId}`);
+
+  const jobRow = job as Record<string, unknown>;
+
+  const receiptId = await upsertWorkOrderReceipt(gate.admin, jobId, appointmentId, fallbackBookingId, jobRow);
+
+
+
+  revalidatePath(`/tech/work-orders/${jobId}`);
+
   revalidatePath('/admin/receipts');
+
+  return actionOk(receiptId ? `Receipt ${receiptId.slice(0, 8)}… saved from latest work order totals.` : 'Receipt generated.');
+
 }
+
+
+
+export async function generateWorkOrderReceiptAction(formData: FormData) {
+
+  return generateWorkOrderReceiptActionState(null, formData);
+
+}
+
+
 
 export async function sendWorkOrderReceiptAction(formData: FormData) {
-  const gate = await requireStaff();
-  if (!gate) return;
-  const appointmentId = str(formData.get('appointmentId'));
-  const fallbackBookingId = str(formData.get('fallbackBookingId'));
-  const receiptId = str(formData.get('receiptId'));
-  const fd = new FormData();
-  if (receiptId) fd.set('receiptId', receiptId);
-  if (appointmentId) {
-    const { data: r } = await gate.admin.from('receipts').select('id').eq('appointment_id', appointmentId).order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (r && typeof (r as { id?: string }).id === 'string') fd.set('receiptId', (r as { id: string }).id);
-  }
-  await sendReceiptAction(fd);
-  revalidatePath(`/tech/work-orders/${appointmentId || fallbackBookingId}`);
+
+  return sendWorkOrderReceiptEmailAction(null, formData);
+
 }
+
+
+
+export async function sendWorkOrderReceiptEmailAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+
+  const gate = await requireStaff();
+
+  if (!gate) return actionErr('Not authorized.');
+
+
+
+  const appointmentId = str(formData.get('appointmentId'));
+
+  const fallbackBookingId = str(formData.get('fallbackBookingId'));
+
+  const workOrderId = appointmentId || fallbackBookingId;
+
+  if (!workOrderId) return actionErr('Missing work order.');
+
+
+
+  await generateWorkOrderReceiptActionState(null, formData);
+
+
+
+  const fd = new FormData();
+
+  const receiptId = str(formData.get('receiptId'));
+
+
+
+  if (receiptId) fd.set('receiptId', receiptId);
+
+
+
+  const byAppt = appointmentId
+
+    ? await gate.admin.from('receipts').select('id').eq('appointment_id', appointmentId).order('created_at', { ascending: false }).limit(1)
+
+    : { data: null };
+
+  const byFb = fallbackBookingId
+
+    ? await gate.admin.from('receipts').select('id').eq('fallback_booking_id', fallbackBookingId).order('created_at', { ascending: false }).limit(1)
+
+    : { data: null };
+
+
+
+  const rid = str((byAppt.data?.[0] as { id?: string } | undefined)?.id || (byFb.data?.[0] as { id?: string } | undefined)?.id);
+
+  if (rid) fd.set('receiptId', rid);
+
+
+
+  const payQ = await gate.admin
+
+    .from('payments')
+
+    .select('id')
+
+    .eq(appointmentId ? 'appointment_id' : 'fallback_booking_id', workOrderId)
+
+    .order('paid_at', { ascending: false })
+
+    .limit(1);
+
+  const payId = str((payQ.data?.[0] as { id?: string } | undefined)?.id);
+
+  if (!rid && payId) fd.set('paymentId', payId);
+
+
+
+  if (!fd.get('receiptId') && !fd.get('paymentId')) {
+
+    return actionErr('Could not find or create a receipt for this work order.');
+
+  }
+
+
+
+  const result = await sendReceiptAction(fd);
+
+  revalidatePath(`/tech/work-orders/${workOrderId}`);
+
+  return result;
+
+}
+
+

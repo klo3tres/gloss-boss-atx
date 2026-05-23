@@ -22,6 +22,7 @@ export type ReceiptPdfInput = {
   finalTotal: string;
   depositPaid: string;
   fullPaid: string;
+  cashPaid?: string;
   remainingBalance: string;
 };
 
@@ -115,7 +116,15 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   doc.text(`Total: ${input.finalTotal}`, 400, y);
   y += 16;
   doc.setFontSize(9);
-  doc.text(`Deposit: ${input.depositPaid} · Paid: ${input.fullPaid} · Balance: ${input.remainingBalance}`, margin, y);
+  const payLine = [
+    `Deposit: ${input.depositPaid}`,
+    input.cashPaid && input.cashPaid !== '$0.00' ? `Cash: ${input.cashPaid}` : null,
+    `Paid: ${input.fullPaid}`,
+    `Balance: ${input.remainingBalance}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  doc.text(payLine, margin, y);
 
   return new Uint8Array(doc.output('arraybuffer'));
 }

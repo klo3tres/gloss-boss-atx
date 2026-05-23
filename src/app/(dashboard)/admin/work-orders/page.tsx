@@ -6,6 +6,7 @@ import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
 import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../booking-fallback-actions';
 import { adminRecordCashPaymentAction, archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
 import { workOrderPath, workOrderRecapturePath } from '@/lib/work-order-links';
+import { WorkOrderListCard } from '@/components/admin/work-order-list-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,15 +212,25 @@ export default async function AdminWorkOrdersPage() {
                   if (str(r.guest_email)) agreementCaptureParams.set('email', str(r.guest_email));
                   if (str(r.guest_phone)) agreementCaptureParams.set('phone', str(r.guest_phone));
                   return (
-                    <article key={`${isFallback ? 'fb' : 'appt'}-${str(r.id)}`} className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm'>
-                      <div className='flex flex-wrap items-start justify-between gap-3'>
-                        <div>
-                          <p className='font-semibold text-white'>{str(r.guest_name) || 'Customer'} · {str(r.service_slug).replace(/-/g, ' ') || 'Service'}</p>
-                          <p className='text-xs text-zinc-500'>{chicago(r.scheduled_start || r.created_at)} · {str(r.status) || 'pending'} · {str(r.payment_status) || 'payment pending'}</p>
-                        </div>
-                        <p className='rounded-full border border-gold/25 px-2 py-1 text-[10px] font-bold uppercase text-gold-soft'>{money(r.deposit_amount_cents)} deposit / {money(r.base_price_cents)} total</p>
-                      </div>
-                      <div className='mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2'>
+                    <WorkOrderListCard
+                      key={`${isFallback ? 'fb' : 'appt'}-${str(r.id)}`}
+                      title={
+                        <>
+                          {str(r.guest_name) || 'Customer'} · {str(r.service_slug).replace(/-/g, ' ') || 'Service'}
+                        </>
+                      }
+                      meta={
+                        <>
+                          {chicago(r.scheduled_start || r.created_at)} · {str(r.status) || 'pending'} · {str(r.payment_status) || 'payment pending'}
+                        </>
+                      }
+                      amountBadge={
+                        <p className='rounded-full border border-gold/25 px-2 py-1 text-[10px] font-bold uppercase text-gold-soft'>
+                          {money(r.deposit_amount_cents)} deposit / {money(r.base_price_cents)} total
+                        </p>
+                      }
+                    >
+                      <div className='grid gap-2 text-xs text-zinc-300 sm:grid-cols-2'>
                         <p>{str(r.guest_email)}<br />{str(r.guest_phone)}</p>
                         <p>{vehicles(r)}<br />{fullAddress || 'No service address on file — contact customer.'}</p>
                         <p>Tech: {str(technicians.find((t) => str(t.id) === str(r.assigned_technician_id))?.full_name) || 'Unassigned'}</p>
@@ -299,7 +310,7 @@ export default async function AdminWorkOrdersPage() {
                           </>
                         )}
                       </div>
-                    </article>
+                    </WorkOrderListCard>
                   );
                 })}
               </div>

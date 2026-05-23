@@ -4,7 +4,7 @@ import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
-import { sendPaymentReceivedEmailIfConfigured } from '@/lib/email-send';
+import { notifyBookingCheckoutPaid } from '@/lib/booking-checkout-notify';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
@@ -604,17 +604,20 @@ export async function processCheckoutSessionCompleted(params: {
       .eq('id', appointmentId)
       .maybeSingle();
 
-    if (appt?.guest_email) {
-      void sendPaymentReceivedEmailIfConfigured({
-        to: String(appt.guest_email),
-        guestName: String(appt.guest_name ?? 'there'),
-        appointmentId,
-        whenIso: String(appt.scheduled_start ?? new Date().toISOString()),
-        totalCents: typeof appt.base_price_cents === 'number' ? appt.base_price_cents : amount,
-        paidCents: amount,
-        isFieldFull: isField || isFinalBalance,
-      });
-    }
+    const paymentKind = isFinalBalance
+      ? 'customer_final_balance'
+      : isBookingFull
+        ? 'booking_full'
+        : isField
+          ? 'field_full'
+          : 'deposit';
+
+    void notifyBookingCheckoutPaid({
+      admin,
+      appointmentId,
+      paidCents: amount,
+      paymentKind,
+    }).catch((e) => console.warn('[checkout] booking notify', e));
 
     console.info(
       '[checkout] checkout.session.completed',

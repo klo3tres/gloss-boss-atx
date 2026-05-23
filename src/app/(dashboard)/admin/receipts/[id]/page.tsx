@@ -4,8 +4,11 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { ReceiptDocument } from '@/components/documents/receipt-document';
 import { PrintDocumentActions } from '@/components/ui/print-document-actions';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { ToastActionForm } from '@/components/ui/toast-action-form';
+import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { sendReceiptAction } from '../receipt-actions';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { sendReceiptActionState } from '../receipt-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,16 +96,14 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
   const job = (apptRes.data ?? fallbackRes.data ?? {}) as Row;
   const customer = (customerRes.data ?? {}) as Row;
   const paymentMeta = obj(payment?.metadata);
-  const receiptMeta = obj(receipt?.metadata);
-  const pricing = obj(job.booking_pricing_breakdown || obj(job.payload).booking_pricing_breakdown || paymentMeta.booking_pricing_breakdown || receiptMeta.booking_pricing_breakdown);
   const paidRows = ((allPaymentsRes.data ?? []) as Row[]).filter((p) => ['succeeded', 'paid', 'comped', 'manual_comped'].includes(str(p.status)));
-  const paidTotal = paidRows.reduce((sum, p) => sum + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
+  const jobPricing = resolveJobPricing(job, paidRows);
   const method = label(payment?.payment_method || payment?.payment_kind || receipt?.payment_method || (payment?.stripe_checkout_session_id ? 'stripe' : 'manual'));
-  const baseTotal = typeof pricing.baseTotalCents === 'number' ? pricing.baseTotalCents : job.base_price_cents;
-  const finalTotal = typeof pricing.finalTotalCents === 'number' ? pricing.finalTotalCents : job.base_price_cents ?? payment?.amount_cents ?? receipt?.amount_cents;
-  const depositPaid = method.toLowerCase().includes('cash') ? 0 : typeof job.deposit_amount_cents === 'number' ? job.deposit_amount_cents : typeof payment?.amount_cents === 'number' ? payment.amount_cents : 0;
-  const cashPaid = method.toLowerCase().includes('cash') ? payment?.amount_cents : 0;
-  const remaining = typeof job.balance_due_cents === 'number' ? job.balance_due_cents : Math.max(0, (typeof finalTotal === 'number' ? finalTotal : 0) - paidTotal);
+  const baseTotal = jobPricing.prePromoCents;
+  const finalTotal = jobPricing.finalTotalCents;
+  const depositPaid = jobPricing.depositCents;
+  const cashPaid = jobPricing.cashPaidCents;
+  const remaining = jobPricing.remainingBalanceCents;
   const receiptNumber = str(receipt?.receipt_number) || `RCPT-${(paymentId || appointmentId || fallbackId || id).slice(0, 8).toUpperCase()}`;
   const vehicleRows = vehicles(job, paymentMeta);
   const fullPaid = paidRows.filter((p) => !str(p.payment_kind).toLowerCase().includes('deposit')).reduce((s, p) => s + (typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0);
@@ -124,11 +125,12 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
   }
 
   const serviceDuration = formatDuration(job.job_started_at, job.job_completed_at || job.completed_at);
+  const pricingMeta = obj(job.booking_pricing_breakdown);
   const taxCents =
-    typeof pricing.taxCents === 'number'
-      ? pricing.taxCents
-      : typeof pricing.tax_cents === 'number'
-        ? pricing.tax_cents
+    typeof pricingMeta.taxCents === 'number'
+      ? pricingMeta.taxCents
+      : typeof pricingMeta.tax_cents === 'number'
+        ? pricingMeta.tax_cents
         : undefined;
 
   const docProps = {
@@ -144,10 +146,10 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
     serviceAddress: address(job, paymentMeta) || 'Service address not provided',
     vehicles: vehicleRows,
     baseTotal: money(baseTotal),
-    onlineDiscount: money(pricing.onlineDiscountCents ?? pricing.sitewideDiscountCents),
-    multiCarDiscount: money(pricing.multiCarDiscountCents),
-    promoLabel: str(job.promo_code || pricing.offerLabel || paymentMeta.promo_code) || 'None',
-    promoDiscount: money(pricing.offerDiscountCents ?? pricing.promoDiscountCents),
+    onlineDiscount: money(jobPricing.onlineDiscountCents),
+    multiCarDiscount: money(jobPricing.multiCarDiscountCents),
+    promoLabel: str(job.promo_code || paymentMeta.promo_code) || 'None',
+    promoDiscount: money(jobPricing.promoDiscountCents),
     depositPaid: money(depositPaid),
     cashPaid: money(cashPaid),
     fullPaid: money(fullPaid),
@@ -182,24 +184,23 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
         ) : null}
       </div>
 
-      <div className='gb-no-print mb-4 flex flex-wrap gap-2'>
-        <a
-          href={`/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId))}/pdf`}
-          className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'
-        >
-          Download invoice PDF
-        </a>
+      <div className='gb-no-print mb-4 max-w-xs'>
+        <ReceiptPdfDownloadButton
+          href={`/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId || appointmentId || fallbackId))}/pdf`}
+          className=''
+          label='Download invoice PDF'
+        />
       </div>
 
       <PrintDocumentActions
         sendForm={
-          <form action={sendReceiptAction}>
+          <ToastActionForm action={sendReceiptActionState}>
             {receipt?.id ? <input type='hidden' name='receiptId' value={str(receipt.id)} /> : null}
             {paymentId ? <input type='hidden' name='paymentId' value={paymentId} /> : null}
             <SubmitStatusButton pendingText='Sending...' className='rounded-xl border border-emerald-500/30 px-4 py-2 text-xs font-black uppercase text-emerald-200 disabled:opacity-50'>
               Send Receipt
             </SubmitStatusButton>
-          </form>
+          </ToastActionForm>
         }
       />
 

@@ -306,8 +306,9 @@ export default async function CustomerDashboardRootPage() {
     const ss = await adminDb.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
     const raw = ss.data?.value;
     if (typeof raw === 'string' && raw.startsWith('http')) googleReviewUrl = raw.trim();
-    else if (raw && typeof raw === 'object' && 'url' in (raw as object)) {
-      const u = (raw as { url?: unknown }).url;
+    else if (raw && typeof raw === 'object') {
+      const o = raw as { url?: unknown; review_url?: unknown };
+      const u = o.review_url ?? o.url;
       if (typeof u === 'string' && u.startsWith('http')) googleReviewUrl = u.trim();
     }
     if (!googleReviewUrl) {

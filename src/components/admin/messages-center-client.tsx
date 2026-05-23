@@ -140,7 +140,9 @@ export function MessagesCenterClient({ rows }: { rows: MessageRow[] }) {
                   <textarea name='reply' rows={4} placeholder='Write a customer reply...' className='mt-2 w-full rounded border border-zinc-700 bg-black px-3 py-2 text-sm normal-case tracking-normal text-white' />
                 </label>
                 <button className='mt-2 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save / Send Reply</button>
-                <p className='mt-2 text-[10px] text-zinc-500'>Saves the outbound reply and queues email when Resend is configured; otherwise it records a skipped outbox row.</p>
+                <p className='mt-2 text-[10px] text-zinc-500'>
+                  Saves the reply to the customer portal and sends via Resend when configured. If email fails, the exact Resend error is logged in notification outbox.
+                </p>
               </form>
               <form
                 action={async (fd) => {

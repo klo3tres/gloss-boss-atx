@@ -13,14 +13,20 @@ export function paymentReceivedEmailHtml(params: {
   paid: string;
   total: string;
   kindLabel: string;
+  serviceAddress?: string;
+  vehicles?: string;
+  remainingBalance?: string;
 }): string {
   const bodyHtml =
     emailParagraph(`Hi ${escapeEmailHtml(params.guestName)},`, false) +
     emailParagraph(`Thank you — your ${escapeEmailHtml(params.kindLabel.toLowerCase())} was processed successfully.`, true) +
     emailCard(`
       <p style="margin:0;font-size:14px;color:#fafafa;">Appointment: <strong>${escapeEmailHtml(params.whenLabel)}</strong></p>
+      ${params.serviceAddress ? `<p style="margin:10px 0 0;font-size:13px;color:#a1a1aa;">${escapeEmailHtml(params.serviceAddress)}</p>` : ''}
+      ${params.vehicles ? `<p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${escapeEmailHtml(params.vehicles)}</p>` : ''}
       <p style="margin:12px 0 0;font-size:15px;color:#fcd34d;">Paid: <strong>${escapeEmailHtml(params.paid)}</strong></p>
-      <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">Package total (estimate): ${escapeEmailHtml(params.total)}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">Job total: ${escapeEmailHtml(params.total)}</p>
+      ${params.remainingBalance ? `<p style="margin:8px 0 0;font-size:13px;color:#fafafa;">Remaining balance: <strong>${escapeEmailHtml(params.remainingBalance)}</strong></p>` : ''}
     `) +
     portalButtonHtml(process.env.NEXT_PUBLIC_APP_URL ?? 'https://glossbossatx.com');
 

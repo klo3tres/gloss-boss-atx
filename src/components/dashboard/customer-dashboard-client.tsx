@@ -174,11 +174,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 href={props.googleReviewUrl}
                 target='_blank'
                 rel='noreferrer'
-                className='mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
+                className='mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black shadow-[0_0_24px_rgba(212,175,55,0.35)]'
               >
                 <Star className='h-4 w-4' /> LEAVE GOOGLE REVIEW
               </a>
-            ) : null}
+            ) : (
+              <p className='mt-4 text-xs text-zinc-500'>Google review link is not configured yet. Contact support if you would like to leave feedback.</p>
+            )}
           </GlassCard>
 
           <GlassCard>

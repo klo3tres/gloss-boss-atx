@@ -14,6 +14,8 @@ import {
   dbToggleGalleryPublished,
 } from '@/lib/admin/gallery-db-mutations';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { resendConfigured, sendResendHtml } from '@/lib/email-send';
+import { glossBossEmailLayout, emailParagraph } from '@/lib/email/templates/layout';
 
 async function requireAdminSupabase() {
   const session = await getSessionWithProfile();
@@ -78,16 +80,43 @@ export async function replyToMessageAction(formData: FormData) {
   if (error && /column|schema cache|Could not find/i.test(error.message)) {
     ({ error } = await client.from('messages').update({ status: 'replied' }).eq('id', id));
   }
+  const toEmail = String(row.from_email ?? '').trim().toLowerCase();
+  let emailStatus: string = 'skipped';
+  let emailError: string | null = null;
+  if (!toEmail.includes('@')) {
+    emailError = 'Customer email missing — reply saved in portal only.';
+  } else if (!resendConfigured()) {
+    emailError = 'Resend not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.';
+  } else {
+    const html = glossBossEmailLayout({
+      title: 'Reply from Gloss Boss ATX',
+      headline: 'Message from Gloss Boss ATX',
+      bodyHtml: emailParagraph(reply, true),
+    });
+    const sent = await sendResendHtml({
+      to: toEmail,
+      subject: row.subject ? `Re: ${String(row.subject)}` : 'Re: Your message to Gloss Boss ATX',
+      html,
+    });
+    if (sent.ok) emailStatus = 'sent';
+    else {
+      emailStatus = 'failed';
+      emailError = sent.error ?? 'Resend send failed.';
+    }
+  }
+
   await client.from('notification_outbox').insert({
     channel: 'email',
     kind: 'message_reply',
-    status: process.env.RESEND_API_KEY ? 'pending' : 'skipped',
-    skipped_reason: process.env.RESEND_API_KEY ? null : 'Skipped - configure Twilio/Resend.',
+    status: emailStatus,
+    skipped_reason: emailStatus === 'skipped' ? emailError : null,
+    error_message: emailStatus === 'failed' ? emailError : null,
     payload: {
       message_id: id,
-      to: row.from_email ?? null,
+      to: toEmail || null,
       subject: row.subject ? `Re: ${row.subject}` : 'Re: Gloss Boss ATX message',
       body: reply,
+      resend_status: emailStatus,
     },
   });
   if (error) console.error('[replyToMessageAction]', error.message);

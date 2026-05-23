@@ -2,10 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isAdminLevel } from '@/lib/auth/roles';
+import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { buildReceiptEmailHtml } from '@/lib/email/templates/receipt';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { displayChicago, displayLabel, displayMoney } from '@/lib/display-format';
 
 function str(v: unknown) {
@@ -16,19 +18,23 @@ function money(cents: unknown) {
   return typeof cents === 'number' ? `$${(cents / 100).toFixed(2)}` : '$0.00';
 }
 
-async function requireAdmin() {
+async function requireReceiptSender() {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
-  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) return null;
+  if (!session.user || !isStaffRole(session.profile?.role ?? null) || !admin) return null;
   return { admin, userId: session.user.id };
 }
 
-export async function sendReceiptAction(formData: FormData) {
-  const gate = await requireAdmin();
-  if (!gate) return;
+export async function sendReceiptActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  return sendReceiptAction(formData);
+}
+
+export async function sendReceiptAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requireReceiptSender();
+  if (!gate) return actionErr('Not authorized.');
   const receiptId = str(formData.get('receiptId')).trim();
   const paymentId = str(formData.get('paymentId')).trim();
-  if (!receiptId && !paymentId) return;
+  if (!receiptId && !paymentId) return actionErr('No receipt or payment linked.');
 
   const receiptRes = receiptId ? await gate.admin.from('receipts').select('*').eq('id', receiptId).maybeSingle() : { data: null };
   const receipt = (receiptRes.data ?? {}) as Record<string, unknown>;
@@ -47,8 +53,18 @@ export async function sendReceiptAction(formData: FormData) {
   const customer = (customerRes.data ?? {}) as Record<string, unknown>;
   const email = str(job.guest_email || customer.email || payment.email);
   const receiptNumber = str(receipt.receipt_number) || `RCPT-${(resolvedPaymentId || appointmentId || fallbackId || 'manual').slice(0, 8).toUpperCase()}`;
-  const total = typeof job.base_price_cents === 'number' ? job.base_price_cents : payment.amount_cents;
-  const paid = typeof payment.amount_cents === 'number' ? payment.amount_cents : receipt.amount_cents;
+
+  const workOrderId = appointmentId || fallbackId;
+  const allPaymentsRes = workOrderId
+    ? await gate.admin
+        .from('payments')
+        .select('*')
+        .eq(fallbackId ? 'fallback_booking_id' : 'appointment_id', workOrderId)
+        .order('paid_at', { ascending: false })
+        .limit(20)
+    : { data: payment ? [payment] : [] };
+  const allPayments = (allPaymentsRes.data ?? []) as Record<string, unknown>[];
+  const pricing = resolveJobPricing(job, allPayments);
 
   let status = 'skipped';
   let skippedReason: string | null = null;
@@ -58,51 +74,38 @@ export async function sendReceiptAction(formData: FormData) {
   } else if (!resendConfigured()) {
     skippedReason = 'Skipped - configure Resend before emailing receipts.';
   } else {
-    const pricing =
-      job.booking_pricing_breakdown && typeof job.booking_pricing_breakdown === 'object'
-        ? (job.booking_pricing_breakdown as Record<string, unknown>)
-        : {};
-    const vehiclesRaw = Array.isArray(job.booking_vehicles) ? (job.booking_vehicles as Record<string, unknown>[]) : [];
-    const vehicleLines = vehiclesRaw.length
-      ? vehiclesRaw.map((v, i) => ({
-          name: str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`,
-          service: displayLabel(v.service_slug || job.service_slug),
-          color: str(v.vehicle_color || v.color) || undefined,
-          price: typeof v.price_cents === 'number' ? displayMoney(v.price_cents) : undefined,
-        }))
-      : [
-          {
-            name: str(job.vehicle_description) || 'Service',
-            service: displayLabel(job.service_slug),
-          },
-        ];
+    const vehicleLines = pricing.vehicleLines.map((v) => ({
+      name: v.name,
+      service: displayLabel(v.service),
+      color: v.color || undefined,
+      price: displayMoney(v.priceCents),
+    }));
     const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://glossbossatx.com';
     const receiptUrl = receiptId
       ? `${appBase}/admin/receipts/${encodeURIComponent(receiptId)}`
       : resolvedPaymentId
         ? `${appBase}/admin/receipts/${encodeURIComponent(resolvedPaymentId)}`
-        : undefined;
+        : workOrderId
+          ? `${appBase}/api/receipts/${encodeURIComponent(workOrderId)}/pdf`
+          : undefined;
     const html = buildReceiptEmailHtml({
       customerName: str(job.guest_name || customer.full_name || 'Customer'),
       receiptNumber,
       serviceAddress: [job.service_address, job.service_city, job.service_state, job.service_zip].map(str).filter(Boolean).join(', '),
       serviceAt: displayChicago(job.scheduled_start || job.job_completed_at || payment.created_at),
       line: {
-        vehicles: vehicleLines,
-        subtotal: displayMoney(pricing.baseTotalCents ?? total),
-        onlineDiscount:
-          typeof pricing.onlineDiscountCents === 'number' && pricing.onlineDiscountCents > 0
-            ? displayMoney(pricing.onlineDiscountCents)
-            : undefined,
-        multiCarDiscount:
-          typeof pricing.multiCarDiscountCents === 'number' && pricing.multiCarDiscountCents > 0
-            ? displayMoney(pricing.multiCarDiscountCents)
-            : undefined,
-        promo: typeof pricing.promoDiscountCents === 'number' ? displayMoney(pricing.promoDiscountCents) : undefined,
-        depositPaid: typeof job.deposit_amount_cents === 'number' ? displayMoney(job.deposit_amount_cents) : undefined,
-        cashPaid: str(payment.payment_method).toLowerCase().includes('cash') ? money(paid) : undefined,
-        totalPaid: money(paid),
-        remainingBalance: typeof job.balance_due_cents === 'number' ? displayMoney(job.balance_due_cents) : undefined,
+        vehicles: vehicleLines.length
+          ? vehicleLines
+          : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug) }],
+        subtotal: displayMoney(pricing.prePromoCents),
+        onlineDiscount: pricing.onlineDiscountCents > 0 ? displayMoney(pricing.onlineDiscountCents) : undefined,
+        multiCarDiscount: pricing.multiCarDiscountCents > 0 ? displayMoney(pricing.multiCarDiscountCents) : undefined,
+        promo: pricing.promoDiscountCents > 0 ? displayMoney(pricing.promoDiscountCents) : undefined,
+        depositPaid: pricing.depositCents > 0 ? displayMoney(pricing.depositCents) : undefined,
+        cashPaid: pricing.cashPaidCents > 0 ? displayMoney(pricing.cashPaidCents) : undefined,
+        totalPaid: displayMoney(pricing.totalPaidCents),
+        finalTotal: displayMoney(pricing.finalTotalCents),
+        remainingBalance: displayMoney(pricing.remainingBalanceCents),
         paymentMethod: displayLabel(payment.payment_method || payment.payment_kind || receipt.payment_method),
         receiptUrl,
       },
@@ -122,7 +125,7 @@ export async function sendReceiptAction(formData: FormData) {
       payment_id: resolvedPaymentId,
       customer_id: str(customer.id || payment.customer_id) || null,
       receipt_number: receiptNumber,
-      amount_cents: typeof paid === 'number' ? paid : 0,
+      amount_cents: pricing.finalTotalCents,
       payment_method: str(payment.payment_method || payment.payment_kind || 'stripe') || 'stripe',
       status: 'issued',
       emailed_to: email || null,
@@ -153,4 +156,8 @@ export async function sendReceiptAction(formData: FormData) {
   revalidatePath('/admin/receipts');
   if (receiptId) revalidatePath(`/admin/receipts/${receiptId}`);
   if (resolvedPaymentId) revalidatePath(`/admin/receipts/${resolvedPaymentId}`);
+
+  if (status === 'sent') return actionOk(`Receipt emailed to ${email}.`);
+  if (status === 'skipped') return actionErr(skippedReason ?? 'Receipt email skipped.');
+  return actionErr(errorMessage ?? 'Receipt email failed.');
 }

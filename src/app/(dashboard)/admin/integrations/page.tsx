@@ -115,9 +115,9 @@ export default async function AdminIntegrationsPage() {
           last={last('twilio_test')}
           alert={
             twilioMessagingServiceSid()
-              ? 'Using Messaging Service SID for outbound SMS (recommended).'
+              ? 'Using Messaging Service SID for outbound SMS (recommended). If you see error 30032, complete Twilio Toll-Free Verification for +18664853974. Customer emails still send when Resend is configured.'
               : twilioFromNumber()
-                ? 'Using direct From number. Add TWILIO_MESSAGING_SERVICE_SID if sends fail.'
+                ? 'Using direct From number. Add TWILIO_MESSAGING_SERVICE_SID if sends fail. Toll-free numbers require carrier verification (Twilio error 30032 until verified).'
                 : null
           }
         >

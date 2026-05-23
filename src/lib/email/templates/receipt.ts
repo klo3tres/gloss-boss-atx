@@ -18,6 +18,7 @@ export type ReceiptEmailLine = {
   cashPaid?: string;
   remainingBalance?: string;
   totalPaid?: string;
+  finalTotal?: string;
   paymentMethod?: string;
   receiptUrl?: string;
 };
@@ -57,6 +58,7 @@ export function buildReceiptEmailHtml(input: {
       { label: 'Deposit paid', value: v.depositPaid },
       { label: 'Cash paid', value: v.cashPaid },
       { label: 'Total paid', value: v.totalPaid },
+      { label: 'Job total', value: v.finalTotal },
       { label: 'Remaining balance', value: v.remainingBalance },
       { label: 'Payment method', value: v.paymentMethod },
     ])}

@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { sendReceiptAction } from './receipt-actions';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,11 +106,7 @@ export default async function AdminReceiptsPage() {
                 <div className='mt-4 flex flex-wrap gap-2'>
                   <Link href={`/admin/receipts/${encodeURIComponent(id)}`} className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Open Receipt</Link>
                   {str(r.payment_id) ? <Link href={`/admin/payments/${str(r.payment_id)}`} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Payment</Link> : null}
-                  <form action={sendReceiptAction}>
-                    {str(receipt.id) ? <input type='hidden' name='receiptId' value={str(receipt.id)} /> : null}
-                    {str(r.payment_id) ? <input type='hidden' name='paymentId' value={str(r.payment_id)} /> : null}
-                    <SubmitStatusButton pendingText='Sending...' className='rounded-xl border border-emerald-500/30 px-4 py-2 text-xs font-black uppercase text-emerald-200 disabled:opacity-50'>Send Receipt</SubmitStatusButton>
-                  </form>
+                  <ReceiptSendForm receiptId={str(receipt.id) || undefined} paymentId={str(r.payment_id) || undefined} />
                 </div>
               </article>
             );

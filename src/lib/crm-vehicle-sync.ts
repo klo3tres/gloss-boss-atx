@@ -83,6 +83,42 @@ export async function syncVehiclesToCustomer(
   return { inserted };
 }
 
+/** Sync CRM vehicles from an appointment or fallback work order row. */
+export async function syncVehiclesForWorkOrder(
+  admin: SupabaseClient,
+  params: { workOrderId: string; source: 'appointment' | 'fallback' },
+): Promise<{ inserted: number; customerId: string | null }> {
+  const id = str(params.workOrderId);
+  if (!id) return { inserted: 0, customerId: null };
+  const table = params.source === 'fallback' ? 'booking_fallbacks' : 'appointments';
+  const { data } = await admin
+    .from(table)
+    .select('id, customer_id, guest_email, booking_vehicles, vehicle_description, service_slug, vehicle_class')
+    .eq('id', id)
+    .maybeSingle();
+  const row = (data ?? null) as Row | null;
+  if (!row) return { inserted: 0, customerId: null };
+
+  let customerId = str(row.customer_id);
+  if (!customerId) {
+    const email = str(row.guest_email).toLowerCase();
+    if (email) {
+      const { data: cust } = await admin.from('customers').select('id').eq('email', email).maybeSingle();
+      customerId = str((cust as Row | null)?.id);
+    }
+  }
+  if (!customerId) return { inserted: 0, customerId: null };
+
+  const { inserted } = await syncVehiclesToCustomer(admin, {
+    customerId,
+    bookingVehicles: row.booking_vehicles,
+    vehicleDescription: str(row.vehicle_description),
+    serviceSlug: str(row.service_slug),
+    vehicleClass: str(row.vehicle_class),
+  });
+  return { inserted, customerId };
+}
+
 export async function syncVehiclesForAppointment(
   admin: SupabaseClient,
   appointmentId: string,
