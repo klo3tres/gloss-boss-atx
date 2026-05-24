@@ -92,6 +92,8 @@ export function mapCatalogToServicePackages(
     .map((s) => {
       const sedanC = pickSedanCents(prices, s.id);
       const suvTruckC = pickSuvTruckCents(prices, s.id);
+      const suvRow = prices.find((p) => p.service_id === s.id && p.vehicle_class === 'suv');
+      const truckRow = prices.find((p) => p.service_id === s.id && p.vehicle_class === 'truck');
       const canon = defaultServicePackages.find((p) => p.id === s.slug);
       const includes =
         canon && canon.includes.length > 0 ? [...canon.includes] : subtitleToIncludes(s.subtitle);
@@ -100,6 +102,8 @@ export function mapCatalogToServicePackages(
         title: s.title,
         subtitle: canon?.subtitle ?? (s.subtitle ?? ''),
         sedanPrice: dollarsFromCents(sedanC),
+        suvPrice: dollarsFromCents(suvRow?.price_cents ?? suvTruckC),
+        truckPrice: dollarsFromCents(truckRow?.price_cents ?? suvTruckC),
         suvTruckPrice: dollarsFromCents(suvTruckC),
         includes,
       };

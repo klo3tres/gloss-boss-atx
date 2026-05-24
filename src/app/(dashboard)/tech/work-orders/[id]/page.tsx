@@ -17,6 +17,7 @@ import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
+import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 export const dynamic = 'force-dynamic';
 
@@ -321,9 +322,19 @@ export default async function TechWorkOrderDetailPage({
   const accessParking = displayLabel(row.parking_access);
   const gateNotes = displayText(row.gate_access_notes || row.service_address_notes);
 
+  const customLineItems = readCustomLineItems(row).map((item) => ({
+    id: item.id,
+    label: item.label,
+    amountCents: item.amountCents,
+  }));
+
   const consoleData: WorkOrderConsoleData = {
     id,
     canonicalId: queryId,
+    customerId: str(row.customer_id) || undefined,
+    customLineItems,
+    customLineItemsTotal:
+      pricing.customLineItemsCents !== 0 ? displayMoney(pricing.customLineItemsCents) : undefined,
     source: isFallback ? 'fallback' : 'appointment',
     isFallback,
     shellBackHref: shellRole === 'admin' ? '/admin/work-orders' : '/tech',

@@ -514,6 +514,7 @@ export function TechWorkflowWizard({
     fd.set('vehicleSummary', vehicleDescription.trim() || stored?.vehicleDescription || '');
     fd.set('serviceSlug', selectedService?.slug ?? stored?.serviceSlug ?? '');
     if (customerId ?? stored?.customerId) fd.set('customerId', customerId ?? stored?.customerId ?? '');
+    fd.set('walkInMode', 'true');
     fd.set('category', phase);
     fd.set('photoCategory', photoCat);
     fd.set('file', file);

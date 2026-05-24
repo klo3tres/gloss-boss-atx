@@ -14,6 +14,8 @@ import {
   defaultDealConfig,
   defaultServicePackages,
   formatStartingPrice,
+  PRICING_DISCLAIMER,
+  PRICING_DISCOUNT_RULES,
   type DealConfig,
   type ServicePackage,
 } from '@/lib/site-config';
@@ -320,6 +322,8 @@ export default function HomePage() {
               </MotionFade>
           ))}
         </div>
+        <p className='mt-6 max-w-3xl text-xs leading-relaxed text-zinc-500'>{PRICING_DISCLAIMER}</p>
+        <p className='mt-2 max-w-3xl text-xs leading-relaxed text-zinc-500'>{PRICING_DISCOUNT_RULES}</p>
         <div className='mt-6 flex flex-wrap gap-3'>
           <Link href='/services' className='rounded-lg border border-gold/30 px-5 py-3 text-sm font-bold uppercase tracking-wider text-gold-soft'>
             Full service details

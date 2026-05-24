@@ -9,6 +9,7 @@ import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
+import { WorkOrderCustomCharges } from '@/components/tech/work-order-custom-charges';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
@@ -81,6 +82,9 @@ export type WorkOrderConsoleData = {
   jobCompletedAt: string;
   recentPayments: Array<{ id?: string; amount: string; status: string; method: string; at: string; stripe?: string }>;
   receiptPdfHref?: string;
+  customerId?: string;
+  customLineItems?: Array<{ id: string; label: string; amountCents: number }>;
+  customLineItemsTotal?: string;
   vehicles: Array<{
     year: string;
     make: string;
@@ -302,6 +306,8 @@ export function WorkOrderConsoleClient({
                 <WorkOrderPhotoUpload
                   appointmentId={data.isFallback ? null : jobId}
                   fallbackBookingId={data.isFallback ? jobId : null}
+                  workOrderId={data.canonicalId}
+                  customerId={data.customerId}
                   workflowSessionId={data.workflowSessionId}
                   vehicleIndex={vg.vehicleIndex}
                   vehicleLabel={vg.label}
@@ -312,7 +318,18 @@ export function WorkOrderConsoleClient({
         </div>
 
         <WorkOrderCollapsible title='Payment' defaultOpen>
-          <ul className='space-y-2 text-sm'>
+          {data.customLineItemsTotal ? (
+            <p className='mb-3 text-sm text-zinc-400'>
+              Manual charges: <span className='font-mono text-white'>{data.customLineItemsTotal}</span>
+            </p>
+          ) : null}
+          <WorkOrderCustomCharges
+            appointmentId={data.isFallback ? undefined : jobId}
+            fallbackBookingId={data.isFallback ? jobId : undefined}
+            source={data.isFallback ? 'fallback' : 'appointment'}
+            items={data.customLineItems ?? []}
+          />
+          <ul className='mt-4 space-y-2 text-sm'>
             {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
             {data.recentPayments.map((p) => (
               <li key={p.id || p.at} className='flex justify-between gap-2 rounded-xl border border-white/10 px-3 py-2'>

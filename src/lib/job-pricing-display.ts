@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Row } from '@/lib/work-order-resolve';
 import { vehiclesFromRow } from '@/lib/work-order-resolve';
 import { findDepositPayment } from '@/lib/payments-resolve';
+import { customLineItemsTotalCents, readCustomLineItems } from '@/lib/work-order-line-items';
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -45,6 +46,7 @@ export type JobPricingDisplay = {
   cashPaidCents: number;
   totalPaidCents: number;
   remainingBalanceCents: number;
+  customLineItemsCents: number;
 };
 
 export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDisplay {
@@ -71,13 +73,17 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     pick('websitePromoDiscountCents') || pick('onlineDiscountCents') || pick('sitewideDiscountCents');
   const promoDiscountCents = pick('offerDiscountCents') || pick('promoDiscountCents');
 
-  let finalTotalCents = pick('finalTotalCents');
-  if (finalTotalCents <= 0 && prePromoCents > 0) {
-    finalTotalCents = Math.max(0, prePromoCents - multiCarDiscountCents - onlineDiscountCents - promoDiscountCents);
+  const customLineItems = readCustomLineItems(job);
+  const customLineItemsCents = customLineItemsTotalCents(customLineItems);
+
+  let serviceFinalCents = pick('finalTotalCents');
+  if (serviceFinalCents <= 0 && prePromoCents > 0) {
+    serviceFinalCents = Math.max(0, prePromoCents - multiCarDiscountCents - onlineDiscountCents - promoDiscountCents);
   }
-  if (finalTotalCents <= 0) {
-    finalTotalCents = num(job.base_price_cents);
+  if (serviceFinalCents <= 0) {
+    serviceFinalCents = num(job.base_price_cents);
   }
+  const finalTotalCents = Math.max(0, serviceFinalCents + customLineItemsCents);
 
   const depositOnFile = num(job.deposit_amount_cents) || pick('depositCents');
 
@@ -130,6 +136,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     cashPaidCents,
     totalPaidCents,
     remainingBalanceCents,
+    customLineItemsCents,
   };
 }
 

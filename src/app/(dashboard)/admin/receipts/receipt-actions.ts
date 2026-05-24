@@ -7,6 +7,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { buildReceiptEmailHtml } from '@/lib/email/templates/receipt';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { displayChicago, displayLabel, displayMoney } from '@/lib/display-format';
@@ -75,12 +76,15 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   } else if (!resendConfigured()) {
     skippedReason = 'Skipped - configure Resend before emailing receipts.';
   } else {
-    const vehicleLines = pricing.vehicleLines.map((v) => ({
-      name: v.name,
-      service: displayLabel(v.service),
-      color: v.color || undefined,
-      price: displayMoney(v.priceCents),
-    }));
+    const vehicleLines = [
+      ...pricing.vehicleLines.map((v) => ({
+        name: v.name,
+        service: displayLabel(v.service),
+        color: v.color || undefined,
+        price: displayMoney(v.priceCents),
+      })),
+      ...customLineItemsAsReceiptRows(job),
+    ];
     const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://glossbossatx.com';
     const receiptUrl = receiptId
       ? `${appBase}/admin/receipts/${encodeURIComponent(receiptId)}`

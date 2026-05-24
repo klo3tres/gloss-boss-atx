@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { defaultServicePackages, formatVehiclePrice, type DealConfig, type ServicePackage } from "@/lib/site-config";
+import {
+  defaultServicePackages,
+  formatVehiclePrice,
+  PRICING_DISCLAIMER,
+  PRICING_DISCOUNT_RULES,
+  PUBLIC_ADDON_PRICING,
+  type DealConfig,
+  type ServicePackage,
+} from "@/lib/site-config";
 import {
   isOfferEligiblePublicSiteData,
   type PublicSiteDataPayload,
@@ -96,8 +104,10 @@ export default function ServicesPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Mobile Detailing - We Come To You</p>
         <h1 className="mt-3 text-4xl font-black uppercase sm:text-5xl">Services & Pricing</h1>
         <p className="mt-3 max-w-3xl text-zinc-300">
-          Transparent package pricing with clear deliverables so customers know exactly what they are buying.
+          Transparent package pricing with clear deliverables so customers know exactly what they are buying. All prices are starting at.
         </p>
+        <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-500">{PRICING_DISCLAIMER}</p>
+        <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-500">{PRICING_DISCOUNT_RULES}</p>
 
         {showPromosBand ? (
           <section className='mt-6'>
@@ -185,7 +195,8 @@ export default function ServicesPage() {
                     <h2 className="text-2xl font-black uppercase text-gold-soft">{service.title}</h2>
                     <div className="flex flex-wrap gap-2 text-sm font-bold">
                       <span className="rounded-lg border border-gold/30 px-3 py-2">Sedan {formatVehiclePrice(service.sedanPrice)}</span>
-                      <span className="rounded-lg border border-gold/30 px-3 py-2">SUV / Truck {formatVehiclePrice(service.suvTruckPrice)}</span>
+                      <span className="rounded-lg border border-gold/30 px-3 py-2">SUV {formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
+                      <span className="rounded-lg border border-gold/30 px-3 py-2">Truck {formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
                     </div>
                   </div>
                   {service.subtitle?.trim() ? <p className="mt-2 text-sm text-zinc-400">{service.subtitle}</p> : null}
@@ -198,6 +209,19 @@ export default function ServicesPage() {
               ))}
         </div>
         ) : null}
+
+        <section className="mt-10 rounded-2xl border border-gold/20 bg-zinc-950 p-5">
+          <h2 className="text-xl font-black uppercase text-gold-soft">Add-ons</h2>
+          <p className="mt-2 text-sm text-zinc-400">Optional upgrades — final price depends on vehicle and condition.</p>
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+            {PUBLIC_ADDON_PRICING.map((addon) => (
+              <li key={addon.label} className="rounded-xl border border-white/10 px-4 py-3">
+                <p className="font-bold text-white">{addon.label}</p>
+                <p className="mt-1 text-sm text-zinc-400">{addon.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/book" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">

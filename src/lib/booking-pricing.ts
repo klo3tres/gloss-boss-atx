@@ -64,20 +64,22 @@ export function computeBookingPricing(params: {
   let offerDiscountCents = 0;
   let websitePromoDiscountCents = 0;
 
+  const baseServicesCents = afterMultiCarVehicleCents;
+
   if (offer && offerSnapApplies(offer)) {
     if (offer.fixedCents > 0) {
-      offerDiscountCents = Math.min(prePromoCents, offer.fixedCents);
+      offerDiscountCents = Math.min(baseServicesCents, offer.fixedCents);
     } else if (offer.percent > 0) {
-      offerDiscountCents = Math.round(prePromoCents * (offer.percent / 100));
+      offerDiscountCents = Math.round(baseServicesCents * (offer.percent / 100));
     }
-    const afterOffer = prePromoCents - offerDiscountCents;
+    const afterOffer = baseServicesCents - offerDiscountCents;
     if (offer.stackableWithSitePromo && sitePct > 0) {
       websitePromoDiscountCents = Math.round(afterOffer * (sitePct / 100));
     }
   } else if (sitePct > 0) {
     const siteBlockedByMultiCar = lines.length >= 2 && mcPct > 0 && multiCarDiscountCents > 0 && !stacks;
     if (!siteBlockedByMultiCar) {
-      websitePromoDiscountCents = Math.round(prePromoCents * (sitePct / 100));
+      websitePromoDiscountCents = Math.round(baseServicesCents * (sitePct / 100));
     }
   }
 

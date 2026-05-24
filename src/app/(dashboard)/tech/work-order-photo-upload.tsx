@@ -10,12 +10,16 @@ type UploadJson = { ok?: boolean; url?: string; error?: string; photoId?: string
 export function WorkOrderPhotoUpload({
   appointmentId,
   fallbackBookingId,
+  workOrderId,
+  customerId,
   workflowSessionId,
   vehicleIndex,
   vehicleLabel,
 }: {
   appointmentId?: string | null;
   fallbackBookingId?: string | null;
+  workOrderId?: string | null;
+  customerId?: string | null;
   workflowSessionId?: string | null;
   vehicleIndex: number;
   vehicleLabel: string;
@@ -29,8 +33,9 @@ export function WorkOrderPhotoUpload({
 
   const upload = async (file: File | undefined | null) => {
     if (!file) return;
-    if (!appointmentId && !fallbackBookingId) {
-      setStatus({ tone: 'error', text: 'No job linked — save the work order or convert fallback first.' });
+    const woId = workOrderId || appointmentId || fallbackBookingId;
+    if (!woId) {
+      setStatus({ tone: 'error', text: 'No job linked — open the work order and try again.' });
       return;
     }
     setBusy(true);
@@ -38,8 +43,10 @@ export function WorkOrderPhotoUpload({
     const localPreview = URL.createObjectURL(file);
     setPreview(localPreview);
     const fd = new FormData();
+    fd.set('workOrderId', woId);
     if (appointmentId) fd.set('appointmentId', appointmentId);
     if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+    if (customerId) fd.set('customerId', customerId);
     if (workflowSessionId) {
       fd.set('workflowSessionId', workflowSessionId);
       fd.set('techWorkflowSessionId', workflowSessionId);

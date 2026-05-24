@@ -5,6 +5,7 @@ import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
 import { buildReceiptPdfBytes, type ReceiptPdfInput } from '@/lib/receipt-pdf';
+import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 
 type Row = Record<string, unknown>;
 
@@ -187,12 +188,15 @@ export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Ar
   const discountTotal =
     pricing.multiCarDiscountCents + pricing.onlineDiscountCents + pricing.promoDiscountCents;
 
-  const vehicleRows = pricing.vehicleLines.map((v) => ({
-    name: v.name,
-    service: displayLabel(v.service),
-    color: v.color || '—',
-    price: displayMoney(v.priceCents),
-  }));
+  const vehicleRows = [
+    ...pricing.vehicleLines.map((v) => ({
+      name: v.name,
+      service: displayLabel(v.service),
+      color: v.color || '—',
+      price: displayMoney(v.priceCents),
+    })),
+    ...customLineItemsAsReceiptRows(job),
+  ];
 
   const input: ReceiptPdfInput = {
     receiptNumber,

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
+import { isAdminLevel, type AppRole } from '@/lib/auth/roles';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
@@ -47,6 +48,32 @@ function isFieldTechRole(role: string | null): boolean {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function strCell(v: unknown): string {
+  return v == null ? '' : String(v).trim();
+}
+
+function canAccessJob(role: AppRole | null, userId: string, assigned: string | null, status: string): boolean {
+  if (isAdminLevel(role)) return true;
+  if (!assigned || assigned === userId) return true;
+  const st = status.toLowerCase();
+  if (st === 'completed' || st === 'in_progress' || st === 'confirmed' || st === 'scheduled') {
+    return isFieldTechRole(role);
+  }
+  return false;
+}
+
+async function loadAppointmentById(admin: NonNullable<Awaited<ReturnType<typeof tryCreateAdminSupabase>>>, id: string) {
+  return admin
+    .from('appointments')
+    .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source, status')
+    .eq('id', id)
+    .maybeSingle();
+}
+
+async function loadFallbackById(admin: NonNullable<Awaited<ReturnType<typeof tryCreateAdminSupabase>>>, id: string) {
+  return admin.from('booking_fallbacks').select('id, assigned_technician_id, customer_id').eq('id', id).maybeSingle();
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await tryCreateServerSupabase();
@@ -67,8 +94,11 @@ export async function POST(request: Request) {
 
     const form = await request.formData();
     const file = form.get('file');
-    const appointmentId = String(form.get('appointmentId') ?? '').trim();
+    let appointmentId = String(form.get('appointmentId') ?? '').trim();
     let fallbackBookingId = String(form.get('fallbackBookingId') ?? '').trim();
+    const workOrderId = String(form.get('workOrderId') ?? '').trim();
+    const customerIdForm = String(form.get('customerId') ?? '').trim();
+    const walkInMode = String(form.get('walkInMode') ?? '') === 'true';
     const techWorkflowId = String(form.get('techWorkflowId') ?? '').trim();
     const workflowSessionIdForm = String(form.get('workflowSessionId') ?? '').trim();
     const techWorkflowSessionId =
@@ -92,10 +122,11 @@ export async function POST(request: Request) {
       .trim()
       .toLowerCase()
       .replace(/[\s-]+/g, '_');
+    const phaseCategory = rawBroad === 'after' ? 'after' : 'before';
     const category =
-      rawBroad === 'before' || rawBroad === 'after' || rawBroad === 'damage' || rawBroad === 'inspection' || rawBroad === 'other'
+      rawBroad === 'damage' || rawBroad === 'inspection' || rawBroad === 'other'
         ? rawBroad
-        : broadCategory(photoCategory);
+        : phaseCategory;
 
     if (!(file instanceof File)) return NextResponse.json({ error: 'Choose an image file.' }, { status: 400 });
     if (!MIME_TO_EXT[file.type]) {
@@ -104,15 +135,20 @@ export async function POST(request: Request) {
     if (file.size > 12 * 1024 * 1024) {
       return NextResponse.json({ error: 'Image must be 12MB or smaller.' }, { status: 400 });
     }
-    let customerId: string | null = null;
+    let customerId: string | null = customerIdForm || null;
     let vehicleId: string | null = null;
     const debug: Array<Record<string, unknown>> = [];
     const logDebug = (event: string, extra: Record<string, unknown> = {}) => {
       debug.push({ event, ...extra });
     };
+    if (!appointmentId && workOrderId) appointmentId = workOrderId;
+    if (!fallbackBookingId && workOrderId && !appointmentId) fallbackBookingId = workOrderId;
+
     logDebug('received', {
       appointmentId,
       fallbackBookingId,
+      workOrderId,
+      walkInMode,
       techWorkflowId,
       techWorkflowSessionId,
       accessToken: accessToken ? `${accessToken.slice(0, 8)}...` : null,
@@ -125,20 +161,16 @@ export async function POST(request: Request) {
     let appointmentUsable = Boolean(appointmentId);
     let linkedAppointmentId = appointmentId;
     if (appointmentId) {
-      const { data: appt, error } = await admin
-        .from('appointments')
-        .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source')
-        .eq('id', appointmentId)
-        .maybeSingle();
-      const a = appt as Record<string, unknown> | null;
-      logDebug('appointments.by_id', { found: Boolean(a), error: error?.message ?? null });
-      if (error || !a) {
+      const appt = await loadAppointmentById(admin, appointmentId);
+      const a = appt.data as Record<string, unknown> | null;
+      logDebug('appointments.by_id', { found: Boolean(a), error: appt.error?.message ?? null });
+      if (appt.error || !a) {
         appointmentUsable = false;
+        linkedAppointmentId = '';
       } else {
         const assigned = typeof a.assigned_technician_id === 'string' ? a.assigned_technician_id : null;
-        const assignmentMatch = assigned === user.id;
-        logDebug('appointments.assignment', { assigned, assignmentMatch, bookingSource: a.booking_source ?? null });
-        if (!assignmentMatch) {
+        const status = strCell(a.status);
+        if (!canAccessJob(role, user.id, assigned, status)) {
           const isWalkIn = String(a.booking_source ?? '') === 'tech_workflow';
           if (isWalkIn && !assigned) {
             await admin
@@ -146,13 +178,43 @@ export async function POST(request: Request) {
               .update({ assigned_technician_id: user.id, assigned_by: user.id, assigned_at: new Date().toISOString() })
               .eq('id', appointmentId);
             logDebug('appointments.assignment_repaired', { repaired: true });
-          } else if (role !== 'admin' && role !== 'super_admin') {
-            console.warn('[job-media-upload] lookup denied', debug);
-            return NextResponse.json({ error: 'Invalid appointment for this technician.' }, { status: 400 });
+          } else {
+            return NextResponse.json({ error: 'You do not have access to upload photos for this job.' }, { status: 403 });
           }
         }
-        customerId = typeof a.customer_id === 'string' ? a.customer_id : null;
+        appointmentUsable = true;
+        linkedAppointmentId = appointmentId;
+        customerId = typeof a.customer_id === 'string' ? a.customer_id : customerId;
         vehicleId = typeof a.vehicle_id === 'string' ? a.vehicle_id : null;
+      }
+    }
+
+    if (!appointmentUsable && !fallbackBookingId && workOrderId) {
+      const apptTry = await loadAppointmentById(admin, workOrderId);
+      const a = (apptTry.data ?? null) as Record<string, unknown> | null;
+      if (!apptTry.error && a?.id) {
+        const assigned = typeof a.assigned_technician_id === 'string' ? a.assigned_technician_id : null;
+        if (!canAccessJob(role, user.id, assigned, strCell(a.status))) {
+          return NextResponse.json({ error: 'You do not have access to upload photos for this job.' }, { status: 403 });
+        }
+        appointmentUsable = true;
+        linkedAppointmentId = String(a.id);
+        appointmentId = linkedAppointmentId;
+        customerId = typeof a.customer_id === 'string' ? a.customer_id : customerId;
+        vehicleId = typeof a.vehicle_id === 'string' ? a.vehicle_id : null;
+        logDebug('appointments.resolved_by_work_order_id', { workOrderId });
+      } else {
+        const fbTry = await loadFallbackById(admin, workOrderId);
+        const f = fbTry.data as Record<string, unknown> | null;
+        if (!fbTry.error && f?.id) {
+          const assigned = typeof f.assigned_technician_id === 'string' ? f.assigned_technician_id : null;
+          if (assigned && assigned !== user.id && !isAdminLevel(role)) {
+            return NextResponse.json({ error: 'You do not have access to upload photos for this job.' }, { status: 403 });
+          }
+          fallbackBookingId = String(f.id);
+          customerId = typeof f.customer_id === 'string' ? f.customer_id : customerId;
+          logDebug('booking_fallbacks.resolved_by_work_order_id', { workOrderId });
+        }
       }
     }
 
@@ -283,7 +345,34 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!appointmentUsable && !fallbackBookingId) {
+    if (!appointmentUsable && !fallbackBookingId && techWorkflowSessionId) {
+      const workflowSession = await admin
+        .from('tech_workflow_sessions')
+        .select('id, appointment_id, fallback_booking_id, access_token, status, created_at')
+        .eq('id', techWorkflowSessionId)
+        .maybeSingle();
+      const row = workflowSession.data as Record<string, unknown> | null;
+      if (!workflowSession.error && row) {
+        const sessionAppointmentId = typeof row.appointment_id === 'string' ? row.appointment_id : '';
+        const sessionFallbackId = typeof row.fallback_booking_id === 'string' ? row.fallback_booking_id : '';
+        if (sessionAppointmentId) {
+          const bySessionAppointment = await loadAppointmentById(admin, sessionAppointmentId);
+          const a = bySessionAppointment.data as Record<string, unknown> | null;
+          if (!bySessionAppointment.error && a?.id) {
+            appointmentUsable = true;
+            linkedAppointmentId = String(a.id);
+            appointmentId = linkedAppointmentId;
+            customerId = typeof a.customer_id === 'string' ? a.customer_id : customerId;
+            vehicleId = typeof a.vehicle_id === 'string' ? a.vehicle_id : null;
+          }
+        }
+        if (!appointmentUsable && sessionFallbackId) {
+          fallbackBookingId = sessionFallbackId;
+        }
+      }
+    }
+
+    if (!appointmentUsable && !fallbackBookingId && walkInMode) {
       const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const latestAppointment = await admin
         .from('appointments')
@@ -309,7 +398,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!appointmentUsable && !fallbackBookingId) {
+    if (!appointmentUsable && !fallbackBookingId && walkInMode) {
       const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       let latestFallback = await admin
         .from('booking_fallbacks')
@@ -341,7 +430,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!appointmentUsable && !fallbackBookingId) {
+    if (!appointmentUsable && !fallbackBookingId && walkInMode) {
       const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const looseFallbacks = await admin
         .from('booking_fallbacks')
@@ -385,7 +474,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!appointmentUsable && !fallbackBookingId && (customerName || customerPhone || vehicleSummary || serviceSlug)) {
+    if (!appointmentUsable && !fallbackBookingId && walkInMode && (customerName || customerPhone || vehicleSummary || serviceSlug)) {
       const nowIso = new Date().toISOString();
       const fallbackPayload = {
         tech_workflow: true,
@@ -445,12 +534,10 @@ export async function POST(request: Request) {
     }
 
     if (!appointmentUsable && !fallbackBookingId) {
-      console.warn('[job-media-upload] no workflow job/fallback found', debug);
+      console.warn('[job-media-upload] job not resolved', debug);
       return NextResponse.json(
         {
-          error:
-            'Could not find or create an active walk-in workflow job for this technician.',
-          debug,
+          error: 'Job not found. Open the work order and try again, or check appointment / fallback id.',
         },
         { status: 404 },
       );
@@ -460,7 +547,7 @@ export async function POST(request: Request) {
     const bucket = process.env.JOB_MEDIA_BUCKET?.trim() || 'job-media';
     linkedAppointmentId = appointmentUsable ? linkedAppointmentId : '';
     const jobKey = linkedAppointmentId || `fallback-${fallbackBookingId}`;
-    const phase = category === 'after' ? 'after' : 'before';
+    const phase = phaseCategory;
     const slot = ['front', 'rear', 'driver_side', 'passenger_side'].includes(photoCategory) ? photoCategory : photoCategory === 'before' || photoCategory === 'after' ? 'other' : photoCategory;
     const path = `jobs/${jobKey}/${phase}/${slot}/${Date.now()}-${randomUUID()}.${ext}`;
     const thumbPath = `jobs/${jobKey}/${phase}/${slot}/thumbs/${Date.now()}-${randomUUID()}.${ext}`;

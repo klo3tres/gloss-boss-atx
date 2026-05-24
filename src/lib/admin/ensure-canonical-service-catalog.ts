@@ -10,7 +10,8 @@ const ROWS: Array<{
   subtitle: string;
   sort_order: number;
   sedan_cents: number;
-  suv_truck_cents: number;
+  suv_cents: number;
+  truck_cents: number;
 }> = [
   {
     slug: 'exterior-wash',
@@ -18,31 +19,35 @@ const ROWS: Array<{
     subtitle: 'Premium maintenance wash package',
     sort_order: 10,
     sedan_cents: 6000,
-    suv_truck_cents: 7500,
+    suv_cents: 8000,
+    truck_cents: 10000,
   },
   {
     slug: 'exterior-detail',
     title: 'Exterior Detail',
     subtitle: 'Clay, polish prep, wax or sealant protection',
     sort_order: 20,
-    sedan_cents: 9000,
-    suv_truck_cents: 11000,
+    sedan_cents: 10000,
+    suv_cents: 12500,
+    truck_cents: 15000,
   },
   {
     slug: 'interior-detail',
     title: 'Interior Detail',
     subtitle: 'Deep interior reset package',
     sort_order: 30,
-    sedan_cents: 8000,
-    suv_truck_cents: 10000,
+    sedan_cents: 9000,
+    suv_cents: 11500,
+    truck_cents: 13000,
   },
   {
     slug: 'full-detail',
     title: 'Full Detail',
     subtitle: 'Complete inside and outside detail',
     sort_order: 40,
-    sedan_cents: 15000,
-    suv_truck_cents: 17500,
+    sedan_cents: 17500,
+    suv_cents: 22500,
+    truck_cents: 25000,
   },
   {
     slug: 'ceramic-coating',
@@ -50,7 +55,8 @@ const ROWS: Array<{
     subtitle: 'Consultation and quote — long-term gloss protection',
     sort_order: 50,
     sedan_cents: 0,
-    suv_truck_cents: 0,
+    suv_cents: 0,
+    truck_cents: 0,
   },
 ];
 
@@ -86,7 +92,9 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
 
       for (const tier of [
         { vehicle_class: 'sedan', cents: row.sedan_cents },
-        { vehicle_class: 'suv_truck', cents: row.suv_truck_cents },
+        { vehicle_class: 'suv', cents: row.suv_cents },
+        { vehicle_class: 'truck', cents: row.truck_cents },
+        { vehicle_class: 'suv_truck', cents: row.suv_cents },
       ] as const) {
         const { data: pr } = await admin
           .from('service_prices')

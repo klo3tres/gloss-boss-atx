@@ -9,6 +9,7 @@ import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-b
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 import { sendReceiptActionState } from '../receipt-actions';
 
 export const dynamic = 'force-dynamic';
@@ -100,7 +101,7 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
   const jobPricing = resolveJobPricing(job, paidRows);
   const method = label(payment?.payment_method || payment?.payment_kind || receipt?.payment_method || (payment?.stripe_checkout_session_id ? 'stripe' : 'manual'));
   const receiptNumber = str(receipt?.receipt_number) || `RCPT-${(paymentId || appointmentId || fallbackId || id).slice(0, 8).toUpperCase()}`;
-  const vehicleRows = vehicles(job, paymentMeta);
+  const vehicleRows = [...vehicles(job, paymentMeta), ...customLineItemsAsReceiptRows(job)];
 
   const techId = str(job.assigned_technician_id);
   let technicianName: string | undefined;

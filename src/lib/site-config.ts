@@ -3,10 +3,17 @@ export type ServicePackage = {
   title: string;
   subtitle: string;
   sedanPrice: number | null;
-  /** SUV / Truck combined price (merged from suv_truck, suv, or truck DB rows). */
+  suvPrice?: number | null;
+  truckPrice?: number | null;
+  /** SUV / Truck combined price (legacy / booking fallback). */
   suvTruckPrice: number | null;
   includes: string[];
 };
+
+export const PRICING_DISCLAIMER =
+  'Final pricing may vary based on vehicle size, condition, pet hair, stains, sand, mud, neglected wheels, and extended cleaning needs.';
+
+export const PRICING_STARTING_AT_LABEL = 'Starting at';
 
 export type DealConfig = {
   websitePromoPercent: number;
@@ -23,7 +30,9 @@ export const defaultServicePackages: ServicePackage[] = [
     title: "Exterior Wash",
     subtitle: "Fast, show-ready exterior refresh",
     sedanPrice: 60,
-    suvTruckPrice: 75,
+    suvPrice: 80,
+    truckPrice: 100,
+    suvTruckPrice: 80,
     includes: [
       "Foam pre-soak",
       "Hand wash",
@@ -36,8 +45,10 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "exterior-detail",
     title: "Exterior Detail",
     subtitle: "Decontaminate, polish prep, and protect",
-    sedanPrice: 90,
-    suvTruckPrice: 110,
+    sedanPrice: 100,
+    suvPrice: 125,
+    truckPrice: 150,
+    suvTruckPrice: 125,
     includes: [
       "Foam wash",
       "Clay treatment",
@@ -50,16 +61,20 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "interior-detail",
     title: "Interior Detail",
     subtitle: "Deep clean cabin reset",
-    sedanPrice: 80,
-    suvTruckPrice: 100,
+    sedanPrice: 90,
+    suvPrice: 115,
+    truckPrice: 130,
+    suvTruckPrice: 115,
     includes: ["Vacuum", "Wipe down plastics/trim", "Stain treatment", "Glass cleaning", "Odor refresh"],
   },
   {
     id: "full-detail",
     title: "Full Detail",
     subtitle: "Complete inside + outside transformation",
-    sedanPrice: 150,
-    suvTruckPrice: 175,
+    sedanPrice: 175,
+    suvPrice: 225,
+    truckPrice: 250,
+    suvTruckPrice: 225,
     includes: [
       "Interior detail",
       "Exterior detail",
@@ -94,10 +109,23 @@ export const defaultDealConfig: DealConfig = {
 
 export function formatStartingPrice(value: number | null): string {
   if (value == null || value <= 0) return 'Quote';
-  return `$${value}+`;
+  return `${PRICING_STARTING_AT_LABEL} $${value}`;
 }
 
 export function formatVehiclePrice(value: number | null): string {
-  if (value == null || value <= 0) return 'Quote';
-  return `$${value}`;
+  return formatStartingPrice(value);
 }
+
+/** Public marketing copy for optional add-ons (booking catalog may override cents). */
+export const PUBLIC_ADDON_PRICING: Array<{ label: string; detail: string }> = [
+  { label: 'Engine bay', detail: 'Starting at $40' },
+  { label: 'Pet hair', detail: 'Starting at $35' },
+  { label: 'Heavy pet hair', detail: '$60–$75' },
+  { label: 'Clay bar', detail: 'Sedan starting at $30 · SUV $40 · Truck $50' },
+  { label: 'Upholstery shampoo / extraction', detail: 'Sedan starting at $65 · SUV $85 · Truck $100' },
+  { label: 'Heavy stains', detail: 'Quote required' },
+  { label: 'Odor treatment', detail: 'Coming soon' },
+];
+
+export const PRICING_DISCOUNT_RULES =
+  '15% online booking discount applies to base services only. Multi-car discount applies only to eligible base services. Add-ons are not discounted unless an admin manually applies a discount.';

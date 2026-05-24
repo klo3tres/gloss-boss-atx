@@ -48,6 +48,7 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
     setPhotoMsg(null);
     setPhotoPreview(URL.createObjectURL(file));
     const fd = new FormData();
+    fd.set('workOrderId', job.id);
     if (!job.isFallback) fd.set('appointmentId', job.id);
     if (job.fallback_booking_id) fd.set('fallbackBookingId', job.fallback_booking_id);
     if (job.workflowSessionId) {
