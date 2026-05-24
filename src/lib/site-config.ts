@@ -11,7 +11,7 @@ export type ServicePackage = {
 };
 
 export const PRICING_DISCLAIMER =
-  'Final pricing may vary based on vehicle size, condition, pet hair, stains, sand, mud, neglected wheels, and extended cleaning needs.';
+  'Final pricing may vary depending on vehicle size, condition, stains, pet hair, excessive dirt, mud, sand, odors, or restoration-level cleaning.';
 
 export const PRICING_STARTING_AT_LABEL = 'Starting at';
 
@@ -29,9 +29,9 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "exterior-wash",
     title: "Exterior Wash",
     subtitle: "Fast, show-ready exterior refresh",
-    sedanPrice: 60,
-    suvPrice: 80,
-    truckPrice: 100,
+    sedanPrice: 75,
+    suvPrice: 90,
+    truckPrice: 110,
     suvTruckPrice: 80,
     includes: [
       "Foam pre-soak",
@@ -45,9 +45,9 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "exterior-detail",
     title: "Exterior Detail",
     subtitle: "Decontaminate, polish prep, and protect",
-    sedanPrice: 100,
-    suvPrice: 125,
-    truckPrice: 150,
+    sedanPrice: 130,
+    suvPrice: 150,
+    truckPrice: 170,
     suvTruckPrice: 125,
     includes: [
       "Foam wash",
@@ -61,9 +61,9 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "interior-detail",
     title: "Interior Detail",
     subtitle: "Deep clean cabin reset",
-    sedanPrice: 90,
-    suvPrice: 115,
-    truckPrice: 130,
+    sedanPrice: 175,
+    suvPrice: 195,
+    truckPrice: 225,
     suvTruckPrice: 115,
     includes: ["Vacuum", "Wipe down plastics/trim", "Stain treatment", "Glass cleaning", "Odor refresh"],
   },
@@ -71,9 +71,9 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "full-detail",
     title: "Full Detail",
     subtitle: "Complete inside + outside transformation",
-    sedanPrice: 175,
-    suvPrice: 225,
-    truckPrice: 250,
+    sedanPrice: 250,
+    suvPrice: 300,
+    truckPrice: 350,
     suvTruckPrice: 225,
     includes: [
       "Interior detail",
@@ -118,12 +118,12 @@ export function formatVehiclePrice(value: number | null): string {
 
 /** Public marketing copy for optional add-ons (booking catalog may override cents). */
 export const PUBLIC_ADDON_PRICING: Array<{ label: string; detail: string }> = [
-  { label: 'Engine bay', detail: 'Starting at $40' },
-  { label: 'Pet hair', detail: 'Starting at $35' },
-  { label: 'Heavy pet hair', detail: '$60–$75' },
-  { label: 'Clay bar', detail: 'Sedan starting at $30 · SUV $40 · Truck $50' },
-  { label: 'Upholstery shampoo / extraction', detail: 'Sedan starting at $65 · SUV $85 · Truck $100' },
-  { label: 'Heavy stains', detail: 'Quote required' },
+  { label: 'Upholstery shampoo + stain extraction', detail: 'Sedan starting at $95 · SUV $125 · Truck $150' },
+  { label: 'Clay bar', detail: 'Sedan starting at $40 · SUV $55 · Truck $70' },
+  { label: 'Pet hair', detail: 'Starting at $50 · Heavy $75–$100' },
+  { label: 'Engine bay', detail: 'Starting at $50' },
+  { label: 'Heavy condition fee', detail: 'Starting at $50' },
+  { label: 'Heavy stains', detail: 'Quote required — manual adjustment on invoice' },
   { label: 'Odor treatment', detail: 'Coming soon' },
 ];
 

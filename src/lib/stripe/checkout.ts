@@ -65,7 +65,7 @@ export async function createDepositCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, deposit_amount_cents, base_price_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+      .select('id, access_token, status, payment_status, deposit_amount_cents, base_price_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -77,8 +77,11 @@ export async function createDepositCheckoutSession(params: {
       return { ok: false, error: 'Invalid access token' };
     }
 
-    if (appt.status !== 'awaiting_payment') {
-      return { ok: false, error: 'Booking is not awaiting payment' };
+    const payStatus = String((appt as { payment_status?: string }).payment_status ?? '');
+    const canCheckout =
+      appt.status === 'awaiting_payment' || payStatus === 'awaiting_deposit' || payStatus === 'pay_later';
+    if (!canCheckout) {
+      return { ok: false, error: 'Booking is not awaiting payment', code: 'INVALID_STATUS' };
     }
 
     const serviceName = String(appt.service_slug ?? 'Service').replace(/-/g, ' ');

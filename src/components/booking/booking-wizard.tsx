@@ -98,6 +98,21 @@ export function BookingWizard() {
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
   const [allowFreeTestPromo, setAllowFreeTestPromo] = useState(false);
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
+  type SavedBookingRef = {
+    appointmentId?: string;
+    fallbackBookingId?: string;
+    accessToken?: string;
+    usedFallback?: boolean;
+  };
+  const [checkoutPhase, setCheckoutPhase] = useState<
+    'idle' | 'saving_booking' | 'creating_checkout' | 'redirecting' | 'checkout_failed' | 'pay_later_saving'
+  >('idle');
+  const [savedBooking, setSavedBooking] = useState<SavedBookingRef | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutTimedOut, setCheckoutTimedOut] = useState(false);
+  const CHECKOUT_TIMEOUT_MS = 10000;
+  const CHECKOUT_FAIL_COPY =
+    "We're having trouble opening secure checkout. Your booking can still be saved, and we'll send payment instructions separately.";
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
   const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
@@ -605,6 +620,118 @@ export function BookingWizard() {
     setPromoMessage('FREE test comp applied. Total is $0.00 and Stripe will be bypassed.');
   };
 
+  const startStripeCheckout = async (bookingJson: SavedBookingRef & { accessToken: string }) => {
+    setCheckoutPhase('creating_checkout');
+    setCheckoutError(null);
+    setCheckoutTimedOut(false);
+
+    const checkoutBody = bookingJson.usedFallback
+      ? {
+          fallbackBookingId: bookingJson.fallbackBookingId,
+          accessToken: bookingJson.accessToken,
+          paymentChoice: freePromoEligible ? 'full' : paymentChoice,
+        }
+      : {
+          appointmentId: bookingJson.appointmentId,
+          accessToken: bookingJson.accessToken,
+          paymentChoice: freePromoEligible ? 'full' : paymentChoice,
+        };
+
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      setCheckoutTimedOut(true);
+      setCheckoutPhase('checkout_failed');
+      setCheckoutError(CHECKOUT_FAIL_COPY);
+      setSubmitting(false);
+    }, CHECKOUT_TIMEOUT_MS);
+
+    try {
+      const checkoutRes = await fetchWithTimeout('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutBody),
+        timeoutMs: CHECKOUT_TIMEOUT_MS,
+      });
+      window.clearTimeout(timeoutId);
+      if (timedOut) return;
+
+      const checkoutJson = (await checkoutRes.json()) as {
+        url?: string;
+        skipPayment?: boolean;
+        appointmentId?: string;
+        fallbackBookingId?: string;
+        accessToken?: string;
+        code?: string;
+        error?: string;
+        message?: string;
+        customerMessage?: string;
+        payLaterEligible?: boolean;
+        ok?: boolean;
+      };
+
+      if (checkoutJson.skipPayment && (checkoutJson.appointmentId || checkoutJson.fallbackBookingId)) {
+        const q = new URLSearchParams({ token: checkoutJson.accessToken ?? bookingJson.accessToken ?? '' });
+        if (checkoutJson.fallbackBookingId || bookingJson.fallbackBookingId) {
+          q.set('fallback_booking_id', checkoutJson.fallbackBookingId ?? bookingJson.fallbackBookingId ?? '');
+        }
+        if (checkoutJson.appointmentId ?? bookingJson.appointmentId) {
+          q.set('appointment_id', checkoutJson.appointmentId ?? bookingJson.appointmentId ?? '');
+        }
+        window.location.href = `/book/pending?${q.toString()}`;
+        return;
+      }
+
+      if (!checkoutJson.url) {
+        setCheckoutPhase('checkout_failed');
+        setCheckoutError(checkoutJson.customerMessage ?? checkoutJson.message ?? checkoutJson.error ?? CHECKOUT_FAIL_COPY);
+        setSubmitting(false);
+        return;
+      }
+
+      setCheckoutPhase('redirecting');
+      window.location.href = checkoutJson.url;
+    } catch (err) {
+      window.clearTimeout(timeoutId);
+      if (timedOut) return;
+      const aborted = err instanceof Error && err.name === 'AbortError';
+      setCheckoutPhase('checkout_failed');
+      setCheckoutError(aborted ? CHECKOUT_FAIL_COPY : 'Network error while opening checkout. Your booking is saved.');
+      setSubmitting(false);
+    }
+  };
+
+  const handlePayLater = async () => {
+    if (!savedBooking?.accessToken) return;
+    setCheckoutPhase('pay_later_saving');
+    setCheckoutError(null);
+    try {
+      const res = await fetchWithTimeout('/api/bookings/mark-pay-later', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: savedBooking.appointmentId,
+          fallbackBookingId: savedBooking.fallbackBookingId,
+          accessToken: savedBooking.accessToken,
+          paymentChoice,
+        }),
+        timeoutMs: 12000,
+      });
+      const json = (await res.json()) as { ok?: boolean; redirectUrl?: string; error?: string };
+      if (!res.ok || !json.ok || !json.redirectUrl) {
+        setCheckoutError(json.error ?? 'Could not save pay-later status. Please call Gloss Boss ATX.');
+        setCheckoutPhase('checkout_failed');
+        setSubmitting(false);
+        return;
+      }
+      window.location.href = json.redirectUrl;
+    } catch {
+      setCheckoutError('Network error. Your booking is saved — we will contact you for payment.');
+      setCheckoutPhase('checkout_failed');
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canBookOnline) {
@@ -613,6 +740,10 @@ export function BookingWizard() {
     }
     setSubmitting(true);
     setError(null);
+    setCheckoutError(null);
+    setCheckoutPhase('saving_booking');
+    setSavedBooking(null);
+    setCheckoutTimedOut(false);
     setPhoneError(null);
     try {
       const p10 = normalizeUsPhone10Digits(guestPhone);
@@ -673,9 +804,10 @@ export function BookingWizard() {
       }
 
       const startIso = scheduled.toISOString();
-      const bookingRes = await fetch('/api/bookings', {
+      const bookingRes = await fetchWithTimeout('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 20000,
         body: JSON.stringify({
           vehicles,
           addOns: selectedAddOnSlugs,
@@ -709,6 +841,7 @@ export function BookingWizard() {
       };
 
       if (!bookingRes.ok) {
+        setCheckoutPhase('idle');
         setError((bookingJson as { error?: string }).error ?? 'Booking failed');
         setSubmitting(false);
         return;
@@ -723,54 +856,34 @@ export function BookingWizard() {
         return;
       }
 
-      const checkoutBody = bookingJson.usedFallback
-        ? { fallbackBookingId: bookingJson.fallbackBookingId, accessToken: bookingJson.accessToken, paymentChoice }
-        : { appointmentId: bookingJson.appointmentId, accessToken: bookingJson.accessToken, paymentChoice };
-
-      const checkoutRes = await fetch('/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(checkoutBody),
-      });
-      const checkoutJson = (await checkoutRes.json()) as {
-        url?: string;
-        skipPayment?: boolean;
-        appointmentId?: string;
-        fallbackBookingId?: string;
-        accessToken?: string;
-        code?: string;
-        error?: string;
-        message?: string;
+      const ref: SavedBookingRef = {
+        appointmentId: bookingJson.appointmentId,
+        fallbackBookingId: bookingJson.fallbackBookingId,
+        accessToken: bookingJson.accessToken,
+        usedFallback: bookingJson.usedFallback,
       };
-
-      if (checkoutJson.skipPayment && (checkoutJson.appointmentId || checkoutJson.fallbackBookingId)) {
-        const q = new URLSearchParams({
-          token: checkoutJson.accessToken ?? bookingJson.accessToken ?? '',
-        });
-        if (checkoutJson.fallbackBookingId || bookingJson.fallbackBookingId) {
-          q.set('fallback_booking_id', checkoutJson.fallbackBookingId ?? bookingJson.fallbackBookingId ?? '');
-        }
-        if (checkoutJson.appointmentId ?? bookingJson.appointmentId) {
-          q.set('appointment_id', checkoutJson.appointmentId ?? bookingJson.appointmentId ?? '');
-        }
-        window.location.href = `/book/pending?${q.toString()}`;
-        return;
-      }
-
-      if (!checkoutJson.url) {
-        const hint =
-          checkoutRes.status >= 500
-            ? 'Payments are temporarily unavailable. Your booking is saved — call Gloss Boss ATX to complete your deposit, or try again shortly.'
-            : checkoutJson.message ?? checkoutJson.error ?? 'Checkout could not start.';
-        setError(hint);
+      if (!ref.accessToken) {
+        setError('Booking saved but access token missing — please call Gloss Boss ATX.');
+        setCheckoutPhase('idle');
         setSubmitting(false);
         return;
       }
-      window.location.href = checkoutJson.url as string;
+      setSavedBooking(ref);
+      await startStripeCheckout({ ...ref, accessToken: ref.accessToken });
     } catch {
-      setError('Network error');
+      setCheckoutPhase('idle');
+      setError('Network error while saving your booking. Please try again.');
       setSubmitting(false);
     }
+  };
+
+  const submitButtonLabel = () => {
+    if (checkoutPhase === 'saving_booking') return 'Saving your booking…';
+    if (checkoutPhase === 'creating_checkout') return 'Creating secure checkout…';
+    if (checkoutPhase === 'redirecting') return 'Opening Stripe…';
+    if (checkoutPhase === 'pay_later_saving') return 'Saving pay-later…';
+    if (freePromoEligible) return 'Continue with FREE comp';
+    return paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)';
   };
 
   return (
@@ -794,6 +907,37 @@ export function BookingWizard() {
         <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100'>
           That offer link is not active — continue without it or ask your detailer for a current code.
         </p>
+      ) : null}
+      {checkoutPhase === 'creating_checkout' || checkoutPhase === 'saving_booking' || checkoutPhase === 'redirecting' ? (
+        <div className='rounded-xl border border-gold/35 bg-gold/10 p-4 text-sm text-gold-soft' role='status' aria-live='polite'>
+          <p className='font-black uppercase tracking-wider'>{submitButtonLabel()}</p>
+          <p className='mt-2 text-xs text-zinc-300'>Please keep this page open. Secure payment opens in a new step.</p>
+          {checkoutTimedOut ? (
+            <p className='mt-2 text-xs text-amber-200'>This is taking longer than expected (10s)…</p>
+          ) : null}
+        </div>
+      ) : null}
+      {checkoutPhase === 'checkout_failed' && savedBooking ? (
+        <div className='rounded-xl border border-amber-500/45 bg-amber-500/10 p-4 text-sm' role='alert'>
+          <p className='font-bold text-amber-100'>{checkoutError ?? CHECKOUT_FAIL_COPY}</p>
+          <p className='mt-2 text-xs text-zinc-300'>Your appointment is saved. Choose an option below — you will not lose your booking.</p>
+          <div className='mt-4 flex flex-col gap-2 sm:flex-row'>
+            <button
+              type='button'
+              onClick={() => void startStripeCheckout({ ...savedBooking, accessToken: savedBooking.accessToken! })}
+              className='rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
+            >
+              Try checkout again
+            </button>
+            <button
+              type='button'
+              onClick={() => void handlePayLater()}
+              className='rounded-xl border border-white/25 px-4 py-3 text-xs font-black uppercase text-white'
+            >
+              Continue booking and pay later
+            </button>
+          </div>
+        </div>
       ) : null}
       {error ? (
         <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
@@ -1216,7 +1360,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:hidden'
           >
-            {submitting ? 'Redirecting…' : freePromoEligible ? 'Continue with FREE comp' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
+            {submitButtonLabel()}
           </button>
         </div>
 
@@ -1326,7 +1470,7 @@ export function BookingWizard() {
             disabled={submitting || services.length === 0 || !canBookOnline}
             className='hidden w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:block'
           >
-            {submitting ? 'Redirecting…' : freePromoEligible ? 'Continue with FREE comp' : paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)'}
+            {submitButtonLabel()}
           </button>
         </aside>
       </div>

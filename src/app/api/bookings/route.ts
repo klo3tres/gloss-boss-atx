@@ -20,6 +20,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
 import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-vehicle-sync';
+import { buildBookingOrderSnapshot, mergeSnapshotIntoBreakdown } from '@/lib/booking-order-snapshot';
 
 type Body = {
   serviceSlug?: string;
@@ -313,6 +314,28 @@ export async function POST(request: Request) {
       price_cents: r.priceCents,
     }));
 
+    const serviceAddressFull = [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', ');
+    const orderSnapshot = buildBookingOrderSnapshot({
+      guestName: guestName.trim(),
+      guestEmail: emailNorm,
+      guestPhone: phoneDigits,
+      serviceAddress: serviceAddressFull,
+      scheduledStart: scheduled.toISOString(),
+      vehicles: bookingVehicles.map((v) => ({
+        serviceSlug: v.service_slug,
+        vehicleClass: v.vehicle_class,
+        vehicleDescription: v.vehicle_description,
+        vehicleColor: v.vehicle_color ?? '',
+        priceCents: v.price_cents,
+      })),
+      addOnSlugs: addOns,
+      addOnCents: priced.addOnSubtotalCents,
+      promoCode: promoCode || null,
+      paymentChoice,
+      pricing: priced,
+    });
+    const breakdownWithSnapshot = mergeSnapshotIntoBreakdown(priced, orderSnapshot);
+
     const insertPayload: Record<string, unknown> = {
       guest_email: emailNorm,
       guest_phone: phoneDigits,
@@ -344,7 +367,7 @@ export async function POST(request: Request) {
       promo_code: promoCode || null,
       comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
       booking_vehicles: bookingVehicles,
-      booking_pricing_breakdown: priced,
+      booking_pricing_breakdown: breakdownWithSnapshot,
       booking_add_ons: addOns,
       booking_source: 'online',
     };

@@ -221,7 +221,12 @@ export default async function AdminWorkOrdersPage() {
                       }
                       meta={
                         <>
-                          {chicago(r.scheduled_start || r.created_at)} · {str(r.status) || 'pending'} · {str(r.payment_status) || 'payment pending'}
+                          {chicago(r.scheduled_start || r.created_at)} · {str(r.status) || 'pending'} ·{' '}
+                          {str(r.payment_status) === 'pay_later' ? (
+                            <span className='text-amber-300'>Pay later / checkout failed</span>
+                          ) : (
+                            str(r.payment_status) || 'payment pending'
+                          )}
                         </>
                       }
                       amountBadge={

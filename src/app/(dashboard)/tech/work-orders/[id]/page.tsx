@@ -17,7 +17,6 @@ import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 export const dynamic = 'force-dynamic';
@@ -326,7 +325,10 @@ export default async function TechWorkOrderDetailPage({
   const customLineItems = readCustomLineItems(row).map((item) => ({
     id: item.id,
     label: item.label,
+    kind: item.kind,
     amountCents: item.amountCents,
+    quantity: item.quantity,
+    notes: item.notes,
   }));
 
   const consoleData: WorkOrderConsoleData = {
@@ -334,9 +336,19 @@ export default async function TechWorkOrderDetailPage({
     canonicalId: queryId,
     customerId: str(row.customer_id) || undefined,
     customLineItems,
-    customLineItemsTotal:
-      pricing.customLineItemsCents !== 0 ? displayMoney(pricing.customLineItemsCents) : undefined,
-    pricingBreakdown: buildReceiptBreakdown(row, pricing),
+    pricingSnapshot: {
+      vehicleSubtotalCents: pricing.vehicleSubtotalCents,
+      addOnSubtotalCents: pricing.addOnSubtotalCents,
+      multiCarDiscountCents: pricing.multiCarDiscountCents,
+      onlineDiscountCents: pricing.onlineDiscountCents,
+      promoDiscountCents: pricing.promoDiscountCents,
+      manualDiscountCents: pricing.manualDiscountCents,
+      customLineItemsCents: pricing.customLineItemsCents,
+      finalTotalCents: pricing.finalTotalCents,
+      depositPaidCents: pricing.depositPaidCents,
+      totalPaidCents: pricing.totalPaidCents,
+      remainingBalanceCents: pricing.remainingBalanceCents,
+    },
     source: isFallback ? 'fallback' : 'appointment',
     isFallback,
     shellBackHref: shellRole === 'admin' ? '/admin/work-orders' : '/tech',

@@ -37,11 +37,13 @@ export async function addWorkOrderLineItemAction(formData: FormData) {
   const appointmentId = str(formData.get('appointmentId'));
   const fallbackBookingId = str(formData.get('fallbackBookingId'));
   const source = str(formData.get('source'));
-  const kind = (str(formData.get('kind')) || 'custom_addon') as WorkOrderLineItemKind;
+  const kind = (str(formData.get('category')) || str(formData.get('kind')) || 'custom_addon') as WorkOrderLineItemKind;
   const label = str(formData.get('label')) || LINE_ITEM_KIND_LABELS[kind] || 'Custom charge';
   const amountRaw = str(formData.get('amountDollars'));
-  let amountCents = parseAmountCents(amountRaw);
-  if (amountCents == null) return;
+  const unitCents = parseAmountCents(amountRaw);
+  if (unitCents == null) return;
+  const qty = Math.max(1, parseInt(str(formData.get('quantity')) || '1', 10) || 1);
+  let amountCents = unitCents * qty;
 
   if (kind === 'discount_adjustment' && amountCents > 0) {
     amountCents = -amountCents;
@@ -65,6 +67,7 @@ export async function addWorkOrderLineItemAction(formData: FormData) {
     kind,
     label,
     amountCents,
+    quantity: qty,
     notes: notes || undefined,
     customerVisible,
     taxable,

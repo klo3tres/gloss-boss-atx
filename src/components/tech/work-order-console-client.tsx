@@ -6,21 +6,12 @@ import { CheckCircle2, Clock, CreditCard, FileSignature, MapPin, Phone } from 'l
 import { useMemo } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, StickyActionBar, TimelineRail } from '@/components/ui/premium';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
-import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
+import { WorkOrderInvoiceBuilder, type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
-import { WorkOrderCustomCharges } from '@/components/tech/work-order-custom-charges';
-import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
-import { ToastActionForm } from '@/components/ui/toast-action-form';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
-import {
-  generateWorkOrderReceiptActionState,
-  sendWorkOrderReceiptEmailAction,
-} from '@/app/(dashboard)/tech/work-order-payment-actions';
-import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 
 export type WorkOrderConsoleData = {
   id: string;
@@ -84,9 +75,8 @@ export type WorkOrderConsoleData = {
   recentPayments: Array<{ id?: string; amount: string; status: string; method: string; at: string; stripe?: string }>;
   receiptPdfHref?: string;
   customerId?: string;
-  customLineItems?: Array<{ id: string; label: string; amountCents: number }>;
-  customLineItemsTotal?: string;
-  pricingBreakdown?: ReceiptBreakdownLine[];
+  customLineItems?: Array<{ id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string }>;
+  pricingSnapshot?: InvoicePricingSnapshot;
   vehicles: Array<{
     year: string;
     make: string;
@@ -320,27 +310,28 @@ export function WorkOrderConsoleClient({
         </div>
 
         <WorkOrderCollapsible title='Payment' defaultOpen>
-          {data.pricingBreakdown && data.pricingBreakdown.length > 0 ? (
-            <ul className='mb-4 space-y-1.5 rounded-xl border border-gold/20 bg-black/40 p-3 text-sm'>
-              {data.pricingBreakdown.map((line, i) => (
-                <li
-                  key={`${line.label}-${i}`}
-                  className={`flex justify-between gap-2 ${line.tone === 'total' ? 'border-t border-white/15 pt-2 font-black text-white' : 'text-zinc-400'}`}
-                >
-                  <span>{line.label}</span>
-                  <span className={`font-mono shrink-0 ${line.tone === 'discount' ? 'text-emerald-300' : 'text-zinc-200'}`}>
-                    {line.amount}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <WorkOrderCustomCharges
-            appointmentId={data.isFallback ? undefined : jobId}
-            fallbackBookingId={data.isFallback ? jobId : undefined}
-            source={data.isFallback ? 'fallback' : 'appointment'}
-            items={data.customLineItems ?? []}
-          />
+          {data.pricingSnapshot ? (
+            <WorkOrderInvoiceBuilder
+              jobId={jobId}
+              appointmentId={data.isFallback ? undefined : jobId}
+              fallbackBookingId={data.isFallback ? jobId : undefined}
+              source={data.isFallback ? 'fallback' : 'appointment'}
+              isFallback={data.isFallback}
+              savedItems={data.customLineItems ?? []}
+              pricing={data.pricingSnapshot}
+              balanceDue={data.balanceDue}
+              balanceDueCents={data.balanceDueCents}
+              finalTotal={data.finalTotal}
+              depositPaid={data.depositPaid}
+              totalPaid={data.totalPaid}
+              paymentComplete={data.paymentComplete}
+              receiptPdfHref={data.receiptPdfHref}
+            />
+          ) : (
+            <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+              Pricing data unavailable — refresh the page.
+            </p>
+          )}
           <ul className='mt-4 space-y-2 text-sm'>
             {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
             {data.recentPayments.map((p) => (
@@ -354,50 +345,15 @@ export function WorkOrderConsoleClient({
               </li>
             ))}
           </ul>
-          <div className='mt-4'>
-            <WorkOrderBalanceCheckout
-              appointmentId={jobId}
-              balanceDueCents={data.balanceDueCents}
-              balanceDue={data.balanceDue}
-              finalTotal={data.finalTotal}
-              depositPaid={data.depositPaid}
-              totalPaid={data.totalPaid}
-              paymentComplete={data.paymentComplete}
-              isFallback={data.isFallback}
-            />
-          </div>
-          <WorkOrderCollapsible title='Receipts & cash' defaultOpen={false}>
-          <div className='grid gap-2 sm:grid-cols-2'>
-            <form action={recordCashAction} className='grid gap-2'>
+          <WorkOrderCollapsible title='Cash payment' defaultOpen={false}>
+            <form action={recordCashAction} className='grid max-w-md gap-2'>
               {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
               {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
               <input name='amountReceived' placeholder='Cash received ($)' className='gb-input' />
-              <button type='submit' className='rounded-2xl bg-emerald-500 px-4 py-3 text-xs font-black uppercase text-black'>
+              <button type='submit' className='rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase text-black'>
                 Mark cash paid
               </button>
             </form>
-            <ToastActionForm action={generateWorkOrderReceiptActionState} className='w-full'>
-              {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-              {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-              <SubmitStatusButton
-                pendingText='Generating…'
-                className='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'
-              >
-                Generate receipt
-              </SubmitStatusButton>
-            </ToastActionForm>
-            <ToastActionForm action={sendWorkOrderReceiptEmailAction} className='w-full'>
-              {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-              {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-              <SubmitStatusButton
-                pendingText='Sending…'
-                className='w-full rounded-2xl border border-gold/35 px-4 py-3 text-xs font-black uppercase text-gold-soft'
-              >
-                Send receipt email
-              </SubmitStatusButton>
-            </ToastActionForm>
-            {data.receiptPdfHref ? <ReceiptPdfDownloadButton href={data.receiptPdfHref} /> : null}
-          </div>
           </WorkOrderCollapsible>
         </WorkOrderCollapsible>
 

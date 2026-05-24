@@ -32,6 +32,8 @@ export type WorkOrderLineItem = {
 
   amountCents: number;
 
+  quantity?: number;
+
   taxable?: boolean;
 
   customerVisible?: boolean;
@@ -125,6 +127,11 @@ export function readCustomLineItems(job: Row): WorkOrderLineItem[] {
       label,
 
       amountCents: Math.round(amountCents),
+
+      quantity:
+        typeof o.quantity === 'number' && o.quantity > 0
+          ? Math.round(o.quantity)
+          : undefined,
 
       taxable: o.taxable === true || o.taxable === 'true',
 
