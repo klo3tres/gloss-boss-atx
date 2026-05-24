@@ -358,6 +358,8 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
       cancel_url: `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
       metadata: {
         appointment_id: appointmentId,
+        fallback_booking_id: '',
+        customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
         access_token: token,
         technician_id: technicianId ?? '',
         stripe_checkout_kind: 'customer_final_balance',

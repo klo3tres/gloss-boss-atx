@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAdminLevel } from '@/lib/auth/roles';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { getAppOrigin } from '@/lib/env/app-origin';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       .eq('id', appointmentId)
       .maybeSingle();
     const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
-    if (error || !appt || (assigned !== user.id && role !== 'admin' && role !== 'super_admin')) {
+    if (error || !appt || (assigned !== user.id && !isAdminLevel(role))) {
       return NextResponse.json({ error: 'Invalid job for this technician' }, { status: 400 });
     }
 

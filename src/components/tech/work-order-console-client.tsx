@@ -6,6 +6,7 @@ import { CheckCircle2, Clock, CreditCard, FileSignature, MapPin, Phone } from 'l
 import { useMemo } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, StickyActionBar, TimelineRail } from '@/components/ui/premium';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
+import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
@@ -332,20 +333,19 @@ export function WorkOrderConsoleClient({
               </li>
             ))}
           </ul>
+          <div className='mt-4'>
+            <WorkOrderBalanceCheckout
+              appointmentId={jobId}
+              balanceDueCents={data.balanceDueCents}
+              balanceDue={data.balanceDue}
+              finalTotal={data.finalTotal}
+              depositPaid={data.depositPaid}
+              totalPaid={data.totalPaid}
+              paymentComplete={data.paymentComplete}
+              isFallback={data.isFallback}
+            />
+          </div>
           <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-            {data.balanceDueCents > 0 && !data.isFallback ? (
-              <NotificationSendForm
-                kind='payment_link'
-                appointmentId={jobId}
-                buttonClassName='w-full rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'
-              >
-                Send balance link ({data.balanceDue})
-              </NotificationSendForm>
-            ) : (
-              <p className='rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-center text-xs text-zinc-500 sm:col-span-2'>
-                {data.paymentComplete ? 'Balance paid in full.' : data.isFallback ? 'Balance link requires a live appointment.' : 'No balance due — link not needed.'}
-              </p>
-            )}
             <form action={recordCashAction} className='grid gap-2'>
               {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
               {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
