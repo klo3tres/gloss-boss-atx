@@ -14,7 +14,7 @@ function slidesToGalleryRows(slides: SiteDataFeaturedSlide[]): NormalizedGallery
     caption: s.label?.trim() ? s.label.trim() : null,
     sort_order: i,
     order_index: i,
-    featured: i === 0,
+    featured: true,
   }));
 }
 
@@ -84,6 +84,15 @@ export function HomeGalleryStrip() {
       .then(([site, gal]) => {
         if (cancelled) return;
         settledRef.current = true;
+        const list = (gal?.images ?? []) as NormalizedGalleryImage[];
+        const galleryResolved = resolveGalleryRows(list);
+        if (galleryResolved.rows.length > 0) {
+          setRows(galleryResolved.rows);
+          setEmptyGallery(false);
+          setLoading(false);
+          setPage(0);
+          return;
+        }
         if (site?.featuredShowcaseFromCms === true && site.featuredShowcase?.length) {
           const mapped = slidesToGalleryRows(site.featuredShowcase);
           const resolved = resolveGalleryRows(mapped);
@@ -93,7 +102,6 @@ export function HomeGalleryStrip() {
           setPage(0);
           return;
         }
-        const list = (gal?.images ?? []) as NormalizedGalleryImage[];
         const resolved = resolveGalleryRows(list);
         setRows(resolved.rows);
         setEmptyGallery(resolved.empty);

@@ -50,14 +50,17 @@ export function TechJobWorkspace({ job, hasIntake }: { job: Job; hasIntake?: boo
     const fd = new FormData();
     if (!job.isFallback) fd.set('appointmentId', job.id);
     if (job.fallback_booking_id) fd.set('fallbackBookingId', job.fallback_booking_id);
-    if (job.workflowSessionId) fd.set('workflowSessionId', job.workflowSessionId);
+    if (job.workflowSessionId) {
+      fd.set('workflowSessionId', job.workflowSessionId);
+      fd.set('techWorkflowSessionId', job.workflowSessionId);
+    }
     fd.set('category', photoPhase);
     fd.set('photoCategory', photoCategory);
     fd.set('file', file);
     const res = await fetch('/api/tech/job-media-upload', { method: 'POST', body: fd });
-    const json = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+    const json = (await res.json().catch(() => ({}))) as { error?: string; url?: string; ok?: boolean };
     setPhotoPending(false);
-    if (!res.ok) {
+    if (!res.ok || json.ok === false) {
       setPhotoMsg(json.error ?? 'Photo upload failed.');
       return;
     }

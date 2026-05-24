@@ -48,6 +48,49 @@ export function resolveGalleryCaption(row: Record<string, unknown>): string | nu
   return c || null;
 }
 
+/** Marketing/public: skip rows without a real uploaded URL (no stock placeholders). */
+export function normalizeGalleryRowPublic(row: Record<string, unknown>): NormalizedGalleryImage | null {
+  const id = str(row.id);
+  if (!id) return null;
+  const url = resolveGalleryImageUrl(row);
+  if (!url) return null;
+  const sort_order =
+    typeof row.sort_order === 'number' && !Number.isNaN(row.sort_order)
+      ? row.sort_order
+      : typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
+        ? row.order_index
+        : 0;
+  const order_index =
+    typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
+      ? row.order_index
+      : typeof row.sort_order === 'number' && !Number.isNaN(row.sort_order)
+        ? row.sort_order
+        : null;
+  const published = (row.published ?? row.active ?? true) as boolean | undefined;
+  const featured = typeof row.featured === 'boolean' ? row.featured : false;
+  return {
+    id,
+    url,
+    image_url: url,
+    caption: resolveGalleryCaption(row),
+    sort_order,
+    order_index: order_index ?? null,
+    published: typeof published === 'boolean' ? published : true,
+    featured,
+  };
+}
+
+export function normalizeGalleryRowsPublic(rows: unknown[] | null | undefined): NormalizedGalleryImage[] {
+  if (!Array.isArray(rows)) return [];
+  const out: NormalizedGalleryImage[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const n = normalizeGalleryRowPublic(r as Record<string, unknown>);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
 export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGalleryImage | null {
   const id = str(row.id);
   if (!id) return null;

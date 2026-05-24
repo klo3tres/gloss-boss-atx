@@ -38,6 +38,15 @@ type StatusPayload = {
   envChecklist?: Array<{ key: string; ok: boolean; tier: string; detail: string }>;
   authNotes?: { passwordReset?: string };
   webhooks: { primaryUrlHint: string | null; legacyUrlHint?: string | null };
+  storage?: {
+    jobMediaBucket: string;
+    jobMediaBucketExists: boolean;
+    galleryBucket: string;
+    galleryBucketExists: boolean;
+    serviceRoleUploadReady: boolean;
+    latestJobPhoto: { at: string | null; ok: boolean; detail: string };
+    latestGalleryRow: { at: string | null; ok: boolean; detail: string };
+  };
 };
 
 function Row({ label, ok, detail }: { label: string; ok: boolean; detail?: string | null }) {
@@ -114,6 +123,43 @@ export default function SystemStatusPage() {
                   label='Business inbox (booking alerts)'
                   ok={Boolean(r.businessNotifyEmail)}
                   detail='CONTACT_NOTIFY_EMAIL or BUSINESS_NOTIFY_EMAIL — shop copy when customers book (still needs Resend).'
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {data.storage ? (
+            <section className='gb-premium-card rounded-2xl border border-gold/35 p-5'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Storage & media health</h2>
+              <div className='mt-4 space-y-2'>
+                <Row
+                  label={`Bucket: ${data.storage.jobMediaBucket}`}
+                  ok={data.storage.jobMediaBucketExists}
+                  detail={data.storage.jobMediaBucketExists ? 'Job photo uploads' : 'Create bucket or set JOB_MEDIA_BUCKET'}
+                />
+                <Row
+                  label={`Bucket: ${data.storage.galleryBucket}`}
+                  ok={data.storage.galleryBucketExists}
+                  detail='CMS featured gallery'
+                />
+                <Row label='Service-role upload ready' ok={data.storage.serviceRoleUploadReady} detail='Both buckets visible to service role' />
+                <Row
+                  label='Latest job photo'
+                  ok={data.storage.latestJobPhoto.ok}
+                  detail={
+                    data.storage.latestJobPhoto.at
+                      ? `${data.storage.latestJobPhoto.detail} · ${new Date(data.storage.latestJobPhoto.at).toLocaleString()}`
+                      : data.storage.latestJobPhoto.detail
+                  }
+                />
+                <Row
+                  label='Latest CMS gallery row'
+                  ok={data.storage.latestGalleryRow.ok}
+                  detail={
+                    data.storage.latestGalleryRow.at
+                      ? `${data.storage.latestGalleryRow.detail} · ${new Date(data.storage.latestGalleryRow.at).toLocaleString()}`
+                      : data.storage.latestGalleryRow.detail
+                  }
                 />
               </div>
             </section>

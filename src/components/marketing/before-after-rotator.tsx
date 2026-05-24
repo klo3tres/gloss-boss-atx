@@ -4,46 +4,53 @@ import Image from "next/image";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import {
-  defaultFeaturedShowcaseSlides,
-  type PublicSiteDataPayload,
-  type SiteDataFeaturedSlide,
-} from "@/lib/public-site-data";
+import type { PublicSiteDataPayload, SiteDataFeaturedSlide } from '@/lib/public-site-data';
 
 export function BeforeAfterRotator() {
-  const [slides, setSlides] = useState<SiteDataFeaturedSlide[]>(() => defaultFeaturedShowcaseSlides());
+  const [slides, setSlides] = useState<SiteDataFeaturedSlide[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const tid = window.setTimeout(() => {
-      if (!cancelled) setSlides(defaultFeaturedShowcaseSlides());
-    }, 12000);
-    fetchWithTimeout("/api/public/site-data", { cache: "no-store", timeoutMs: 8000 })
-      .then(async (r) => {
+    Promise.all([
+      fetchWithTimeout('/api/gallery/public', { cache: 'no-store', timeoutMs: 8000 }).then(async (r) =>
+        r.ok ? ((await r.json()) as { images?: Array<{ url?: string; image_url?: string; caption?: string | null; featured?: boolean }> }) : null,
+      ),
+      fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 }).then(async (r) => {
         try {
-          return (await r.json()) as PublicSiteDataPayload;
+          return r.ok ? ((await r.json()) as PublicSiteDataPayload) : null;
         } catch {
           return null;
         }
-      })
-      .then((data) => {
-        if (cancelled || !data) return;
-        const next =
-          Array.isArray(data.featuredShowcase) && data.featuredShowcase.length > 0
-            ? data.featuredShowcase
-            : defaultFeaturedShowcaseSlides();
-        setSlides(next);
-        setActiveIndex(0);
+      }),
+    ])
+      .then(([gal, site]) => {
+        if (cancelled) return;
+        const featured = (gal?.images ?? []).filter((i) => i.featured !== false && (i.url || i.image_url));
+        if (featured.length > 0) {
+          setSlides(
+            featured.map((img, i) => ({
+              id: `gal-${i}`,
+              label: img.caption?.trim() || 'Featured work',
+              image: String(img.url || img.image_url),
+            })),
+          );
+          setActiveIndex(0);
+          return;
+        }
+        if (site?.featuredShowcaseFromCms === true && site.featuredShowcase?.length) {
+          setSlides(site.featuredShowcase);
+          setActiveIndex(0);
+          return;
+        }
+        setSlides([]);
       })
       .catch(() => {
-        if (!cancelled) setSlides(defaultFeaturedShowcaseSlides());
-      })
-      .finally(() => clearTimeout(tid));
+        if (!cancelled) setSlides([]);
+      });
     return () => {
       cancelled = true;
-      clearTimeout(tid);
     };
   }, []);
 
@@ -75,7 +82,14 @@ export function BeforeAfterRotator() {
     [slides.length],
   );
 
-  if (!active) return null;
+  if (!slides.length || !active) {
+    return (
+      <div className='rounded-3xl border border-dashed border-white/10 bg-black/40 px-6 py-16 text-center'>
+        <p className='text-sm font-semibold text-zinc-400'>Featured work gallery coming soon.</p>
+        <p className='mt-2 text-xs text-zinc-600'>Upload and feature photos in Admin → CMS.</p>
+      </div>
+    );
+  }
 
   return (
     <article className="rounded-2xl border border-gold/20 bg-black/60 p-5 backdrop-blur">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeGalleryRows } from '@/lib/gallery-normalize';
+import { normalizeGalleryRowsPublic } from '@/lib/gallery-normalize';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 async function fetchPublishedGalleryRows(client: SupabaseClient): Promise<unknown[]> {
@@ -51,7 +51,7 @@ export async function GET() {
     }
 
     const rawRows = await fetchPublishedGalleryRows(supabase);
-    const images = normalizeGalleryRows(rawRows);
+    const images = normalizeGalleryRowsPublic(rawRows).filter((row) => row.featured === true);
 
     return NextResponse.json(
       { images },

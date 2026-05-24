@@ -16,17 +16,9 @@ import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/
 import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
+import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 
 export const dynamic = 'force-dynamic';
-
-function photoPhase(row: Row): 'before' | 'after' {
-  const cat = str(row.photo_category || row.category).toLowerCase().replace(/[\s-]+/g, '_');
-  return cat === 'after' || cat.startsWith('after/') ? 'after' : 'before';
-}
-
-function photoSlot(row: Row): string {
-  return str(row.photo_category || row.category).toLowerCase().replace(/[\s-]+/g, '_');
-}
 
 function photoVehicleIndex(row: Row, vehicleCount: number): number {
   const vi = row.vehicle_index;
@@ -203,20 +195,30 @@ export default async function TechWorkOrderDetailPage({
   if (assigned && assigned !== session.user.id && role === 'technician' && !isAdminLevel(role)) notFound();
 
   const mediaRows: Row[] = [];
-  for (const table of ['job_media', 'job_photos']) {
+  for (const table of ['job_photos', 'job_media'] as const) {
+    const cols =
+      'id, category, photo_category, file_url, media_url, public_url, thumbnail_url, storage_path, storage_bucket, uploaded_by, technician_id, created_at, workflow_session_id, vehicle_index, vehicle_label';
     const direct = await admin
       .from(table)
-      .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id, vehicle_index, vehicle_label')
+      .select(cols)
       .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
       .limit(120);
-    if (!direct.error) mediaRows.push(...((direct.data ?? []) as Row[]));
+    if (!direct.error) {
+      for (const r of direct.data ?? []) {
+        mediaRows.push({ ...(r as Row), _source_table: table });
+      }
+    }
     if (workflowSessionIds.length > 0) {
       const byWorkflow = await admin
         .from(table)
-        .select('id, category, photo_category, file_url, media_url, public_url, thumbnail_url, uploaded_by, technician_id, created_at, workflow_session_id, vehicle_index, vehicle_label')
+        .select(cols)
         .in('workflow_session_id', workflowSessionIds)
         .limit(120);
-      if (!byWorkflow.error) mediaRows.push(...((byWorkflow.data ?? []) as Row[]));
+      if (!byWorkflow.error) {
+        for (const r of byWorkflow.data ?? []) {
+          mediaRows.push({ ...(r as Row), _source_table: table });
+        }
+      }
     }
   }
 
@@ -234,8 +236,8 @@ export default async function TechWorkOrderDetailPage({
   const vehicles = vehiclesFromRow(row);
   const vehicleCount = Math.max(vehicles.length, 1);
 
-  const before = photos.filter((p) => photoPhase(p) === 'before');
-  const after = photos.filter((p) => photoPhase(p) === 'after');
+  const before = photos.filter((p) => resolvePhotoPhase(p) === 'before');
+  const after = photos.filter((p) => resolvePhotoPhase(p) === 'after');
 
   const openTimer = await admin
     .from('tech_job_timers')
@@ -296,13 +298,18 @@ export default async function TechWorkOrderDetailPage({
     { label: 'Payment', ok: paymentComplete },
   ];
 
+  const canDeletePhotos = isAdminLevel(session.profile?.role ?? null);
+
   const toGallery = (items: Row[]): WorkOrderGalleryPhoto[] =>
     items.map((p) => ({
       id: str(p.id) || photoUrl(p),
       url: photoUrl(p),
-      category: photoSlot(p) || 'photo',
+      category: resolvePhotoSlot(p) || 'photo',
       createdAt: str(p.created_at),
       uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? resolved.technicianName ?? 'Technician',
+      table: str(p._source_table) === 'job_media' ? 'job_media' : 'job_photos',
+      storagePath: str(p.storage_path) || undefined,
+      storageBucket: str(p.storage_bucket) || undefined,
     }));
 
   const depositPaid = displayMoney(pricing.depositPaidCents || pricing.depositCents);
@@ -380,11 +387,14 @@ export default async function TechWorkOrderDetailPage({
     })),
     beforePhotos: toGallery(before),
     afterPhotos: toGallery(after),
+    canDeletePhotos,
     photosByVehicle: vehicles.map((v, i) => {
       const label = str(v.vehicle_description || v.description) || `Vehicle ${i + 1}`;
+      const service = str(v.service_slug || row.service_slug);
       return {
         vehicleIndex: i,
         label,
+        service,
         before: toGallery(before.filter((p) => photoVehicleIndex(p, vehicleCount) === i)),
         after: toGallery(after.filter((p) => photoVehicleIndex(p, vehicleCount) === i)),
       };

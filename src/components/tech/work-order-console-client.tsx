@@ -64,9 +64,11 @@ export type WorkOrderConsoleData = {
   outbox: Array<{ id: string; kind: string; status: string; time: string; skipped?: string }>;
   beforePhotos: WorkOrderGalleryPhoto[];
   afterPhotos: WorkOrderGalleryPhoto[];
+  canDeletePhotos?: boolean;
   photosByVehicle: Array<{
     vehicleIndex: number;
     label: string;
+    service?: string;
     before: WorkOrderGalleryPhoto[];
     after: WorkOrderGalleryPhoto[];
   }>;
@@ -138,7 +140,7 @@ export function WorkOrderConsoleClient({
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 px-5 py-6 shadow-[0_0_50px_rgba(212,175,55,0.14)] sm:px-8 sm:py-8'
+        className='gb-premium-hero rounded-3xl px-5 py-6 sm:px-8 sm:py-8'
       >
         <div className='flex flex-wrap gap-2'>
           <PremiumBadge tone='gold'>{data.statusLabel}</PremiumBadge>
@@ -287,26 +289,16 @@ export function WorkOrderConsoleClient({
           />
         </WorkOrderCollapsible>
 
-        <WorkOrderCollapsible title='Agreement'>
-          <div className='flex flex-wrap gap-2'>
-            <Link href={data.agreementCaptureHref} className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'>
-              Recapture
-            </Link>
-            <Link href={data.agreementDetailHref} className='rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200'>
-              View agreement
-            </Link>
-          </div>
-        </WorkOrderCollapsible>
-
         <div id='photos'>
-          <WorkOrderCollapsible title='Photos' defaultOpen badge={`${data.vehicles.length} vehicles`}>
+          <WorkOrderCollapsible title='Photos' defaultOpen badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
             {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
-              <div key={vg.vehicleIndex} className='mb-6 rounded-xl border border-white/10 bg-black/30 p-3'>
-                <p className='text-sm font-bold text-white'>
+              <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-4'>
+                <p className='text-base font-black text-white'>
                   Vehicle {vg.vehicleIndex + 1}: {vg.label}
                 </p>
-                <WorkOrderGallery title='Before' photos={vg.before} />
-                <WorkOrderGallery title='After' photos={vg.after} />
+                {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
+                <WorkOrderGallery title='Before' photos={vg.before} canDelete={data.canDeletePhotos} />
+                <WorkOrderGallery title='After' photos={vg.after} canDelete={data.canDeletePhotos} />
                 <WorkOrderPhotoUpload
                   appointmentId={data.isFallback ? null : jobId}
                   fallbackBookingId={data.isFallback ? jobId : null}
@@ -345,7 +337,8 @@ export function WorkOrderConsoleClient({
               isFallback={data.isFallback}
             />
           </div>
-          <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+          <WorkOrderCollapsible title='Receipts & cash' defaultOpen={false}>
+          <div className='grid gap-2 sm:grid-cols-2'>
             <form action={recordCashAction} className='grid gap-2'>
               {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
               {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
@@ -376,22 +369,48 @@ export function WorkOrderConsoleClient({
             </ToastActionForm>
             {data.receiptPdfHref ? <ReceiptPdfDownloadButton href={data.receiptPdfHref} /> : null}
           </div>
-          {!data.isFallback ? (
-            <form action={completeJobAction} className='mt-4 space-y-3'>
-              <input type='hidden' name='appointmentId' value={jobId} />
-              {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
-              {canAdminOverride && !data.paymentComplete ? (
-                <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
-                  <input type='checkbox' name='adminOverride' value='true' className='rounded border-amber-400' />
-                  Admin override — complete with balance due
-                </label>
-              ) : null}
-              <button type='submit' className='scroll-mt-36 flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
-                <CheckCircle2 className='h-5 w-5' /> Complete job
-              </button>
-            </form>
-          ) : null}
+          </WorkOrderCollapsible>
         </WorkOrderCollapsible>
+
+        <WorkOrderCollapsible title='Agreement' defaultOpen={!data.agreementSigned}>
+          <div className='flex flex-wrap gap-2'>
+            <Link href={data.agreementCaptureHref} className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'>
+              Recapture
+            </Link>
+            <Link href={data.agreementDetailHref} className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200'>
+              View agreement
+            </Link>
+          </div>
+        </WorkOrderCollapsible>
+
+        <WorkOrderCollapsible title='Notes' badge={String(data.notes.length)} defaultOpen={false}>
+          {data.notes.length === 0 ? <p className='text-sm text-zinc-500'>No notes yet.</p> : null}
+          <ul className='space-y-3'>
+            {data.notes.map((n) => (
+              <li key={n.id} className='rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm'>
+                <p className='text-[10px] font-bold uppercase text-gold-soft'>{n.vehicleLabel} · {n.time}</p>
+                <p className='mt-1 whitespace-pre-wrap text-zinc-300'>{n.body}</p>
+              </li>
+            ))}
+          </ul>
+        </WorkOrderCollapsible>
+
+        {!data.isFallback ? (
+          <form action={completeJobAction} className='gb-premium-card space-y-3 rounded-2xl border border-gold/30 p-4'>
+            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Complete job</p>
+            <input type='hidden' name='appointmentId' value={jobId} />
+            {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
+            {canAdminOverride && !data.paymentComplete ? (
+              <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
+                <input type='checkbox' name='adminOverride' value='true' className='rounded border-amber-400' />
+                Admin override — complete with balance due
+              </label>
+            ) : null}
+            <button type='submit' className='gb-premium-btn flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
+              <CheckCircle2 className='h-5 w-5' /> Complete job
+            </button>
+          </form>
+        ) : null}
       </section>
 
       <StickyActionBar>

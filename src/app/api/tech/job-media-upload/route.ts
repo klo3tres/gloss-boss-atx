@@ -70,7 +70,9 @@ export async function POST(request: Request) {
     const appointmentId = String(form.get('appointmentId') ?? '').trim();
     let fallbackBookingId = String(form.get('fallbackBookingId') ?? '').trim();
     const techWorkflowId = String(form.get('techWorkflowId') ?? '').trim();
-    const techWorkflowSessionId = String(form.get('techWorkflowSessionId') ?? '').trim();
+    const workflowSessionIdForm = String(form.get('workflowSessionId') ?? '').trim();
+    const techWorkflowSessionId =
+      String(form.get('techWorkflowSessionId') ?? '').trim() || workflowSessionIdForm;
     const accessToken = String(form.get('accessToken') ?? '').trim();
     const jobReference = String(form.get('jobReference') ?? '').trim();
     const currentStep = String(form.get('currentStep') ?? '').trim();
@@ -479,8 +481,13 @@ export async function POST(request: Request) {
       }));
     }
     if (uploadError) {
+      const bucketMissing = /bucket|not found|does not exist/i.test(uploadError.message);
       return NextResponse.json(
-        { error: `Photo storage failed: ${uploadError.message}. Create a Supabase bucket named "${bucket}".` },
+        {
+          error: bucketMissing
+            ? `Storage bucket ${bucket} missing.`
+            : `Photo storage failed: ${uploadError.message}`,
+        },
         { status: 500 },
       );
     }
@@ -525,6 +532,7 @@ export async function POST(request: Request) {
     };
     if (vehicleIndex != null) baseRow.vehicle_index = vehicleIndex;
     if (vehicleLabel) baseRow.vehicle_label = vehicleLabel;
+    if (techWorkflowSessionId) baseRow.workflow_session_id = techWorkflowSessionId;
 
     let mediaId: string | null = null;
     let ins = await admin.from('job_media').insert(baseRow).select('id').maybeSingle();
@@ -562,6 +570,15 @@ export async function POST(request: Request) {
     }
     if (photoIns.error) console.warn('[job-media-upload] job_photos insert', photoIns.error.message);
     const photoId = !photoIns.error && typeof photoIns.data?.id === 'string' ? photoIns.data.id : null;
+
+    if (!mediaId && !photoId) {
+      await admin.storage.from(bucket).remove([path, thumbPath]).catch(() => undefined);
+      const dbErr = photoIns.error?.message || ins.error?.message || 'Database save failed';
+      return NextResponse.json(
+        { error: `Photo saved to storage but database row failed: ${dbErr}` },
+        { status: 500 },
+      );
+    }
 
     if (linkedAppointmentId) {
       await recordJobTimelineEvent(admin, {

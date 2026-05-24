@@ -51,6 +51,73 @@ export async function GET() {
     { key: 'TWILIO_FROM_NUMBER', ok: Boolean(process.env.TWILIO_FROM_NUMBER?.trim()), tier: 'optional', detail: 'SMS sender' },
   ];
 
+  const jobMediaBucket = process.env.JOB_MEDIA_BUCKET?.trim() || 'job-media';
+  const galleryBucket = 'gallery';
+
+  let jobMediaBucketExists = false;
+  let galleryBucketExists = false;
+  let serviceRoleUploadOk = false;
+  let latestJobPhoto: { at: string | null; ok: boolean; detail: string } = { at: null, ok: false, detail: 'No uploads yet' };
+  let latestGalleryRow: { at: string | null; ok: boolean; detail: string } = { at: null, ok: false, detail: 'No CMS gallery rows' };
+
+  if (admin && serviceRole) {
+    try {
+      const buckets = await admin.storage.listBuckets();
+      const names = new Set((buckets.data ?? []).map((b) => b.name));
+      jobMediaBucketExists = names.has(jobMediaBucket);
+      galleryBucketExists = names.has(galleryBucket);
+      serviceRoleUploadOk = jobMediaBucketExists && galleryBucketExists;
+    } catch (e) {
+      console.warn('[system-status] buckets', e);
+    }
+
+    const photoRes = await admin
+      .from('job_photos')
+      .select('id, created_at, public_url, file_url')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!photoRes.error && photoRes.data) {
+      const row = photoRes.data as { created_at?: string; public_url?: string; file_url?: string };
+      const url = String(row.public_url || row.file_url || '');
+      latestJobPhoto = {
+        at: row.created_at ?? null,
+        ok: Boolean(url),
+        detail: url ? 'Latest job_photos row has URL' : 'Latest row missing public URL',
+      };
+    } else {
+      const mediaRes = await admin
+        .from('job_media')
+        .select('id, created_at, public_url, file_url')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!mediaRes.error && mediaRes.data) {
+        const row = mediaRes.data as { created_at?: string; public_url?: string; file_url?: string };
+        latestJobPhoto = {
+          at: row.created_at ?? null,
+          ok: Boolean(row.public_url || row.file_url),
+          detail: 'Latest job_media row',
+        };
+      }
+    }
+
+    const galRes = await admin
+      .from('gallery_images')
+      .select('id, created_at, url, image_url, featured, published')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!galRes.error && galRes.data) {
+      const row = galRes.data as Record<string, unknown>;
+      latestGalleryRow = {
+        at: typeof row.created_at === 'string' ? row.created_at : null,
+        ok: Boolean(String(row.url || row.image_url || '').trim()),
+        detail: `featured=${String(row.featured)} published=${String(row.published)}`,
+      };
+    }
+  }
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     actorRole: gate.role,
@@ -101,6 +168,15 @@ export async function GET() {
     authNotes: {
       passwordReset:
         'Password reset email is controlled in the Supabase dashboard under Authentication → email templates and SMTP (not in this Next app env).',
+    },
+    storage: {
+      jobMediaBucket,
+      jobMediaBucketExists,
+      galleryBucket,
+      galleryBucketExists,
+      serviceRoleUploadReady: serviceRole && serviceRoleUploadOk,
+      latestJobPhoto,
+      latestGalleryRow,
     },
     webhooks: {
       primaryUrlHint:

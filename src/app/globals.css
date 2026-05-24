@@ -85,6 +85,46 @@ body {
   color: #fff;
 }
 
+/* Premium luxury surface — dashboards, work orders, marketing */
+.gb-premium-card {
+  background: linear-gradient(155deg, rgba(24, 24, 27, 0.85) 0%, rgba(0, 0, 0, 0.92) 55%, rgba(24, 20, 8, 0.35) 100%);
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.12),
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.gb-premium-hero {
+  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(212, 175, 55, 0.22), transparent 55%),
+    linear-gradient(180deg, #0a0a0a 0%, #000 100%);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  box-shadow: 0 0 60px rgba(212, 175, 55, 0.12);
+}
+
+.gb-premium-btn {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.gb-premium-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.2);
+}
+
+.gb-marketing-section {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}
+
+@media (min-width: 768px) {
+  .gb-marketing-section {
+    padding-top: 5.5rem;
+    padding-bottom: 5.5rem;
+  }
+}
+
 @media print {
   .gb-no-print {
     display: none !important;

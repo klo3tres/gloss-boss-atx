@@ -1,9 +1,11 @@
 'use client';
 
+import { Camera, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { PHOTO_SLOT_OPTIONS } from '@/lib/photo-phase';
 
-const categories = ['front', 'rear', 'driver_side', 'passenger_side', 'interior', 'wheels', 'damage', 'other'];
+type UploadJson = { ok?: boolean; url?: string; error?: string; photoId?: string; mediaId?: string };
 
 export function WorkOrderPhotoUpload({
   appointmentId,
@@ -21,15 +23,20 @@ export function WorkOrderPhotoUpload({
   const [phase, setPhase] = useState<'before' | 'after'>('before');
   const [category, setCategory] = useState('front');
   const [preview, setPreview] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
 
   const upload = async (file: File | undefined | null) => {
     if (!file) return;
+    if (!appointmentId && !fallbackBookingId) {
+      setStatus({ tone: 'error', text: 'No job linked — save the work order or convert fallback first.' });
+      return;
+    }
     setBusy(true);
-    setMessage(null);
-    setPreview(URL.createObjectURL(file));
+    setStatus({ tone: 'info', text: 'Uploading…' });
+    const localPreview = URL.createObjectURL(file);
+    setPreview(localPreview);
     const fd = new FormData();
     if (appointmentId) fd.set('appointmentId', appointmentId);
     if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
@@ -42,46 +49,94 @@ export function WorkOrderPhotoUpload({
     fd.set('vehicleIndex', String(vehicleIndex));
     fd.set('vehicleLabel', vehicleLabel);
     fd.set('file', file);
-    const res = await fetch('/api/tech/job-media-upload', { method: 'POST', body: fd });
-    const json = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
-    setBusy(false);
-    if (!res.ok) {
-      setMessage(json.error ?? 'Photo upload failed.');
-      return;
+    try {
+      const res = await fetch('/api/tech/job-media-upload', { method: 'POST', body: fd });
+      const json = (await res.json().catch(() => ({}))) as UploadJson;
+      if (!res.ok || json.ok === false) {
+        setStatus({ tone: 'error', text: json.error ?? `Upload failed (HTTP ${res.status}).` });
+        return;
+      }
+      if (json.url) setPreview(json.url);
+      setStatus({
+        tone: 'success',
+        text: `${phase === 'before' ? 'Before' : 'After'} · ${category.replace(/_/g, ' ')} saved for ${vehicleLabel}.`,
+      });
+      router.refresh();
+    } catch (e) {
+      setStatus({ tone: 'error', text: e instanceof Error ? e.message : 'Network error during upload.' });
+    } finally {
+      setBusy(false);
     }
-    if (json.url) setPreview(json.url);
-    setMessage(`${phase} ${category.replace(/_/g, ' ')} photo saved for ${vehicleLabel}.`);
-    router.refresh();
   };
 
+  const statusClass =
+    status?.tone === 'error'
+      ? 'border-red-500/40 bg-red-500/10 text-red-100'
+      : status?.tone === 'success'
+        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+        : 'border-gold/30 bg-gold/10 text-gold-soft';
+
   return (
-    <div className='rounded-xl border border-white/10 bg-black/25 p-3'>
-      <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Vehicle photo upload</p>
-      <div className='mt-2 grid gap-2 sm:grid-cols-3'>
-        <select value={phase} onChange={(e) => setPhase(e.target.value as 'before' | 'after')} className='rounded border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
-          <option value='before'>Before</option>
-          <option value='after'>After</option>
-        </select>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
-          {categories.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
-        </select>
-        <label className='flex cursor-pointer items-center justify-center rounded-lg border border-gold/35 bg-gold/10 px-3 py-2 text-center text-[10px] font-black uppercase tracking-wider text-gold-soft'>
-          {busy ? 'Uploading...' : 'Camera / Upload'}
-          <input
-            type='file'
-            accept='image/*'
-            capture='environment'
-            className='sr-only'
-            disabled={busy}
-            onChange={(e) => {
-              void upload(e.currentTarget.files?.[0]);
-              e.currentTarget.value = '';
-            }}
-          />
-        </label>
+    <div className='gb-premium-card mt-3 rounded-2xl border border-white/10 p-4'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Upload photos</p>
+        {busy ? (
+          <span className='inline-flex items-center gap-1 text-[10px] font-bold uppercase text-gold-soft'>
+            <Loader2 className='h-3 w-3 animate-spin' /> Uploading
+          </span>
+        ) : null}
       </div>
-      {preview ? <img src={preview} alt='Uploaded preview' className='mt-3 h-20 w-20 rounded-lg border border-white/10 object-cover' /> : null}
-      {message ? <p className='mt-2 text-xs text-zinc-400'>{message}</p> : null}
+      <div className='mt-3 flex flex-wrap gap-2'>
+        {(['before', 'after'] as const).map((p) => (
+          <button
+            key={p}
+            type='button'
+            onClick={() => setPhase(p)}
+            className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase ${
+              phase === p ? 'bg-gold text-black' : 'border border-white/15 text-zinc-400'
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className='mt-2 flex flex-wrap gap-1.5'>
+        {PHOTO_SLOT_OPTIONS.map((c) => (
+          <button
+            key={c}
+            type='button'
+            onClick={() => setCategory(c)}
+            className={`rounded-lg px-2 py-1 text-[9px] font-bold uppercase ${
+              category === c ? 'border border-gold/50 bg-gold/15 text-gold-soft' : 'border border-white/10 text-zinc-500'
+            }`}
+          >
+            {c.replace(/_/g, ' ')}
+          </button>
+        ))}
+      </div>
+      <label className='mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-gold/40 bg-gradient-to-r from-gold/20 to-transparent px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft transition hover:border-gold'>
+        <Camera className='h-4 w-4' />
+        {busy ? 'Uploading…' : 'Camera / choose file'}
+        <input
+          type='file'
+          accept='image/jpeg,image/png,image/webp,image/*'
+          capture='environment'
+          className='sr-only'
+          disabled={busy}
+          onChange={(e) => {
+            void upload(e.currentTarget.files?.[0]);
+            e.currentTarget.value = '';
+          }}
+        />
+      </label>
+      {preview ? (
+        <img src={preview} alt='Upload preview' className='mt-3 h-24 w-24 rounded-xl border border-gold/30 object-cover shadow-[0_0_20px_rgba(212,175,55,0.2)]' />
+      ) : null}
+      {status ? (
+        <p className={`mt-3 rounded-xl border px-3 py-2 text-xs ${statusClass}`} role='status'>
+          {status.text}
+        </p>
+      ) : null}
     </div>
   );
 }
