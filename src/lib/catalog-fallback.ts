@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { slugifyServiceSlug } from '@/lib/slugify';
 import { defaultServicePackages } from '@/lib/site-config';
-import { pickSuvTruckCents, type PriceRowLike } from '@/lib/vehicle-pricing';
+import { normalizeVehicleClass, pickCentsForUiClass, type PriceRowLike, UI_VEHICLE_CLASSES } from '@/lib/vehicle-pricing';
 
 export type FallbackServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
 export type FallbackPriceRow = { service_id: string; vehicle_class: string; price_cents: number };
@@ -26,31 +26,25 @@ export function fallbackServiceIdForSlug(slug: string): string {
 /** Slugs that may legitimately have no numeric online quote (consultation-only packages). */
 const BOOKING_OPTIONAL_QUOTE_SLUGS = new Set(['ceramic-coating']);
 
-/** UI output classes only — sedan + merged SUV/Truck. */
-const STABLE_VEHICLE_CLASSES = ['sedan', 'suv_truck'] as const;
-
 /** Marketing default cents for a package slug + vehicle class (null = no default, e.g. consultation-only). */
 export function centsForSlugVehicleFromDefaults(slug: string, vehicleClass: string): number | null {
   const pkg = defaultServicePackages.find((p) => p.id === slug);
   if (!pkg) return null;
-  const cls = vehicleClass === 'sedan' ? 'sedan' : 'suv_truck';
+  const cls = normalizeVehicleClass(vehicleClass);
   if (cls === 'sedan' && pkg.sedanPrice != null && pkg.sedanPrice > 0) return Math.round(pkg.sedanPrice * 100);
-  if (cls === 'suv_truck' && pkg.suvTruckPrice != null && pkg.suvTruckPrice > 0) return Math.round(pkg.suvTruckPrice * 100);
+  if (cls === 'suv') {
+    const p = pkg.suvPrice ?? pkg.suvTruckPrice;
+    if (p != null && p > 0) return Math.round(p * 100);
+  }
+  if (cls === 'truck') {
+    const p = pkg.truckPrice ?? pkg.suvTruckPrice;
+    if (p != null && p > 0) return Math.round(p * 100);
+  }
   return null;
 }
 
 function pickDbPriceCents(dbPrices: FallbackPriceRow[], serviceId: string, cls: string): number | undefined {
-  if (cls === 'sedan') {
-    const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'sedan');
-    if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
-      return direct.price_cents;
-    }
-    return undefined;
-  }
-  if (cls === 'suv_truck') {
-    return pickSuvTruckCents(dbPrices as PriceRowLike[], serviceId);
-  }
-  return undefined;
+  return pickCentsForUiClass(dbPrices as PriceRowLike[], serviceId, normalizeVehicleClass(cls));
 }
 
 /**
@@ -72,7 +66,7 @@ export function mergeServicesWithPricesStable(
   const hasLiveCatalog = dbServices.length > 0;
 
   for (const s of dbServices) {
-    for (const cls of STABLE_VEHICLE_CLASSES) {
+    for (const cls of UI_VEHICLE_CLASSES) {
       const fromDb = pickDbPriceCents(dbPrices, s.id, cls);
       const fromDef = hasLiveCatalog ? undefined : centsForSlugVehicleFromDefaults(s.slug, cls);
       const merged = fromDb ?? fromDef;
@@ -96,8 +90,13 @@ export function mergeFallbackPricesByServiceSlug(services: { id: string; slug: s
     if (pkg.sedanPrice != null) {
       prices.push({ service_id: s.id, vehicle_class: 'sedan', price_cents: Math.round(pkg.sedanPrice * 100) });
     }
-    if (pkg.suvTruckPrice != null && pkg.suvTruckPrice > 0) {
-      prices.push({ service_id: s.id, vehicle_class: 'suv_truck', price_cents: Math.round(pkg.suvTruckPrice * 100) });
+    if (pkg.suvPrice != null && pkg.suvPrice > 0) {
+      prices.push({ service_id: s.id, vehicle_class: 'suv', price_cents: Math.round(pkg.suvPrice * 100) });
+    } else if (pkg.suvTruckPrice != null && pkg.suvTruckPrice > 0) {
+      prices.push({ service_id: s.id, vehicle_class: 'suv', price_cents: Math.round(pkg.suvTruckPrice * 100) });
+    }
+    if (pkg.truckPrice != null && pkg.truckPrice > 0) {
+      prices.push({ service_id: s.id, vehicle_class: 'truck', price_cents: Math.round(pkg.truckPrice * 100) });
     }
   }
   return prices;
@@ -110,7 +109,7 @@ export function servicesHaveQuotesForBooking(services: { id: string; slug: strin
     if (rows.length === 0) return false;
     const classes = new Set(rows.map((p) => p.vehicle_class));
     const okSedan = classes.has('sedan');
-    const okLarge = classes.has('suv_truck') || classes.has('suv') || classes.has('truck'); // read DB drift; UI only shows suv_truck
+    const okLarge = classes.has('suv') || classes.has('truck') || classes.has('suv_truck');
     if (!okSedan && !okLarge) return false;
   }
   return true;
@@ -135,8 +134,13 @@ export function getLocalFallbackCatalog(): { services: FallbackServiceRow[]; pri
     if (p.sedanPrice != null) {
       prices.push({ service_id: sid, vehicle_class: 'sedan', price_cents: Math.round(p.sedanPrice * 100) });
     }
-    if (p.suvTruckPrice != null && p.suvTruckPrice > 0) {
-      prices.push({ service_id: sid, vehicle_class: 'suv_truck', price_cents: Math.round(p.suvTruckPrice * 100) });
+    if (p.suvPrice != null && p.suvPrice > 0) {
+      prices.push({ service_id: sid, vehicle_class: 'suv', price_cents: Math.round(p.suvPrice * 100) });
+    } else if (p.suvTruckPrice != null && p.suvTruckPrice > 0) {
+      prices.push({ service_id: sid, vehicle_class: 'suv', price_cents: Math.round(p.suvTruckPrice * 100) });
+    }
+    if (p.truckPrice != null && p.truckPrice > 0) {
+      prices.push({ service_id: sid, vehicle_class: 'truck', price_cents: Math.round(p.truckPrice * 100) });
     }
   }
 

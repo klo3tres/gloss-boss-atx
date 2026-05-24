@@ -408,7 +408,8 @@ export async function techSignWalkInAgreementAction(input: {
       ? `Deposit collected or due: $${(depCents / 100).toFixed(2)} (see booking / Stripe).`
       : 'Walk-in / field job: deposit may be $0 unless otherwise collected.';
 
-  const classLabel = A.vehicle_class === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+  const { uiVehicleLabel } = await import('@/lib/vehicle-pricing');
+  const classLabel = uiVehicleLabel(String(A.vehicle_class ?? 'sedan'));
   const serviceLabel = (A.service_slug ?? 'service').replace(/-/g, ' ');
 
   const snapshot = input.agreementSnapshotOverride?.trim()

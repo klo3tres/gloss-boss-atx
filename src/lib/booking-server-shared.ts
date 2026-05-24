@@ -397,7 +397,7 @@ export async function insertAppointmentResilient(
 
 export type VehicleLineInput = { serviceSlug: string; vehicleClass: string; vehicleDescription: string; vehicleColor?: string };
 
-const ALLOWED_CLASS = new Set(['sedan', 'suv_truck']);
+const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
 
 export type ResolvedVehicleLine = {
   serviceSlug: string;

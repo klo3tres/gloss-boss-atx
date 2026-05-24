@@ -17,6 +17,7 @@ import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 export const dynamic = 'force-dynamic';
@@ -335,6 +336,7 @@ export default async function TechWorkOrderDetailPage({
     customLineItems,
     customLineItemsTotal:
       pricing.customLineItemsCents !== 0 ? displayMoney(pricing.customLineItemsCents) : undefined,
+    pricingBreakdown: buildReceiptBreakdown(row, pricing),
     source: isFallback ? 'fallback' : 'appointment',
     isFallback,
     shellBackHref: shellRole === 'admin' ? '/admin/work-orders' : '/tech',

@@ -64,7 +64,8 @@ export default function CompleteContent() {
         ? `Deposit paid: $${(depCents / 100).toFixed(2)} (Stripe checkout).`
         : 'Deposit/payment status will be confirmed by Gloss Boss ATX.';
     const vc = String(a.vehicle_class ?? 'sedan');
-    const classLabel = vc === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    const classLabel =
+      vc === 'truck' ? 'Truck' : vc === 'suv' || vc === 'suv_truck' ? 'SUV' : 'Sedan';
     return buildNativeAgreementSnapshot({
       customerName: String(a.guest_name ?? '').trim() || 'Customer',
       customerEmail: a.guest_email,

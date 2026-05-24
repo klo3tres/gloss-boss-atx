@@ -7,6 +7,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { buildReceiptEmailHtml } from '@/lib/email/templates/receipt';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
 import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
@@ -102,10 +103,13 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
         vehicles: vehicleLines.length
           ? vehicleLines
           : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug) }],
-        subtotal: displayMoney(pricing.prePromoCents),
-        onlineDiscount: pricing.onlineDiscountCents > 0 ? displayMoney(pricing.onlineDiscountCents) : undefined,
-        multiCarDiscount: pricing.multiCarDiscountCents > 0 ? displayMoney(pricing.multiCarDiscountCents) : undefined,
-        promo: pricing.promoDiscountCents > 0 ? displayMoney(pricing.promoDiscountCents) : undefined,
+        subtotal: displayMoney(pricing.vehicleSubtotalCents),
+        addOnSubtotal: pricing.addOnSubtotalCents > 0 ? displayMoney(pricing.addOnSubtotalCents) : undefined,
+        onlineDiscount: pricing.onlineDiscountCents > 0 ? `−${displayMoney(pricing.onlineDiscountCents)}` : undefined,
+        multiCarDiscount: pricing.multiCarDiscountCents > 0 ? `−${displayMoney(pricing.multiCarDiscountCents)}` : undefined,
+        promo: pricing.promoDiscountCents > 0 ? `−${displayMoney(pricing.promoDiscountCents)}` : undefined,
+        manualDiscount: pricing.manualDiscountCents > 0 ? `−${displayMoney(pricing.manualDiscountCents)}` : undefined,
+        breakdown: buildReceiptBreakdown(job, pricing),
         depositPaid: pricing.depositPaidCents > 0 ? displayMoney(pricing.depositPaidCents) : undefined,
         cashPaid: pricing.cashPaidCents > 0 ? displayMoney(pricing.cashPaidCents) : undefined,
         totalPaid: displayMoney(pricing.totalPaidCents),

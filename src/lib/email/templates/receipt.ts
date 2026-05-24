@@ -8,12 +8,17 @@ import {
   glossBossEmailLayout,
 } from '@/lib/email/templates/layout';
 
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+
 export type ReceiptEmailLine = {
   vehicles: Array<{ name: string; service: string; color?: string; price?: string }>;
+  breakdown?: ReceiptBreakdownLine[];
   subtotal?: string;
+  addOnSubtotal?: string;
   onlineDiscount?: string;
   multiCarDiscount?: string;
   promo?: string;
+  manualDiscount?: string;
   depositPaid?: string;
   stripePaid?: string;
   cashPaid?: string;
@@ -51,19 +56,30 @@ export function buildReceiptEmailHtml(input: {
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Service:</strong> ${escapeEmailHtml(input.serviceAt)}</p>
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Address:</strong> ${escapeEmailHtml(input.serviceAddress)}</p>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">${vehicleRows}</table>
-    ${emailMoneyTable([
-      { label: 'Subtotal', value: v.subtotal },
-      { label: 'Online discount', value: v.onlineDiscount },
-      { label: 'Multi-car discount', value: v.multiCarDiscount },
-      { label: 'Promo', value: v.promo },
-      { label: 'Deposit paid', value: v.depositPaid },
-      { label: 'Stripe paid', value: v.stripePaid },
-      { label: 'Cash paid', value: v.cashPaid },
-      { label: 'Total paid', value: v.totalPaid },
-      { label: 'Job total', value: v.finalTotal },
-      { label: 'Remaining balance', value: v.remainingBalance },
-      { label: 'Payment method', value: v.paymentMethod },
-    ])}
+    ${
+      v.breakdown && v.breakdown.length > 0
+        ? emailMoneyTable(
+            v.breakdown.map((line) => ({
+              label: line.label,
+              value: line.amount,
+            })),
+          )
+        : emailMoneyTable([
+            { label: 'Base services subtotal', value: v.subtotal },
+            { label: 'Add-ons subtotal', value: v.addOnSubtotal },
+            { label: 'Online booking discount', value: v.onlineDiscount },
+            { label: 'Multi-car discount', value: v.multiCarDiscount },
+            { label: 'Promo discount', value: v.promo },
+            { label: 'Manual discount', value: v.manualDiscount },
+            { label: 'Deposit paid', value: v.depositPaid },
+            { label: 'Stripe paid', value: v.stripePaid },
+            { label: 'Cash paid', value: v.cashPaid },
+            { label: 'Total paid', value: v.totalPaid },
+            { label: 'Final total', value: v.finalTotal },
+            { label: 'Balance due', value: v.remainingBalance },
+            { label: 'Payment method', value: v.paymentMethod },
+          ])
+    }
     ${v.receiptUrl ? emailCtaButton(v.receiptUrl, 'View receipt') : ''}`;
 
   const bodyHtml =

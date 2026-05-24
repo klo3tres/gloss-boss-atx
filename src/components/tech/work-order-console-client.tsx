@@ -10,6 +10,7 @@ import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-c
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
 import { WorkOrderCustomCharges } from '@/components/tech/work-order-custom-charges';
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
@@ -85,6 +86,7 @@ export type WorkOrderConsoleData = {
   customerId?: string;
   customLineItems?: Array<{ id: string; label: string; amountCents: number }>;
   customLineItemsTotal?: string;
+  pricingBreakdown?: ReceiptBreakdownLine[];
   vehicles: Array<{
     year: string;
     make: string;
@@ -318,10 +320,20 @@ export function WorkOrderConsoleClient({
         </div>
 
         <WorkOrderCollapsible title='Payment' defaultOpen>
-          {data.customLineItemsTotal ? (
-            <p className='mb-3 text-sm text-zinc-400'>
-              Manual charges: <span className='font-mono text-white'>{data.customLineItemsTotal}</span>
-            </p>
+          {data.pricingBreakdown && data.pricingBreakdown.length > 0 ? (
+            <ul className='mb-4 space-y-1.5 rounded-xl border border-gold/20 bg-black/40 p-3 text-sm'>
+              {data.pricingBreakdown.map((line, i) => (
+                <li
+                  key={`${line.label}-${i}`}
+                  className={`flex justify-between gap-2 ${line.tone === 'total' ? 'border-t border-white/15 pt-2 font-black text-white' : 'text-zinc-400'}`}
+                >
+                  <span>{line.label}</span>
+                  <span className={`font-mono shrink-0 ${line.tone === 'discount' ? 'text-emerald-300' : 'text-zinc-200'}`}>
+                    {line.amount}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : null}
           <WorkOrderCustomCharges
             appointmentId={data.isFallback ? undefined : jobId}

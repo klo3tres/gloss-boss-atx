@@ -69,7 +69,8 @@ function VehicleFields({
       <input name='color' defaultValue={initial.color} placeholder='Color' className='gb-input' />
       <select name='vehicleClass' defaultValue={initial.vehicleClass} className='gb-input sm:col-span-2'>
         <option value='sedan'>Sedan</option>
-        <option value='suv_truck'>SUV / Truck</option>
+        <option value='suv'>SUV</option>
+        <option value='truck'>Truck</option>
       </select>
       <button type='submit' disabled={busy} className='sm:col-span-2 rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-50'>
         {busy ? 'Saving…' : submitLabel}

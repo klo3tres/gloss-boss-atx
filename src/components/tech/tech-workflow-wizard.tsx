@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import { techSearchCustomersAction } from '@/app/(dashboard)/tech/tech-customer-search-actions';
 import { techCompleteJobAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techCreateWalkInJobAction, techSignWalkInAgreementAction } from '@/app/(dashboard)/tech/tech-workflow-actions';
-import { normalizeVehicleClass, UI_VEHICLE_CLASSES, type UiVehicleClass } from '@/lib/vehicle-pricing';
+import { normalizeVehicleClass, UI_VEHICLE_CLASSES, uiVehicleLabel, type UiVehicleClass } from '@/lib/vehicle-pricing';
 import { buildNativeAgreementSnapshot, DEFAULT_AGREEMENT_TITLE } from '@/lib/default-gloss-boss-agreement';
 
 type CatalogService = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
@@ -306,7 +306,7 @@ export function TechWorkflowWizard({
   const walkInAgreementPreview = useMemo(() => {
     if (!selectedService) return '';
     const line = lockedTotalCents ?? estimatedTotalCents ?? estimatedLineCents ?? 0;
-    const classLabel = vehicleClass === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    const classLabel = uiVehicleLabel(vehicleClass);
     return buildNativeAgreementSnapshot({
       customerName: guestName.trim() || 'Customer',
       customerEmail: guestEmail.trim(),
@@ -1224,7 +1224,7 @@ export function TechWorkflowWizard({
             <div>
               <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Vehicle</p>
               <p className='font-semibold text-white'>{vehicleDescription || 'Vehicle pending'}</p>
-              <p className='text-xs text-zinc-500'>{vehicleClass === 'suv_truck' ? 'SUV / Truck' : 'Sedan'}</p>
+              <p className='text-xs text-zinc-500'>{uiVehicleLabel(vehicleClass)}</p>
             </div>
             <div>
               <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Service</p>

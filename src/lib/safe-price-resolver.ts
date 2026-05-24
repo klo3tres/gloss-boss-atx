@@ -1,5 +1,5 @@
 import { centsForSlugVehicleFromDefaults } from '@/lib/catalog-fallback';
-import { normalizeVehicleClass, pickSuvTruckCents, type PriceRowLike } from '@/lib/vehicle-pricing';
+import { normalizeVehicleClass, pickCentsForUiClass, type PriceRowLike, type UiVehicleClass } from '@/lib/vehicle-pricing';
 
 export type PriceRowInput = { service_id: string; vehicle_class: string; price_cents: number };
 export type SafePriceServiceRef = { slug: string; serviceId: string };
@@ -11,21 +11,14 @@ export type SafePriceResult =
   | { ok: true; isQuote: true; cents: null }
   | { ok: false; isQuote: false; cents: null };
 
-function pickDbCents(dbPrices: PriceRowInput[], serviceId: string, uiClass: 'sedan' | 'suv_truck'): number | undefined {
-  if (uiClass === 'sedan') {
-    const direct = dbPrices.find((p) => p.service_id === serviceId && p.vehicle_class === 'sedan');
-    if (direct && typeof direct.price_cents === 'number' && !Number.isNaN(direct.price_cents) && direct.price_cents > 0) {
-      return direct.price_cents;
-    }
-    return undefined;
-  }
-  return pickSuvTruckCents(dbPrices as PriceRowLike[], serviceId);
+function pickDbCents(dbPrices: PriceRowInput[], serviceId: string, uiClass: UiVehicleClass): number | undefined {
+  return pickCentsForUiClass(dbPrices as PriceRowLike[], serviceId, uiClass);
 }
 
 /**
  * Resolve bookable/display price: DB `service_prices` first, then embedded catalog by slug.
  * Ceramic = quote-only. Never returns 0 — unknown numeric falls back to marketing defaults.
- * suv / truck inputs are normalized to suv_truck.
+ * Vehicle class is normalized to sedan, suv, or truck.
  */
 export function safePriceResolver(
   service: SafePriceServiceRef,

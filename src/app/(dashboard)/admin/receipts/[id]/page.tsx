@@ -9,6 +9,7 @@ import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-b
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
 import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 import { sendReceiptActionState } from '../receipt-actions';
 
@@ -128,8 +129,11 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
         ? pricingMeta.tax_cents
         : undefined;
 
+  const breakdownLines = buildReceiptBreakdown(job, jobPricing);
+
   const docProps = {
     receiptNumber,
+    breakdownLines,
     paidAt: chicago(payment?.paid_at || payment?.created_at || receipt?.created_at),
     serviceAt: chicago(job.scheduled_start),
     completedAt: chicago(job.job_completed_at || job.completed_at),
@@ -140,11 +144,13 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
     customerPhone: str(job.guest_phone || customer.phone || payment?.phone) || 'Not provided',
     serviceAddress: address(job, paymentMeta) || 'Service address not provided',
     vehicles: vehicleRows,
-    baseTotal: money(jobPricing.prePromoCents),
-    onlineDiscount: money(jobPricing.onlineDiscountCents),
-    multiCarDiscount: money(jobPricing.multiCarDiscountCents),
-    promoLabel: str(job.promo_code || paymentMeta.promo_code) || 'None',
-    promoDiscount: money(jobPricing.promoDiscountCents),
+    baseTotal: money(jobPricing.vehicleSubtotalCents),
+    addOnSubtotal: jobPricing.addOnSubtotalCents > 0 ? money(jobPricing.addOnSubtotalCents) : undefined,
+    onlineDiscount: jobPricing.onlineDiscountCents > 0 ? `−${money(jobPricing.onlineDiscountCents)}` : money(0),
+    multiCarDiscount: jobPricing.multiCarDiscountCents > 0 ? `−${money(jobPricing.multiCarDiscountCents)}` : money(0),
+    promoLabel: str(job.promo_code || paymentMeta.promo_code) || 'Promo discount',
+    promoDiscount: jobPricing.promoDiscountCents > 0 ? `−${money(jobPricing.promoDiscountCents)}` : money(0),
+    manualDiscount: jobPricing.manualDiscountCents > 0 ? `−${money(jobPricing.manualDiscountCents)}` : undefined,
     depositPaid: money(jobPricing.depositPaidCents || jobPricing.depositCents),
     cashPaid: money(jobPricing.cashPaidCents),
     stripePaid: money(jobPricing.stripePaidCents),

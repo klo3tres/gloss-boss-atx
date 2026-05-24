@@ -35,10 +35,13 @@ function isStripe(p: Row) {
 export type JobPricingDisplay = {
   vehicleLines: Array<{ name: string; service: string; color: string; priceCents: number }>;
   vehicleSubtotalCents: number;
+  addOnSubtotalCents: number;
   multiCarDiscountCents: number;
   onlineDiscountCents: number;
   promoDiscountCents: number;
+  manualDiscountCents: number;
   prePromoCents: number;
+  serviceFinalCents: number;
   finalTotalCents: number;
   depositCents: number;
   depositPaidCents: number;
@@ -65,23 +68,33 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   const pick = (key: string) => num(b[key] ?? payloadPricing[key]);
 
-  let prePromoCents = pick('prePromoCents') || pick('vehicleSubtotalCents') || sumVehicleCents;
-  if (prePromoCents <= 0 && sumVehicleCents > 0) prePromoCents = sumVehicleCents;
-
+  const vehicleSubtotalCents = pick('vehicleSubtotalCents') || sumVehicleCents;
+  const addOnSubtotalCents = pick('addOnSubtotalCents');
   const multiCarDiscountCents = pick('multiCarDiscountCents');
   const onlineDiscountCents =
     pick('websitePromoDiscountCents') || pick('onlineDiscountCents') || pick('sitewideDiscountCents');
   const promoDiscountCents = pick('offerDiscountCents') || pick('promoDiscountCents');
 
+  let prePromoCents = pick('prePromoCents');
+  if (prePromoCents <= 0) {
+    const afterMc = pick('afterMultiCarVehicleCents') || Math.max(0, vehicleSubtotalCents - multiCarDiscountCents);
+    prePromoCents = afterMc + addOnSubtotalCents;
+  }
+  if (prePromoCents <= 0 && sumVehicleCents > 0) prePromoCents = sumVehicleCents + addOnSubtotalCents;
+
   const customLineItems = readCustomLineItems(job);
   const customLineItemsCents = customLineItemsTotalCents(customLineItems);
+  const manualDiscountCents = customLineItems
+    .filter((i) => i.kind === 'discount_adjustment' || i.amountCents < 0)
+    .reduce((s, i) => s + Math.abs(i.amountCents), 0);
 
   let serviceFinalCents = pick('finalTotalCents');
   if (serviceFinalCents <= 0 && prePromoCents > 0) {
-    serviceFinalCents = Math.max(0, prePromoCents - multiCarDiscountCents - onlineDiscountCents - promoDiscountCents);
+    serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - promoDiscountCents);
   }
   if (serviceFinalCents <= 0) {
-    serviceFinalCents = num(job.base_price_cents);
+    const baseStored = num(job.base_price_cents);
+    serviceFinalCents = baseStored > customLineItemsCents ? baseStored - customLineItemsCents : baseStored;
   }
   const finalTotalCents = Math.max(0, serviceFinalCents + customLineItemsCents);
 
@@ -124,11 +137,14 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   return {
     vehicleLines,
-    vehicleSubtotalCents: prePromoCents,
+    vehicleSubtotalCents,
+    addOnSubtotalCents,
     multiCarDiscountCents,
     onlineDiscountCents,
     promoDiscountCents,
+    manualDiscountCents,
     prePromoCents,
+    serviceFinalCents,
     finalTotalCents,
     depositCents: depositOnFile,
     depositPaidCents,

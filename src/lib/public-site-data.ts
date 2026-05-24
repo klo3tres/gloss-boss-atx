@@ -316,7 +316,7 @@ export function computeMultiCarExample(services: ServicePackage[], deals: DealCo
   const firstDollars = pickService.suvTruckPrice;
   if (firstDollars == null || firstDollars <= 0) return null;
 
-  const vehicleClass = 'suv_truck';
+  const vehicleClass = 'suv';
 
   const firstCents = Math.round(firstDollars * 100);
   const secondCents = Math.round(firstCents * (1 - disc / 100));

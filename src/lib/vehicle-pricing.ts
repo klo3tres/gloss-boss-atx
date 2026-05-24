@@ -1,25 +1,28 @@
 /**
- * Canonical UI vehicle classes: Sedan + SUV/Truck only.
- * DB may still store suv, truck, or suv_truck — always normalized here for display/booking.
+ * Canonical vehicle classes: sedan, suv, truck.
+ * Legacy DB values (suv_truck) map to suv for UI; truck stays separate.
  */
 
-export const UI_VEHICLE_CLASSES = ['sedan', 'suv_truck'] as const;
+export const UI_VEHICLE_CLASSES = ['sedan', 'suv', 'truck'] as const;
 export type UiVehicleClass = (typeof UI_VEHICLE_CLASSES)[number];
 
 export const UI_VEHICLE_LABELS: Record<UiVehicleClass, string> = {
   sedan: 'Sedan',
-  suv_truck: 'SUV / Truck',
+  suv: 'SUV',
+  truck: 'Truck',
 };
 
-/** Map suv, truck, suv_truck → suv_truck; unknown → suv_truck for large-vehicle safety. */
+/** Normalize stored vehicle_class to sedan | suv | truck. */
 export function normalizeVehicleClass(raw: string | null | undefined): UiVehicleClass {
   const v = String(raw ?? '')
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
   if (v === 'sedan') return 'sedan';
-  if (v === 'suv' || v === 'truck' || v === 'suv_truck' || v === 'suvtruck') return 'suv_truck';
-  return 'suv_truck';
+  if (v === 'truck') return 'truck';
+  if (v === 'suv' || v === 'suv_truck' || v === 'suvtruck') return 'suv';
+  if (v === 'van' || v === 'luxury') return 'suv';
+  return 'suv';
 }
 
 export function uiVehicleLabel(raw: string): string {
@@ -33,17 +36,13 @@ function validCents(c: unknown): number | undefined {
   return Math.round(c);
 }
 
-/** Read cents for sedan from price rows. */
 export function pickSedanCents(rows: PriceRowLike[], serviceId: string): number | undefined {
   const direct = rows.find((p) => p.service_id === serviceId && p.vehicle_class === 'sedan');
   return direct ? validCents(direct.price_cents) : undefined;
 }
 
-/**
- * Large vehicle: suv_truck row, else suv, else truck (never separate UI categories).
- */
-export function pickSuvTruckCents(rows: PriceRowLike[], serviceId: string): number | undefined {
-  const order = ['suv_truck', 'suv', 'truck'] as const;
+export function pickSuvCents(rows: PriceRowLike[], serviceId: string): number | undefined {
+  const order = ['suv', 'suv_truck'] as const;
   for (const cls of order) {
     const row = rows.find((p) => p.service_id === serviceId && p.vehicle_class === cls);
     const c = row ? validCents(row.price_cents) : undefined;
@@ -52,12 +51,28 @@ export function pickSuvTruckCents(rows: PriceRowLike[], serviceId: string): numb
   return undefined;
 }
 
-export function pickCentsForUiClass(rows: PriceRowLike[], serviceId: string, uiClass: UiVehicleClass): number | undefined {
-  if (uiClass === 'sedan') return pickSedanCents(rows, serviceId);
-  return pickSuvTruckCents(rows, serviceId);
+export function pickTruckCents(rows: PriceRowLike[], serviceId: string): number | undefined {
+  const order = ['truck', 'suv_truck', 'suv'] as const;
+  for (const cls of order) {
+    const row = rows.find((p) => p.service_id === serviceId && p.vehicle_class === cls);
+    const c = row ? validCents(row.price_cents) : undefined;
+    if (c != null) return c;
+  }
+  return undefined;
 }
 
-/** Collapse DB price rows to at most one sedan + one suv_truck per service (no duplicate large-vehicle rows). */
+/** @deprecated Use pickSuvCents or pickTruckCents — kept for migrations reading legacy rows. */
+export function pickSuvTruckCents(rows: PriceRowLike[], serviceId: string): number | undefined {
+  return pickSuvCents(rows, serviceId) ?? pickTruckCents(rows, serviceId);
+}
+
+export function pickCentsForUiClass(rows: PriceRowLike[], serviceId: string, uiClass: UiVehicleClass): number | undefined {
+  if (uiClass === 'sedan') return pickSedanCents(rows, serviceId);
+  if (uiClass === 'truck') return pickTruckCents(rows, serviceId);
+  return pickSuvCents(rows, serviceId);
+}
+
+/** One row per UI class when a price exists (sedan, suv, truck). */
 export function consolidatePriceRowsForUi(rows: PriceRowLike[]): PriceRowLike[] {
   const byService = new Map<string, PriceRowLike[]>();
   for (const r of rows) {
@@ -70,10 +85,10 @@ export function consolidatePriceRowsForUi(rows: PriceRowLike[]): PriceRowLike[] 
   }
   const out: PriceRowLike[] = [];
   for (const [serviceId, list] of byService) {
-    const sedan = pickSedanCents(list, serviceId);
-    if (sedan != null) out.push({ service_id: serviceId, vehicle_class: 'sedan', price_cents: sedan });
-    const large = pickSuvTruckCents(list, serviceId);
-    if (large != null) out.push({ service_id: serviceId, vehicle_class: 'suv_truck', price_cents: large });
+    for (const cls of UI_VEHICLE_CLASSES) {
+      const cents = pickCentsForUiClass(list, serviceId, cls);
+      if (cents != null) out.push({ service_id: serviceId, vehicle_class: cls, price_cents: cents });
+    }
   }
   return out;
 }

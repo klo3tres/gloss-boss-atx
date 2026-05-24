@@ -56,11 +56,18 @@ export async function addWorkOrderLineItemAction(formData: FormData) {
 
   const job = jobRow as Row;
   const items = readCustomLineItems(job);
+  const notes = str(formData.get('notes'));
+  const customerVisible = formData.get('customerVisible') !== 'false';
+  const taxable = formData.get('taxable') === 'true';
+
   items.push({
     id: `line-${Date.now().toString(36)}`,
     kind,
     label,
     amountCents,
+    notes: notes || undefined,
+    customerVisible,
+    taxable,
     createdAt: new Date().toISOString(),
     createdBy: session.user.id,
   });

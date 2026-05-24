@@ -149,7 +149,8 @@ export async function POST(request: Request) {
         : 'Deposit per shop policy at time of booking.';
 
     const vc = String(Ap.vehicle_class ?? 'sedan');
-    const classLabel = vc === 'suv_truck' ? 'SUV / Truck' : 'Sedan';
+    const classLabel =
+      vc === 'truck' ? 'Truck' : vc === 'suv' || vc === 'suv_truck' ? 'SUV' : 'Sedan';
     const serviceLabel = String(Ap.service_slug ?? 'service').replace(/-/g, ' ');
 
     const nativeSnap = buildNativeAgreementSnapshot({

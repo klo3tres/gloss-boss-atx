@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 
 export type ReceiptPdfInput = {
   receiptNumber: string;
@@ -17,6 +18,8 @@ export type ReceiptPdfInput = {
   status: string;
   vehicles: Array<{ name: string; service: string; color: string; price: string }>;
   baseTotal: string;
+  addOnSubtotal?: string;
+  breakdownLines?: ReceiptBreakdownLine[];
   discounts: string;
   taxAmount: string;
   finalTotal: string;
@@ -103,30 +106,47 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   y += 12;
   doc.line(margin, y, 564, y);
   y += 18;
-  doc.text(`Subtotal: ${input.baseTotal}`, 400, y);
-  y += 14;
-  if (input.discounts && input.discounts !== '$0.00') {
-    doc.text(`Discounts: ${input.discounts}`, 400, y);
-    y += 14;
+  doc.setFontSize(9);
+
+  const moneyLines: ReceiptBreakdownLine[] =
+    input.breakdownLines && input.breakdownLines.length > 0
+      ? input.breakdownLines
+      : [
+          { label: 'Base services subtotal', amount: input.baseTotal },
+          ...(input.addOnSubtotal && input.addOnSubtotal !== '$0.00'
+            ? [{ label: 'Add-ons subtotal', amount: input.addOnSubtotal }]
+            : []),
+          ...(input.discounts && input.discounts !== '$0.00'
+            ? [{ label: 'Discounts', amount: input.discounts }]
+            : []),
+          { label: 'Final total', amount: input.finalTotal, tone: 'total' as const },
+          { label: 'Deposit paid', amount: input.depositPaid, tone: 'paid' as const },
+          ...(input.stripePaid && input.stripePaid !== '$0.00'
+            ? [{ label: 'Stripe paid', amount: input.stripePaid, tone: 'paid' as const }]
+            : []),
+          ...(input.cashPaid && input.cashPaid !== '$0.00'
+            ? [{ label: 'Cash paid', amount: input.cashPaid, tone: 'paid' as const }]
+            : []),
+          { label: 'Total paid', amount: input.fullPaid, tone: 'paid' as const },
+          { label: 'Balance due', amount: input.remainingBalance },
+        ];
+
+  for (const line of moneyLines) {
+    if (y > 700) {
+      doc.addPage();
+      y = margin;
+    }
+    if (line.tone === 'total') doc.setFontSize(12);
+    doc.text(line.label, 320, y);
+    doc.text(line.amount, 480, y, { align: 'right' });
+    if (line.tone === 'total') doc.setFontSize(9);
+    y += line.tone === 'total' ? 18 : 14;
   }
+
   if (input.taxAmount) {
     doc.text(`Tax: ${input.taxAmount}`, 400, y);
     y += 14;
   }
-  doc.setFontSize(12);
-  doc.text(`Total: ${input.finalTotal}`, 400, y);
-  y += 16;
-  doc.setFontSize(9);
-  const payLine = [
-    `Deposit: ${input.depositPaid}`,
-    input.stripePaid && input.stripePaid !== '$0.00' ? `Stripe: ${input.stripePaid}` : null,
-    input.cashPaid && input.cashPaid !== '$0.00' ? `Cash: ${input.cashPaid}` : null,
-    `Total paid: ${input.fullPaid}`,
-    `Balance: ${input.remainingBalance}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  doc.text(payLine, margin, y);
 
   return new Uint8Array(doc.output('arraybuffer'));
 }

@@ -6,13 +6,13 @@ export type VehicleDurationLine = { serviceSlug: string; vehicleClass: string };
 export function serviceDurationMinutes(serviceSlug: string, vehicleClass: string): number {
   const slug = String(serviceSlug ?? '').toLowerCase();
   const vc = normalizeVehicleClass(vehicleClass);
-  const isSuv = vc === 'suv_truck';
+  const isLarge = vc === 'suv' || vc === 'truck';
 
   if (slug.includes('ceramic')) return 24 * 60;
-  if (slug.includes('full')) return isSuv ? 180 : 150;
-  if (slug.includes('interior')) return isSuv ? 120 : 90;
-  if (slug.includes('exterior') || slug.includes('wash')) return isSuv ? 75 : 60;
-  return isSuv ? 90 : 75;
+  if (slug.includes('full')) return vc === 'truck' ? 195 : isLarge ? 180 : 150;
+  if (slug.includes('interior')) return vc === 'truck' ? 135 : isLarge ? 120 : 90;
+  if (slug.includes('exterior') || slug.includes('wash')) return vc === 'truck' ? 90 : isLarge ? 75 : 60;
+  return vc === 'truck' ? 100 : isLarge ? 90 : 75;
 }
 
 export function totalBookingDurationMinutes(lines: VehicleDurationLine[]): number {

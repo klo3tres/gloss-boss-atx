@@ -45,9 +45,18 @@ export function WorkOrderCustomCharges({
           ))}
         </select>
         <input name='amountDollars' placeholder='Amount ($)' className='gb-input text-xs' required />
-        <input name='label' placeholder='Description (optional)' className='gb-input text-xs sm:col-span-2' />
-        <button type='submit' className='sm:col-span-2 rounded-xl border border-gold/40 px-3 py-2 text-[10px] font-black uppercase text-gold-soft'>
-          Add line item
+        <input name='label' placeholder='Title / description' className='gb-input text-xs sm:col-span-2' />
+        <input name='notes' placeholder='Notes (optional)' className='gb-input text-xs sm:col-span-2' />
+        <label className='flex items-center gap-2 text-xs text-zinc-400'>
+          <input type='checkbox' name='customerVisible' value='true' defaultChecked className='rounded' />
+          Show on customer receipt
+        </label>
+        <label className='flex items-center gap-2 text-xs text-zinc-400'>
+          <input type='checkbox' name='taxable' value='true' className='rounded' />
+          Taxable
+        </label>
+        <button type='submit' className='sm:col-span-2 rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black'>
+          Add charge / discount
         </button>
       </form>
     </div>

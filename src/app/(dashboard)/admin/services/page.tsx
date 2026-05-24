@@ -130,7 +130,9 @@ export default async function AdminServicesPricingPage({
                 <div>
                   <p className='text-xs uppercase tracking-widest text-gold-soft'>{slug}</p>
                   <p className='text-lg font-bold text-white'>{title}</p>
-                  <p className='text-sm text-zinc-400'>{row.vehicle_class === 'suv_truck' ? 'SUV / Truck' : 'Sedan'}</p>
+                  <p className='text-sm text-zinc-400'>
+                    {row.vehicle_class === 'truck' ? 'Truck' : row.vehicle_class === 'suv' || row.vehicle_class === 'suv_truck' ? 'SUV' : 'Sedan'}
+                  </p>
                   {showQuote ? <p className='text-xs font-semibold text-amber-200/90'>Public price: Quote — set a custom amount below to publish a starting price.</p> : null}
                 </div>
                 <form action={updateServicePriceCentsAction} className='flex flex-wrap items-end gap-2'>

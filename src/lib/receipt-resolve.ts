@@ -5,6 +5,7 @@ import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
 import { buildReceiptPdfBytes, type ReceiptPdfInput } from '@/lib/receipt-pdf';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
 import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 
 type Row = Record<string, unknown>;
@@ -216,7 +217,9 @@ export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Ar
     vehicles: vehicleRows.length
       ? vehicleRows
       : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug), color: '—', price: displayMoney(pricing.finalTotalCents) }],
-    baseTotal: displayMoney(pricing.prePromoCents),
+    baseTotal: displayMoney(pricing.vehicleSubtotalCents),
+    addOnSubtotal: pricing.addOnSubtotalCents > 0 ? displayMoney(pricing.addOnSubtotalCents) : '',
+    breakdownLines: buildReceiptBreakdown(job, pricing),
     discounts: discountTotal > 0 ? displayMoney(discountTotal) : '',
     taxAmount: '',
     finalTotal: displayMoney(pricing.finalTotalCents),

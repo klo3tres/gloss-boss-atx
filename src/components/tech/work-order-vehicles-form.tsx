@@ -208,7 +208,7 @@ export function WorkOrderVehiclesForm({
                     onChange={(e) => applyServicePrice(i, v.service, e.target.value)}
                     className='gb-input'
                   >
-                    {['sedan', 'suv', 'truck', 'van', 'luxury'].map((c) => (
+                    {['sedan', 'suv', 'truck'].map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>

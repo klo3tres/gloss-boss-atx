@@ -8,7 +8,7 @@ import {
 
 type Row = { id: string; vehicle_class: string; price_cents: number; services: unknown };
 
-/** Hide legacy suv/truck rows when suv_truck exists — admin UI shows 2 tiers only. */
+/** Admin UI: one row per service × sedan / suv / truck (legacy suv_truck → suv). */
 export function filterServicePriceRowsForAdminUi(rows: Row[]): Row[] {
   const byService = new Map<string, Map<UiVehicleClass, Row>>();
 
@@ -32,7 +32,7 @@ export function filterServicePriceRowsForAdminUi(rows: Row[]): Row[] {
     const uiClass = normalizeVehicleClass(row.vehicle_class);
     const bucket = byService.get(key) ?? new Map();
     const existing = bucket.get(uiClass);
-    if (!existing || uiClass === 'suv_truck') {
+    if (!existing || (existing.price_cents <= 0 && row.price_cents > 0)) {
       bucket.set(uiClass, { ...row, vehicle_class: uiClass });
     }
     byService.set(key, bucket);

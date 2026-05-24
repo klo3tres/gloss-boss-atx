@@ -47,7 +47,7 @@ type Body = {
   notes?: string;
 };
 
-const ALLOWED_CLASS = new Set(['sedan', 'suv_truck']);
+const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
 
 export async function POST(request: Request) {
   try {

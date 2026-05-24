@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
 import { PremiumBadge } from '@/components/ui/premium';
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 
 export type ReceiptDocumentVehicle = {
   name: string;
@@ -23,11 +24,14 @@ export type ReceiptDocumentProps = {
   customerPhone: string;
   serviceAddress: string;
   vehicles: ReceiptDocumentVehicle[];
+  breakdownLines?: ReceiptBreakdownLine[];
   baseTotal: string;
+  addOnSubtotal?: string;
   onlineDiscount: string;
   multiCarDiscount: string;
   promoLabel: string;
   promoDiscount: string;
+  manualDiscount?: string;
   depositPaid: string;
   cashPaid: string;
   stripePaid?: string;
@@ -133,54 +137,82 @@ export function ReceiptDocument(props: ReceiptDocumentProps) {
 
       <section className='border-t border-zinc-200 bg-zinc-50 p-6'>
         <div className='ml-auto max-w-sm space-y-2 text-sm'>
-          <div className='flex justify-between'>
-            <span>Subtotal</span>
-            <span className='font-mono'>{props.baseTotal}</span>
-          </div>
-          <div className='flex justify-between text-zinc-600'>
-            <span>Online discount</span>
-            <span className='font-mono'>{props.onlineDiscount}</span>
-          </div>
-          <div className='flex justify-between text-zinc-600'>
-            <span>Multi-car</span>
-            <span className='font-mono'>{props.multiCarDiscount}</span>
-          </div>
-          <div className='flex justify-between text-zinc-600'>
-            <span>{props.promoLabel}</span>
-            <span className='font-mono'>{props.promoDiscount}</span>
-          </div>
-          {props.taxAmount ? (
-            <div className='flex justify-between text-zinc-600'>
-              <span>Tax</span>
-              <span className='font-mono'>{props.taxAmount}</span>
-            </div>
-          ) : null}
-          <div className='flex justify-between border-t border-zinc-300 pt-3 text-lg font-black'>
-            <span>Total due</span>
-            <span className='font-mono text-gold'>{props.finalTotal}</span>
-          </div>
-          <div className='flex justify-between text-zinc-600'>
-            <span>Deposit paid</span>
-            <span className='font-mono'>{props.depositPaid}</span>
-          </div>
-          {props.stripePaid ? (
-            <div className='flex justify-between text-zinc-600'>
-              <span>Stripe paid</span>
-              <span className='font-mono'>{props.stripePaid}</span>
-            </div>
-          ) : null}
-          <div className='flex justify-between text-zinc-600'>
-            <span>Cash paid</span>
-            <span className='font-mono'>{props.cashPaid}</span>
-          </div>
-          <div className='flex justify-between font-semibold text-zinc-700'>
-            <span>Total paid</span>
-            <span className='font-mono'>{props.fullPaid}</span>
-          </div>
-          <div className='flex justify-between font-semibold'>
-            <span>Balance</span>
-            <span className='font-mono'>{props.remainingBalance}</span>
-          </div>
+          {props.breakdownLines && props.breakdownLines.length > 0 ? (
+            props.breakdownLines.map((line, i) => (
+              <div
+                key={`${line.label}-${i}`}
+                className={`flex justify-between gap-4 ${
+                  line.tone === 'total' ? 'border-t border-zinc-300 pt-3 text-lg font-black' : line.tone === 'discount' ? 'text-emerald-800' : ''
+                }`}
+              >
+                <span className={line.tone === 'total' ? '' : 'text-zinc-600'}>{line.label}</span>
+                <span className={`font-mono shrink-0 ${line.tone === 'total' ? 'text-gold' : ''}`}>{line.amount}</span>
+              </div>
+            ))
+          ) : (
+            <>
+              <div className='flex justify-between'>
+                <span>Base services subtotal</span>
+                <span className='font-mono'>{props.baseTotal}</span>
+              </div>
+              {props.addOnSubtotal && props.addOnSubtotal !== '$0.00' ? (
+                <div className='flex justify-between text-zinc-600'>
+                  <span>Add-ons subtotal</span>
+                  <span className='font-mono'>{props.addOnSubtotal}</span>
+                </div>
+              ) : null}
+              <div className='flex justify-between text-zinc-600'>
+                <span>Online booking discount</span>
+                <span className='font-mono'>{props.onlineDiscount}</span>
+              </div>
+              <div className='flex justify-between text-zinc-600'>
+                <span>Multi-car discount</span>
+                <span className='font-mono'>{props.multiCarDiscount}</span>
+              </div>
+              <div className='flex justify-between text-zinc-600'>
+                <span>{props.promoLabel}</span>
+                <span className='font-mono'>{props.promoDiscount}</span>
+              </div>
+              {props.manualDiscount && props.manualDiscount !== '$0.00' ? (
+                <div className='flex justify-between text-emerald-800'>
+                  <span>Manual discount</span>
+                  <span className='font-mono'>{props.manualDiscount}</span>
+                </div>
+              ) : null}
+              {props.taxAmount ? (
+                <div className='flex justify-between text-zinc-600'>
+                  <span>Tax</span>
+                  <span className='font-mono'>{props.taxAmount}</span>
+                </div>
+              ) : null}
+              <div className='flex justify-between border-t border-zinc-300 pt-3 text-lg font-black'>
+                <span>Final total</span>
+                <span className='font-mono text-gold'>{props.finalTotal}</span>
+              </div>
+              <div className='flex justify-between text-zinc-600'>
+                <span>Deposit paid</span>
+                <span className='font-mono'>{props.depositPaid}</span>
+              </div>
+              {props.stripePaid ? (
+                <div className='flex justify-between text-zinc-600'>
+                  <span>Stripe paid</span>
+                  <span className='font-mono'>{props.stripePaid}</span>
+                </div>
+              ) : null}
+              <div className='flex justify-between text-zinc-600'>
+                <span>Cash paid</span>
+                <span className='font-mono'>{props.cashPaid}</span>
+              </div>
+              <div className='flex justify-between font-semibold text-zinc-700'>
+                <span>Total paid</span>
+                <span className='font-mono'>{props.fullPaid}</span>
+              </div>
+              <div className='flex justify-between font-semibold'>
+                <span>Balance due</span>
+                <span className='font-mono'>{props.remainingBalance}</span>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
