@@ -136,9 +136,9 @@ export function WorkOrderBalanceCheckout({
           Balance due <span className='font-mono text-gold-soft'>{balanceDue}</span>
         </p>
         <p className='text-zinc-400 sm:col-span-2'>
-          Stripe checkout amount{' '}
+          Checkout amount{' '}
           <span className='font-mono text-white'>{sessionAmount ?? balanceDue}</span>
-          {sessionAmount ? ' (session created)' : ' (before opening)'}
+          {sessionAmount ? ' (session created)' : ''}
         </p>
       </div>
 
