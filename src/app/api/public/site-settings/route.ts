@@ -30,13 +30,13 @@ export async function GET() {
     }
     let navbarLogo: string | null = null;
     let bookingAvailability: BookingAvailabilityConfig = { ...DEFAULT_BOOKING_AVAILABILITY, blackoutDates: [] };
-    let allowFreeTestPromo = false;
+    const { isFreePromoEnabled } = await import('@/lib/free-promo');
+    let allowFreeTestPromo = await isFreePromoEnabled(client);
     for (const raw of rows ?? []) {
       const row = (raw ?? {}) as Record<string, unknown>;
       const key = typeof row.key === 'string' ? row.key : '';
       const val = typeof row.value === 'string' ? row.value.trim() : '';
       if (key === 'navbar_logo' && val) navbarLogo = val;
-      if (row.allow_free_test_promo === true || (key === 'allow_free_test_promo' && val.toLowerCase() === 'true')) allowFreeTestPromo = true;
       if (key === 'booking_availability' && val) {
         try {
           bookingAvailability = parseBookingAvailabilityConfig(JSON.parse(val));

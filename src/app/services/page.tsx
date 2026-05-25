@@ -42,6 +42,7 @@ export default function ServicesPage() {
   const [loaded, setLoaded] = useState(false);
   const [fleetEnabled, setFleetEnabled] = useState(false);
   const [fleetBlurb, setFleetBlurb] = useState("");
+  const [fleetPricing, setFleetPricing] = useState<PublicSiteDataPayload["fleetPricing"] | null>(null);
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : emptyDeals;
@@ -72,6 +73,7 @@ export default function ServicesPage() {
         setOffers(data.offers ?? []);
         setFleetEnabled(Boolean(data.fleetServicesEnabled));
         setFleetBlurb(String(data.fleetServicesBlurb ?? ""));
+        setFleetPricing(data.fleetPricing ?? null);
         setSchemaWarnings(data.schemaWarnings ?? []);
         setLoaded(true);
       })
@@ -220,12 +222,20 @@ export default function ServicesPage() {
             <h2 className="gb-display-serif mt-2 text-2xl font-black uppercase text-white sm:text-3xl">Fleet & Business Detailing</h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
             <ul className="mt-4 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2">
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">3–5 vehicles — from $65/vehicle exterior wash</li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">6–10 vehicles — from $55/vehicle exterior wash</li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">10+ vehicles — custom quote</li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">Interior / fleet detail & monthly plans — custom quote</li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+                {fleetPricing?.smallLabel ?? "Small fleet (1–5 vehicles)"} — {fleetPricing?.smallDetail ?? "from $65/vehicle exterior wash"}
+              </li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+                {fleetPricing?.mediumLabel ?? "Medium fleet (6–15 vehicles)"} — {fleetPricing?.mediumDetail ?? "from $55/vehicle exterior wash"}
+              </li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+                {fleetPricing?.largeLabel ?? "Large fleet (15+ vehicles)"} — {fleetPricing?.largeDetail ?? "custom quote"}
+              </li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
+                Recurring: {fleetPricing?.weeklyDiscount ?? "5% weekly"} · {fleetPricing?.biweeklyDiscount ?? "3% biweekly"} · {fleetPricing?.monthlyDiscount ?? "10% monthly"}
+              </li>
             </ul>
-            <p className="mt-3 text-xs text-zinc-500">Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site.</p>
+            <p className="mt-3 text-xs text-zinc-500">{fleetPricing?.commercialNotes ?? "Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site."}</p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link href="/contact" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">
                 Request fleet quote

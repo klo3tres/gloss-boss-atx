@@ -55,6 +55,18 @@ export type PublicSiteDataPayload = {
   googleReviewUrl: string;
   fleetServicesEnabled?: boolean;
   fleetServicesBlurb?: string;
+  fleetPricing?: {
+    smallLabel: string;
+    smallDetail: string;
+    mediumLabel: string;
+    mediumDetail: string;
+    largeLabel: string;
+    largeDetail: string;
+    weeklyDiscount: string;
+    biweeklyDiscount: string;
+    monthlyDiscount: string;
+    commercialNotes: string;
+  };
 };
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */

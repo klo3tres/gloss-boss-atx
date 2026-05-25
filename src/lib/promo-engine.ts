@@ -150,13 +150,25 @@ export function validatePromoRow(promo: PromoRow, input: PromoValidationInput): 
   }
 
   if (code === 'FREE') {
-    if (!input.allowFreeTestPromo) return { ok: false, error: 'FREE promo is disabled. Enable in Admin → Promotions.' };
-    if (input.vehicleLines.length !== 1) return { ok: false, error: 'FREE applies to one sedan exterior wash only.' };
-    const line = input.vehicleLines[0]!;
-    if (line.serviceSlug !== 'exterior-wash' || normalizeVehicleClass(line.vehicleClass) !== 'sedan') {
-      return { ok: false, error: 'FREE applies to sedan exterior wash only.' };
+    const appliesOrder =
+      rules.appliesTo === 'order' || rules.appliesTo === 'base_services' || promo.discount_type === 'comp' || !rules.appliesTo;
+    if (!appliesOrder && rules.services?.length) {
+      const bad = input.vehicleLines.some((l) => !rules.services!.includes(str(l.serviceSlug).toLowerCase()));
+      if (bad) return { ok: false, error: `FREE is limited to: ${rules.services.join(', ')}.` };
     }
-    return { ok: true, code, comped: true, testOneDollar: false, promoDiscountCents: 0, rules, message: 'FREE promo applied — $0 total.' };
+    if (rules.vehicleClasses?.length) {
+      const bad = input.vehicleLines.some((l) => !rules.vehicleClasses!.includes(normalizeVehicleClass(l.vehicleClass)));
+      if (bad) return { ok: false, error: `FREE is limited to vehicle classes: ${rules.vehicleClasses.join(', ')}.` };
+    }
+    return {
+      ok: true,
+      code,
+      comped: true,
+      testOneDollar: false,
+      promoDiscountCents: 0,
+      rules: { ...rules, appliesTo: 'order' },
+      message: 'Promo FREE applied — $0.00 total.',
+    };
   }
 
   if (code === 'TEST1') {

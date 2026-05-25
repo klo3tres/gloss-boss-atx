@@ -76,6 +76,24 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
   const admin = tryCreateAdminSupabase();
   if (!admin) notFound();
 
+  try {
+  return await renderReceiptPage(admin, id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[admin/receipts] render failed', { id, msg });
+    return (
+      <DashboardShell title='Receipt error' subtitle='Server render failed — see message below.' role='admin'>
+        <p className='rounded-xl border border-red-500/40 bg-red-950/50 p-4 text-sm text-red-100'>{msg}</p>
+        <Link href='/admin/receipts' className='mt-4 inline-block text-xs font-bold uppercase text-gold-soft underline'>
+          Back to receipts
+        </Link>
+      </DashboardShell>
+    );
+  }
+}
+
+async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, id: string) {
+
   let receipt = (await admin.from('receipts').select('*').eq('id', id).maybeSingle()).data as Row | null;
   if (!receipt) receipt = (await admin.from('receipts').select('*').eq('payment_id', id).maybeSingle()).data as Row | null;
   let paymentId = str(receipt?.payment_id || id);

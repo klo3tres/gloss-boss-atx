@@ -15,7 +15,7 @@ import {
 import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { getBookableDateKeys, getTimeSlotsForDate, dateKeyLocal } from '@/lib/booking-schedule-slots';
 import { addonPriceCentsForVehicle, sumPerVehicleAddOnCents } from '@/lib/addon-vehicle-pricing';
-import { clearBookingDraft, readBookingDraft, writeBookingDraft } from '@/lib/booking-draft';
+import { clearBookingDraft, loadBookingDraftForWizard, writeBookingDraft } from '@/lib/booking-draft';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { slotConflictsWithBlocks, type BookedBlock } from '@/lib/booking-slot-blocking';
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
@@ -105,6 +105,9 @@ export function BookingWizard() {
   const [appliedPromoCode, setAppliedPromoCode] = useState('');
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
   const [allowFreeTestPromo, setAllowFreeTestPromo] = useState(false);
+  const [promoComped, setPromoComped] = useState(false);
+  const [promoQuoteFinalCents, setPromoQuoteFinalCents] = useState<number | null>(null);
+  const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
   type SavedBookingRef = {
     appointmentId?: string;
@@ -511,12 +514,7 @@ export function BookingWizard() {
     });
   }, [bookingDateKey, bookingRules, filteredSlotOpts, bookedBlocks, bookingDurationMinutes]);
 
-  const freePromoEligible =
-    freePromoRequested &&
-    allowFreeTestPromo &&
-    bookingLines.length === 1 &&
-    serviceSlug === 'exterior-wash' &&
-    normalizeVehicleClass(vehicleClass) === 'sedan';
+  const freePromoEligible = freePromoRequested && promoComped;
 
   const priceSummary = useMemo(() => {
     const vehicleLineCents: number[] = [];
@@ -559,17 +557,19 @@ export function BookingWizard() {
     });
     if ('kind' in bd) return null;
 
-    const finalBreakdown = freePromoEligible
-      ? ({
-          ...bd,
-          finalTotalCents: 0,
-          depositCents: 0,
-          offerDiscountCents: bd.prePromoCents,
-        } as BookingPricingBreakdown)
-      : (bd as BookingPricingBreakdown);
+    const promoFinal = promoQuoteFinalCents ?? (freePromoEligible ? 0 : null);
+    const finalBreakdown =
+      promoFinal != null
+        ? ({
+            ...bd,
+            finalTotalCents: promoFinal,
+            depositCents: promoFinal === 0 ? 0 : bd.depositCents,
+            promoDiscountCents: Math.max(0, bd.prePromoCents - promoFinal),
+          } as BookingPricingBreakdown)
+        : (bd as BookingPricingBreakdown);
 
     return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
-  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible]);
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents]);
 
   const pricePreviewText =
     priceSummary?.kind === 'quote'
@@ -653,8 +653,16 @@ export function BookingWizard() {
   );
 
   useEffect(() => {
-    const draft = readBookingDraft();
-    if (!draft) return;
+    const loaded = loadBookingDraftForWizard();
+    if (loaded.kind === 'expired') {
+      setDraftExpiredNotice(true);
+      if (loaded.guestName) setGuestName(loaded.guestName);
+      if (loaded.guestEmail) setGuestEmail(loaded.guestEmail);
+      if (loaded.guestPhone) setGuestPhone(loaded.guestPhone);
+      return;
+    }
+    if (loaded.kind !== 'fresh') return;
+    const draft = loaded.draft;
     if (draft.serviceSlug) setServiceSlug(draft.serviceSlug);
     if (draft.vehicleClass) setVehicleClass(draft.vehicleClass as VehicleClass);
     if (draft.vehicleDescription) setVehicleDescription(draft.vehicleDescription);
@@ -753,6 +761,8 @@ export function BookingWizard() {
     setPromoMessage(null);
     if (!code) {
       setAppliedPromoCode('');
+      setPromoComped(false);
+      setPromoQuoteFinalCents(null);
       setPromoMessage('Enter a promo code first.');
       return;
     }
@@ -787,13 +797,18 @@ export function BookingWizard() {
         message?: string;
         comped?: boolean;
         testOneDollar?: boolean;
+        finalTotalCents?: number;
       };
       if (!res.ok || !json.ok) {
         setAppliedPromoCode('');
+        setPromoComped(false);
+        setPromoQuoteFinalCents(null);
         setPromoMessage(json.error ?? 'Promo could not be applied.');
         return;
       }
       setAppliedPromoCode(code);
+      setPromoComped(Boolean(json.comped));
+      setPromoQuoteFinalCents(typeof json.finalTotalCents === 'number' ? json.finalTotalCents : null);
       if (json.comped || code === 'FREE') setPaymentChoice('full');
       if (json.testOneDollar || code === 'TEST1') setPaymentChoice('full');
       setPromoMessage(json.message ?? `${code} applied.`);
@@ -1080,6 +1095,11 @@ export function BookingWizard() {
 
   return (
     <form onSubmit={handleSubmit} className='space-y-8'>
+      {draftExpiredNotice ? (
+        <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
+          Your old booking draft expired. Start fresh — we kept your name and email.
+        </p>
+      ) : null}
       {catalogRefreshing ? (
         <div className='flex items-center gap-2 text-xs text-zinc-500' aria-live='polite'>
           <span className='inline-block h-3 w-3 animate-spin rounded-full border border-gold/30 border-t-gold-soft' aria-hidden />
@@ -1496,7 +1516,7 @@ export function BookingWizard() {
                 </p>
               ) : promoCode.trim().toUpperCase() === 'FREE' ? (
                 <p className='mt-2 text-xs text-amber-200'>
-                  FREE is gated by admin settings and only applies to a Sedan Exterior Wash test.
+                  Enable FREE in Admin → Promotions (FREE row), then tap Apply. Total becomes $0.00 and Stripe is skipped.
                 </p>
               ) : null}
             </label>

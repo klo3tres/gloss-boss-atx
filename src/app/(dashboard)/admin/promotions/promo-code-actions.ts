@@ -68,13 +68,16 @@ export async function savePromoCodeAction(formData: FormData) {
       console.warn('[promotions] invalid rules JSON ignored');
     }
   }
+  if (formData.get('testModeOnly') === 'on') rules = { ...rules, testModeOnly: true };
+  if (formData.get('stackable') === 'on') rules = { ...rules, stackable: true };
+  if (isFree && !rules.appliesTo) rules = { ...rules, appliesTo: 'order' };
   const row = {
     code,
     description: String(formData.get('description') ?? '').trim() || null,
     enabled: formData.get('enabled') === 'on',
     discount_type: isFree ? 'comp' : String(formData.get('discountType') ?? 'percent'),
     discount_value: isFree ? 100 : Number(formData.get('discountValue') ?? 0),
-    service_restrictions: isFree && restrictions.length === 0 ? ['exterior-wash'] : restrictions,
+    service_restrictions: isFree ? (restrictions.length > 0 ? restrictions : []) : restrictions,
     rules,
     starts_at: String(formData.get('startsAt') ?? '').trim() || null,
     ends_at: String(formData.get('endsAt') ?? '').trim() || null,
@@ -96,35 +99,19 @@ export async function savePromoCodeAction(formData: FormData) {
   revalidatePath('/admin/promotions');
 }
 
+/** @deprecated Use savePromoCodeAction on the FREE row — single control only. */
 export async function setFreeTestPromoSettingAction(formData: FormData) {
   const gate = await requireAdmin();
   if (!gate.ok) return;
   const enabled = formData.get('allowFreeTestPromo') === 'on';
-  const now = new Date().toISOString();
-  const settingPatch = await gate.admin.from('site_settings').update({ allow_free_test_promo: enabled, updated_at: now }).neq('key', '__never__');
-  if (settingPatch.error && !isPromoSchemaDrift(settingPatch.error.message)) {
-    console.warn('[promotions] FREE setting column update failed', settingPatch.error.message);
-  }
-  await gate.admin
-    .from('site_settings')
-    .upsert({ key: 'allow_free_test_promo', value: enabled ? 'true' : 'false', updated_at: now }, { onConflict: 'key' });
-  const lean = await gate.admin
-    .from('promo_codes')
-    .upsert({ code: 'FREE', description: 'Sedan Exterior Wash test promo' }, { onConflict: 'code' });
-  if (lean.error) console.warn('[promotions] FREE lean upsert failed', lean.error.message);
-  await updatePromoSafely(gate.admin, { code: 'FREE' }, {
-    code: 'FREE',
-    description: 'Sedan Exterior Wash test promo',
-    enabled,
-    discount_type: 'comp',
-    discount_value: 100,
-    service_restrictions: ['exterior-wash'],
-    archived: false,
-    archived_at: null,
-    updated_at: now,
-  });
-  revalidatePath('/admin/promotions');
-  revalidatePath('/book');
+  const fd = new FormData();
+  fd.set('code', 'FREE');
+  fd.set('enabled', enabled ? 'on' : 'off');
+  fd.set('description', 'Owner test comp — full order $0');
+  fd.set('discountType', 'comp');
+  fd.set('discountValue', '100');
+  fd.set('rulesJson', '{"appliesTo":"order"}');
+  await savePromoCodeAction(fd);
 }
 
 export async function archivePromoCodeAction(formData: FormData) {

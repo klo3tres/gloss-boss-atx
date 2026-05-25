@@ -62,6 +62,8 @@ export async function notifyBusinessNewBookingFull(params: {
   appointmentId: string;
   vehicles: string;
   bookingNumber?: string | null;
+  serviceAddress?: string | null;
+  comped?: boolean;
 }): Promise<void> {
   const admin = tryCreateAdminSupabase();
   const whenLabel = new Date(params.whenIso).toLocaleString('en-US', {
@@ -70,9 +72,11 @@ export async function notifyBusinessNewBookingFull(params: {
     timeStyle: 'short',
   });
   const dashUrl = adminWorkOrderUrl(params.appointmentId);
+  const icsUrl = `${appBaseUrl()}/api/calendar/appointment/${params.appointmentId}`;
   const ref = params.bookingNumber?.trim() || params.appointmentId.slice(0, 8).toUpperCase();
   const total = money(params.totalCents);
   const deposit = money(params.depositCents);
+  const addr = params.serviceAddress?.trim() || '';
 
   const smsBody = [
     'Gloss Boss ATX — New booking',
@@ -163,7 +167,10 @@ export async function notifyBusinessNewBookingFull(params: {
       <p style="margin:8px 0 0;font-size:14px;color:#a1a1aa;">When: ${whenLabel}</p>
       <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Total ${total} · Deposit ${deposit}</p>
       <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${params.vehicles}</p>
+      ${addr ? `<p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${addr}</p>` : ''}
+      ${params.comped ? '<p style="margin:8px 0 0;font-size:13px;color:#86efac;">FREE / comp booking</p>' : ''}
     </div>
+    <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">Calendar: <a href="${icsUrl}" style="color:#fcd34d;">Add to calendar (.ics)</a> — Google Calendar API not required.</p>
     <p style="margin:20px 0 0;text-align:center;">
       <a href="${dashUrl}" style="display:inline-block;padding:14px 28px;background:#d4a64d;color:#000;font-weight:800;text-decoration:none;border-radius:8px;font-size:14px;">Open work order</a>
     </p>`;
@@ -186,7 +193,7 @@ export async function notifyBusinessNewBookingFull(params: {
       channel: 'email',
       status: sent.ok ? 'sent' : 'failed',
       error_message: sent.ok ? null : sent.error ?? 'send failed',
-      payload: { to: emailTo, dashboard_url: dashUrl },
+      payload: { to: emailTo, dashboard_url: dashUrl, ics_url: icsUrl, calendar_fallback: true },
     });
   } catch (e) {
     await insertOutbox(admin, {

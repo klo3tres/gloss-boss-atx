@@ -164,9 +164,8 @@ export async function POST(request: Request) {
     const siteSettingsRows = siteSettingsQuery.data;
     const siteSettings = (siteSettingsRows ?? []) as Array<Record<string, unknown>>;
     const publicBookingsOff = siteSettings.some((r) => r.accept_public_bookings === false);
-    const allowFreeTestPromo = siteSettings.some(
-      (r) => r.allow_free_test_promo === true || (String(r.key ?? '') === 'allow_free_test_promo' && String(r.value ?? '').toLowerCase() === 'true'),
-    );
+    const { isFreePromoEnabled } = await import('@/lib/free-promo');
+    const allowFreeTestPromo = await isFreePromoEnabled(admin);
     if (publicBookingsOff) {
       return NextResponse.json(
         { error: 'Online booking is temporarily paused. Please call Gloss Boss ATX to schedule.' },
@@ -511,6 +510,8 @@ export async function POST(request: Request) {
       depositCents: depositAmountCents,
       appointmentId: appointment.id,
       vehicles: vehicleDescriptionJoined,
+      serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
+      comped: freePromoApplied,
     }).catch(() => {});
 
     return NextResponse.json({

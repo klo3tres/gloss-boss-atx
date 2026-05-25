@@ -107,6 +107,77 @@ export async function rebuildReceiptFromWorkOrderActionState(_prev: ActionResult
   return generateWorkOrderReceiptActionState(_prev, formData);
 }
 
+/** Void duplicate/extra payment rows (keeps earliest payments up to job total), then rebuild receipt. */
+export async function voidExtrasAndRebuildActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const gate = await requireStaff();
+  if (!gate) return actionErr('Not authorized.');
+
+  const appointmentId = str(formData.get('appointmentId'));
+  const fallbackBookingId = str(formData.get('fallbackBookingId'));
+  if (!appointmentId && !fallbackBookingId) return actionErr('Missing work order.');
+
+  let payQ = gate.admin.from('payments').select('id, amount_cents, status, paid_at, created_at').order('paid_at', { ascending: true });
+  payQ = appointmentId ? payQ.eq('appointment_id', appointmentId) : payQ.eq('fallback_booking_id', fallbackBookingId);
+  const { data: payments, error: payErr } = await payQ;
+  if (payErr) return actionErr(payErr.message);
+
+  const table = fallbackBookingId ? 'booking_fallbacks' : 'appointments';
+  const jobId = fallbackBookingId || appointmentId;
+  const { data: job } = await gate.admin.from(table).select('final_total_cents, total_cents').eq('id', jobId).maybeSingle();
+  if (!job) return actionErr('Work order not found.');
+
+  const jobRow = job as Record<string, unknown>;
+  const targetCents = Number(jobRow.final_total_cents ?? jobRow.total_cents) || 0;
+  const active = (payments ?? []).filter((p) => {
+    const row = p as Record<string, unknown>;
+    const st = str(row.status).toLowerCase();
+    return st && !st.includes('void') && st !== 'failed';
+  }) as Array<Record<string, unknown>>;
+
+  const totalPaid = active.reduce((s, p) => s + (Number(p.amount_cents) || 0), 0);
+  if (totalPaid <= targetCents) {
+    return actionErr('No extra payments detected — totals already match or are under job total.');
+  }
+
+  let running = 0;
+  const toVoid: string[] = [];
+  for (const p of active) {
+    const id = str(p.id);
+    const amt = Number(p.amount_cents) || 0;
+    if (!id) continue;
+    if (running + amt <= targetCents) {
+      running += amt;
+      continue;
+    }
+    toVoid.push(id);
+  }
+
+  if (toVoid.length === 0) {
+    return actionErr('Could not identify which payments to void — void manually, then rebuild.');
+  }
+
+  const now = new Date().toISOString();
+  for (const paymentId of toVoid) {
+    let { error } = await gate.admin
+      .from('payments')
+      .update({ status: 'voided', voided_at: now, voided_by: gate.userId, updated_at: now })
+      .eq('id', paymentId);
+    if (error && /voided_at|column/i.test(error.message)) {
+      ({ error } = await gate.admin.from('payments').update({ status: 'voided', updated_at: now }).eq('id', paymentId));
+    }
+    if (error) return actionErr(error.message);
+  }
+
+  const rebuild = await generateWorkOrderReceiptActionState(null, formData);
+  if (!rebuild.ok) return rebuild;
+
+  const workOrderPath = str(formData.get('workOrderPath'));
+  revalidatePath('/admin/receipts');
+  if (workOrderPath) revalidatePath(workOrderPath);
+  revalidatePath(`/tech/work-orders/${jobId}`);
+  return actionOk(`Voided ${toVoid.length} extra payment(s) and rebuilt receipt.`);
+}
+
 export async function voidPaymentAction(formData: FormData) {
   return voidPaymentActionState(null, formData);
 }

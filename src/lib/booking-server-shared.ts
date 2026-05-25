@@ -618,6 +618,12 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
     message: null,
   };
 
+  let allowFreeTestPromo = params.allowFreeTestPromo;
+  if (promoCode === 'FREE' && allowFreeTestPromo !== true) {
+    const { isFreePromoEnabled } = await import('@/lib/free-promo');
+    allowFreeTestPromo = await isFreePromoEnabled(admin);
+  }
+
   if (promoCode) {
     const promoRow = await loadPromoByCode(admin, promoCode);
     if (!promoRow) {
@@ -637,7 +643,7 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
       orderCents: breakdown.prePromoCents,
       addOnSlugs: params.addOns,
       addOnCentsBySlug,
-      allowFreeTestPromo: params.allowFreeTestPromo,
+      allowFreeTestPromo: allowFreeTestPromo === true,
     });
     if (!validated.ok) {
       return { ok: false, error: validated.error, status: 400 };

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   rebuildReceiptFromWorkOrderActionState,
   recordManualPaymentActionState,
+  voidExtrasAndRebuildActionState,
   voidPaymentActionState,
 } from '@/app/(dashboard)/admin/payment-ops-actions';
 import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
@@ -144,6 +145,26 @@ export function WorkOrderReceiptPanel({
       {canManagePayments ? (
         <>
           <div className='mt-4 flex flex-wrap gap-3'>
+            {pricing.hasOverpayment ? (
+              <ToastActionForm
+                action={async (prev, fd) => {
+                  fd.set('workOrderPath', workOrderPath);
+                  const r = await voidExtrasAndRebuildActionState(prev, fd);
+                  afterAction(r.ok ? r.message ?? 'Extras voided' : r.error ?? 'Failed', r.ok);
+                  return r;
+                }}
+              >
+                {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
+                {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
+                <input type='hidden' name='workOrderPath' value={workOrderPath} />
+                <SubmitStatusButton
+                  pendingText='Fixing…'
+                  className='rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase text-red-200'
+                >
+                  Void extras & rebuild receipt
+                </SubmitStatusButton>
+              </ToastActionForm>
+            ) : null}
             <ToastActionForm
               action={async (prev, fd) => {
                 fd.set('workOrderPath', workOrderPath);

@@ -63,7 +63,8 @@ function parseDollars(raw: string): number | null {
   const cleaned = raw.replace(/[^0-9.-]/g, '');
   if (!cleaned) return null;
   const n = Number(cleaned);
-  if (!Number.isFinite(n) || n === 0) return null;
+  if (!Number.isFinite(n)) return null;
+  if (n === 0) return 0;
   return Math.round(Math.abs(n) * 100) * (cleaned.startsWith('-') || n < 0 ? -1 : 1);
 }
 
@@ -156,12 +157,19 @@ export function WorkOrderInvoiceBuilder({
     [draftLines],
   );
 
+  const draftFromFormCents = useMemo(() => {
+    const unit = parseDollars(form.amountDollars);
+    if (unit == null) return 0;
+    const qty = Math.max(1, parseInt(form.quantity, 10) || 1);
+    return unit * qty;
+  }, [form.amountDollars, form.quantity]);
+
   const preview = useMemo(() => {
-    const customTotal = livePricing.customLineItemsCents + draftTotalCents;
-    const finalTotalCents = livePricing.finalTotalCents + draftTotalCents;
+    const customTotal = livePricing.customLineItemsCents + draftTotalCents + draftFromFormCents;
+    const finalTotalCents = livePricing.finalTotalCents + draftTotalCents + draftFromFormCents;
     const remainingBalanceCents = Math.max(0, finalTotalCents - livePricing.totalPaidCents);
-    return { customTotal, finalTotalCents, remainingBalanceCents };
-  }, [livePricing, draftTotalCents]);
+    return { customTotal, finalTotalCents, remainingBalanceCents, draftFromFormCents };
+  }, [livePricing, draftTotalCents, draftFromFormCents]);
 
   const addDraftFromForm = () => {
     const unitCents = parseDollars(form.amountDollars);

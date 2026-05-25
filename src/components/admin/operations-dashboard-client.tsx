@@ -7,7 +7,8 @@ import {
   addBusinessExpenseActionState,
   addJobMileageLogActionState,
 } from '@/app/(dashboard)/admin/operations/operations-actions';
-import { setFleetServicesSettingAction } from '@/app/(dashboard)/admin/operations/fleet-actions';
+import { setFleetPricingAction, setFleetServicesSettingAction } from '@/app/(dashboard)/admin/operations/fleet-actions';
+import type { FleetPricingConfig } from '@/lib/fleet-pricing';
 
 function money(cents: unknown) {
   const n = typeof cents === 'number' ? cents : 0;
@@ -17,14 +18,20 @@ function money(cents: unknown) {
 export function OperationsDashboardClient({
   expenses,
   mileage,
+  mileageSummary,
+  mapsAutoNote,
   fleetEnabled,
   fleetBlurb,
+  fleetPricing,
   schemaReady,
 }: {
   expenses: Record<string, unknown>[];
   mileage: Record<string, unknown>[];
+  mileageSummary?: { today: number; month: number; year: number; lifetime: number };
+  mapsAutoNote?: boolean;
   fleetEnabled: boolean;
   fleetBlurb: string;
+  fleetPricing: FleetPricingConfig;
   schemaReady: boolean;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
@@ -59,6 +66,43 @@ export function OperationsDashboardClient({
           </label>
           <button type='submit' className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'>
             Save fleet visibility
+          </button>
+        </form>
+        <form action={setFleetPricingAction} className='mt-6 grid gap-3 border-t border-white/10 pt-5 md:grid-cols-2'>
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft md:col-span-2'>Fleet pricing editor</p>
+          {(
+            [
+              ['smallLabel', 'Small tier label'],
+              ['smallDetail', 'Small tier detail'],
+              ['mediumLabel', 'Medium tier label'],
+              ['mediumDetail', 'Medium tier detail'],
+              ['largeLabel', 'Large tier label'],
+              ['largeDetail', 'Large tier detail'],
+              ['weeklyDiscount', 'Weekly recurring discount'],
+              ['biweeklyDiscount', 'Biweekly discount'],
+              ['monthlyDiscount', 'Monthly discount'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className='block text-xs text-zinc-400'>
+              {label}
+              <input
+                name={key}
+                defaultValue={fleetPricing[key]}
+                className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white'
+              />
+            </label>
+          ))}
+          <label className='block text-xs text-zinc-400 md:col-span-2'>
+            Commercial account notes
+            <textarea
+              name='commercialNotes'
+              rows={2}
+              defaultValue={fleetPricing.commercialNotes}
+              className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white'
+            />
+          </label>
+          <button type='submit' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black md:col-span-2'>
+            Save fleet pricing
           </button>
         </form>
       </section>
@@ -104,6 +148,40 @@ export function OperationsDashboardClient({
             </ul>
           </section>
 
+          {mileageSummary ? (
+            <div className='grid gap-3 sm:grid-cols-4'>
+              {[
+                ['Today (round-trip)', mileageSummary.today],
+                ['This month', mileageSummary.month],
+                ['This year', mileageSummary.year],
+                ['Lifetime', mileageSummary.lifetime],
+              ].map(([label, val]) => (
+                <div key={label} className='rounded-xl border border-gold/20 bg-black/40 p-3'>
+                  <p className='text-[10px] font-black uppercase text-zinc-500'>{label}</p>
+                  <p className='mt-1 font-mono text-lg text-white'>{Number(val).toFixed(1)} mi</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {mapsAutoNote ? (
+            <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
+              Auto distance from home base requires <code className='text-amber-200'>MAPS_API_KEY</code> or{' '}
+              <code className='text-amber-200'>GOOGLE_MAPS_API_KEY</code>. Manual mileage entry works now.
+            </p>
+          ) : null}
+          <section className='rounded-2xl border border-white/10 bg-zinc-950 p-5'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Tax records — mileage</p>
+              <a
+                href='/api/admin/operations/mileage-export?format=csv'
+                className='rounded-lg border border-gold/40 px-3 py-2 text-[10px] font-black uppercase text-gold-soft'
+              >
+                Export monthly CSV
+              </a>
+            </div>
+            <p className='mt-2 text-xs text-zinc-500'>Grouped by calendar month for tax archive. PDF: print this CSV from Excel/Sheets.</p>
+          </section>
+
           <section className='rounded-2xl border border-white/10 bg-zinc-950 p-5'>
             <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Log mileage</p>
             <ToastActionForm className='mt-3 grid gap-3 sm:grid-cols-4' action={addJobMileageLogActionState}>
@@ -132,17 +210,24 @@ export function OperationsDashboardClient({
             <ul className='mt-4 space-y-2 text-sm text-zinc-300'>
               {mileage.length === 0 ? <li className='text-zinc-500'>No mileage logs yet.</li> : null}
               {mileage.map((r) => (
-                <li key={String(r.id)} className='flex justify-between rounded-lg border border-white/10 px-3 py-2'>
-                  <span>
-                    {typeof r.total_miles === 'number'
-                      ? `${r.total_miles} mi`
-                      : typeof r.miles === 'number'
-                        ? `${r.miles} mi`
-                        : '—'}{' '}
-                    · {String(r.created_at ?? r.logged_on ?? '')}
-                    {r.appointment_id ? ` · ${String(r.appointment_id).slice(0, 8)}…` : ''}
-                  </span>
-                  <span className='text-zinc-500 text-xs'>{r.note ? String(r.note) : ''}</span>
+                <li key={String(r.id)} className='rounded-lg border border-white/10 px-3 py-3'>
+                  <div className='flex flex-wrap items-start justify-between gap-2'>
+                    <div>
+                      <p className='font-bold text-white'>{String(r.customer_name ?? 'Customer')}</p>
+                      <p className='text-xs text-zinc-400'>{String(r.vehicle ?? 'Vehicle')}</p>
+                      <p className='text-xs text-zinc-500'>{String(r.address ?? '')}</p>
+                      <p className='mt-1 text-xs text-gold-soft'>
+                        One-way {String(r.miles_one_way ?? '—')} mi · Round-trip {String(r.round_trip_miles ?? '—')} mi
+                        {typeof r.gas_cost_cents === 'number' ? ` · Gas ${money(r.gas_cost_cents)}` : ''}
+                      </p>
+                      <p className='text-[10px] text-zinc-600'>{String(r.logged_at ?? '')}</p>
+                    </div>
+                    {r.work_order_href ? (
+                      <a href={String(r.work_order_href)} className='text-[10px] font-black uppercase text-gold-soft underline'>
+                        Open work order
+                      </a>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

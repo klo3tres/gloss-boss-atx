@@ -290,20 +290,6 @@ export function WorkOrderConsoleClient({
         </WorkOrderCollapsible>
       </section>
 
-      <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 px-4 py-3 lg:sticky lg:top-2 lg:z-10 lg:bg-black/90 lg:backdrop-blur-md'>
-        <div className='flex items-center gap-2'>
-          <Clock className='h-4 w-4 text-gold-soft' />
-          <SectionEyebrow>Timer</SectionEyebrow>
-        </div>
-        <TechTimerControls
-          appointmentId={data.isFallback ? null : jobId}
-          fallbackBookingId={data.isFallback ? jobId : null}
-          workflowSessionId={data.workflowSessionId}
-          initialTimerId={data.openTimerId || null}
-          initialStartedAt={data.openTimerStartedAt || null}
-        />
-      </div>
-
       <section className='space-y-4'>
         <WorkOrderCollapsible title='Job summary' defaultOpen={false}>
           <div className='grid gap-2 text-sm sm:grid-cols-2'>
@@ -466,6 +452,20 @@ export function WorkOrderConsoleClient({
               </div>
             ))}
           </WorkOrderCollapsible>
+        </div>
+
+        <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 px-4 py-3'>
+          <div className='flex items-center gap-2'>
+            <Clock className='h-4 w-4 text-gold-soft' />
+            <SectionEyebrow>Timer</SectionEyebrow>
+          </div>
+          <TechTimerControls
+            appointmentId={data.isFallback ? null : jobId}
+            fallbackBookingId={data.isFallback ? jobId : null}
+            workflowSessionId={data.workflowSessionId}
+            initialTimerId={data.openTimerId || null}
+            initialStartedAt={data.openTimerStartedAt || null}
+          />
         </div>
 
         {canEditPricing && data.pricingSnapshot ? (

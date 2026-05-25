@@ -13,6 +13,7 @@ import {
   type SiteDataOfferCard,
 } from '@/lib/public-site-data';
 import { loadActiveServicesResilient, mapServicePriceRows, mergeServicesWithPricesStable } from '@/lib/catalog-fallback';
+import { parseFleetPricing } from '@/lib/fleet-pricing';
 import { consolidatePriceRowsForUi } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
@@ -65,7 +66,7 @@ export async function GET() {
       loadActiveServicesResilient(client),
       client.from('review_settings').select('value').eq('key', 'google_business').maybeSingle(),
       client.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
-      client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb']),
+      client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb', 'fleet_pricing']),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -164,6 +165,17 @@ export async function GET() {
       fleetRows.find((r) => r.key === 'fleet_services_blurb')?.value ??
         'Fleet, dealership, and business accounts — call for volume pricing and on-site schedules.',
     );
+    const fleetPricingRaw = fleetRows.find((r) => r.key === 'fleet_pricing')?.value;
+    let fleetPricing = parseFleetPricing(null);
+    if (fleetPricingRaw) {
+      try {
+        fleetPricing = parseFleetPricing(
+          typeof fleetPricingRaw === 'string' ? JSON.parse(fleetPricingRaw) : fleetPricingRaw,
+        );
+      } catch {
+        /* default */
+      }
+    }
 
     const payload: PublicSiteDataPayload = {
       ok: schemaWarnings.length === 0 && svcList.length > 0 && !sErr,
@@ -177,6 +189,7 @@ export async function GET() {
       googleReviewUrl,
       fleetServicesEnabled,
       fleetServicesBlurb,
+      fleetPricing,
     };
 
     return NextResponse.json(payload);

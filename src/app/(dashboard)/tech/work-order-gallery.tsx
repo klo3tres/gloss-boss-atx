@@ -28,6 +28,23 @@ function chicago(value: string) {
   }).format(new Date(value));
 }
 
+async function downloadPhoto(url: string, category: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = `gloss-boss-${category || 'photo'}-${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
 export function WorkOrderGallery({
   title,
   photos,
@@ -137,15 +154,13 @@ export function WorkOrderGallery({
                 </p>
               </div>
               <div className='flex flex-wrap gap-2'>
-                <a
-                  href={active.url}
-                  download
-                  target='_blank'
-                  rel='noreferrer'
+                <button
+                  type='button'
+                  onClick={() => void downloadPhoto(active.url, active.category)}
                   className='inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-white'
                 >
                   <Download className='h-3.5 w-3.5' /> Download
-                </a>
+                </button>
                 {canDelete ? (
                   <button
                     type='button'

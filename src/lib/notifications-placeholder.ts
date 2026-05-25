@@ -187,6 +187,8 @@ export async function notifyBusinessNewBookingQueued(params: {
   appointmentId: string;
   vehicles: string;
   bookingNumber?: string | null;
+  serviceAddress?: string | null;
+  comped?: boolean;
 }): Promise<void> {
   try {
     await notifyBusinessNewBookingFull(params);

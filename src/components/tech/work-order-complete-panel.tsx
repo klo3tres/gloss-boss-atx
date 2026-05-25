@@ -39,8 +39,9 @@ export function WorkOrderCompletePanel({
         <p className='text-xs font-black uppercase tracking-[0.28em] text-emerald-300'>Job complete</p>
         <h2 className='gb-display-serif text-2xl font-black text-white sm:text-3xl'>Good job — Gloss Boss ATX</h2>
         <p className='mx-auto max-w-md text-sm text-zinc-300'>
-          Work order marked complete. Send receipt, balance link, or completion message below.
+          Work order marked complete. Receipt, review request, and customer follow-ups are below.
         </p>
+        <p className='text-xs text-emerald-200/90'>Receipt email uses Resend when configured — check notification outbox on the work order.</p>
         <div className='flex flex-wrap justify-center gap-2 pt-2'>
           {!isFallback ? (
             <ToastActionForm action={sendWorkOrderReceiptEmailAction}>
@@ -67,6 +68,33 @@ export function WorkOrderCompletePanel({
             className='inline-flex items-center gap-2 rounded-2xl border border-white/20 px-5 py-3 text-xs font-black uppercase text-zinc-200'
           >
             View receipt
+          </Link>
+          {!isFallback ? (
+            <NotificationSendForm
+              kind='review_request'
+              appointmentId={jobId}
+              buttonClassName='inline-flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-xs font-black uppercase text-emerald-200'
+            >
+              Request review
+            </NotificationSendForm>
+          ) : null}
+          <Link href='/gallery' className='inline-flex items-center gap-2 rounded-2xl border border-white/20 px-5 py-3 text-xs font-black uppercase text-zinc-200'>
+            Share before/after
+          </Link>
+          <Link href='/book' className='inline-flex items-center gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-5 py-3 text-xs font-black uppercase text-gold-soft'>
+            Book next maintenance
+          </Link>
+          {!isFallback ? (
+            <NotificationSendForm
+              kind='last_touches'
+              appointmentId={jobId}
+              buttonClassName='inline-flex items-center gap-2 rounded-2xl border border-white/20 px-5 py-3 text-xs font-black uppercase text-zinc-200'
+            >
+              <Send className='h-4 w-4' /> Text update
+            </NotificationSendForm>
+          ) : null}
+          <Link href='/tech' className='inline-flex items-center gap-2 rounded-2xl border border-white/20 px-5 py-3 text-xs font-black uppercase text-zinc-200'>
+            Return to dashboard
           </Link>
         </div>
         {guestEmail ? <p className='text-[10px] text-zinc-500'>Customer: {guestEmail}</p> : null}
