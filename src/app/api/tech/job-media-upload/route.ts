@@ -22,10 +22,24 @@ const FINE_CATEGORIES = new Set([
   'passenger_side',
   'interior',
   'wheels',
+  'roof',
+  'existing_damage',
   'damage',
   'other',
   'before',
   'after',
+]);
+
+const REQUIRED_BEFORE_UPLOAD = new Set([
+  'front',
+  'rear',
+  'driver_side',
+  'passenger_side',
+  'interior',
+  'wheels',
+  'roof',
+  'existing_damage',
+  'damage',
 ]);
 
 function broadCategory(fine: string): 'inspection' | 'before' | 'after' | 'damage' | 'other' {
@@ -117,7 +131,11 @@ export async function POST(request: Request) {
       .trim()
       .toLowerCase()
       .replace(/[\s-]+/g, '_');
-    const photoCategory = FINE_CATEGORIES.has(rawCat) ? rawCat : 'other';
+    let photoCategory = rawCat;
+    if (photoCategory === 'damage') photoCategory = 'existing_damage';
+    if (!FINE_CATEGORIES.has(photoCategory) && !REQUIRED_BEFORE_UPLOAD.has(photoCategory)) {
+      photoCategory = 'other';
+    }
     const rawBroad = String(form.get('category') ?? '')
       .trim()
       .toLowerCase()

@@ -27,6 +27,7 @@ const adminLinks = [
   { href: '/admin/team', label: 'Team' },
   { href: '/admin/messages', label: 'Message center' },
   { href: '/admin/notifications', label: 'Notifications' },
+  { href: '/admin/goals', label: 'Goals' },
   { href: '/admin/integrations', label: 'Integrations' },
   { href: '/admin/services', label: 'Services & pricing' },
   { href: '/admin/addons', label: 'Booking add-ons' },
@@ -39,6 +40,7 @@ const adminLinks = [
 
 const superLinks = [
   { href: '/admin/super', label: 'Command center' },
+  { href: '/admin/goals', label: 'Goals' },
   { href: '/admin/booking-health', label: 'Booking health' },
   { href: '/admin', label: 'Operations (admin)' },
   { href: '/admin/payments', label: 'Payments / Receipts' },
@@ -53,6 +55,7 @@ const superLinks = [
   { href: '/admin/team', label: 'Team' },
   { href: '/admin/messages', label: 'Message center' },
   { href: '/admin/notifications', label: 'Notifications' },
+  { href: '/admin/goals', label: 'Goals' },
   { href: '/admin/integrations', label: 'Integrations' },
   { href: '/admin/services', label: 'Services & pricing' },
   { href: '/admin/addons', label: 'Booking add-ons' },
@@ -159,7 +162,7 @@ export function DashboardShell({
   );
 
   return (
-    <main className='min-h-screen bg-background text-foreground'>
+    <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-no-print flex items-center justify-between lg:hidden'>
@@ -190,12 +193,14 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
-          <header className='gb-no-print overflow-hidden rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-black to-zinc-950 p-5 shadow-[0_0_40px_rgba(212,166,77,0.10)]'>
+          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6'>
             <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
             <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
             <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
           </header>
-          <SafeRenderBoundary label='Dashboard content'>{children}</SafeRenderBoundary>
+          <SafeRenderBoundary label='Dashboard content'>
+            <div className='gb-dashboard-content space-y-6'>{children}</div>
+          </SafeRenderBoundary>
           <div className='gb-no-print'>
             <DashboardAuthDebugFooter />
           </div>

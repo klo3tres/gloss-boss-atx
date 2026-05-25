@@ -14,6 +14,8 @@ import {
 } from '@/lib/booking-availability';
 import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
 import { getBookableDateKeys, getTimeSlotsForDate, dateKeyLocal } from '@/lib/booking-schedule-slots';
+import { addonPriceCentsForVehicle, sumPerVehicleAddOnCents } from '@/lib/addon-vehicle-pricing';
+import { clearBookingDraft, readBookingDraft, writeBookingDraft } from '@/lib/booking-draft';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { slotConflictsWithBlocks, type BookedBlock } from '@/lib/booking-slot-blocking';
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
@@ -41,7 +43,13 @@ type PriceRow = { service_id: string; vehicle_class: string; price_cents: number
 
 type VehicleClass = UiVehicleClass;
 
-type ExtraLine = { serviceSlug: string; vehicleClass: VehicleClass; vehicleDescription: string; vehicleColor: string };
+type ExtraLine = {
+  serviceSlug: string;
+  vehicleClass: VehicleClass;
+  vehicleDescription: string;
+  vehicleColor: string;
+  addOnSlugs: string[];
+};
 
 type AddonOption = { slug: string; label: string; price_cents: number };
 
@@ -114,7 +122,7 @@ export function BookingWizard() {
   const CHECKOUT_FAIL_COPY =
     "We're having trouble opening secure checkout. Your booking can still be saved, and we'll send payment instructions separately.";
   const [extraVehicles, setExtraVehicles] = useState<ExtraLine[]>([]);
-  const [selectedAddOnSlugs, setSelectedAddOnSlugs] = useState<string[]>([]);
+  const [primaryAddOnSlugs, setPrimaryAddOnSlugs] = useState<string[]>([]);
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
@@ -436,8 +444,16 @@ export function BookingWizard() {
   }, [offerFromUrl, offers]);
 
   const bookingLines = useMemo(
-    () => [{ serviceSlug, vehicleClass, vehicleDescription, vehicleColor }, ...extraVehicles],
-    [serviceSlug, vehicleClass, vehicleDescription, vehicleColor, extraVehicles],
+    () => [
+      { serviceSlug, vehicleClass, vehicleDescription, vehicleColor, addOnSlugs: primaryAddOnSlugs },
+      ...extraVehicles,
+    ],
+    [serviceSlug, vehicleClass, vehicleDescription, vehicleColor, primaryAddOnSlugs, extraVehicles],
+  );
+
+  const allAddOnSlugs = useMemo(
+    () => [...new Set(bookingLines.flatMap((l) => l.addOnSlugs ?? []))],
+    [bookingLines],
   );
 
   const bookingDurationMinutes = useMemo(
@@ -446,6 +462,7 @@ export function BookingWizard() {
         bookingLines.map((l) => ({
           serviceSlug: l.serviceSlug,
           vehicleClass: normalizeVehicleClass(l.vehicleClass),
+          addOnSlugs: l.addOnSlugs ?? [],
         })),
       ),
     [bookingLines],
@@ -516,17 +533,16 @@ export function BookingWizard() {
     }
     if (lines.length === 0) return null;
 
-    let addOnCentsSum = 0;
-    const addOnLines: { label: string; cents: number }[] = [];
-    for (const slug of selectedAddOnSlugs) {
-      const opt = addonOptions.find(
-        (a) => a.slug === slug || a.label.toLowerCase() === slug.toLowerCase() || a.slug.toLowerCase() === slug.toLowerCase(),
-      );
-      if (opt && opt.price_cents > 0) {
-        addOnCentsSum += opt.price_cents;
-        addOnLines.push({ label: opt.label, cents: opt.price_cents });
-      }
-    }
+    const pricedAddons = sumPerVehicleAddOnCents(
+      bookingLines.map((l) => ({ vehicleClass: l.vehicleClass, addOnSlugs: l.addOnSlugs ?? [] })),
+      addonOptions,
+    );
+    const addOnCentsSum = pricedAddons.totalCents;
+    const addOnLines = pricedAddons.lines.map((l) => {
+      const veh = bookingLines[l.vehicleIndex];
+      const vehLabel = veh ? classLabel(veh.vehicleClass) : 'Vehicle';
+      return { label: `${l.label} (${vehLabel})`, cents: l.cents };
+    });
 
     const bd = computeBookingPricing({
       vehicleLineCents,
@@ -553,7 +569,7 @@ export function BookingWizard() {
       : (bd as BookingPricingBreakdown);
 
     return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
-  }, [bookingLines, prices, services, deals, claimedOfferSnap, selectedAddOnSlugs, addonOptions, freePromoEligible]);
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible]);
 
   const pricePreviewText =
     priceSummary?.kind === 'quote'
@@ -562,15 +578,35 @@ export function BookingWizard() {
         ? `$${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)} total · $${(priceSummary.breakdown.depositCents / 100).toFixed(2)} deposit`
         : null;
 
-  const toggleAddOn = (slug: string) => {
-    setSelectedAddOnSlugs((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
+  const toggleAddOn = (vehicleIndex: number, slug: string) => {
+    if (vehicleIndex === 0) {
+      setPrimaryAddOnSlugs((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
+      return;
+    }
+    const extraIdx = vehicleIndex - 1;
+    setExtraVehicles((prev) =>
+      prev.map((row, i) => {
+        if (i !== extraIdx) return row;
+        const slugs = row.addOnSlugs ?? [];
+        return {
+          ...row,
+          addOnSlugs: slugs.includes(slug) ? slugs.filter((x) => x !== slug) : [...slugs, slug],
+        };
+      }),
+    );
   };
 
   const addVehicleLine = () => {
     if (bookingLines.length >= 3) return;
     setExtraVehicles((prev) => [
       ...prev,
-      { serviceSlug: serviceSlug || services[0]?.slug || '', vehicleClass: 'sedan', vehicleDescription: '', vehicleColor: '' },
+      {
+        serviceSlug: serviceSlug || services[0]?.slug || '',
+        vehicleClass: 'sedan',
+        vehicleDescription: '',
+        vehicleColor: '',
+        addOnSlugs: [],
+      },
     ]);
   };
 
@@ -581,6 +617,136 @@ export function BookingWizard() {
   const removeExtra = (index: number) => {
     setExtraVehicles((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const renderVehicleAddOns = (vehicleIndex: number, slugs: string[]) => (
+    <div className='mt-3'>
+      <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>Add-ons for this vehicle</p>
+      <div className='mt-2 flex flex-wrap gap-2'>
+        {addonOptions.length === 0 ? (
+          <span className='text-xs text-zinc-500'>Loading add-ons…</span>
+        ) : (
+          addonOptions.map((opt) => {
+            const on = slugs.includes(opt.slug);
+            const cents = addonPriceCentsForVehicle(
+              opt.slug,
+              bookingLines[vehicleIndex]?.vehicleClass ?? 'sedan',
+              opt.price_cents,
+            );
+            const priceLabel = cents > 0 ? `+$${(cents / 100).toFixed(0)}` : '';
+            return (
+              <button
+                key={`${vehicleIndex}-${opt.slug}`}
+                type='button'
+                onClick={() => toggleAddOn(vehicleIndex, opt.slug)}
+                className={clsx(
+                  'rounded-full border px-3 py-2 text-xs font-semibold transition',
+                  on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                )}
+              >
+                {opt.label} {priceLabel}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    const draft = readBookingDraft();
+    if (!draft) return;
+    if (draft.serviceSlug) setServiceSlug(draft.serviceSlug);
+    if (draft.vehicleClass) setVehicleClass(draft.vehicleClass as VehicleClass);
+    if (draft.vehicleDescription) setVehicleDescription(draft.vehicleDescription);
+    if (draft.vehicleColor) setVehicleColor(draft.vehicleColor);
+    if (draft.extraVehicles?.length) {
+      setExtraVehicles(
+        draft.extraVehicles.map((v) => ({
+          serviceSlug: v.serviceSlug,
+          vehicleClass: normalizeVehicleClass(v.vehicleClass) as VehicleClass,
+          vehicleDescription: v.vehicleDescription,
+          vehicleColor: v.vehicleColor,
+          addOnSlugs: v.addOnSlugs ?? [],
+        })),
+      );
+    }
+    if (draft.primaryAddOnSlugs?.length) setPrimaryAddOnSlugs(draft.primaryAddOnSlugs);
+    if (draft.paymentChoice) setPaymentChoice(draft.paymentChoice);
+    if (draft.promoCode) setPromoCode(draft.promoCode);
+    if (draft.guestName) setGuestName(draft.guestName);
+    if (draft.guestEmail) setGuestEmail(draft.guestEmail);
+    if (draft.guestPhone) setGuestPhone(draft.guestPhone);
+    if (draft.serviceAddress) setServiceAddress(draft.serviceAddress);
+    if (draft.serviceCity) setServiceCity(draft.serviceCity);
+    if (draft.serviceState) setServiceState(draft.serviceState);
+    if (draft.serviceZip) setServiceZip(draft.serviceZip);
+    if (draft.scheduledStart) {
+      const d = new Date(draft.scheduledStart);
+      if (!Number.isNaN(d.getTime())) {
+        setBookingDateKey(dateKeyLocal(d));
+        setBookingTimeValue(
+          `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+        );
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (checkoutPhase === 'redirecting') return;
+      writeBookingDraft({
+        version: 1,
+        savedAt: new Date().toISOString(),
+        serviceSlug,
+        vehicleClass,
+        vehicleDescription,
+        vehicleColor,
+        primaryAddOnSlugs,
+        extraVehicles,
+        paymentChoice,
+        promoCode,
+        guestName,
+        guestEmail,
+        guestPhone,
+        serviceAddress,
+        serviceCity,
+        serviceState,
+        serviceZip,
+        scheduledStart:
+          bookingDateKey && bookingTimeValue
+            ? new Date(`${bookingDateKey}T${bookingTimeValue}:00`).toISOString()
+            : '',
+        accessNotes: serviceAddressNotes,
+        hasWater: waterAccess === 'yes' ? true : waterAccess === 'no' ? false : null,
+        hasPower: powerAccess === 'yes' ? true : powerAccess === 'no' ? false : null,
+        step: 0,
+      });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [
+    serviceSlug,
+    vehicleClass,
+    vehicleDescription,
+    vehicleColor,
+    extraVehicles,
+    primaryAddOnSlugs,
+    paymentChoice,
+    promoCode,
+    guestName,
+    guestEmail,
+    guestPhone,
+    serviceAddress,
+    serviceCity,
+    serviceState,
+    serviceZip,
+    bookingDateKey,
+    bookingTimeValue,
+    serviceAddressNotes,
+    waterAccess,
+    powerAccess,
+    checkoutPhase,
+  ]);
 
   const applyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
@@ -610,8 +776,9 @@ export function BookingWizard() {
             vehicleClass: l.vehicleClass,
             vehicleDescription: l.vehicleDescription,
             vehicleColor: l.vehicleColor,
+            addOnSlugs: l.addOnSlugs ?? [],
           })),
-          addOns: selectedAddOnSlugs,
+          addOns: allAddOnSlugs,
         }),
       });
       const json = (await res.json()) as {
@@ -706,6 +873,7 @@ export function BookingWizard() {
       }
 
       setCheckoutPhase('redirecting');
+      clearBookingDraft();
       window.location.href = checkoutJson.url;
     } catch (err) {
       window.clearTimeout(timeoutId);
@@ -776,6 +944,7 @@ export function BookingWizard() {
           vehicleClass: normalizeVehicleClass(l.vehicleClass),
           vehicleDescription: l.vehicleDescription.trim(),
           vehicleColor: l.vehicleColor.trim(),
+          addOnSlugs: l.addOnSlugs ?? [],
         }));
 
       if (vehicles.length === 0) {
@@ -826,7 +995,7 @@ export function BookingWizard() {
         timeoutMs: 20000,
         body: JSON.stringify({
           vehicles,
-          addOns: selectedAddOnSlugs,
+          addOns: allAddOnSlugs,
           offerId: claimedOfferSnap?.id,
           scheduledStart: startIso,
           guestName,
@@ -858,17 +1027,24 @@ export function BookingWizard() {
 
       if (!bookingRes.ok) {
         setCheckoutPhase('idle');
-        setError((bookingJson as { error?: string }).error ?? 'Booking failed');
+        const errText = (bookingJson as { error?: string }).error ?? 'Booking failed';
+        if (bookingRes.status === 409) {
+          setScheduleError(errText);
+          setError('That time slot was just taken. Please pick another time.');
+        } else {
+          setError(errText);
+        }
         setSubmitting(false);
         return;
       }
 
       if (bookingJson.skipPayment && bookingJson.appointmentId) {
+        clearBookingDraft();
         const q = new URLSearchParams({
           appointment_id: bookingJson.appointmentId,
           token: bookingJson.accessToken ?? '',
         });
-        window.location.href = `/book/complete?${q.toString()}`;
+        window.location.href = `/book/confirmation?${q.toString()}`;
         return;
       }
 
@@ -1071,6 +1247,7 @@ export function BookingWizard() {
                   required
                 />
               </label>
+              {renderVehicleAddOns(idx + 1, line.addOnSlugs ?? [])}
             </section>
           ))}
 
@@ -1084,33 +1261,6 @@ export function BookingWizard() {
               Add vehicle (max 3 total)
             </button>
           ) : null}
-
-          <section>
-            <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Add-ons (optional)</p>
-            <div className='mt-3 flex flex-wrap gap-2'>
-              {addonOptions.length === 0 ? (
-                <span className='text-xs text-zinc-500'>Loading add-ons…</span>
-              ) : (
-                addonOptions.map((opt) => {
-                  const on = selectedAddOnSlugs.includes(opt.slug);
-                  const priceLabel = opt.price_cents > 0 ? `+$${(opt.price_cents / 100).toFixed(0)}` : '';
-                  return (
-                    <button
-                      key={opt.slug}
-                      type='button'
-                      onClick={() => toggleAddOn(opt.slug)}
-                      className={clsx(
-                        'rounded-full border px-3 py-2 text-xs font-semibold transition',
-                        on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
-                      )}
-                    >
-                      {opt.label} {priceLabel}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
 
           <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-black/45 p-4 md:grid-cols-2'>
             <div className='md:col-span-2'>
@@ -1270,6 +1420,7 @@ export function BookingWizard() {
                 required
               />
             </label>
+            {renderVehicleAddOns(0, primaryAddOnSlugs)}
           </section>
 
           <section className='grid gap-4 md:grid-cols-2'>
@@ -1472,12 +1623,16 @@ export function BookingWizard() {
             ) : (
               <p className='text-gold-soft'>{pricePreviewText}</p>
             )}
-            {selectedAddOnSlugs.length > 0 ? (
+            {allAddOnSlugs.length > 0 ? (
               <p className='text-xs text-zinc-500'>
                 Add-ons:{' '}
-                {selectedAddOnSlugs
-                  .map((s) => addonOptions.find((a) => a.slug === s)?.label ?? s)
-                  .join(', ')}
+                {bookingLines
+                  .map((line, i) => {
+                    const labels = (line.addOnSlugs ?? []).map((s) => addonOptions.find((a) => a.slug === s)?.label ?? s);
+                    return labels.length ? `V${i + 1}: ${labels.join(', ')}` : '';
+                  })
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             ) : null}
           </div>

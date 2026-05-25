@@ -183,7 +183,7 @@ export default async function AdminDashboardPage() {
         <p className='mt-1 text-sm text-zinc-400'>
           {appointments.length} appointment(s) · {fallbacks.length} fallback row(s) loaded.
         </p>
-        <div className='mt-4 overflow-x-auto'>
+        <div className='gb-admin-table-wrap mt-4'>
           <table className='w-full min-w-[880px] border-collapse text-left text-sm'>
             <thead>
               <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>

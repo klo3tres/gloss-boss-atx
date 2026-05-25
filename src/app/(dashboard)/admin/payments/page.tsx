@@ -86,7 +86,7 @@ export default async function AdminPaymentsPage() {
           <h2 className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Stripe ledger</h2>
           <Link href='/admin/receipts' className='rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Open Receipts</Link>
         </div>
-        <div className='mt-4 overflow-x-auto'>
+        <div className='gb-admin-table-wrap mt-4'>
           <table className='min-w-[1100px] w-full text-left text-xs text-zinc-300'>
             <thead className='text-[10px] uppercase tracking-wider text-zinc-500'>
               <tr>

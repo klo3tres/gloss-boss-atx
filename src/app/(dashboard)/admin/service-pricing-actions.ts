@@ -38,3 +38,25 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   revalidatePath('/api/services');
   redirect('/admin/services?priceSaved=1');
 }
+
+export async function updateServiceActiveAction(formData: FormData) {
+  const serviceId = String(formData.get('serviceId') ?? '').trim();
+  const active = String(formData.get('active') ?? '') === 'true';
+  if (!serviceId) redirect('/admin/services?priceErr=Missing%20service');
+
+  const session = await getSessionWithProfile();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) {
+    redirect('/admin/services?priceErr=Unauthorized');
+  }
+  const admin = tryCreateAdminSupabase();
+  if (!admin) redirect('/admin/services?priceErr=Database%20unavailable');
+
+  const { error } = await admin.from('services').update({ active }).eq('id', serviceId);
+  if (error) redirect(`/admin/services?priceErr=${encodeURIComponent(error.message)}`);
+
+  revalidatePath('/admin/services');
+  revalidatePath('/book');
+  revalidatePath('/api/services');
+  revalidatePath('/api/public/site-data');
+  redirect('/admin/services?priceSaved=1');
+}

@@ -30,7 +30,7 @@ export async function sendResendHtml(params: {
   const from = process.env.RESEND_FROM_EMAIL?.trim();
   if (!key || !from) {
     console.info('[email] Resend skipped (missing RESEND_API_KEY or RESEND_FROM_EMAIL)', params.to);
-    return { ok: true };
+    return { ok: false, error: 'Resend is not configured (missing API key or from address).' };
   }
   try {
     const res = await fetch('https://api.resend.com/emails', {

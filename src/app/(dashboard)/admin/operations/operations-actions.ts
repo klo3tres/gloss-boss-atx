@@ -19,17 +19,25 @@ export async function addBusinessExpenseActionState(_prev: ActionResult | null, 
 
   const amountDollars = Number(formData.get('amountDollars'));
   const category = String(formData.get('category') ?? '').trim() || 'general';
-  const note = String(formData.get('note') ?? '').trim() || null;
-  const incurredOn = String(formData.get('incurredOn') ?? '').trim() || new Date().toISOString().slice(0, 10);
+  const notes = String(formData.get('note') ?? formData.get('notes') ?? '').trim() || null;
+  const incurredAt = String(formData.get('incurredOn') ?? formData.get('incurredAt') ?? '').trim() || new Date().toISOString();
   if (!Number.isFinite(amountDollars) || amountDollars <= 0) return actionErr('Enter a valid amount.');
 
-  const { error } = await gate.admin.from('business_expenses').insert({
+  const row = {
     amount_cents: Math.round(amountDollars * 100),
     category,
-    note,
-    incurred_on: incurredOn,
+    notes,
+    incurred_at: incurredAt,
     created_by: gate.userId,
-  });
+  };
+  let { error } = await gate.admin.from('business_expenses').insert(row);
+  if (error && /incurred_at|notes|column/i.test(error.message)) {
+    ({ error } = await gate.admin.from('business_expenses').insert({
+      amount_cents: row.amount_cents,
+      category: row.category,
+      created_by: gate.userId,
+    }));
+  }
   if (error) return actionErr(error.message);
   revalidatePath('/admin/operations');
   return actionOk('Expense recorded.');
@@ -42,16 +50,22 @@ export async function addJobMileageLogActionState(_prev: ActionResult | null, fo
   const miles = Number(formData.get('miles'));
   const appointmentId = String(formData.get('appointmentId') ?? '').trim() || null;
   const note = String(formData.get('note') ?? '').trim() || null;
-  const loggedOn = String(formData.get('loggedOn') ?? '').trim() || new Date().toISOString().slice(0, 10);
   if (!Number.isFinite(miles) || miles <= 0) return actionErr('Enter valid miles.');
 
-  const { error } = await gate.admin.from('job_mileage_logs').insert({
-    miles,
+  const row = {
+    total_miles: miles,
     appointment_id: appointmentId,
-    note,
-    logged_on: loggedOn,
+    notes: note,
     created_by: gate.userId,
-  });
+  };
+  let { error } = await gate.admin.from('job_mileage_logs').insert(row);
+  if (error && /total_miles|notes|column/i.test(error.message)) {
+    ({ error } = await gate.admin.from('job_mileage_logs').insert({
+      estimated_miles: miles,
+      appointment_id: appointmentId,
+      created_by: gate.userId,
+    }));
+  }
   if (error) return actionErr(error.message);
   revalidatePath('/admin/operations');
   return actionOk('Mileage logged.');

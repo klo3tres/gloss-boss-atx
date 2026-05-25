@@ -11,12 +11,55 @@ function blocksOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && bStart < aEnd;
 }
 
+function vehicleDurationLines(r: Record<string, unknown>): VehicleDurationLine[] {
+  const vehicles = Array.isArray(r.booking_vehicles) ? (r.booking_vehicles as Record<string, unknown>[]) : [];
+  if (vehicles.length > 0) {
+    return vehicles.map((v) => ({
+      serviceSlug: str(v.service_slug) || str(r.service_slug) || 'exterior-wash',
+      vehicleClass: str(v.vehicle_class) || str(r.vehicle_class) || 'sedan',
+      addOnSlugs: Array.isArray(v.add_on_slugs)
+        ? (v.add_on_slugs as string[])
+        : Array.isArray(v.addOnSlugs)
+          ? (v.addOnSlugs as string[])
+          : [],
+    }));
+  }
+  return [{ serviceSlug: str(r.service_slug) || 'exterior-wash', vehicleClass: str(r.vehicle_class) || 'sedan' }];
+}
+
+function pushBlockFromRow(
+  r: Record<string, unknown>,
+  blocks: BookedBlock[],
+  rangeStart: number,
+  rangeEnd: number,
+  seen: Set<string>,
+) {
+  const id = str(r.id);
+  if (id && seen.has(id)) return;
+  const startIso = str(r.scheduled_start);
+  if (!startIso) return;
+  const startMs = new Date(startIso).getTime();
+  let endMs = r.estimated_end ? new Date(String(r.estimated_end)).getTime() : NaN;
+  if (Number.isNaN(endMs)) {
+    const lines = vehicleDurationLines(r);
+    const mins =
+      typeof r.estimated_duration_minutes === 'number' && r.estimated_duration_minutes > 0
+        ? r.estimated_duration_minutes
+        : totalBookingDurationMinutes(lines);
+    endMs = startMs + mins * 60_000;
+  }
+  if (endMs <= rangeStart || startMs >= rangeEnd) return;
+  if (id) seen.add(id);
+  blocks.push({ start: startIso, end: new Date(endMs).toISOString(), appointmentId: id || undefined });
+}
+
 export async function fetchBookedBlocks(
   admin: SupabaseClient,
   rangeStartIso: string,
   rangeEndIso: string,
 ): Promise<BookedBlock[]> {
   const blocks: BookedBlock[] = [];
+  const seen = new Set<string>();
   const rangeStart = new Date(rangeStartIso).getTime();
   const rangeEnd = new Date(rangeEndIso).getTime();
 
@@ -28,33 +71,28 @@ export async function fetchBookedBlocks(
     .is('archived_at', null)
     .is('deleted_at', null);
 
+  const { data: activeAppts } = await admin
+    .from('appointments')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, archived_at, deleted_at, schedule_override, payment_status')
+    .in('status', ['in_progress', 'assigned', 'confirmed', 'deposit_paid'])
+    .is('archived_at', null)
+    .is('deleted_at', null)
+    .lt('scheduled_start', rangeEndIso);
+
+  for (const row of activeAppts ?? []) {
+    const r = row as Record<string, unknown>;
+    if (r.schedule_override === true) continue;
+    pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
+  }
+
   for (const row of appts ?? []) {
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
     const status = str(r.status).toLowerCase();
     if (status === 'cancelled' || status === 'deleted' || status === 'test_comped') continue;
-
-    const startIso = str(r.scheduled_start);
-    if (!startIso) continue;
-    const startMs = new Date(startIso).getTime();
-    let endMs = r.estimated_end ? new Date(String(r.estimated_end)).getTime() : NaN;
-    if (Number.isNaN(endMs)) {
-      const vehicles = Array.isArray(r.booking_vehicles) ? (r.booking_vehicles as VehicleDurationLine[]) : [];
-      const lines: VehicleDurationLine[] =
-        vehicles.length > 0
-          ? vehicles.map((v) => ({
-              serviceSlug: str((v as Record<string, unknown>).service_slug) || str(r.service_slug),
-              vehicleClass: str((v as Record<string, unknown>).vehicle_class) || str(r.vehicle_class) || 'sedan',
-            }))
-          : [{ serviceSlug: str(r.service_slug) || 'exterior-wash', vehicleClass: str(r.vehicle_class) || 'sedan' }];
-      const mins =
-        typeof r.estimated_duration_minutes === 'number' && r.estimated_duration_minutes > 0
-          ? r.estimated_duration_minutes
-          : totalBookingDurationMinutes(lines);
-      endMs = startMs + mins * 60_000;
-    }
-    if (endMs <= rangeStart || startMs >= rangeEnd) continue;
-    blocks.push({ start: startIso, end: new Date(endMs).toISOString(), appointmentId: str(r.id) });
+    const payStatus = str(r.payment_status).toLowerCase();
+    if (payStatus === 'refunded' || payStatus === 'voided') continue;
+    pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
   }
 
   const { data: fbs } = await admin
@@ -68,32 +106,9 @@ export async function fetchBookedBlocks(
   for (const row of fbs ?? []) {
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
-    const startIso = str(r.scheduled_start);
-    if (!startIso) continue;
-    const startMs = new Date(startIso).getTime();
-    let endMs = r.estimated_end ? new Date(String(r.estimated_end)).getTime() : NaN;
-    if (Number.isNaN(endMs)) {
-      const payload = r.payload && typeof r.payload === 'object' ? (r.payload as Record<string, unknown>) : {};
-      const vehicles = Array.isArray(r.booking_vehicles)
-        ? (r.booking_vehicles as VehicleDurationLine[])
-        : Array.isArray(payload.booking_vehicles)
-          ? (payload.booking_vehicles as VehicleDurationLine[])
-          : [];
-      const lines: VehicleDurationLine[] =
-        vehicles.length > 0
-          ? vehicles.map((v) => ({
-              serviceSlug: str((v as Record<string, unknown>).service_slug) || str(r.service_slug),
-              vehicleClass: str((v as Record<string, unknown>).vehicle_class) || str(r.vehicle_class) || 'sedan',
-            }))
-          : [{ serviceSlug: str(r.service_slug) || 'exterior-wash', vehicleClass: str(r.vehicle_class) || 'sedan' }];
-      const mins =
-        typeof r.estimated_duration_minutes === 'number' && r.estimated_duration_minutes > 0
-          ? r.estimated_duration_minutes
-          : totalBookingDurationMinutes(lines);
-      endMs = startMs + mins * 60_000;
-    }
-    if (endMs <= rangeStart || startMs >= rangeEnd) continue;
-    blocks.push({ start: startIso, end: new Date(endMs).toISOString() });
+    const st = str(r.status).toLowerCase();
+    if (st === 'cancelled' || st === 'deleted') continue;
+    pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
   }
 
   return blocks;

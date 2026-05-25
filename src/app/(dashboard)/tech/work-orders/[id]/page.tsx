@@ -28,6 +28,7 @@ import {
   buildPreInspectionRequirements,
   evaluatePreInspectionStartGate,
   loadPreInspectionDamageAck,
+  normalizeBeforeSlot,
   REQUIRED_BEFORE_SLOTS,
   type RequiredBeforeSlot,
 } from '@/lib/pre-inspection';
@@ -370,6 +371,23 @@ export default async function TechWorkOrderDetailPage({
   const slotFilled = Object.fromEntries(
     REQUIRED_BEFORE_SLOTS.map((s) => [s, beforeSlotAssessment.filled.has(s)]),
   ) as Record<RequiredBeforeSlot, boolean>;
+  const beforePhotosBySlot: Partial<
+    Record<
+      RequiredBeforeSlot,
+      { id: string; url: string; table?: 'job_media' | 'job_photos'; storagePath?: string; storageBucket?: string }
+    >
+  > = {};
+  for (const p of before) {
+    const slot = normalizeBeforeSlot(resolvePhotoSlot(p as Record<string, unknown>)) as RequiredBeforeSlot;
+    if (!(REQUIRED_BEFORE_SLOTS as readonly string[]).includes(slot)) continue;
+    beforePhotosBySlot[slot] = {
+      id: str(p.id) || photoUrl(p),
+      url: photoUrl(p),
+      table: str(p._source_table) === 'job_media' ? 'job_media' : 'job_photos',
+      storagePath: str(p.storage_path) || undefined,
+      storageBucket: str(p.storage_bucket) || undefined,
+    };
+  }
   const startGate = evaluatePreInspectionStartGate({
     photos: before,
     damageAck: damageAckRow,
@@ -471,6 +489,13 @@ export default async function TechWorkOrderDetailPage({
     paymentStatus: displayLabel(row.payment_status, 'Pending'),
     scheduledStart,
     scheduledEnd,
+    scheduledStartIso: str(row.scheduled_start),
+    promoCode: str(row.promo_code),
+    pricingOverrideReason: str(
+      (row.booking_pricing_breakdown && typeof row.booking_pricing_breakdown === 'object'
+        ? (row.booking_pricing_breakdown as Record<string, unknown>).adminOverrideReason
+        : '') as string,
+    ),
     accessLocation,
     accessWater,
     accessPower,
@@ -551,6 +576,8 @@ export default async function TechWorkOrderDetailPage({
     preInspection: {
       photoProgress: startGate.photoProgress,
       slotFilled,
+      beforePhotosBySlot,
+      canDeletePhotos,
       missingStartItems: startGate.missingItems,
       canStartJob: startGate.canStart,
       isJobStarted: jobStarted,
@@ -609,6 +636,7 @@ export default async function TechWorkOrderDetailPage({
         recordCashAction={techRecordCashPaymentAction}
         completeJobAction={completeWorkOrderFormAction}
         canAdminOverride={isAdminLevel(session.profile?.role ?? null)}
+        canEditPricing={session.profile?.role === 'super_admin'}
       />
     </DashboardShell>
   );

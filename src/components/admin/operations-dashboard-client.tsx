@@ -134,7 +134,12 @@ export function OperationsDashboardClient({
               {mileage.map((r) => (
                 <li key={String(r.id)} className='flex justify-between rounded-lg border border-white/10 px-3 py-2'>
                   <span>
-                    {typeof r.miles === 'number' ? `${r.miles} mi` : '—'} · {String(r.logged_on ?? '')}
+                    {typeof r.total_miles === 'number'
+                      ? `${r.total_miles} mi`
+                      : typeof r.miles === 'number'
+                        ? `${r.miles} mi`
+                        : '—'}{' '}
+                    · {String(r.created_at ?? r.logged_on ?? '')}
                     {r.appointment_id ? ` · ${String(r.appointment_id).slice(0, 8)}…` : ''}
                   </span>
                   <span className='text-zinc-500 text-xs'>{r.note ? String(r.note) : ''}</span>

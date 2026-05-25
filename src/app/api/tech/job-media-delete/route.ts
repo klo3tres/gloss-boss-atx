@@ -22,8 +22,9 @@ export async function POST(request: Request) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
     let role = parseAppRole(profile?.role);
     if (!profile?.role && (user.email ?? '').trim().toLowerCase() === OWNER_LOGIN_EMAIL) role = 'super_admin';
-    if (!isAdminLevel(role)) {
-      return NextResponse.json({ error: 'Only admins can delete job photos.' }, { status: 403 });
+    const isStaff = role === 'technician' || isAdminLevel(role);
+    if (!isStaff) {
+      return NextResponse.json({ error: 'Not authorized to delete photos.' }, { status: 403 });
     }
 
     const body = (await request.json().catch(() => ({}))) as {

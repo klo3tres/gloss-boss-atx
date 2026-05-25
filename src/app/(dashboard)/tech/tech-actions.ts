@@ -1215,16 +1215,16 @@ export async function techArchiveTestWorkOrderAction(formData: FormData): Promis
 }
 
 export async function techCompleteJobAction(
-  _prev: { error?: string } | null,
+  _prev: { error?: string; ok?: boolean } | null,
   formData: FormData,
-): Promise<{ error?: string } | null> {
+): Promise<{ error?: string; ok?: boolean } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const noDamageObserved = String(formData.get('noDamageObserved') ?? '') === 'true';
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
   const accessToken = String(formData.get('accessToken') ?? '').trim();
   const jobReference = String(formData.get('jobReference') ?? '').trim();
-  if (!appointmentId) return { error: 'Missing job reference.' };
+  if (!appointmentId && !fallbackBookingId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
   if (!gate.ok) return { error: 'Session unavailable.' };
@@ -1242,6 +1242,22 @@ export async function techCompleteJobAction(
   }
   if (canOverrideCompletion && !completionOverrideReason) {
     return { error: 'Completion override requires a written reason.' };
+  }
+
+  if (fallbackBookingId && !appointmentId) {
+    const session = await getSessionWithProfile();
+    if (!isAdminLevel(session.profile?.role ?? null)) {
+      return { error: 'Fallback bookings must be completed from admin work order tools.' };
+    }
+    const now = new Date().toISOString();
+    const { error: fbErr } = await db
+      .from('booking_fallbacks')
+      .update({ status: 'completed', job_completed_at: now, updated_at: now })
+      .eq('id', fallbackBookingId);
+    if (fbErr) return { error: fbErr.message };
+    revalidatePath(`/tech/work-orders/${fallbackBookingId}`);
+    revalidatePath('/admin/work-orders');
+    return { ok: true };
   }
 
   const { data: appt, error: fetchErr } = await db
@@ -1435,7 +1451,9 @@ export async function techCompleteJobAction(
   });
 
   revalidatePath('/tech');
-  return null;
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath('/admin/work-orders');
+  return { ok: true };
 }
 
 export async function techSaveJobNotesAction(formData: FormData) {

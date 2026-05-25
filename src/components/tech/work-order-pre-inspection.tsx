@@ -43,6 +43,13 @@ export type PreInspectionPanelProps = {
   canStartJob: boolean;
   isJobStarted: boolean;
   checklistSaved: boolean;
+  beforePhotosBySlot?: Partial<
+    Record<
+      RequiredBeforeSlot,
+      { id: string; url: string; table?: 'job_media' | 'job_photos'; storagePath?: string; storageBucket?: string }
+    >
+  >;
+  canDeletePhotos?: boolean;
 };
 
 export function WorkOrderPreInspection({
@@ -66,6 +73,8 @@ export function WorkOrderPreInspection({
   canStartJob,
   isJobStarted,
   checklistSaved,
+  beforePhotosBySlot = {},
+  canDeletePhotos = false,
 }: PreInspectionPanelProps) {
   const router = useRouter();
   const [activeSlot, setActiveSlot] = useState<RequiredBeforeSlot>('front');
@@ -155,6 +164,7 @@ export function WorkOrderPreInspection({
       <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
         {REQUIRED_BEFORE_SLOTS.map((slot) => {
           const done = slotFilled[slot];
+          const thumb = beforePhotosBySlot[slot];
           return (
             <button
               key={slot}
@@ -168,6 +178,9 @@ export function WorkOrderPreInspection({
                     : 'border-white/15 bg-black/40'
               }`}
             >
+              {thumb?.url ? (
+                <img src={thumb.url} alt='' className='mb-2 h-14 w-full rounded-lg object-cover' />
+              ) : null}
               <p className='text-[9px] font-black uppercase tracking-wide text-zinc-400'>{BEFORE_SLOT_LABELS[slot]}</p>
               <p className={`mt-1 text-[10px] font-bold ${done ? 'text-emerald-300' : 'text-zinc-500'}`}>
                 {done ? 'Done' : 'Needed'}
@@ -176,6 +189,42 @@ export function WorkOrderPreInspection({
           );
         })}
       </div>
+      {canDeletePhotos && beforePhotosBySlot[activeSlot]?.url ? (
+        <div className='flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 p-3'>
+          <img
+            src={beforePhotosBySlot[activeSlot]!.url}
+            alt={BEFORE_SLOT_LABELS[activeSlot]}
+            className='h-20 w-20 rounded-lg object-cover'
+          />
+          <button
+            type='button'
+            className='rounded-lg border border-red-500/40 px-3 py-2 text-[10px] font-black uppercase text-red-200'
+            onClick={async () => {
+              const p = beforePhotosBySlot[activeSlot];
+              if (!p?.id || !window.confirm('Delete this pre-inspection photo?')) return;
+              const res = await fetch('/api/tech/job-media-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: p.id,
+                  table: p.table ?? 'job_photos',
+                  storagePath: p.storagePath,
+                  storageBucket: p.storageBucket,
+                }),
+              });
+              const j = (await res.json().catch(() => ({}))) as { error?: string };
+              if (!res.ok) {
+                setUploadMsg({ tone: 'err', text: j.error ?? 'Delete failed.' });
+                return;
+              }
+              setUploadMsg({ tone: 'ok', text: 'Photo removed.' });
+              router.refresh();
+            }}
+          >
+            Delete photo
+          </button>
+        </div>
+      ) : null}
 
       <label className='flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-black/50 px-4 py-8 transition hover:border-gold'>
         <Camera className='h-8 w-8 text-gold-soft' />

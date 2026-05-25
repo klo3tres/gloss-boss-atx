@@ -105,7 +105,7 @@ export default async function AdminCustomersPage() {
 
       <section className='mt-8 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-lg font-bold uppercase text-gold-soft'>Directory</h2>
-        <div className='mt-4 overflow-x-auto'>
+        <div className='gb-admin-table-wrap mt-4'>
           <table className='w-full min-w-[960px] border-collapse text-left text-sm'>
             <thead>
               <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>

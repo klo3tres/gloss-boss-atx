@@ -81,12 +81,21 @@ export async function syncVehiclesToCustomer(
     seen.add(key);
     seen.add(description.toLowerCase());
 
-    const { error } = await admin.from('vehicles').insert({
+    let ins = await admin.from('vehicles').insert({
       customer_id: customerId,
       description,
       notes: notesJson(v),
     });
-    if (!error) inserted += 1;
+    if (ins.error && /description|column|schema cache/i.test(ins.error.message)) {
+      ins = await admin.from('vehicles').insert({
+        customer_id: customerId,
+        notes: `${description}\n${notesJson(v)}`,
+      });
+    }
+    if (ins.error && /notes|column/i.test(ins.error.message)) {
+      ins = await admin.from('vehicles').insert({ customer_id: customerId });
+    }
+    if (!ins.error) inserted += 1;
   }
 
   return { inserted };

@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     }
 
     let allowFreeTestPromo = body.allowFreeTestPromo === true;
+    let freePromoRowEnabled = false;
     if (!allowFreeTestPromo) {
       const ss = await admin.from('site_settings').select('key, value, allow_free_test_promo').limit(20);
       if (!ss.error) {
@@ -40,6 +41,35 @@ export async function POST(request: Request) {
           (r) =>
             r.allow_free_test_promo === true ||
             (String(r.key ?? '') === 'allow_free_test_promo' && String(r.value ?? '').toLowerCase() === 'true'),
+        );
+      }
+    }
+    if (promoCode === 'FREE') {
+      const freeRow = await admin.from('promo_codes').select('enabled, archived').eq('code', 'FREE').maybeSingle();
+      freePromoRowEnabled = freeRow.data?.enabled === true && freeRow.data?.archived !== true;
+      if (!freePromoRowEnabled && !allowFreeTestPromo) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              'FREE is blocked: enable the FREE promo row in Admin → Promotions AND turn on the “FREE promo master gate” toggle.',
+          },
+          { status: 400 },
+        );
+      }
+      if (!allowFreeTestPromo) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'FREE is blocked by the master gate. Enable “FREE test promo” in Admin → Promotions.',
+          },
+          { status: 400 },
+        );
+      }
+      if (!freePromoRowEnabled) {
+        return NextResponse.json(
+          { ok: false, error: 'FREE promo row is disabled. Enable the FREE code in Admin → Promotions.' },
+          { status: 400 },
         );
       }
     }

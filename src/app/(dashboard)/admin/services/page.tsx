@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { updateServicePriceCentsAction } from '../service-pricing-actions';
+import { updateServiceActiveAction, updateServicePriceCentsAction } from '../service-pricing-actions';
 import { defaultServicePackages } from '@/lib/site-config';
 import { filterServicePriceRowsForAdminUi } from '@/lib/admin/filter-ui-price-rows';
 import { adminDisplayTitleForSlug, CERAMIC_COATING_SLUG } from '@/lib/admin/canonical-services';
@@ -62,6 +62,9 @@ export default async function AdminServicesPricingPage({
 
   const list = filterServicePriceRowsForAdminUi((rows ?? []) as PriceRow[]);
 
+  const { data: serviceMeta } = await priceClient.from('services').select('id, slug, title, active, sort_order').order('sort_order', { ascending: true });
+  const servicesMeta = (serviceMeta ?? []) as Array<{ id: string; slug: string; title: string; active: boolean }>;
+
   return (
     <DashboardShell
       title='Services & pricing (Supabase)'
@@ -117,6 +120,28 @@ export default async function AdminServicesPricingPage({
         </div>
       ) : null}
 
+      {servicesMeta.length > 0 ? (
+        <section className='gb-glass mb-6 rounded-2xl border border-gold/20 p-5'>
+          <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Service visibility</p>
+          <ul className='mt-3 space-y-2'>
+            {servicesMeta.map((s) => (
+              <li key={s.id} className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2'>
+                <span className='text-sm font-semibold text-white'>
+                  {s.title} <span className='text-zinc-500'>({s.slug})</span>
+                </span>
+                <form action={updateServiceActiveAction} className='flex items-center gap-2'>
+                  <input type='hidden' name='serviceId' value={s.id} />
+                  <input type='hidden' name='active' value={s.active ? 'false' : 'true'} />
+                  <button type='submit' className='text-xs font-bold uppercase text-gold-soft'>
+                    {s.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <div className='space-y-4'>
         {list.map((row) => {
           const svc = Array.isArray(row.services) ? row.services[0] : row.services;
@@ -133,7 +158,11 @@ export default async function AdminServicesPricingPage({
                   <p className='text-sm text-zinc-400'>
                     {row.vehicle_class === 'truck' ? 'Truck' : row.vehicle_class === 'suv' || row.vehicle_class === 'suv_truck' ? 'SUV' : 'Sedan'}
                   </p>
-                  {showQuote ? <p className='text-xs font-semibold text-amber-200/90'>Public price: Quote — set a custom amount below to publish a starting price.</p> : null}
+                  {showQuote ? (
+                    <p className='text-xs font-semibold text-amber-200/90'>
+                      Public price: <span className='text-gold-soft'>Quote Required</span> — set a custom amount below to publish a starting price.
+                    </p>
+                  ) : null}
                 </div>
                 <form action={updateServicePriceCentsAction} className='flex flex-wrap items-end gap-2'>
                   <input type='hidden' name='priceId' value={row.id} />

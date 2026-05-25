@@ -1,11 +1,14 @@
 import {
   sendAppointmentReminderIfConfigured,
   sendBookingConfirmationEmailIfConfigured,
-  sendBusinessNewBookingEmailIfConfigured,
   sendJobCompletedEmailIfConfigured,
   sendJobStartedEmailIfConfigured,
+  resendConfigured,
+  sendResendHtml,
 } from '@/lib/email-send';
+import { bookingConfirmationEmailHtml } from '@/lib/email/templates/booking';
 import { sendCustomerSms } from '@/lib/sms-send';
+import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 /**
@@ -27,15 +30,43 @@ export async function notifyBookingConfirmationQueued(params: {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const admin = tryCreateAdminSupabase();
+  const email = params.toEmail.trim().toLowerCase();
   try {
-    await sendBookingConfirmationEmailIfConfigured({
-      to: params.toEmail.trim().toLowerCase(),
-      guestName: params.guestName,
-      whenIso: params.whenIso,
-      totalCents: params.totalCents,
-      depositCents: params.depositCents,
-      vehicles: params.vehicles,
-    });
+    if (email.includes('@') && resendConfigured()) {
+      const html = bookingConfirmationEmailHtml({
+        guestName: params.guestName,
+        whenLabel,
+        total: `$${(params.totalCents / 100).toFixed(2)}`,
+        deposit: `$${(params.depositCents / 100).toFixed(2)}`,
+        vehicles: params.vehicles,
+        serviceAddress: '',
+        remainingBalance: `$${(Math.max(0, params.totalCents - params.depositCents) / 100).toFixed(2)}`,
+      });
+      const sent = await sendResendHtml({ to: email, subject: 'Gloss Boss ATX — Booking confirmed', html });
+      if (admin) {
+        await admin.from('notification_outbox').insert({
+          appointment_id: params.appointmentId ?? null,
+          kind: 'booking_confirmation',
+          channel: 'email',
+          provider: 'resend',
+          status: sent.ok ? 'sent' : 'failed',
+          template_key: 'booking_confirmation',
+          error_message: sent.ok ? null : sent.error ?? 'send failed',
+          payload: { to: email },
+          created_at: new Date().toISOString(),
+        });
+      }
+    } else {
+      await sendBookingConfirmationEmailIfConfigured({
+        to: email,
+        guestName: params.guestName,
+        whenIso: params.whenIso,
+        totalCents: params.totalCents,
+        depositCents: params.depositCents,
+        vehicles: params.vehicles,
+      });
+    }
   } catch (e) {
     console.warn('[notify] booking_confirmation email', e);
   }
@@ -155,9 +186,10 @@ export async function notifyBusinessNewBookingQueued(params: {
   depositCents: number;
   appointmentId: string;
   vehicles: string;
+  bookingNumber?: string | null;
 }): Promise<void> {
   try {
-    await sendBusinessNewBookingEmailIfConfigured(params);
+    await notifyBusinessNewBookingFull(params);
   } catch (e) {
     console.warn('[notify] business_booking', e);
   }

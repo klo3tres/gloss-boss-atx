@@ -9,10 +9,13 @@ import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { WorkOrderInvoiceBuilder, type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
+import { WorkOrderCompletePanel } from '@/components/tech/work-order-complete-panel';
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
 import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
+import { WorkOrderPricingPanel } from '@/components/tech/work-order-pricing-panel';
+import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-panel';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 
 export type WorkOrderConsoleData = {
@@ -43,6 +46,9 @@ export type WorkOrderConsoleData = {
   paymentMethod?: string;
   scheduledStart?: string;
   scheduledEnd?: string;
+  scheduledStartIso?: string;
+  promoCode?: string;
+  pricingOverrideReason?: string;
   accessLocation?: string;
   accessWater?: string;
   accessPower?: string;
@@ -112,6 +118,11 @@ export type WorkOrderConsoleData = {
   preInspection?: {
     photoProgress: string;
     slotFilled: Record<RequiredBeforeSlot, boolean>;
+    beforePhotosBySlot?: Record<
+      string,
+      { id: string; url: string; table?: 'job_media' | 'job_photos'; storagePath?: string; storageBucket?: string }
+    >;
+    canDeletePhotos?: boolean;
     missingStartItems: string[];
     canStartJob: boolean;
     isJobStarted: boolean;
@@ -139,6 +150,7 @@ export function WorkOrderConsoleClient({
   recordCashAction,
   completeJobAction,
   canAdminOverride = false,
+  canEditPricing = false,
 }: {
   data: WorkOrderConsoleData;
   updateDetailsAction: (formData: FormData) => void | Promise<void>;
@@ -146,6 +158,7 @@ export function WorkOrderConsoleClient({
   recordCashAction: (formData: FormData) => void | Promise<void>;
   completeJobAction: (formData: FormData) => void | Promise<void>;
   canAdminOverride?: boolean;
+  canEditPricing?: boolean;
 }) {
   const progressPct = useMemo(() => {
     const ok = data.requirements.filter((r) => r.ok).length;
@@ -349,6 +362,33 @@ export function WorkOrderConsoleClient({
           </WorkOrderCollapsible>
         </div>
 
+        {canEditPricing && data.pricingSnapshot ? (
+          <WorkOrderPricingPanel
+            appointmentId={data.isFallback ? undefined : jobId}
+            fallbackBookingId={data.isFallback ? jobId : undefined}
+            source={data.isFallback ? 'fallback' : 'appointment'}
+            vehicles={data.vehicles.map((v, index) => ({
+              index,
+              label: v.label,
+              service: v.service.replace(/-/g, ' '),
+              priceCents: v.priceCents,
+              priceLabel: v.priceLabel,
+            }))}
+            promoCode={data.promoCode ?? ''}
+            pricing={{
+              finalTotalCents: data.pricingSnapshot.finalTotalCents,
+              onlineDiscountCents: data.pricingSnapshot.onlineDiscountCents,
+              multiCarDiscountCents: data.pricingSnapshot.multiCarDiscountCents,
+              promoDiscountCents: data.pricingSnapshot.promoDiscountCents,
+              overrideReason: data.pricingOverrideReason,
+            }}
+          />
+        ) : null}
+
+        {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
+          <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
+        ) : null}
+
         <WorkOrderCollapsible title='Payment' defaultOpen>
           {data.pricingSnapshot ? (
             <WorkOrderInvoiceBuilder
@@ -425,35 +465,16 @@ export function WorkOrderConsoleClient({
           </ul>
         </WorkOrderCollapsible>
 
-        {!data.isFallback ? (
-          <form action={completeJobAction} className='gb-premium-card space-y-3 rounded-2xl border border-gold/30 p-4'>
-            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Complete job</p>
-            <input type='hidden' name='appointmentId' value={jobId} />
-            {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
-            {canAdminOverride && !data.paymentComplete ? (
-              <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
-                <input type='checkbox' name='adminOverride' value='true' className='rounded border-amber-400' />
-                Admin override — complete with balance due
-              </label>
-            ) : null}
-            {canAdminOverride ? (
-              <>
-                <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
-                  <input type='checkbox' name='completionOverride' value='true' className='rounded border-amber-400' />
-                  Admin override — skip after photos / checklist
-                </label>
-                <input
-                  name='completionOverrideReason'
-                  placeholder='Override reason (required if skipping requirements)'
-                  className='w-full rounded-xl border border-amber-500/30 bg-black px-3 py-2 text-sm text-white'
-                />
-              </>
-            ) : null}
-            <button type='submit' className='gb-premium-btn flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
-              <CheckCircle2 className='h-5 w-5' /> Complete job
-            </button>
-          </form>
-        ) : null}
+        <WorkOrderCompletePanel
+          jobId={jobId}
+          isFallback={data.isFallback}
+          workflowSessionId={data.workflowSessionId}
+          canAdminOverride={canAdminOverride}
+          paymentComplete={data.paymentComplete}
+          balanceDueCents={data.balanceDueCents}
+          guestEmail={data.guestEmail}
+          agreementCaptureHref={data.agreementCaptureHref}
+        />
       </section>
 
       <StickyActionBar>
@@ -472,15 +493,12 @@ export function WorkOrderConsoleClient({
             Balance link
           </NotificationSendForm>
         ) : null}
-        {!data.isFallback ? (
-          <form action={completeJobAction} className='flex-1'>
-            <input type='hidden' name='appointmentId' value={jobId} />
-            {data.workflowSessionId ? <input type='hidden' name='workflowSessionId' value={data.workflowSessionId} /> : null}
-            <button type='submit' className='w-full rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 py-3 text-[10px] font-black uppercase text-emerald-200'>
-              Complete
-            </button>
-          </form>
-        ) : null}
+        <Link
+          href={`#complete-job`}
+          className='flex-1 rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 py-3 text-center text-[10px] font-black uppercase text-emerald-200'
+        >
+          Complete
+        </Link>
       </StickyActionBar>
     </div>
   );

@@ -121,8 +121,21 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
       },
     });
     const sent = await sendResendHtml({ to: email, subject: `Gloss Boss ATX receipt ${receiptNumber}`, html });
-    if (sent.ok) status = 'sent';
-    else {
+    if (sent.ok) {
+      status = 'sent';
+      if (sent.emailId) {
+        await gate.admin.from('notification_outbox').insert({
+          appointment_id: appointmentId || null,
+          fallback_booking_id: fallbackId || null,
+          customer_id: str(customer.id || payment.customer_id) || null,
+          kind: 'receipt',
+          channel: 'email',
+          status: 'sent',
+          provider_message_id: sent.emailId,
+          payload: { receipt_number: receiptNumber, to: email },
+        });
+      }
+    } else {
       status = 'failed';
       errorMessage = /403|domain/i.test(sent.error ?? '') ? 'Resend domain not verified. Verify domain before sending to customers.' : sent.error ?? 'Receipt email failed.';
     }
@@ -167,7 +180,11 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   if (receiptId) revalidatePath(`/admin/receipts/${receiptId}`);
   if (resolvedPaymentId) revalidatePath(`/admin/receipts/${resolvedPaymentId}`);
 
-  if (status === 'sent') return actionOk(`Receipt emailed to ${email}.`);
-  if (status === 'skipped') return actionErr(skippedReason ?? 'Receipt email skipped.');
-  return actionErr(errorMessage ?? 'Receipt email failed.');
+  if (status === 'sent') {
+    return actionOk(
+      `Receipt emailed to ${email}. If they do not see it within a few minutes, ask them to check spam and confirm Resend domain is verified for glossbossatx.com.`,
+    );
+  }
+  if (status === 'skipped') return actionErr(skippedReason ?? 'Receipt email skipped — no email sent.');
+  return actionErr(errorMessage ?? 'Receipt email failed — customer did not receive it.');
 }

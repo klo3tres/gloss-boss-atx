@@ -1,5 +1,6 @@
 import { displayMoney } from '@/lib/display-format';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
+import { buildPerVehicleReceiptLines, receiptUsesPerVehicleLayout } from '@/lib/receipt-vehicle-lines';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 import type { Row } from '@/lib/work-order-resolve';
 
@@ -15,11 +16,15 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
       : pricing.vehicleLines.reduce((s, v) => s + v.priceCents, 0);
   const addOnSub = typeof b?.addOnSubtotalCents === 'number' ? (b.addOnSubtotalCents as number) : 0;
 
-  if (vehicleSub > 0) {
-    lines.push({ label: 'Base services subtotal', amount: displayMoney(vehicleSub) });
-  }
-  if (addOnSub > 0) {
-    lines.push({ label: 'Add-ons subtotal', amount: displayMoney(addOnSub) });
+  if (receiptUsesPerVehicleLayout(job)) {
+    lines.push(...buildPerVehicleReceiptLines(job));
+  } else {
+    if (vehicleSub > 0) {
+      lines.push({ label: 'Base services subtotal', amount: displayMoney(vehicleSub) });
+    }
+    if (addOnSub > 0) {
+      lines.push({ label: 'Add-ons subtotal', amount: displayMoney(addOnSub) });
+    }
   }
   if (pricing.multiCarDiscountCents > 0) {
     lines.push({

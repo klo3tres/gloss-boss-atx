@@ -84,6 +84,9 @@ export async function POST(request: Request) {
         vehicleClass: String(v.vehicleClass ?? '').trim(),
         vehicleDescription: String(v.vehicleDescription ?? '').trim(),
         vehicleColor: String((v as VehicleLineInput & { vehicleColor?: string }).vehicleColor ?? '').trim(),
+        addOnSlugs: Array.isArray((v as { addOnSlugs?: string[] }).addOnSlugs)
+          ? (v as { addOnSlugs?: string[] }).addOnSlugs!.map((s) => String(s ?? '').trim()).filter(Boolean).slice(0, 12)
+          : [],
       }));
     } else if (body.serviceSlug && body.vehicleClass && body.vehicleDescription) {
       lines = [
@@ -212,7 +215,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const durationLines = resolved.map((r) => ({ serviceSlug: r.serviceSlug, vehicleClass: r.vehicleClass }));
+    const durationLines = resolved.map((r) => ({
+      serviceSlug: r.serviceSlug,
+      vehicleClass: r.vehicleClass,
+      addOnSlugs: r.addOnSlugs ?? [],
+    }));
     const durationMinutes = totalBookingDurationMinutes(durationLines);
     const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
@@ -306,6 +313,7 @@ export async function POST(request: Request) {
       vehicle_description: r.vehicleDescription,
       vehicle_color: r.vehicleColor || null,
       price_cents: r.priceCents,
+      add_on_slugs: r.addOnSlugs ?? [],
     }));
 
     const serviceAddressFull = [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', ');

@@ -177,7 +177,7 @@ export default function BookingHealthPage() {
             </div>            {!data.recentFallbacks || data.recentFallbacks.length === 0 ? (
               <p className='mt-3 text-sm text-zinc-500'>None returned (or table not migrated).</p>
             ) : (
-              <div className='mt-4 overflow-x-auto'>
+              <div className='gb-admin-table-wrap mt-4'>
                 <table className='w-full min-w-[640px] border-collapse text-left text-xs text-zinc-300'>
                   <thead>
                     <tr className='border-b border-white/10 text-[10px] uppercase tracking-wider text-zinc-500'>

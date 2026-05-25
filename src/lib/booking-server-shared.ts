@@ -10,6 +10,8 @@ import {
 } from '@/lib/promo-engine';
 import { parseDealConfig } from '@/lib/public-site-data';
 import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
+import { sumPerVehicleAddOnCents } from '@/lib/addon-vehicle-pricing';
+import { normalizeAddonForPublic } from '@/lib/addons-shared';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 
 export function isSchemaDriftError(message: string): boolean {
@@ -434,7 +436,13 @@ export async function insertAppointmentResilient(
   };
 }
 
-export type VehicleLineInput = { serviceSlug: string; vehicleClass: string; vehicleDescription: string; vehicleColor?: string };
+export type VehicleLineInput = {
+  serviceSlug: string;
+  vehicleClass: string;
+  vehicleDescription: string;
+  vehicleColor?: string;
+  addOnSlugs?: string[];
+};
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
 
@@ -444,6 +452,7 @@ export type ResolvedVehicleLine = {
   vehicleDescription: string;
   vehicleColor?: string;
   priceCents: number;
+  addOnSlugs: string[];
 };
 
 /**
@@ -496,6 +505,7 @@ export async function resolveVehicleLinesPricing(
       vehicleDescription: line.vehicleDescription,
       vehicleColor: line.vehicleColor,
       priceCents,
+      addOnSlugs: (line.addOnSlugs ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 12),
     });
   }
 
@@ -545,8 +555,40 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
   const pricedLines = await resolveVehicleLinesPricing(admin, params.lines);
   if (!pricedLines.ok) return pricedLines;
 
-  const addOnCentsBySlug = await sumAddonCentsBySlug(admin, params.addOns);
-  const addOnCentsSum = Object.values(addOnCentsBySlug).reduce((s, n) => s + n, 0);
+  const perVehicleAddons = params.lines.some((l) => (l.addOnSlugs ?? []).length > 0);
+  const flatAddOns =
+    params.addOns.length > 0
+      ? params.addOns
+      : [...new Set(params.lines.flatMap((l) => l.addOnSlugs ?? []))];
+
+  let addOnCentsBySlug: Record<string, number> = {};
+  let addOnCentsSum = 0;
+  let addOnLines: Array<{ vehicleIndex: number; slug: string; label: string; cents: number }> = [];
+
+  if (perVehicleAddons) {
+    let catalog: Array<{ slug: string; price_cents: number }> = [];
+    try {
+      const { data } = await admin.from('addons').select('*').eq('active', true);
+      catalog = ((data ?? []) as Record<string, unknown>[]).map((r) => normalizeAddonForPublic(r));
+    } catch {
+      catalog = [];
+    }
+    const pricedAddons = sumPerVehicleAddOnCents(
+      params.lines.map((l) => ({
+        vehicleClass: l.vehicleClass,
+        addOnSlugs: l.addOnSlugs ?? [],
+      })),
+      catalog,
+    );
+    addOnCentsSum = pricedAddons.totalCents;
+    addOnLines = pricedAddons.lines;
+    for (const line of addOnLines) {
+      addOnCentsBySlug[line.slug] = (addOnCentsBySlug[line.slug] ?? 0) + line.cents;
+    }
+  } else {
+    addOnCentsBySlug = await sumAddonCentsBySlug(admin, flatAddOns);
+    addOnCentsSum = Object.values(addOnCentsBySlug).reduce((s, n) => s + n, 0);
+  }
   const deals = await loadDealConfigForBooking(admin);
   const claimed = await loadClaimedOffer(admin, params.offerRef);
   let breakdown = computeBookingPricing({
@@ -610,7 +652,13 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
     }
   }
 
-  return { ok: true, resolved: pricedLines.resolved, breakdown, claimed, promo: promoMeta };
+  const breakdownOut = {
+    ...breakdown,
+    addOnSlugs: flatAddOns,
+    ...(addOnLines.length > 0 ? { addOnLines } : {}),
+  } as BookingPricingBreakdown & { addOnSlugs?: string[]; addOnLines?: typeof addOnLines };
+
+  return { ok: true, resolved: pricedLines.resolved, breakdown: breakdownOut, claimed, promo: promoMeta };
 }
 
 /** Field invoices charge 100% of quoted total (deposit engine == full total). */

@@ -3,6 +3,10 @@ import { CustomerDashboardClient } from '@/components/dashboard/customer-dashboa
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import {
+  loadCustomerSnapshotForAppointment,
+  type CustomerApptSnapshotView,
+} from '@/lib/customer-dashboard-snapshot';
 
 
 
@@ -301,6 +305,19 @@ export default async function CustomerDashboardRootPage() {
     agreementHrefByAppt[k] = `/dashboard/agreements/${encodeURIComponent(`signed_agreements:${row.id}`)}`;
   });
 
+  const snapshotByAppt: Record<string, CustomerApptSnapshotView> = {};
+  if (adminDb && appointments.length > 0) {
+    const snaps = await Promise.all(
+      appointments.map(async (a) => {
+        const snap = await loadCustomerSnapshotForAppointment(adminDb, a.id);
+        return snap ? ([a.id, snap] as const) : null;
+      }),
+    );
+    for (const row of snaps) {
+      if (row) snapshotByAppt[row[0]] = row[1];
+    }
+  }
+
   let googleReviewUrl = '';
   if (adminDb) {
     const ss = await adminDb.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
@@ -342,6 +359,7 @@ export default async function CustomerDashboardRootPage() {
         photoTotal={photoTotal}
         agreementTotal={agreementTotal}
         appointmentCount={appointments.length}
+        snapshotByAppt={snapshotByAppt}
       />
     </DashboardShell>
   );

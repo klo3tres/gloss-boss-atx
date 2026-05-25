@@ -125,6 +125,119 @@ body {
   }
 }
 
+.gb-display-serif {
+  font-family: var(--font-playfair, Georgia, 'Times New Roman', serif);
+  letter-spacing: 0.02em;
+}
+
+@keyframes gb-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.gb-check-pop {
+  animation: gb-check-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.gb-completion-celebrate {
+  animation: gb-fade-up 0.5s ease-out forwards;
+}
+
+@keyframes gb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gb-luxury-eyebrow {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--gb-gold-soft);
+}
+
+.gb-luxury-card-hover {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.gb-luxury-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.45);
+  box-shadow: 0 0 32px rgba(212, 175, 55, 0.15);
+}
+
+.gb-luxury-page {
+  background:
+    radial-gradient(ellipse 100% 80% at 50% -30%, rgba(212, 175, 55, 0.14), transparent 50%),
+    #000;
+}
+
+.gb-luxury-shell main {
+  background: transparent;
+}
+
+.gb-booking-wizard {
+  background: linear-gradient(180deg, rgba(10, 10, 10, 0.98) 0%, #000 40%);
+}
+
+.gb-admin-table-wrap {
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.gb-admin-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gb-admin-table-wrap th {
+  padding: 0.75rem 1rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(161 161 170);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gb-admin-table-wrap td {
+  padding: 0.65rem 1rem;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gb-dashboard-content > section:not([class*='gb-']),
+.gb-dashboard-content > form:not([class*='gb-']) {
+  border-radius: 1.5rem;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: linear-gradient(155deg, rgba(24, 24, 27, 0.72), rgba(0, 0, 0, 0.88));
+  padding: 1.25rem;
+}
+
+.gb-dashboard-content .gb-premium-card,
+.gb-dashboard-content .gb-glass {
+  border-radius: 1.5rem;
+}
+
 @media print {
   .gb-no-print {
     display: none !important;

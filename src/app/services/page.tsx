@@ -103,7 +103,7 @@ export default function ServicesPage() {
     ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || hasServiceOffers);
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
+    <main className="gb-luxury-page min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
       <div className="mx-auto w-full max-w-6xl">
         <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Mobile Detailing - We Come To You</p>
         <h1 className="mt-3 text-4xl font-black uppercase sm:text-5xl">Services & Pricing</h1>
@@ -215,10 +215,17 @@ export default function ServicesPage() {
         ) : null}
 
         {fleetEnabled ? (
-          <section className="mt-10 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6">
-            <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Fleet & business</p>
-            <h2 className="mt-2 text-2xl font-black uppercase text-white">Dealerships, fleets & commercial</h2>
+          <section className="gb-luxury-card-hover mt-10 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.1)]">
+            <p className="gb-luxury-eyebrow">Fleet & business accounts</p>
+            <h2 className="gb-display-serif mt-2 text-2xl font-black uppercase text-white sm:text-3xl">Fleet & Business Detailing</h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
+            <ul className="mt-4 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2">
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">3–5 vehicles — from $65/vehicle exterior wash</li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">6–10 vehicles — from $55/vehicle exterior wash</li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">10+ vehicles — custom quote</li>
+              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">Interior / fleet detail & monthly plans — custom quote</li>
+            </ul>
+            <p className="mt-3 text-xs text-zinc-500">Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site.</p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link href="/contact" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">
                 Request fleet quote

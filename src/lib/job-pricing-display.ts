@@ -107,7 +107,8 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     .filter((i) => i.kind === 'discount_adjustment' || i.amountCents < 0)
     .reduce((s, i) => s + Math.abs(i.amountCents), 0);
 
-  let serviceFinalCents = pick('finalTotalCents');
+  const adminOverrideFinal = pick('adminOverrideFinalTotalCents');
+  let serviceFinalCents = adminOverrideFinal > 0 ? adminOverrideFinal : pick('finalTotalCents');
   if (serviceFinalCents <= 0 && prePromoCents > 0) {
     serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - offerDiscountCents - promoCodeDiscountCents);
   }

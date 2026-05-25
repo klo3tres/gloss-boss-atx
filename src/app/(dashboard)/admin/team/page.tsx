@@ -131,7 +131,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
           <span className='text-gold-soft'>reset passwords</span>, <span className='text-gold-soft'>edit display names</span>, and{' '}
           <span className='text-gold-soft'>create staff</span> below — feedback is shown inline (no page redirects).
         </p>
-        <div className='mt-4 overflow-x-auto'>
+        <div className='gb-admin-table-wrap mt-4'>
           <table className='w-full min-w-[720px] border-collapse text-left text-sm'>
             <thead>
               <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>

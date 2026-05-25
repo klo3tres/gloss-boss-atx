@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, FileText, Plus, Save } from 'lucide-react';
 import { LINE_ITEM_KIND_LABELS, type WorkOrderLineItemKind } from '@/lib/work-order-line-items';
@@ -109,15 +109,41 @@ export function WorkOrderInvoiceBuilder({
   receiptPdfHref?: string;
 }) {
   const router = useRouter();
+  const [livePricing, setLivePricing] = useState(pricing);
+  const [liveBalanceCents, setLiveBalanceCents] = useState(balanceDueCents);
   const [form, setForm] = useState(emptyForm);
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    setLivePricing(pricing);
+    setLiveBalanceCents(balanceDueCents);
+  }, [pricing, balanceDueCents]);
+
+  const refreshPricing = useCallback(async () => {
+    const q = appointmentId
+      ? `appointmentId=${encodeURIComponent(appointmentId)}`
+      : fallbackBookingId
+        ? `fallbackBookingId=${encodeURIComponent(fallbackBookingId)}`
+        : '';
+    if (!q) return;
+    const res = await fetch(`/api/tech/job-pricing?${q}`);
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      pricing?: InvoicePricingSnapshot;
+      balanceDueCents?: number;
+    };
+    if (data.ok && data.pricing) {
+      setLivePricing(data.pricing);
+      if (typeof data.balanceDueCents === 'number') setLiveBalanceCents(data.balanceDueCents);
+    }
+  }, [appointmentId, fallbackBookingId]);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState<'open' | 'copy' | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<string | null>(null);
 
-  const canCheckout = balanceDueCents > 0 && !isFallback && appointmentId;
+  const canCheckout = liveBalanceCents > 0 && !isFallback && appointmentId;
 
   const draftTotalCents = useMemo(
     () => draftLines.reduce((s, d) => s + d.unitCents * d.quantity, 0),
@@ -125,11 +151,11 @@ export function WorkOrderInvoiceBuilder({
   );
 
   const preview = useMemo(() => {
-    const customTotal = pricing.customLineItemsCents + draftTotalCents;
-    const finalTotalCents = pricing.finalTotalCents + draftTotalCents;
-    const remainingBalanceCents = Math.max(0, finalTotalCents - pricing.totalPaidCents);
+    const customTotal = livePricing.customLineItemsCents + draftTotalCents;
+    const finalTotalCents = livePricing.finalTotalCents + draftTotalCents;
+    const remainingBalanceCents = Math.max(0, finalTotalCents - livePricing.totalPaidCents);
     return { customTotal, finalTotalCents, remainingBalanceCents };
-  }, [pricing, draftTotalCents]);
+  }, [livePricing, draftTotalCents]);
 
   const addDraftFromForm = () => {
     const unitCents = parseDollars(form.amountDollars);
@@ -202,6 +228,7 @@ export function WorkOrderInvoiceBuilder({
       });
       setForm(emptyForm());
       setSaveMsg({ tone: 'ok', text: 'Line item saved — totals updated.' });
+      await refreshPricing();
       router.refresh();
     } catch {
       setSaveMsg({ tone: 'err', text: 'Could not save line item.' });
@@ -230,6 +257,7 @@ export function WorkOrderInvoiceBuilder({
       }
       setDraftLines([]);
       setSaveMsg({ tone: 'ok', text: `${draftLines.length} line item(s) saved.` });
+      await refreshPricing();
       router.refresh();
     } catch {
       setSaveMsg({ tone: 'err', text: 'Could not save all line items.' });
@@ -443,23 +471,23 @@ export function WorkOrderInvoiceBuilder({
       <div className='mt-5 rounded-xl border border-gold/30 bg-black/60 p-4'>
         <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Live invoice preview</p>
         <ul className='mt-3 space-y-2 text-sm'>
-          {pricing.vehicleSubtotalCents > 0 ? (
-            <PreviewRow label='Base services subtotal' value={money(pricing.vehicleSubtotalCents)} />
+          {livePricing.vehicleSubtotalCents > 0 ? (
+            <PreviewRow label='Base services subtotal' value={money(livePricing.vehicleSubtotalCents)} />
           ) : null}
-          {pricing.addOnSubtotalCents > 0 ? (
-            <PreviewRow label='Add-ons subtotal' value={money(pricing.addOnSubtotalCents)} />
+          {livePricing.addOnSubtotalCents > 0 ? (
+            <PreviewRow label='Add-ons subtotal' value={money(livePricing.addOnSubtotalCents)} />
           ) : null}
-          {pricing.multiCarDiscountCents > 0 ? (
-            <PreviewRow label='Multi-car discount' value={`−${money(pricing.multiCarDiscountCents)}`} discount />
+          {livePricing.multiCarDiscountCents > 0 ? (
+            <PreviewRow label='Multi-car discount' value={`−${money(livePricing.multiCarDiscountCents)}`} discount />
           ) : null}
-          {pricing.onlineDiscountCents > 0 ? (
-            <PreviewRow label='Online booking discount' value={`−${money(pricing.onlineDiscountCents)}`} discount />
+          {livePricing.onlineDiscountCents > 0 ? (
+            <PreviewRow label='Online booking discount' value={`−${money(livePricing.onlineDiscountCents)}`} discount />
           ) : null}
-          {pricing.promoDiscountCents > 0 ? (
-            <PreviewRow label='Promo discount' value={`−${money(pricing.promoDiscountCents)}`} discount />
+          {livePricing.promoDiscountCents > 0 ? (
+            <PreviewRow label='Promo discount' value={`−${money(livePricing.promoDiscountCents)}`} discount />
           ) : null}
-          {pricing.manualDiscountCents > 0 ? (
-            <PreviewRow label='Manual discount' value={`−${money(pricing.manualDiscountCents)}`} discount />
+          {livePricing.manualDiscountCents > 0 ? (
+            <PreviewRow label='Manual discount' value={`−${money(livePricing.manualDiscountCents)}`} discount />
           ) : null}
           {preview.customTotal !== 0 ? (
             <PreviewRow
@@ -476,11 +504,11 @@ export function WorkOrderInvoiceBuilder({
             />
           ))}
           <PreviewRow label='Final total' value={money(preview.finalTotalCents)} strong />
-          {pricing.depositPaidCents > 0 ? (
-            <PreviewRow label='Deposit paid' value={money(pricing.depositPaidCents)} />
+          {livePricing.depositPaidCents > 0 ? (
+            <PreviewRow label='Deposit paid' value={money(livePricing.depositPaidCents)} />
           ) : null}
-          {pricing.totalPaidCents > 0 ? (
-            <PreviewRow label='Total paid' value={money(pricing.totalPaidCents)} />
+          {livePricing.totalPaidCents > 0 ? (
+            <PreviewRow label='Total paid' value={money(livePricing.totalPaidCents)} />
           ) : null}
           <PreviewRow label='Balance due' value={money(preview.remainingBalanceCents)} strong gold />
         </ul>
