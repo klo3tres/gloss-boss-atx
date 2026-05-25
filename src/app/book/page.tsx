@@ -21,6 +21,17 @@ export default function BookPage() {
             <BookingWizard />
           </Suspense>
         </div>
+        <p className='mt-6 text-center text-xs text-zinc-500'>
+          By booking you agree to our{' '}
+          <a href='/terms' className='text-gold-soft underline'>
+            Terms
+          </a>{' '}
+          and{' '}
+          <a href='/privacy' className='text-gold-soft underline'>
+            Privacy Policy
+          </a>
+          . SMS updates require consent — reply STOP to opt out, HELP for support.
+        </p>
       </div>
     </main>
   );

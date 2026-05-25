@@ -112,7 +112,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     : null;
 
   return (
-    <div className='space-y-8'>
+    <div className='gb-premium-hero space-y-8 rounded-3xl border border-gold/15 p-5 sm:p-8'>
       {props.googleReviewUrl ? (
         <a
           href={props.googleReviewUrl}

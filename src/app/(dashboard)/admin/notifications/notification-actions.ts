@@ -61,21 +61,32 @@ export async function testNotificationSendAction(formData: FormData): Promise<{ 
       to,
       body,
     });
+    const deliveryNote = res.deliveryStatus ? ` (${res.deliveryStatus})` : '';
+    const carrierNote = res.carrierError ? ` — ${res.carrierError}` : '';
+    const outboxStatus = res.ok
+      ? res.deliveryStatus === 'delivered'
+        ? 'delivered'
+        : 'sent'
+      : res.skipped
+        ? 'skipped'
+        : 'failed';
     await admin.from('notification_outbox').insert({
       kind: 'test_send',
       channel: 'sms',
-      status: res.ok ? 'sent' : res.skipped ? 'skipped' : 'failed',
-      error_message: res.error ?? null,
+      provider: 'twilio',
+      status: outboxStatus,
+      provider_message_id: res.sid ?? null,
+      error_message: res.error ?? res.carrierError ?? null,
       skipped_reason: res.skipped ? 'provider_not_configured' : null,
-      payload: { to },
+      payload: { to, delivery_status: res.deliveryStatus, carrier_error: res.carrierError },
       created_at: new Date().toISOString(),
     });
     return {
       message: res.ok
-        ? `SMS sent (${res.sid ?? 'ok'}).`
+        ? `SMS accepted${deliveryNote}${carrierNote} — not marked delivered until carrier confirms.`
         : res.skipped
           ? `SMS skipped: ${res.error ?? 'Twilio not configured'}.`
-          : `SMS failed: ${res.error ?? 'unknown'}`,
+          : `SMS failed: ${res.error ?? 'unknown'}${carrierNote}`,
     };
   }
 
@@ -92,21 +103,63 @@ export async function testNotificationSendAction(formData: FormData): Promise<{ 
     });
     return { message: 'Email skipped — set RESEND_API_KEY and RESEND_FROM_EMAIL.' };
   }
+  const { GLOSS_BOSS_SUPPORT_EMAIL } = await import('@/lib/branding');
   const html = glossBossEmailLayout({
-    title: 'Test',
-    preview: 'Test',
-    headline: 'Test message',
-    bodyHtml: `<p style="color:#fafafa;font-size:15px;">${body.replace(/</g, '&lt;')}</p>`,
+    title: subject,
+    preview: 'Gloss Boss ATX — test notification',
+    headline: 'Test notification',
+    bodyHtml: `
+      <p style="color:#fafafa;font-size:15px;">This is a branded test from the Gloss Boss ATX notification center.</p>
+      <p style="color:#d4d4d8;font-size:14px;margin-top:16px;">${body.replace(/</g, '&lt;').replace(/\n/g, '<br/>')}</p>
+      <p style="color:#a1a1aa;font-size:13px;margin-top:24px;">Purpose: verify layout, logo, and delivery before customer-facing sends.</p>
+      <p style="color:#a1a1aa;font-size:13px;">Support: ${GLOSS_BOSS_SUPPORT_EMAIL}</p>`,
   });
   const sent = await sendResendHtml({ to, subject, html });
+  const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() ?? '';
   await admin.from('notification_outbox').insert({
     kind: 'test_send',
     channel: 'email',
     provider: 'resend',
     status: sent.ok ? 'sent' : 'failed',
+    subject,
+    provider_message_id: sent.emailId ?? null,
     error_message: sent.ok ? null : sent.error ?? 'failed',
-    payload: { to },
+    payload: { to, from: fromEmail, subject },
     created_at: new Date().toISOString(),
   });
   return { message: sent.ok ? `Email sent to ${to}.` : `Email failed: ${sent.error ?? 'unknown'}` };
+}
+
+export async function installAllNotificationDefaultsAction(): Promise<{ message: string; ok: boolean }> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, message: 'Unauthorized' };
+
+  const defaults: Array<[string, string, string, string, string]> = [
+    ['booking_confirmation', 'email', 'Booking Confirmation', 'Gloss Boss ATX: Appointment confirmed', 'Your appointment is confirmed for {{appointment_time}}.'],
+    ['booking_reminder', 'sms', 'Booking Reminder', '', 'Reminder: Gloss Boss ATX at {{appointment_time}} for {{vehicle}}.'],
+    ['review_request', 'sms', 'Review Request', '', 'Thanks! Leave a review: {{review_link}}'],
+    ['invoice_receipt', 'email', 'Invoice / Receipt', 'Your Gloss Boss ATX receipt', 'Receipt for {{service}} — {{payment_link}}'],
+  ];
+
+  let count = 0;
+  for (const [key, channel, name, subject, body] of defaults) {
+    const { data: existing } = await admin.from('notification_templates').select('id').eq('template_key', key).maybeSingle();
+    const row = {
+      template_key: key,
+      channel,
+      name,
+      subject: subject || null,
+      body,
+      enabled: true,
+      updated_at: new Date().toISOString(),
+    };
+    if (existing?.id) {
+      await admin.from('notification_templates').update(row).eq('id', existing.id);
+    } else {
+      await admin.from('notification_templates').insert(row);
+    }
+    count += 1;
+  }
+  revalidatePath('/admin/notifications');
+  return { ok: true, message: `Installed/updated ${count} default templates.` };
 }

@@ -339,6 +339,9 @@ export default function HomePage() {
           <MotionFade>
             <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>Featured transformations</h2>
             <p className='mt-2 max-w-2xl text-sm text-zinc-400'>Live gallery from your CMS — add photos in Admin → Website CMS.</p>
+            <Link href='/gallery' className='mt-3 inline-block text-xs font-black uppercase tracking-wider text-gold-soft underline'>
+              View full transformation portfolio →
+            </Link>
           </MotionFade>
           <SectionErrorBoundary label='Gallery'>
             <HomeGalleryStrip />

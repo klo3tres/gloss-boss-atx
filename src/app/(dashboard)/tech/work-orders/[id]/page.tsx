@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation';
 import { DashboardShell, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isAdminLevel } from '@/lib/auth/roles';
+import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
+import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -347,6 +349,10 @@ export default async function TechWorkOrderDetailPage({
     sourceHint: isFallback ? 'fallback' : 'appointment',
   });
   const pricing = orderSnapshot?.pricing ?? (await import('@/lib/job-pricing-display')).resolveJobPricing(row, paymentRows);
+  const receiptBreakdownLines = buildReceiptBreakdown(row, pricing);
+  const photoUploadDisabled = resolved.orphanSession || isTestLikeJob(row);
+  const canManagePayments = isStaffRole(session.profile?.role ?? null);
+  const workOrderPath = `/tech/work-orders/${encodeURIComponent(id)}${shellRole === 'admin' ? '?shell=admin' : ''}`;
   await syncJobBalanceDue(admin, row, pricing, {
     appointmentId: !isFallback ? queryId : undefined,
     fallbackBookingId: isFallback ? queryId : undefined,
@@ -457,8 +463,24 @@ export default async function TechWorkOrderDetailPage({
       finalTotalCents: pricing.finalTotalCents,
       depositPaidCents: pricing.depositPaidCents,
       totalPaidCents: pricing.totalPaidCents,
+      rawTotalPaidCents: pricing.rawTotalPaidCents,
+      overpaymentCents: pricing.overpaymentCents,
       remainingBalanceCents: pricing.remainingBalanceCents,
     },
+    receiptBreakdownLines,
+    photoUploadDisabled,
+    uploadContextDebug: showDebug
+      ? {
+          workOrderId: queryId,
+          appointmentId: !isFallback ? queryId : '',
+          fallbackBookingId: isFallback ? queryId : '',
+          workflowSessionId: workflowSessionId ?? '',
+          customerId: str(row.customer_id),
+          urlParamId: id,
+        }
+      : undefined,
+    canManagePayments,
+    workOrderPath,
     source: isFallback ? 'fallback' : 'appointment',
     isFallback,
     shellBackHref: shellRole === 'admin' ? '/admin/work-orders' : '/tech',
@@ -484,7 +506,9 @@ export default async function TechWorkOrderDetailPage({
     promoDiscount: pricing.promoDiscountCents > 0 ? displayMoney(pricing.promoDiscountCents) : undefined,
     stripePaid: pricing.stripePaidCents > 0 ? displayMoney(pricing.stripePaidCents) : undefined,
     cashPaid: pricing.cashPaidCents > 0 ? displayMoney(pricing.cashPaidCents) : undefined,
-    totalPaid: displayMoney(pricing.totalPaidCents),
+    totalPaid: pricing.hasOverpayment
+      ? `${displayMoney(pricing.rawTotalPaidCents)} (${displayMoney(pricing.allocatedTotalPaidCents)} applied)`
+      : displayMoney(pricing.totalPaidCents),
     paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
     paymentStatus: displayLabel(row.payment_status, 'Pending'),
     scheduledStart,
@@ -599,9 +623,11 @@ export default async function TechWorkOrderDetailPage({
     recentPayments: paymentRows.map((p) => ({
       id: str(p.id),
       amount: displayMoney(p.amount_cents),
+      amountCents: num(p.amount_cents),
       status: displayLabel(p.status),
       method: displayLabel(p.payment_method || p.payment_kind),
       at: displayChicago(p.paid_at),
+      voided: Boolean(p.voided_at || p.voided === true) || str(p.status).toLowerCase() === 'voided',
       stripe: str(p.stripe_payment_intent_id) ? 'Stripe' : '',
     })),
     receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`,

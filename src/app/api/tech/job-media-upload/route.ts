@@ -5,6 +5,7 @@ import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { tryCreateServerSupabase } from '@/lib/supabase/server';
+import { assertMediaUploadAccess, resolveJobForMediaUpload } from '@/lib/job-upload-resolve';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -155,12 +156,39 @@ export async function POST(request: Request) {
     }
     let customerId: string | null = customerIdForm || null;
     let vehicleId: string | null = null;
+    let appointmentUsable = false;
+    let linkedAppointmentId = '';
     const debug: Array<Record<string, unknown>> = [];
     const logDebug = (event: string, extra: Record<string, unknown> = {}) => {
       debug.push({ event, ...extra });
     };
     if (!appointmentId && workOrderId) appointmentId = workOrderId;
     if (!fallbackBookingId && workOrderId && !appointmentId) fallbackBookingId = workOrderId;
+
+    const unified = await resolveJobForMediaUpload(admin, {
+      workOrderId,
+      appointmentId,
+      fallbackBookingId,
+      workflowSessionId: techWorkflowSessionId,
+    });
+    if (unified) {
+      const accessErr = assertMediaUploadAccess(role, user.id, unified);
+      if (accessErr) {
+        return NextResponse.json({ error: accessErr }, { status: unified.orphanSession ? 403 : 403 });
+      }
+      appointmentId = unified.appointmentId;
+      fallbackBookingId = unified.fallbackBookingId;
+      customerId = unified.customerId ?? customerId;
+      if (unified.appointmentId) {
+        appointmentUsable = true;
+        linkedAppointmentId = unified.appointmentId;
+      }
+      logDebug('unified.resolve', {
+        appointmentId: appointmentId || null,
+        fallbackBookingId: fallbackBookingId || null,
+        orphan: unified.orphanSession,
+      });
+    }
 
     logDebug('received', {
       appointmentId,
@@ -176,8 +204,8 @@ export async function POST(request: Request) {
       userId: user.id,
     });
 
-    let appointmentUsable = Boolean(appointmentId);
-    let linkedAppointmentId = appointmentId;
+    if (!appointmentUsable) appointmentUsable = Boolean(appointmentId);
+    if (!linkedAppointmentId && appointmentId) linkedAppointmentId = appointmentId;
     if (appointmentId) {
       const appt = await loadAppointmentById(admin, appointmentId);
       const a = appt.data as Record<string, unknown> | null;

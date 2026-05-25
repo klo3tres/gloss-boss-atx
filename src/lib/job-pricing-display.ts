@@ -65,8 +65,15 @@ export type JobPricingDisplay = {
   zellePaidCents: number;
   manualPaidCents: number;
   totalPaidCents: number;
+  /** Sum of all succeeded non-voided payments (may exceed job total from test/duplicate rows). */
+  rawTotalPaidCents: number;
+  /** Amount counted toward this job total (capped at final total for receipts). */
+  allocatedTotalPaidCents: number;
+  overpaymentCents: number;
+  hasOverpayment: boolean;
   remainingBalanceCents: number;
   customLineItemsCents: number;
+  promoCode: string;
 };
 
 export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDisplay {
@@ -168,7 +175,17 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     depositPaidCents = Math.min(depositOnFile, totalPaidCents);
   }
 
-  const remainingBalanceCents = Math.max(0, finalTotalCents - totalPaidCents);
+  const rawTotalPaidCents = totalPaidCents;
+  const allocatedTotalPaidCents = Math.min(totalPaidCents, finalTotalCents);
+  const overpaymentCents = Math.max(0, rawTotalPaidCents - finalTotalCents);
+  const remainingBalanceCents = Math.max(0, finalTotalCents - rawTotalPaidCents);
+
+  const promoCode =
+    str(job.promo_code) ||
+    str(b.promoCode) ||
+    str(payload.promo_code) ||
+    str(payloadPricing.promoCode) ||
+    '';
 
   return {
     vehicleLines,
@@ -187,9 +204,14 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     cashPaidCents,
     zellePaidCents,
     manualPaidCents,
-    totalPaidCents,
+    totalPaidCents: allocatedTotalPaidCents,
+    rawTotalPaidCents,
+    allocatedTotalPaidCents,
+    overpaymentCents,
+    hasOverpayment: overpaymentCents > 0,
     remainingBalanceCents,
     customLineItemsCents,
+    promoCode,
   };
 }
 

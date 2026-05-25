@@ -12,59 +12,74 @@ export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
 
 export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'customer';
 
-const adminLinks = [
-  { href: '/admin', label: 'Overview' },
-  { href: '/admin/payments', label: 'Payments / Receipts' },
-  { href: '/admin/receipts', label: 'Receipts' },
-  { href: '/admin/work-orders', label: 'Work Orders' },
-  { href: '/admin/dispatch', label: 'Dispatch' },
-  { href: '/admin/leads', label: 'Leads' },
-  { href: '/admin/customers', label: 'Customers' },
-  { href: '/admin/agreements', label: 'Agreements & intake' },
-  { href: '/admin/qa-checklist', label: 'QA checklist' },
-  { href: '/admin/operations', label: 'Operations' },
-  { href: '/admin/booking-health', label: 'Booking health' },
-  { href: '/admin/team', label: 'Team' },
-  { href: '/admin/messages', label: 'Message center' },
-  { href: '/admin/notifications', label: 'Notifications' },
-  { href: '/admin/goals', label: 'Goals' },
-  { href: '/admin/integrations', label: 'Integrations' },
-  { href: '/admin/services', label: 'Services & pricing' },
-  { href: '/admin/addons', label: 'Booking add-ons' },
-  { href: '/admin/promotions', label: 'Promotions' },
-  { href: '/admin/pricing', label: 'Deals & promos' },
-  { href: '/admin/cms', label: 'Website CMS' },
-  { href: '/admin/settings/stripe', label: 'Stripe' },
-  { href: '/admin/system-status', label: 'System status' },
+type NavLink = { href: string; label: string };
+type NavGroup = { title: string; links: NavLink[] };
+
+const adminNavGroups: NavGroup[] = [
+  {
+    title: 'Overview',
+    links: [
+      { href: '/admin', label: 'Dashboard' },
+      { href: '/admin/booking-health', label: 'Booking health' },
+      { href: '/admin/qa-checklist', label: 'QA checklist' },
+    ],
+  },
+  {
+    title: 'Work',
+    links: [
+      { href: '/admin/work-orders', label: 'Work orders' },
+      { href: '/admin/dispatch', label: 'Dispatch' },
+      { href: '/admin/leads', label: 'Leads' },
+      { href: '/admin/agreements', label: 'Agreements & intake' },
+    ],
+  },
+  {
+    title: 'Customers',
+    links: [
+      { href: '/admin/customers', label: 'Customers' },
+      { href: '/admin/messages', label: 'Message center' },
+    ],
+  },
+  {
+    title: 'Finance',
+    links: [
+      { href: '/admin/revenue', label: 'Revenue' },
+      { href: '/admin/payments', label: 'Payments / receipts' },
+      { href: '/admin/receipts', label: 'Receipts' },
+      { href: '/admin/goals', label: 'Goals' },
+    ],
+  },
+  {
+    title: 'Marketing',
+    links: [
+      { href: '/admin/cms', label: 'Website & gallery' },
+      { href: '/admin/promotions', label: 'Promotions' },
+      { href: '/admin/pricing', label: 'Deals & promos' },
+    ],
+  },
+  {
+    title: 'Operations',
+    links: [
+      { href: '/admin/operations', label: 'Operations & mileage' },
+      { href: '/admin/team', label: 'Team' },
+      { href: '/admin/services', label: 'Services & pricing' },
+      { href: '/admin/addons', label: 'Booking add-ons' },
+    ],
+  },
+  {
+    title: 'System',
+    links: [
+      { href: '/admin/notifications', label: 'Notifications' },
+      { href: '/admin/integrations', label: 'Integrations' },
+      { href: '/admin/settings/stripe', label: 'Stripe' },
+      { href: '/admin/system-status', label: 'System status' },
+    ],
+  },
 ];
 
-const superLinks = [
-  { href: '/admin/super', label: 'Command center' },
-  { href: '/admin/goals', label: 'Goals' },
-  { href: '/admin/booking-health', label: 'Booking health' },
-  { href: '/admin', label: 'Operations (admin)' },
-  { href: '/admin/payments', label: 'Payments / Receipts' },
-  { href: '/admin/receipts', label: 'Receipts' },
-  { href: '/admin/work-orders', label: 'Work Orders' },
-  { href: '/admin/dispatch', label: 'Dispatch' },
-  { href: '/admin/leads', label: 'Leads' },
-  { href: '/admin/customers', label: 'Customers' },
-  { href: '/admin/agreements', label: 'Agreements & intake' },
-  { href: '/admin/qa-checklist', label: 'QA checklist' },
-  { href: '/admin/operations', label: 'Operations' },
-  { href: '/admin/team', label: 'Team' },
-  { href: '/admin/messages', label: 'Message center' },
-  { href: '/admin/notifications', label: 'Notifications' },
-  { href: '/admin/goals', label: 'Goals' },
-  { href: '/admin/integrations', label: 'Integrations' },
-  { href: '/admin/services', label: 'Services & pricing' },
-  { href: '/admin/addons', label: 'Booking add-ons' },
-  { href: '/admin/promotions', label: 'Promotions' },
-  { href: '/admin/pricing', label: 'Deals & promos' },
-  { href: '/admin/cms', label: 'Website & gallery CMS' },
-  { href: '/admin/settings/stripe', label: 'Stripe & billing' },
-  { href: '/admin/system-status', label: 'System status' },
-];
+const adminLinks = adminNavGroups.flatMap((g) => g.links);
+
+const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
   { href: '/tech', label: 'Active work orders' },
@@ -124,7 +139,7 @@ export function DashboardShell({
 
   const links =
     navRole === 'super_admin'
-      ? superLinks
+      ? superNavGroups.flatMap((g) => g.links)
       : navRole === 'admin'
         ? adminLinks
         : navRole === 'technician'
@@ -143,23 +158,48 @@ export function DashboardShell({
       ? `${panelLabel[simNav]} view (simulated)`
       : `${panelLabel[role]} panel`;
 
-  const NavLinks = (
-    <nav className='mt-6 space-y-2'>
-      {links.map((link) => (
-        <Link
-          key={`${link.href}-${link.label}`}
-          href={link.href}
-          className={`block rounded-lg border px-3 py-2 text-sm transition ${
-            pathname === link.href || pathname.startsWith(`${link.href}/`)
-              ? 'border-gold/50 bg-gold/10 text-gold-soft'
-              : 'border-transparent text-zinc-300 hover:border-gold/30 hover:bg-black/40 hover:text-gold-soft'
-          }`}
-        >
-          {link.label}
-        </Link>
-      ))}
-    </nav>
-  );
+  const linkClass = (href: string) =>
+    `block rounded-lg border px-3 py-2 text-sm transition ${
+      pathname === href || pathname.startsWith(`${href}/`)
+        ? 'border-gold/50 bg-gold/10 text-gold-soft'
+        : 'border-transparent text-zinc-300 hover:border-gold/30 hover:bg-black/40 hover:text-gold-soft'
+    }`;
+
+  const NavLinks =
+    navRole === 'admin' || navRole === 'super_admin' ? (
+      <nav className='mt-6 space-y-5'>
+        {(navRole === 'super_admin' ? superNavGroups : adminNavGroups).map((group) => (
+          <div key={group.title}>
+            <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>{group.title}</p>
+            <div className='mt-2 space-y-1'>
+              {group.links.map((link) => (
+                <Link key={`${link.href}-${link.label}`} href={link.href} className={linkClass(link.href)}>
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+        {navRole === 'super_admin' ? (
+          <div>
+            <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>Command</p>
+            <div className='mt-2 space-y-1'>
+              <Link href='/admin/super' className={linkClass('/admin/super')}>
+                Command center
+              </Link>
+            </div>
+          </div>
+        ) : null}
+      </nav>
+    ) : (
+      <nav className='mt-6 space-y-2'>
+        {links.map((link) => (
+          <Link key={`${link.href}-${link.label}`} href={link.href} className={linkClass(link.href)}>
+            {link.label}
+          </Link>
+        ))}
+      </nav>
+    );
 
   return (
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>

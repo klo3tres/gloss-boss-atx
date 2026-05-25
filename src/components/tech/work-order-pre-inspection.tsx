@@ -11,6 +11,7 @@ import {
 import { savePreInspectionDamageAckAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSaveChecklistSnapshotAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { checklistForServiceSlug } from '@/lib/tech-service-checklist';
+import { PhotoLightboxModal, type LightboxPhoto } from '@/components/tech/photo-lightbox-modal';
 
 type SlotState = Record<RequiredBeforeSlot, boolean>;
 
@@ -50,6 +51,7 @@ export type PreInspectionPanelProps = {
     >
   >;
   canDeletePhotos?: boolean;
+  photoUploadDisabled?: boolean;
 };
 
 export function WorkOrderPreInspection({
@@ -75,9 +77,11 @@ export function WorkOrderPreInspection({
   checklistSaved,
   beforePhotosBySlot = {},
   canDeletePhotos = false,
+  photoUploadDisabled = false,
 }: PreInspectionPanelProps) {
   const router = useRouter();
   const [activeSlot, setActiveSlot] = useState<RequiredBeforeSlot>('front');
+  const [lightbox, setLightbox] = useState<{ open: boolean; index: number }>({ open: false, index: 0 });
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
   const [damageNotes, setDamageNotes] = useState(damageAck.damageNotes);
@@ -94,6 +98,15 @@ export function WorkOrderPreInspection({
 
   const checklist = useMemo(() => checklistForServiceSlug(serviceSlug), [serviceSlug]);
   const filledCount = REQUIRED_BEFORE_SLOTS.filter((s) => slotFilled[s]).length;
+  const lightboxPhotos = useMemo(
+    () =>
+      REQUIRED_BEFORE_SLOTS.map((slot) => {
+        const thumb = beforePhotosBySlot[slot];
+        if (!thumb?.url) return null;
+        return { id: thumb.id || slot, url: thumb.url, label: BEFORE_SLOT_LABELS[slot] };
+      }).filter(Boolean) as LightboxPhoto[],
+    [beforePhotosBySlot],
+  );
 
   const uploadSlot = async (file: File | undefined | null) => {
     if (!file) return;
@@ -165,6 +178,7 @@ export function WorkOrderPreInspection({
         {REQUIRED_BEFORE_SLOTS.map((slot) => {
           const done = slotFilled[slot];
           const thumb = beforePhotosBySlot[slot];
+          const lbIndex = lightboxPhotos.findIndex((p) => p.label === BEFORE_SLOT_LABELS[slot]);
           return (
             <button
               key={slot}
@@ -179,7 +193,15 @@ export function WorkOrderPreInspection({
               }`}
             >
               {thumb?.url ? (
-                <img src={thumb.url} alt='' className='mb-2 h-14 w-full rounded-lg object-cover' />
+                <img
+                  src={thumb.url}
+                  alt={BEFORE_SLOT_LABELS[slot]}
+                  className='mb-2 h-14 w-full cursor-zoom-in rounded-lg object-cover'
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (lbIndex >= 0) setLightbox({ open: true, index: lbIndex });
+                  }}
+                />
               ) : null}
               <p className='text-[9px] font-black uppercase tracking-wide text-zinc-400'>{BEFORE_SLOT_LABELS[slot]}</p>
               <p className={`mt-1 text-[10px] font-bold ${done ? 'text-emerald-300' : 'text-zinc-500'}`}>
@@ -226,24 +248,51 @@ export function WorkOrderPreInspection({
         </div>
       ) : null}
 
-      <label className='flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-black/50 px-4 py-8 transition hover:border-gold'>
-        <Camera className='h-8 w-8 text-gold-soft' />
-        <span className='text-sm font-black uppercase text-gold-soft'>
-          {uploading ? 'Uploading…' : `Photo: ${BEFORE_SLOT_LABELS[activeSlot]}`}
-        </span>
-        <span className='text-[10px] text-zinc-500'>{filledCount} of 8 before photos</span>
-        <input
-          type='file'
-          accept='image/*'
-          capture='environment'
-          className='sr-only'
-          disabled={uploading}
-          onChange={(e) => {
-            void uploadSlot(e.currentTarget.files?.[0]);
-            e.currentTarget.value = '';
-          }}
-        />
-      </label>
+      {photoUploadDisabled ? (
+        <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+          Photo upload disabled for this job.
+        </p>
+      ) : (
+        <label className='flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-black/50 px-4 py-8 transition hover:border-gold'>
+          <Camera className='h-8 w-8 text-gold-soft' />
+          <span className='text-sm font-black uppercase text-gold-soft'>
+            {uploading ? 'Uploading…' : `Photo: ${BEFORE_SLOT_LABELS[activeSlot]}`}
+          </span>
+          <span className='text-[10px] text-zinc-500'>{filledCount} of 8 before photos</span>
+          <input
+            type='file'
+            accept='image/*'
+            capture='environment'
+            className='sr-only'
+            disabled={uploading}
+            onChange={(e) => {
+              void uploadSlot(e.currentTarget.files?.[0]);
+              e.currentTarget.value = '';
+            }}
+          />
+        </label>
+      )}
+      <PhotoLightboxModal
+        photos={lightboxPhotos}
+        initialIndex={lightbox.index}
+        open={lightbox.open}
+        onClose={() => setLightbox({ open: false, index: 0 })}
+        canDelete={canDeletePhotos}
+        onDelete={async (photo) => {
+          if (!window.confirm('Delete this photo?')) return;
+          const res = await fetch('/api/tech/job-media-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: photo.id }),
+          });
+          if (!res.ok) {
+            setUploadMsg({ tone: 'err', text: 'Delete failed.' });
+            return;
+          }
+          setLightbox({ open: false, index: 0 });
+          router.refresh();
+        }}
+      />
       {uploading ? (
         <p className='flex items-center gap-2 text-xs text-gold-soft'>
           <Loader2 className='h-4 w-4 animate-spin' /> Saving photo…

@@ -1637,3 +1637,9 @@ export async function techAddJobMediaAction(formData: FormData) {
 
   revalidatePath('/tech');
 }
+
+/** Super admin cleanup from tech dashboard — void return for client forms. */
+export async function techClearStaleJobsFormAction(formData: FormData): Promise<void> {
+  const { clearStaleActiveTestRecordsAction } = await import('@/app/(dashboard)/admin/work-orders/work-order-actions');
+  await clearStaleActiveTestRecordsAction(formData);
+}

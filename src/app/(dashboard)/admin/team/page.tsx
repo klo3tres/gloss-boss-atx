@@ -146,7 +146,11 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
             <tbody>
               {staff.map((p) => (
                 <tr key={p.id} className='border-b border-white/5 text-zinc-200'>
-                  <td className='py-2 pr-3 font-medium text-white'>{displayName(p)}</td>
+                  <td className='py-2 pr-3 font-medium text-white'>
+                    <Link href={`/admin/team/${encodeURIComponent(p.id)}`} className='hover:text-gold-soft hover:underline'>
+                      {displayName(p)}
+                    </Link>
+                  </td>
                   <td className='py-2 pr-3'>
                     <span className='rounded-full border border-gold/30 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-soft'>{p.role}</span>
                   </td>

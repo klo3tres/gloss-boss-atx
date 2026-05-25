@@ -318,6 +318,7 @@ export default async function CustomerDashboardRootPage() {
     }
   }
 
+  const { resolveGoogleReviewUrl } = await import('@/lib/site-defaults');
   let googleReviewUrl = '';
   if (adminDb) {
     const ss = await adminDb.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
@@ -341,7 +342,7 @@ export default async function CustomerDashboardRootPage() {
   return (
     <DashboardShell title='Your dashboard' subtitle='Garage, appointments, receipts, agreements, and live updates.' role='customer'>
       <CustomerDashboardClient
-        googleReviewUrl={googleReviewUrl}
+        googleReviewUrl={resolveGoogleReviewUrl(googleReviewUrl)}
         liveJob={liveJob ?? null}
         liveEvents={liveEvents}
         upcoming={upcoming}

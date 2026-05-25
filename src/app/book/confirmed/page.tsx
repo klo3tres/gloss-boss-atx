@@ -50,8 +50,8 @@ function ConfirmedInner() {
 
 export default function BookConfirmedPage() {
   return (
-    <main className='min-h-screen bg-background px-4 py-24 text-foreground sm:px-6'>
-      <div className='mx-auto max-w-2xl'>
+    <main className='gb-luxury-page min-h-screen bg-background px-4 py-24 text-foreground sm:px-6'>
+      <div className='gb-premium-hero mx-auto max-w-2xl rounded-3xl p-8 sm:p-10'>
         <Suspense fallback={<p className='text-zinc-400'>Loading confirmation…</p>}>
           <ConfirmedInner />
         </Suspense>

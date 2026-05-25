@@ -29,6 +29,8 @@ export type InvoicePricingSnapshot = {
   finalTotalCents: number;
   depositPaidCents: number;
   totalPaidCents: number;
+  rawTotalPaidCents?: number;
+  overpaymentCents?: number;
   remainingBalanceCents: number;
 };
 

@@ -1456,6 +1456,18 @@ export function BookingWizard() {
                 required
               />
               {phoneError ? <p className='mt-2 text-xs text-amber-300'>{phoneError}</p> : null}
+              <p className='mt-2 text-xs leading-relaxed text-zinc-500'>
+                By providing your number you consent to appointment SMS from Gloss Boss ATX. Message/data rates may apply.
+                Reply <strong className='text-zinc-400'>STOP</strong> to opt out, <strong className='text-zinc-400'>HELP</strong> for help. See{' '}
+                <a href='/privacy' className='text-gold-soft underline' target='_blank' rel='noreferrer'>
+                  Privacy
+                </a>{' '}
+                and{' '}
+                <a href='/terms' className='text-gold-soft underline' target='_blank' rel='noreferrer'>
+                  Terms
+                </a>
+                .
+              </p>
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Notes (optional)</span>

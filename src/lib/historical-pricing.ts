@@ -51,6 +51,10 @@ export function mergeVehiclePricingOnSave(params: {
     index: i,
   }));
 
+  const firstPriced = vehicles.find((v) => typeof v.price_cents === 'number' && v.price_cents > 0)?.price_cents
+    ?? prevByIndex.find((p) => p.price > 0)?.price
+    ?? 0;
+
   const merged = vehicles.map((v, index) => {
     if (recalculateFromCatalog && catalogPrices) {
       const key = `${str(v.service_slug)}:${str(v.vehicle_class) || 'sedan'}`;
@@ -66,6 +70,9 @@ export function mergeVehiclePricingOnSave(params: {
       const hist = num(prevBreakdown.vehicleSubtotalCents);
       if (hist > 0 && vehicles.length === 1 && !v.price_cents) {
         return { ...v, price_cents: hist };
+      }
+      if (index > 0 && firstPriced > 0 && (!v.price_cents || v.price_cents <= 0)) {
+        return { ...v, price_cents: firstPriced };
       }
     }
     return v;

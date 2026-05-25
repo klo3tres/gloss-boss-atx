@@ -19,6 +19,7 @@ import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techClearStaleJobsFormAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
 
@@ -236,6 +237,20 @@ export function TechPremiumShell({
           </span>
         </div>
       </header>
+
+      {isSuperAdmin ? (
+        <form
+          action={techClearStaleJobsFormAction}
+          className='mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3'
+        >
+          <p className='text-xs text-red-100'>
+            <strong className='font-black uppercase'>Super admin:</strong> Archive stale timers, test fallbacks, and orphan sessions older than 24h.
+          </p>
+          <button type='submit' className='rounded-xl border border-red-400/50 bg-red-500/20 px-4 py-2 text-[10px] font-black uppercase text-red-100'>
+            Archive stale / test jobs
+          </button>
+        </form>
+      ) : null}
 
       {justStarted && activeJob ? (
         <div className='mb-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100 shadow-[0_0_30px_rgba(16,185,129,0.12)]'>

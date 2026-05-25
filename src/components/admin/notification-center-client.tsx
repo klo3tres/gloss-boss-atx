@@ -1,7 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { saveNotificationTemplateAction, testNotificationSendAction } from '@/app/(dashboard)/admin/notifications/notification-actions';
+import {
+  installAllNotificationDefaultsAction,
+  saveNotificationTemplateAction,
+  testNotificationSendAction,
+} from '@/app/(dashboard)/admin/notifications/notification-actions';
 
 type TemplateRow = {
   id: string;
@@ -23,6 +27,7 @@ type OutboxRow = {
   skipped_reason: string;
   provider: string;
   provider_message_id: string;
+  subject?: string;
   payload?: Record<string, unknown> | null;
 };
 
@@ -54,6 +59,8 @@ export function NotificationCenterClient({
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Templates');
   const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [installMsg, setInstallMsg] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
 
   const failed = outbox.filter((r) => r.status === 'failed' || r.status === 'skipped');
   const sent = outbox.filter((r) => r.status === 'sent' || r.status === 'delivered');
@@ -102,7 +109,22 @@ export function NotificationCenterClient({
 
           <div className='gb-glass rounded-3xl border border-white/10 p-5'>
             <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Install defaults</p>
-            <div className='mt-3 max-h-[420px] space-y-2 overflow-y-auto'>
+            <button
+              type='button'
+              disabled={installing}
+              onClick={() => {
+                setInstalling(true);
+                void installAllNotificationDefaultsAction().then((r) => {
+                  setInstallMsg(r.message);
+                  setInstalling(false);
+                });
+              }}
+              className='mt-3 w-full rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs font-black uppercase text-gold-soft disabled:opacity-50'
+            >
+              {installing ? 'Installing…' : 'Install all defaults'}
+            </button>
+            {installMsg ? <p className='mt-2 text-xs text-emerald-200'>{installMsg}</p> : null}
+            <div className='mt-3 max-h-[320px] space-y-2 overflow-y-auto'>
               {DEFAULTS.map(([key, channel, name, body]) => (
                 <form key={key} action={saveNotificationTemplateAction} className='rounded-xl border border-white/10 bg-black/40 p-3'>
                   <input type='hidden' name='key' value={key} />
@@ -220,6 +242,7 @@ function OutboxTable({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
           <tr>
             <th>When</th>
             <th>Kind</th>
+            <th>Subject</th>
             <th>To</th>
             <th>From</th>
             <th>Channel</th>
@@ -231,7 +254,7 @@ function OutboxTable({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={8} className='py-6 text-zinc-500'>
+              <td colSpan={9} className='py-6 text-zinc-500'>
                 {empty}
               </td>
             </tr>
@@ -244,6 +267,7 @@ function OutboxTable({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
               <tr key={r.id}>
                 <td className='tabular-nums text-zinc-400'>{r.created_at.slice(0, 19)}</td>
                 <td className='font-semibold text-white'>{r.kind}</td>
+                <td className='max-w-[120px] truncate text-zinc-400'>{r.subject || '—'}</td>
                 <td className='max-w-[140px] truncate text-zinc-300'>{to}</td>
                 <td className='max-w-[120px] truncate text-zinc-500'>{from}</td>
                 <td>{r.channel}</td>

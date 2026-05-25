@@ -7,6 +7,10 @@ import { useMemo } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, StickyActionBar, TimelineRail } from '@/components/ui/premium';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { WorkOrderInvoiceBuilder, type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
+import { WorkOrderReceiptPanel } from '@/components/tech/work-order-receipt-panel';
+import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
 import { WorkOrderCompletePanel } from '@/components/tech/work-order-complete-panel';
@@ -80,8 +84,29 @@ export type WorkOrderConsoleData = {
   technicianName: string;
   jobStartedAt: string;
   jobCompletedAt: string;
-  recentPayments: Array<{ id?: string; amount: string; status: string; method: string; at: string; stripe?: string }>;
+  recentPayments: Array<{
+    id?: string;
+    amount: string;
+    amountCents?: number;
+    status: string;
+    method: string;
+    at: string;
+    voided?: boolean;
+    stripe?: string;
+  }>;
   receiptPdfHref?: string;
+  receiptBreakdownLines?: ReceiptBreakdownLine[];
+  photoUploadDisabled?: boolean;
+  uploadContextDebug?: {
+    workOrderId: string;
+    appointmentId: string;
+    fallbackBookingId: string;
+    workflowSessionId: string;
+    customerId: string;
+    urlParamId: string;
+  };
+  canManagePayments?: boolean;
+  workOrderPath?: string;
   customerId?: string;
   customLineItems?: Array<{ id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string }>;
   pricingSnapshot?: InvoicePricingSnapshot;
@@ -321,14 +346,23 @@ export function WorkOrderConsoleClient({
           />
         </WorkOrderCollapsible>
 
+        {data.uploadContextDebug ? (
+          <p className='rounded-xl border border-dashed border-zinc-600 bg-zinc-950 px-3 py-2 font-mono text-[10px] text-zinc-500'>
+            Upload context (admin): WO {data.uploadContextDebug.workOrderId} · appt {data.uploadContextDebug.appointmentId || '—'} ·
+            fb {data.uploadContextDebug.fallbackBookingId || '—'} · session {data.uploadContextDebug.workflowSessionId || '—'} · URL{' '}
+            {data.uploadContextDebug.urlParamId}
+          </p>
+        ) : null}
+
         {data.preInspection ? (
           <WorkOrderCollapsible title='Pre-inspection' defaultOpen badge={data.preInspection.photoProgress}>
             <WorkOrderPreInspection
               appointmentId={data.isFallback ? null : jobId}
               fallbackBookingId={data.isFallback ? jobId : null}
-              workOrderId={data.canonicalId}
+              workOrderId={jobId}
               customerId={data.customerId}
               workflowSessionId={data.workflowSessionId}
+              photoUploadDisabled={data.photoUploadDisabled}
               agreementSigned={data.agreementSigned}
               canAdminOverride={canAdminOverride}
               checklistSaved={data.requirements.find((r) => r.label.startsWith('Checklist'))?.ok ?? false}
@@ -340,6 +374,11 @@ export function WorkOrderConsoleClient({
 
         <div id='photos'>
           <WorkOrderCollapsible title='After photos & gallery' defaultOpen={data.preInspection?.isJobStarted} badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
+            {data.photoUploadDisabled ? (
+              <p className='mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+                Archived / test job — photo upload disabled. Link a live work order to enable uploads.
+              </p>
+            ) : null}
             {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
               <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-4'>
                 <p className='text-base font-black text-white'>
@@ -348,15 +387,17 @@ export function WorkOrderConsoleClient({
                 {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
                 <WorkOrderGallery title='Before' photos={vg.before} canDelete={data.canDeletePhotos} />
                 <WorkOrderGallery title='After' photos={vg.after} canDelete={data.canDeletePhotos} />
-                <WorkOrderPhotoUpload
-                  appointmentId={data.isFallback ? null : jobId}
-                  fallbackBookingId={data.isFallback ? jobId : null}
-                  workOrderId={data.canonicalId}
-                  customerId={data.customerId}
-                  workflowSessionId={data.workflowSessionId}
-                  vehicleIndex={vg.vehicleIndex}
-                  vehicleLabel={vg.label}
-                />
+                {!data.photoUploadDisabled ? (
+                  <WorkOrderPhotoUpload
+                    appointmentId={data.isFallback ? null : jobId}
+                    fallbackBookingId={data.isFallback ? jobId : null}
+                    workOrderId={jobId}
+                    customerId={data.customerId}
+                    workflowSessionId={data.workflowSessionId}
+                    vehicleIndex={vg.vehicleIndex}
+                    vehicleLabel={vg.label}
+                  />
+                ) : null}
               </div>
             ))}
           </WorkOrderCollapsible>
@@ -440,6 +481,42 @@ export function WorkOrderConsoleClient({
               </button>
             </form>
           </WorkOrderCollapsible>
+          {!data.isFallback ? (
+            <WorkOrderMileagePanel
+              appointmentId={jobId}
+              workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
+            />
+          ) : null}
+          {data.canManagePayments && data.pricingSnapshot && data.receiptBreakdownLines ? (
+            <WorkOrderReceiptPanel
+              appointmentId={data.isFallback ? undefined : jobId}
+              fallbackBookingId={data.isFallback ? jobId : undefined}
+              receiptPdfHref={data.receiptPdfHref}
+              pricing={
+                {
+                  ...data.pricingSnapshot,
+                  promoCode: data.promoCode ?? '',
+                  rawTotalPaidCents: data.pricingSnapshot.rawTotalPaidCents ?? data.pricingSnapshot.totalPaidCents,
+                  allocatedTotalPaidCents: data.pricingSnapshot.totalPaidCents,
+                  overpaymentCents: data.pricingSnapshot.overpaymentCents ?? 0,
+                  hasOverpayment: (data.pricingSnapshot.overpaymentCents ?? 0) > 0,
+                } as JobPricingDisplay
+              }
+              breakdownLines={data.receiptBreakdownLines}
+              payments={data.recentPayments.map((p) => ({
+                id: p.id ?? '',
+                amount: p.amount,
+                amountCents: p.amountCents ?? 0,
+                status: p.status,
+                method: p.method,
+                at: p.at,
+                voided: p.voided,
+              }))}
+              promoCode={data.promoCode}
+              canManagePayments
+              workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
+            />
+          ) : null}
         </WorkOrderCollapsible>
 
         <WorkOrderCollapsible title='Agreement' defaultOpen={!data.agreementSigned}>

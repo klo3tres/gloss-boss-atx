@@ -67,7 +67,10 @@ export async function addJobMileageLogActionState(_prev: ActionResult | null, fo
     }));
   }
   if (error) return actionErr(error.message);
+  const workOrderPath = String(formData.get('workOrderPath') ?? '').trim();
   revalidatePath('/admin/operations');
+  if (workOrderPath) revalidatePath(workOrderPath);
+  if (appointmentId) revalidatePath(`/tech/work-orders/${appointmentId}`);
   return actionOk('Mileage logged.');
 }
 

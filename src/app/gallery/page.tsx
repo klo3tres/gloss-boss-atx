@@ -1,33 +1,43 @@
-'use client';
-
 import Link from 'next/link';
-import { HomeGalleryStrip } from '@/components/marketing/home-gallery-strip';
+import { PublicGalleryPortfolio } from '@/components/marketing/public-gallery-portfolio';
+import { MarketingSiteFooter } from '@/components/marketing/marketing-site-footer';
+
+export const metadata = {
+  title: 'Gallery | Gloss Boss ATX',
+  description: 'Before and after mobile detailing transformations in Austin, TX.',
+};
 
 export default function GalleryPage() {
   return (
-    <main className='min-h-screen bg-background pb-20 pt-24 text-foreground'>
-      <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
-        <p className='text-xs font-bold uppercase tracking-[0.25em] text-gold-soft'>Gallery</p>
-        <h1 className='mt-2 text-3xl font-black uppercase tracking-tight text-white sm:text-4xl'>Featured transformations</h1>
-        <p className='mt-3 max-w-2xl text-sm text-zinc-400'>
-          Curated and CMS-driven imagery. For the full homepage experience, visit the{' '}
-          <Link href='/#gallery' className='text-gold-soft underline'>
-            home gallery section
+    <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
+      <header className='border-b border-gold/20 bg-black/80 px-4 py-6 backdrop-blur sm:px-8'>
+        <div className='mx-auto flex max-w-6xl items-center justify-between gap-4'>
+          <Link href='/' className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>
+            Gloss Boss ATX
           </Link>
-          .
-        </p>
-        <div className='mt-10'>
-          <HomeGalleryStrip />
+          <nav className='flex gap-4 text-xs font-bold uppercase'>
+            <Link href='/services' className='text-zinc-400 hover:text-gold-soft'>
+              Services
+            </Link>
+            <Link href='/book' className='rounded-lg bg-gold px-4 py-2 text-black'>
+              Book
+            </Link>
+          </nav>
         </div>
-        <div className='mt-12 flex flex-wrap gap-3'>
-          <Link href='/book' className='rounded-lg bg-gold px-5 py-3 text-xs font-black uppercase tracking-wider text-black'>
-            Book now
-          </Link>
-          <Link href='/' className='rounded-lg border border-gold/40 px-5 py-3 text-xs font-bold uppercase tracking-wider text-gold-soft'>
-            Back to home
-          </Link>
+      </header>
+
+      <div className='mx-auto max-w-6xl px-4 py-16 sm:px-8'>
+        <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Transformation portfolio</p>
+        <h1 className='mt-3 text-4xl font-black uppercase sm:text-5xl'>Real results</h1>
+        <p className='mt-4 max-w-2xl text-sm text-zinc-400'>
+          Before/after documentation from Gloss Boss ATX mobile detailing. Tap any image for full-screen view.
+        </p>
+        <div className='mt-12'>
+          <PublicGalleryPortfolio />
         </div>
       </div>
+
+      <MarketingSiteFooter />
     </main>
   );
 }

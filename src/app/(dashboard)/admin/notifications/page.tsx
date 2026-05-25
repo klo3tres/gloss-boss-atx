@@ -35,16 +35,22 @@ export default async function AdminNotificationsPage() {
 
   const outboxRows = (outbox ?? []).map((r) => {
     const row = r as Record<string, unknown>;
+    const payload =
+      row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : null;
     return {
       id: str(row.id),
       kind: str(row.kind || row.template_key),
       channel: str(row.channel),
       status: str(row.status),
       created_at: str(row.created_at),
+      subject: str(row.subject),
       error_message: str(row.error_message),
       skipped_reason: str(row.skipped_reason),
       provider: str(row.provider),
       provider_message_id: str(row.provider_message_id),
+      payload,
     };
   });
 

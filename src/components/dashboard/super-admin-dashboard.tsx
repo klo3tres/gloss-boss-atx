@@ -125,9 +125,9 @@ function StatCard({ label, value, hint, delay, href }: { label: string; value: s
 
 function RevenueChart({ stats }: { stats: Stats }) {
   const bars = [
-    { label: 'Today', cents: stats.revenueTodayCents, href: '/admin/payments?range=today' },
-    { label: 'Week', cents: stats.revenueWeekCents, href: '/admin/payments?range=week' },
-    { label: 'Month', cents: stats.revenueMonthCents, href: '/admin/payments?range=month' },
+    { label: 'Today', cents: stats.revenueTodayCents, href: '/admin/revenue' },
+    { label: 'Week', cents: stats.revenueWeekCents, href: '/admin/revenue' },
+    { label: 'Month', cents: stats.revenueMonthCents, href: '/admin/revenue' },
   ];
   const max = Math.max(1, ...bars.map((b) => b.cents));
   return (
@@ -404,9 +404,9 @@ export function SuperAdminDashboard() {
       </section>
 
       <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} href='/admin/payments?range=today' />
-        <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} href='/admin/payments?range=week' />
-        <StatCard label='Revenue (month)' value={money(stats.revenueMonthCents)} hint={`${stats.paymentsMonthCount} payment(s)`} delay={0.08} href='/admin/payments?range=month' />
+        <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} href='/admin/revenue' />
+        <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} href='/admin/revenue' />
+        <StatCard label='Revenue (month)' value={money(stats.revenueMonthCents)} hint={`${stats.paymentsMonthCount} payment(s)`} delay={0.08} href='/admin/revenue' />
         <StatCard label='Completed (month)' value={stats.completedMonth} hint='Jobs closed this month' delay={0.12} />
       </div>
 
@@ -491,7 +491,7 @@ export function SuperAdminDashboard() {
               stats.technicianPerformance.map((t) => (
                 <li key={t.id}>
                   <Link
-                    href={`/admin/team`}
+                    href={`/admin/team/${encodeURIComponent(t.id)}`}
                     className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm transition hover:border-gold/40 hover:bg-gold/5'
                   >
                     <span className='flex items-center gap-3'>

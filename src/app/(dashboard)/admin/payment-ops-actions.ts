@@ -44,7 +44,9 @@ export async function voidPaymentActionState(_prev: ActionResult | null, formDat
   revalidatePath('/admin/receipts');
   revalidatePath('/admin/payments');
   const receiptPath = str(formData.get('receiptPath'));
+  const workOrderPath = str(formData.get('workOrderPath'));
   if (receiptPath) revalidatePath(receiptPath);
+  if (workOrderPath) revalidatePath(workOrderPath);
   return actionOk('Payment voided.');
 }
 
@@ -95,7 +97,9 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
 
   revalidatePath('/admin/receipts');
   revalidatePath(`/admin/receipts/${str(formData.get('receiptId') || inserted?.id)}`);
+  const workOrderPath = str(formData.get('workOrderPath'));
   revalidatePath(`/tech/work-orders/${jobId}`);
+  if (workOrderPath) revalidatePath(workOrderPath);
   return actionOk(`${paymentMethod} payment of $${(amountCents / 100).toFixed(2)} recorded.`);
 }
 

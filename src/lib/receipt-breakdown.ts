@@ -41,11 +41,14 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
     });
   }
   if (pricing.promoDiscountCents > 0) {
+    const promoLabel = pricing.promoCode ? `Promo (${pricing.promoCode})` : 'Promo discount';
     lines.push({
-      label: 'Promo discount',
+      label: promoLabel,
       amount: `−${displayMoney(pricing.promoDiscountCents)}`,
       tone: 'discount',
     });
+  } else if (pricing.promoCode) {
+    lines.push({ label: `Promo code: ${pricing.promoCode}`, amount: '—', tone: 'discount' });
   }
 
   const customItems = readCustomLineItems(job);
@@ -92,7 +95,23 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
   if (pricing.cashPaidCents > 0) {
     lines.push({ label: 'Cash paid', amount: displayMoney(pricing.cashPaidCents), tone: 'paid' });
   }
-  if (pricing.totalPaidCents > 0) {
+  if (pricing.rawTotalPaidCents > 0 && pricing.hasOverpayment) {
+    lines.push({
+      label: 'Payments recorded (all rows)',
+      amount: displayMoney(pricing.rawTotalPaidCents),
+      tone: 'charge',
+    });
+    lines.push({
+      label: 'Applied to this invoice',
+      amount: displayMoney(pricing.allocatedTotalPaidCents),
+      tone: 'paid',
+    });
+    lines.push({
+      label: 'Overpayment / void test payments',
+      amount: displayMoney(pricing.overpaymentCents),
+      tone: 'charge',
+    });
+  } else if (pricing.totalPaidCents > 0) {
     lines.push({ label: 'Total paid', amount: displayMoney(pricing.totalPaidCents), tone: 'paid' });
   }
   lines.push({

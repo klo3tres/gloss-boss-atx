@@ -61,7 +61,7 @@ export function LeadsAdminClient({
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
-  const [view, setView] = useState<'pipeline' | 'list'>('pipeline');
+  const [view, setView] = useState<'pipeline' | 'list'>('list');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) => {
