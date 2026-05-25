@@ -113,6 +113,16 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
 
   return (
     <div className='space-y-8'>
+      {props.googleReviewUrl ? (
+        <a
+          href={props.googleReviewUrl}
+          target='_blank'
+          rel='noreferrer'
+          className='flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-wider text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'
+        >
+          <Star className='h-5 w-5' /> Leave Google review
+        </a>
+      ) : null}
       {liveJob ? (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className='gb-glass rounded-3xl border border-emerald-500/35 p-6 shadow-[0_0_40px_rgba(16,185,129,0.12)]'>
           <div className='flex items-center gap-2'>

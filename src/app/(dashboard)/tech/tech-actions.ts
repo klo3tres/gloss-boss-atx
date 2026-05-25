@@ -536,9 +536,9 @@ async function countWorkflowPhotos(
 }
 
 export async function techStartJobAction(
-  _prev: { error?: string } | null,
+  _prev: { error?: string; redirect?: string } | null,
   formData: FormData,
-): Promise<{ error?: string } | null> {
+): Promise<{ error?: string; redirect?: string } | null> {
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
@@ -796,7 +796,14 @@ export async function techStartJobAction(
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
-  return null;
+  const woId = fallbackBookingId || appointmentId;
+  const { workOrderPath } = await import('@/lib/work-order-links');
+  return {
+    redirect: workOrderPath(woId, {
+      source: fallbackBookingId ? 'fallback' : 'appointment',
+      shell: 'technician',
+    }),
+  };
 }
 
 const NOTIFY_LABELS: Record<string, string> = {

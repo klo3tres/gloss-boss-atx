@@ -1,33 +1,40 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import type { AppRole } from '@/lib/auth/roles';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { currentValueForGoalType, loadAdminGoalsMetrics } from '@/lib/admin-goals-metrics';
 
 function isSuperAdmin(role: string | null | undefined) {
   return role === 'super_admin';
 }
-import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { currentValueForGoalType, loadAdminGoalsMetrics } from '@/lib/admin-goals-metrics';
 
 function str(v: FormDataEntryValue | null) {
   return v == null ? '' : String(v).trim();
 }
 
-export async function saveAdminGoalAction(formData: FormData) {
+const MONEY_GOALS = new Set(['revenue_weekly', 'revenue_monthly', 'profit_monthly', 'avg_ticket']);
+
+function parseTarget(goalType: string, raw: string): { target: number; unit: string } {
+  const n = Number(raw || '0');
+  if (MONEY_GOALS.has(goalType)) {
+    return { target: Math.round(n * 100), unit: 'cents' };
+  }
+  return { target: Math.round(n), unit: 'count' };
+}
+
+export async function saveAdminGoalAction(formData: FormData): Promise<{ error?: string; ok?: boolean }> {
   const session = await getSessionWithProfile();
   if (!session.user || !isSuperAdmin(session.profile?.role ?? null)) {
-    redirect('/admin/goals?err=Unauthorized');
+    return { error: 'Unauthorized' };
   }
   const admin = tryCreateAdminSupabase();
-  if (!admin) redirect('/admin/goals?err=Database%20not%20configured');
+  if (!admin) return { error: 'Database not configured' };
 
   const id = str(formData.get('id'));
   const title = str(formData.get('title')) || 'Goal';
   const goalType = str(formData.get('goalType')) || 'revenue_monthly';
-  const targetValue = Number(str(formData.get('targetValue')) || '0');
-  const unit = str(formData.get('unit')) || 'cents';
+  const { target: targetValue, unit } = parseTarget(goalType, str(formData.get('targetValue')));
   const periodEnd = str(formData.get('periodEnd')) || null;
   const technicianId = str(formData.get('technicianId')) || null;
 
@@ -44,27 +51,49 @@ export async function saveAdminGoalAction(formData: FormData) {
     updated_at: new Date().toISOString(),
   };
 
-  if (id) {
-    await admin.from('admin_goals').update(row).eq('id', id);
-  } else {
-    await admin.from('admin_goals').insert(row);
-  }
+  const q = id ? admin.from('admin_goals').update(row).eq('id', id) : admin.from('admin_goals').insert(row);
+  const { error } = await q;
+  if (error) return { error: error.message };
 
   revalidatePath('/admin/goals');
-  redirect('/admin/goals?saved=1');
+  return { ok: true };
 }
 
-export async function completeAdminGoalAction(formData: FormData) {
+export async function completeAdminGoalAction(formData: FormData): Promise<{ error?: string }> {
   const session = await getSessionWithProfile();
-  if (!session.user || !isSuperAdmin(session.profile?.role ?? null)) redirect('/admin/goals?err=Unauthorized');
+  if (!session.user || !isSuperAdmin(session.profile?.role ?? null)) return { error: 'Unauthorized' };
   const admin = tryCreateAdminSupabase();
-  if (!admin) redirect('/admin/goals?err=Database');
+  if (!admin) return { error: 'Database' };
   const id = str(formData.get('id'));
-  if (!id) redirect('/admin/goals?err=Missing%20id');
+  if (!id) return { error: 'Missing id' };
   await admin
     .from('admin_goals')
     .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', id);
   revalidatePath('/admin/goals');
-  redirect('/admin/goals?saved=1');
+  return {};
+}
+
+export async function archiveAdminGoalAction(formData: FormData): Promise<{ error?: string }> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isSuperAdmin(session.profile?.role ?? null)) return { error: 'Unauthorized' };
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { error: 'Database' };
+  const id = str(formData.get('id'));
+  if (!id) return { error: 'Missing id' };
+  await admin.from('admin_goals').update({ status: 'archived', updated_at: new Date().toISOString() }).eq('id', id);
+  revalidatePath('/admin/goals');
+  return {};
+}
+
+export async function deleteAdminGoalAction(formData: FormData): Promise<{ error?: string }> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isSuperAdmin(session.profile?.role ?? null)) return { error: 'Unauthorized' };
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { error: 'Database' };
+  const id = str(formData.get('id'));
+  if (!id) return { error: 'Missing id' };
+  await admin.from('admin_goals').delete().eq('id', id);
+  revalidatePath('/admin/goals');
+  return {};
 }

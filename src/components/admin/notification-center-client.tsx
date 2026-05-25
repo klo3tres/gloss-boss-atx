@@ -23,6 +23,7 @@ type OutboxRow = {
   skipped_reason: string;
   provider: string;
   provider_message_id: string;
+  payload?: Record<string, unknown> | null;
 };
 
 const TABS = ['Templates', 'Sent log', 'Failed / skipped', 'Test send', 'Provider status'] as const;
@@ -181,17 +182,29 @@ export function NotificationCenterClient({
           <div className='gb-glass rounded-2xl border border-gold/20 p-5'>
             <p className='text-sm font-bold text-white'>Resend (email)</p>
             <p className={`mt-2 text-lg font-black ${resendOk ? 'text-emerald-300' : 'text-amber-200'}`}>
-              {resendOk ? 'Configured' : 'Not configured'}
+              {resendOk ? 'Configured' : 'Not configured — emails log as skipped/failed'}
             </p>
-            <p className='mt-2 text-xs text-zinc-500'>RESEND_API_KEY · RESEND_FROM_EMAIL</p>
+            <dl className='mt-3 space-y-1 text-xs text-zinc-400'>
+              <div>RESEND_API_KEY: {process.env.NEXT_PUBLIC_RESEND_CONFIGURED === '1' || resendOk ? 'set (server)' : 'missing'}</div>
+              <div>RESEND_FROM_EMAIL: see Integrations page</div>
+            </dl>
+            <p className='mt-3 text-xs text-zinc-500'>Test sends must return provider id in outbox before showing success. Webhook delivery may show accepted → delivered later.</p>
+            <a href='/admin/integrations' className='mt-3 inline-block text-xs font-bold uppercase text-gold-soft underline'>
+              Full Resend debug →
+            </a>
           </div>
           <div className='gb-glass rounded-2xl border border-gold/20 p-5'>
             <p className='text-sm font-bold text-white'>Twilio (SMS)</p>
             <p className={`mt-2 text-lg font-black ${twilioOk ? 'text-emerald-300' : 'text-amber-200'}`}>
-              {twilioOk ? 'Configured' : 'Not configured'}
+              {twilioOk ? 'Credentials set' : 'Not configured'}
             </p>
-            <p className='mt-2 text-xs text-zinc-500'>TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_FROM</p>
-            <p className='mt-2 text-xs text-zinc-500'>BUSINESS_NOTIFY_PHONE for owner booking alerts</p>
+            <p className='mt-2 text-xs text-amber-200/90'>
+              Toll-free verification may be pending. Error <span className='font-mono'>30032</span> means use email/manual SMS fallback until verified.
+            </p>
+            <p className='mt-2 text-xs text-zinc-500'>All SMS actions should show skipped/failed with reason when not deliverable.</p>
+            <a href='/admin/integrations' className='mt-3 inline-block text-xs font-bold uppercase text-gold-soft underline'>
+              Twilio status & test →
+            </a>
           </div>
         </div>
       ) : null}
@@ -207,32 +220,41 @@ function OutboxTable({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
           <tr>
             <th>When</th>
             <th>Kind</th>
+            <th>To</th>
+            <th>From</th>
             <th>Channel</th>
             <th>Status</th>
-            <th>Provider</th>
-            <th>Detail</th>
+            <th>Provider ID</th>
+            <th>Error</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={6} className='py-6 text-zinc-500'>
+              <td colSpan={8} className='py-6 text-zinc-500'>
                 {empty}
               </td>
             </tr>
           ) : (
-            rows.map((r) => (
+            rows.map((r) => {
+              const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
+              const to = String((p as { to?: unknown }).to ?? '—');
+              const from = String((p as { from?: unknown }).from ?? '—');
+              return (
               <tr key={r.id}>
                 <td className='tabular-nums text-zinc-400'>{r.created_at.slice(0, 19)}</td>
                 <td className='font-semibold text-white'>{r.kind}</td>
+                <td className='max-w-[140px] truncate text-zinc-300'>{to}</td>
+                <td className='max-w-[120px] truncate text-zinc-500'>{from}</td>
                 <td>{r.channel}</td>
                 <td className={r.status === 'sent' ? 'text-emerald-300' : r.status === 'failed' ? 'text-red-300' : 'text-amber-200'}>
                   {r.status}
                 </td>
-                <td className='text-zinc-500'>{r.provider}</td>
-                <td className='max-w-xs truncate text-zinc-500'>{r.error_message || r.skipped_reason || r.provider_message_id}</td>
+                <td className='max-w-[100px] truncate font-mono text-[10px] text-zinc-500'>{r.provider_message_id || '—'}</td>
+                <td className='max-w-xs truncate text-zinc-500'>{r.error_message || r.skipped_reason || '—'}</td>
               </tr>
-            ))
+            );
+            })
           )}
         </tbody>
       </table>

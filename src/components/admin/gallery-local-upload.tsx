@@ -35,13 +35,20 @@ export function GalleryLocalUpload() {
     };
   }, []);
 
+  const MAX_BYTES = 3_500_000;
+
   const addFiles = useCallback((files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => f.size > 0 && f.type.startsWith('image/'));
-    if (list.length === 0) return;
+    const tooBig = list.filter((f) => f.size > MAX_BYTES);
+    if (tooBig.length) {
+      setMsg(`Each photo must be under ${(MAX_BYTES / 1_000_000).toFixed(1)}MB. ${tooBig.length} file(s) skipped — uploads run one at a time to avoid server limits.`);
+    }
+    const ok = list.filter((f) => f.size <= MAX_BYTES);
+    if (ok.length === 0) return;
     setMsg(null);
     setStaged((prev) => {
       const next = [...prev];
-      for (const file of list.slice(0, Math.max(0, 12 - prev.length))) {
+      for (const file of ok.slice(0, Math.max(0, 12 - prev.length))) {
         next.push({ id: `${file.name}-${file.size}-${next.length}-${Date.now()}`, file, previewUrl: URL.createObjectURL(file) });
       }
       return next.slice(0, 12);
@@ -81,7 +88,10 @@ export function GalleryLocalUpload() {
           const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
           if (!res.ok) {
             console.warn('[CRM_DEBUG_UI]', 'gallery_upload', res.status, j);
-            lastErr = j.error ?? `Upload failed (${res.status})`;
+            lastErr =
+              res.status === 413
+                ? 'File too large for server (max ~3.5MB per photo). Try fewer photos or smaller images.'
+                : (j.error ?? `Upload failed (${res.status})`);
             if (j.code === 'BUCKET_MISSING') {
               setGalleryReady(false);
               lastErr = 'Storage bucket not configured yet. Uploads are temporarily disabled.';

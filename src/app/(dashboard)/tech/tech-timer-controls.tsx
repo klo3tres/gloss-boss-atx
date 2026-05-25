@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { isRealTimerId } from '@/lib/tech-job-filters';
 
 export function TechTimerControls({
   appointmentId,
@@ -17,8 +18,10 @@ export function TechTimerControls({
   initialStartedAt?: string | null;
   compact?: boolean;
 }) {
-  const [timerId, setTimerId] = useState(initialTimerId ?? '');
-  const [startedAt, setStartedAt] = useState(initialStartedAt ?? '');
+  const safeInitialId = isRealTimerId(initialTimerId) ? (initialTimerId ?? '') : '';
+  const safeInitialStarted = safeInitialId ? (initialStartedAt ?? '') : '';
+  const [timerId, setTimerId] = useState(safeInitialId);
+  const [startedAt, setStartedAt] = useState(safeInitialStarted);
   const [now, setNow] = useState(() => Date.now());
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +49,7 @@ export function TechTimerControls({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action,
-        timerId,
+        timerId: isRealTimerId(timerId) ? timerId : undefined,
         appointmentId: appointmentId || undefined,
         fallbackBookingId: fallbackBookingId || undefined,
         workflowSessionId: workflowSessionId || undefined,

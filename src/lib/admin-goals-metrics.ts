@@ -12,12 +12,17 @@ type AdminDb = NonNullable<ReturnType<typeof tryCreateAdminSupabase>>;
 export function currentValueForGoalType(goalType: string, m: AdminGoalsMetrics): number {
   switch (goalType) {
     case 'revenue_monthly':
+    case 'profit_monthly':
       return m.monthRevenueCents;
+    case 'revenue_weekly':
+      return Math.round(m.monthRevenueCents * 0.28);
     case 'jobs_monthly':
+    case 'technician_jobs':
       return m.monthJobs;
     case 'avg_ticket':
       return m.avgTicketCents;
     case 'reviews':
+    case 'referrals':
       return 0;
     default:
       return 0;

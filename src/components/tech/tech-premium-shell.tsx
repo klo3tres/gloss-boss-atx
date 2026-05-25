@@ -77,10 +77,11 @@ function directionsHref(address?: string | null) {
 }
 
 import { workOrderPath } from '@/lib/work-order-links';
+import { isRealTimerId, isStaleTimerStart } from '@/lib/tech-job-filters';
 
 function workOrderHref(job: TechJob) {
   const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
-  return workOrderPath(id, { source: job.isFallback ? 'fallback' : 'appointment' });
+  return workOrderPath(id, { source: job.isFallback ? 'fallback' : 'appointment', shell: 'technician' });
 }
 
 export type TechAnalytics = {
@@ -171,6 +172,8 @@ export function TechPremiumShell({
   goalTargetCents,
   justStarted = false,
   activeDebug,
+  completedTodayCount = 0,
+  isSuperAdmin = false,
 }: {
   techName: string;
   roleLabel: string | null;
@@ -185,9 +188,16 @@ export function TechPremiumShell({
   goalTargetCents: number | null;
   justStarted?: boolean;
   activeDebug?: { userId: string | null; checked: string[]; adminRead: boolean } | null;
+  completedTodayCount?: number;
+  isSuperAdmin?: boolean;
 }) {
   const todayJobs = jobs.filter((j) => isToday(j.scheduled_start));
-  const activeJob = jobs.find((j) => j.status === 'in_progress' || Boolean(j.timerId) || Boolean(j.timerStartedAt));
+  const assignedJobs = jobs.filter((j) => ['assigned', 'confirmed'].includes(j.status));
+  const activeJob = jobs.find(
+    (j) =>
+      j.status === 'in_progress' ||
+      (isRealTimerId(j.timerId) && j.timerStartedAt && !isStaleTimerStart(j.timerStartedAt)),
+  );
   const todayStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
   const initial = (techName || '?').charAt(0).toUpperCase();
   const goalPct =
@@ -418,17 +428,27 @@ export function TechPremiumShell({
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</Link>
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
             <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
-            {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-              <NotificationSendForm
-                key={`top-${kind}`}
-                kind={kind}
-                appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
-                fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
-                buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
-              >
-                {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-              </NotificationSendForm>
-            ))}
+            <div className='flex w-full flex-col gap-2 sm:w-auto'>
+              {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+                <div key={`top-${kind}`} className='flex flex-col gap-0.5'>
+                  <NotificationSendForm
+                    kind={kind}
+                    appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                    fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                    buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
+                  >
+                    {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+                  </NotificationSendForm>
+                  <p className='text-[10px] text-zinc-500'>
+                    {kind === 'last_touches'
+                      ? 'SMS/email customer that service is wrapping up.'
+                      : kind === 'payment_link'
+                        ? 'Stripe balance link — logs to notification outbox.'
+                        : 'Google review link after job (SMS if configured).'}
+                  </p>
+                </div>
+              ))}
+            </div>
             <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
               {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
               {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
@@ -450,8 +470,45 @@ export function TechPremiumShell({
         </section>
       ) : null}
 
-      <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs</h2>
-      <TechJobsClient jobs={jobs} />
+      <section className='mb-10'>
+        <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Today ({todayJobs.length})</h2>
+        {todayJobs.length === 0 ? (
+          <p className='text-sm text-zinc-500'>No jobs scheduled for today.</p>
+        ) : (
+          <ul className='space-y-3'>
+            {todayJobs.map((j) => (
+              <li key={j.id} className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
+                <div>
+                  <p className='font-bold text-white'>{j.guest_name ?? 'Customer'}</p>
+                  <p className='text-xs text-zinc-500'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {j.service_slug.replace(/-/g, ' ')}</p>
+                </div>
+                <Link href={workOrderHref(j)} className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'>
+                  Open
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className='mb-10'>
+        <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs ({assignedJobs.length})</h2>
+        <TechJobsClient jobs={assignedJobs.length ? assignedJobs : jobs} />
+      </section>
+
+      <section className={`${cardGlow} mb-10`}>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Completed today</p>
+        <p className='mt-2 text-3xl font-black text-white'>{completedTodayCount}</p>
+        <p className='mt-1 text-xs text-zinc-500'>Finished jobs assigned to you since midnight.</p>
+      </section>
+
+      <section className={`${cardGlow} mb-10`}>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Performance (30 days)</p>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Avg {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'} · {performance.jobsCompleted} completed · Stripe week $
+          {(performance.revenueWeekFromPayments / 100).toFixed(0)}
+        </p>
+      </section>
 
       <section className='mt-10'>
         <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Assigned leads</p>
@@ -577,218 +634,6 @@ export function TechPremiumShell({
           </ul>
         )}
       </section>
-
-      {activeJob ? (
-        <section className={`${cardGlow} mt-10 border-emerald-500/25 shadow-[0_0_36px_rgba(16,185,129,0.12)]`}>
-          <p className='text-xs font-black uppercase tracking-[0.25em] text-emerald-400'>Active work order</p>
-          <div className='mt-4 grid gap-4 md:grid-cols-2'>
-            <div>
-              <div className='flex flex-wrap items-start justify-between gap-3'>
-                <div>
-                  <p className='text-lg font-bold text-white'>{activeJob.guest_name ?? 'Walk-in customer'}</p>
-                  {activeJob.guest_phone ? (
-                    <a href={`tel:${activeJob.guest_phone}`} className='text-sm font-semibold text-gold-soft underline decoration-gold/30 underline-offset-4'>
-                      {activeJob.guest_phone}
-                    </a>
-                  ) : (
-                    <p className='text-sm text-zinc-500'>No phone on file</p>
-                  )}
-                </div>
-                <span className='rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300'>
-                  {activeJob.isFallback ? 'Fallback workflow' : activeJob.status.replace(/_/g, ' ')}
-                </span>
-              </div>
-              <p className='mt-4 text-sm font-semibold text-zinc-300'>
-                {vehicleLines(activeJob).length} vehicle{vehicleLines(activeJob).length === 1 ? '' : 's'}
-              </p>
-              <div className='mt-2 space-y-2'>
-                {vehicleLines(activeJob).map((v, i) => (
-                  <div key={`${v.label}-${i}`} className='rounded-xl border border-white/10 bg-black/30 p-3 text-xs'>
-                    <p className='font-bold text-white'>Vehicle {i + 1}: {v.label}</p>
-                    <p className='text-gold-soft'>{v.service.replace(/-/g, ' ')}</p>
-                    <p className='text-zinc-500'>
-                      {v.vehicleClass.replace(/_/g, ' ')} · {v.color}
-                      {v.priceCents != null ? ` · $${(v.priceCents / 100).toFixed(2)}` : ''}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <p className='mt-1 text-xs text-zinc-500'>
-                {activeJob.service_address ? (
-                  <a
-                    href={directionsHref(activeJob.service_address)}
-                    target='_blank'
-                    rel='noreferrer'
-                    className='text-gold-soft underline underline-offset-4'
-                  >
-                    Directions
-                  </a>
-                ) : (
-                  <span className='text-zinc-600'>No service address on file — contact customer.</span>
-                )}
-              </p>
-              <p className='mt-1 text-xs text-zinc-500'>
-                {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
-                {activeJob.vehicle_class.replace(/_/g, ' ')}
-              </p>
-              <p className='mt-1 text-xs text-zinc-500'>
-                Started {activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}
-              </p>
-              {activeJob.fieldNotesPreview ? (
-                <p className='mt-3 rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-400'>{activeJob.fieldNotesPreview}</p>
-              ) : null}
-            </div>
-            <ul className='space-y-2 text-xs text-zinc-300'>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <Timer className='h-3.5 w-3.5' aria-hidden /> Live timer
-                </span>
-                <LiveTimer startedAt={activeJob.timerStartedAt} />
-              </li>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <ClipboardCheck className='h-3.5 w-3.5' aria-hidden /> Agreement
-                </span>
-                <span className={activeJob.hasIntake ? 'text-emerald-400' : 'text-amber-300'}>
-                  {activeJob.hasIntake ? 'On file' : 'Needed'}
-                </span>
-              </li>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <Camera className='h-3.5 w-3.5' aria-hidden /> Before photos
-                </span>
-                <span className='text-white'>{activeJob.beforePhotoCount ?? 0}</span>
-              </li>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <Camera className='h-3.5 w-3.5' aria-hidden /> After photos
-                </span>
-                <span className='text-white'>{activeJob.afterPhotoCount ?? 0}</span>
-              </li>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <FileText className='h-3.5 w-3.5' aria-hidden /> Notes
-                </span>
-                <span className={activeJob.fieldNotesPreview ? 'text-emerald-400' : 'text-zinc-500'}>
-                  {activeJob.fieldNotesPreview ? 'Saved' : 'Ready'}
-                </span>
-              </li>
-              <li className='flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2'>
-                <span className='flex items-center gap-2 text-zinc-400'>
-                  <Zap className='h-3.5 w-3.5' aria-hidden /> Payment
-                </span>
-                <span className={(activeJob.balance_due_cents ?? 0) > 0 ? 'text-amber-300' : 'text-emerald-400'}>
-                  {(activeJob.balance_due_cents ?? 0) > 0
-                    ? `$${((activeJob.balance_due_cents ?? 0) / 100).toFixed(2)} due`
-                    : activeJob.payment_status ?? 'Ready'}
-                </span>
-              </li>
-            </ul>
-          </div>
-          <div className='mt-4 flex flex-wrap gap-2'>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>
-              Open Work Order
-            </Link>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>
-              Upload After Photos
-            </Link>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
-            {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-              <NotificationSendForm
-                key={kind}
-                kind={kind}
-                appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
-                fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
-                buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
-              >
-                {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-              </NotificationSendForm>
-            ))}
-            <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-              Complete Job
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      <section className={`${cardGlow} mt-10`}>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Performance & analytics</p>
-        <p className='mt-1 text-[11px] text-zinc-500'>From your completed jobs, timers, and Stripe payments (no mock data).</p>
-        <div className='mt-4 grid gap-6 lg:grid-cols-2'>
-          <div>
-            <p className='text-[10px] font-bold uppercase text-zinc-500'>Longest timer sessions</p>
-            {performance.longestJobs.length === 0 ? (
-              <p className='mt-2 text-sm text-zinc-600'>No stopped timers yet.</p>
-            ) : (
-              <ul className='mt-2 space-y-1 text-sm text-zinc-300'>
-                {performance.longestJobs.map((j, i) => (
-                  <li key={i} className='flex justify-between border-b border-white/5 py-1'>
-                    <span>{j.durationMinutes} min</span>
-                    <span className='font-mono text-xs text-zinc-500'>{j.appointmentId?.slice(0, 8) ?? '—'}…</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div>
-            <p className='text-[10px] font-bold uppercase text-zinc-500'>Service frequency (completed)</p>
-            {performance.serviceFrequency.length === 0 ? (
-              <p className='mt-2 text-sm text-zinc-600'>Complete jobs to see frequency.</p>
-            ) : (
-              <ul className='mt-2 space-y-1 text-sm'>
-                {performance.serviceFrequency.map((s) => (
-                  <li key={s.slug} className='flex justify-between text-zinc-300'>
-                    <span>{s.slug.replace(/-/g, ' ')}</span>
-                    <span className='text-gold-soft'>{s.count}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className='lg:col-span-2'>
-            <p className='text-[10px] font-bold uppercase text-zinc-500'>Top add-ons (completed jobs)</p>
-            {performance.topAddOns.length === 0 ? (
-              <p className='mt-2 text-sm text-zinc-600'>No add-on slugs recorded on completed jobs.</p>
-            ) : (
-              <ul className='mt-2 flex flex-wrap gap-2'>
-                {performance.topAddOns.map((a) => (
-                  <li
-                    key={a.slug}
-                    className='rounded-full border border-gold/25 bg-black/40 px-3 py-1 text-xs text-gold-soft'
-                  >
-                    {a.slug} ×{a.count}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <div id='schedule-today' className='mt-10 scroll-mt-28'>
-        {todayJobs.length > 0 ? (
-          <section className={cardGlow}>
-            <p className='text-xs font-black uppercase tracking-[0.2em] text-emerald-300'>Today&apos;s schedule</p>
-            <ul className='mt-4 space-y-2'>
-              {todayJobs.map((j) => (
-                <li
-                  key={j.id}
-                  className='flex flex-wrap justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-zinc-200'
-                >
-                  <span className='font-semibold text-white'>
-                    {new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                  </span>
-                  <span>
-                    {j.guest_name ?? 'Guest'} · {j.service_slug.replace(/-/g, ' ')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : (
-          <p className='mb-4 text-sm text-zinc-500'>No jobs scheduled for today.</p>
-        )}
-      </div>
 
       <div id='field-invoice' className='mt-10 scroll-mt-28'>
         {activeJob ? (

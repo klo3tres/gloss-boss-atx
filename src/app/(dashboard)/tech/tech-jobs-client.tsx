@@ -1,7 +1,10 @@
 'use client';
 
-import { useActionState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useActionState, useEffect } from 'react';
 import { techCompleteJobAction, techStartJobAction } from './tech-actions';
+import { workOrderPath } from '@/lib/work-order-links';
 import { TechJobWorkspace } from './tech-job-workspace';
 import { formatVehicleClassLabel } from '@/lib/display-pricing';
 
@@ -165,6 +168,15 @@ export function TechJobsClient({ jobs }: { jobs: Job[] }) {
                     </button>
                   </form>
                 ) : null}
+                <Link
+                  href={workOrderPath(job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id, {
+                    source: job.isFallback ? 'fallback' : 'appointment',
+                    shell: 'technician',
+                  })}
+                  className='rounded-lg border border-gold/40 bg-gold/10 px-4 py-2 text-center text-xs font-black uppercase tracking-wider text-gold-soft'
+                >
+                  Open work order
+                </Link>
                 {isStarted ? (
                   <form action={completeAction}>
                     {!job.isFallback ? <input type='hidden' name='appointmentId' value={job.id} /> : null}

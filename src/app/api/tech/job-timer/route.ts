@@ -151,6 +151,26 @@ export async function POST(request: Request) {
 
 
     if (action === 'start') {
+      let existingQ = db
+        .from('tech_job_timers')
+        .select('id, started_at, created_at')
+        .eq('technician_id', user.id)
+        .is('ended_at', null)
+        .order('started_at', { ascending: false })
+        .limit(1);
+      if (appointmentId) existingQ = existingQ.eq('appointment_id', appointmentId);
+      else if (fallbackBookingId) existingQ = existingQ.eq('fallback_booking_id', fallbackBookingId);
+      else if (workflowSessionId) existingQ = existingQ.eq('workflow_session_id', workflowSessionId);
+      const existingOpen = await existingQ.maybeSingle();
+      if (!existingOpen.error && existingOpen.data) {
+        const row = existingOpen.data as Record<string, unknown>;
+        return NextResponse.json({
+          ok: true,
+          id: row.id,
+          startedAt: resolveStartedAt(row) ?? nowIso,
+          reused: true,
+        });
+      }
 
       const label = String(body.label ?? '').trim().slice(0, 200) || null;
 
@@ -268,22 +288,30 @@ export async function POST(request: Request) {
 
 
     if (action === 'stop') {
-
-      const id = String(body.timerId ?? '').trim();
-
-      if (!id) {
-
-        return NextResponse.json({ error: 'timerId required' }, { status: 400 });
-
+      let id = String(body.timerId ?? '').trim();
+      if (!id || id.startsWith('workflow-') || id.startsWith('fallback-')) {
+        let openQ = supabase
+          .from('tech_job_timers')
+          .select('id, started_at, ended_at, created_at')
+          .eq('technician_id', user.id)
+          .is('ended_at', null)
+          .order('started_at', { ascending: false })
+          .limit(1);
+        if (appointmentId) openQ = openQ.eq('appointment_id', appointmentId);
+        else if (fallbackBookingId) openQ = openQ.eq('fallback_booking_id', fallbackBookingId);
+        const open = await openQ.maybeSingle();
+        if (!open.error && open.data) {
+          id = String((open.data as { id?: string }).id ?? '');
+        }
       }
 
-
+      if (!id) {
+        return NextResponse.json({ error: 'No open timer found for this job.' }, { status: 400 });
+      }
 
       let row: Record<string, unknown> | null = null;
 
       let gErr: { message: string } | null = null;
-
-
 
       const full = await supabase
 

@@ -9,6 +9,7 @@ import {
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { isActiveFieldStatus, isArchivedOrDeletedRow, isRealTimerId, isStaleTimerStart, isTestLikeJob } from '@/lib/tech-job-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,7 +143,17 @@ export default async function TechnicianDashboardPage({
         .in('status', ['assigned', 'confirmed', 'in_progress'])
         .order('scheduled_start', { ascending: true });
     }
-    let rawRows = (((appointmentQuery.data ?? []) as unknown) as Record<string, unknown>[]).filter((row) => row.archived !== true && row.status !== 'archived');
+    let rawRows = (((appointmentQuery.data ?? []) as unknown) as Record<string, unknown>[]).filter(
+      (row) =>
+        !isArchivedOrDeletedRow(row) &&
+        isActiveFieldStatus(String(row.status ?? '')) &&
+        !isTestLikeJob({
+          guest_email: row.guest_email as string | null,
+          guest_name: row.guest_name as string | null,
+          guest_phone: row.guest_phone as string | null,
+          notes: row.notes as string | null,
+        }),
+    );
     activeDebug.checked.push(`appointments.assigned=${rawRows.length}${appointmentQuery.error ? ` error:${appointmentQuery.error.message}` : ''}`);
     let ids = rawRows.map((row) => String(row.id));
     const openTimerByAppt = new Map<string, { id: string; startedAt: string | null; workflowSessionId: string | null }>();
@@ -176,9 +187,12 @@ export default async function TechnicianDashboardPage({
     activeDebug.checked.push(`tech_job_timers.open=${timerRows.length}${timerFinal.error ? ` error:${timerFinal.error.message}` : ''}`);
     for (const timer of timerRows) {
       const row = timer as Record<string, unknown>;
+      if (row.ended_at != null && String(row.ended_at).trim()) continue;
+      const startedAt = row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null;
+      if (isStaleTimerStart(startedAt)) continue;
       const t = {
         id: String(row.id ?? ''),
-        startedAt: row.started_at != null ? String(row.started_at) : row.created_at != null ? String(row.created_at) : null,
+        startedAt,
         workflowSessionId: row.workflow_session_id != null ? String(row.workflow_session_id) : null,
       };
       const aid = row.appointment_id != null ? String(row.appointment_id) : '';
@@ -220,15 +234,13 @@ export default async function TechnicianDashboardPage({
     activeDebug.checked.push(`tech_workflow_sessions.active=${workflowRows.length}${workflowFinal.error ? ` error:${workflowFinal.error.message}` : ''}`);
     for (const sessionRow of workflowRows) {
       const row = sessionRow as Record<string, unknown>;
-      const t = {
-        id: `workflow-${String(row.id ?? '')}`,
-        startedAt: row.updated_at != null ? String(row.updated_at) : row.created_at != null ? String(row.created_at) : null,
-        workflowSessionId: row.id != null ? String(row.id) : null,
-      };
+      const wid = row.id != null ? String(row.id) : '';
+      const real = wid ? timerByWorkflow.get(wid) : undefined;
+      if (!real) continue;
       const aid = row.appointment_id != null ? String(row.appointment_id) : '';
       const fid = row.fallback_booking_id != null ? String(row.fallback_booking_id) : '';
-      if (aid && !openTimerByAppt.has(aid)) openTimerByAppt.set(aid, t);
-      if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, t);
+      if (aid && !openTimerByAppt.has(aid)) openTimerByAppt.set(aid, real);
+      if (fid && !openTimerByFallback.has(fid)) openTimerByFallback.set(fid, real);
     }
 
     const missingActiveAppointmentIds = Array.from(openTimerByAppt.keys()).filter((id) => !ids.includes(id));
@@ -402,11 +414,6 @@ export default async function TechnicianDashboardPage({
       : [];
     if (inProgressFallbackQuery.error) console.warn('[tech dashboard] in-progress fallback select', inProgressFallbackQuery.error.message);
     activeDebug.checked.push(`booking_fallbacks.in_progress=${inProgressFallbackIds.length}${inProgressFallbackQuery.error ? ` error:${inProgressFallbackQuery.error.message}` : ''}`);
-    for (const id of inProgressFallbackIds) {
-      if (!openTimerByFallback.has(id)) {
-        openTimerByFallback.set(id, { id: `fallback-${id}`, startedAt: null, workflowSessionId: null });
-      }
-    }
 
     const fallbackIds = Array.from(openTimerByFallback.keys());
     if (fallbackIds.length > 0) {
@@ -700,14 +707,36 @@ export default async function TechnicianDashboardPage({
         created_at: String(r.created_at ?? ''),
         in_pool: Boolean(r.in_pool),
       })) ?? [];
+
+    jobs = jobs.filter((j) => {
+      if (isTestLikeJob(j)) return false;
+      if (['completed', 'cancelled', 'archived', 'deleted'].includes(j.status)) return false;
+      if (j.timerStartedAt && isStaleTimerStart(j.timerStartedAt) && j.status !== 'in_progress') return false;
+      if (j.timerId && !isRealTimerId(j.timerId) && j.status !== 'in_progress') return false;
+      return isActiveFieldStatus(j.status) || j.status === 'in_progress';
+    });
+  }
+
+  let completedTodayCount = 0;
+  if (db && session.user) {
+    const sod = new Date();
+    sod.setHours(0, 0, 0, 0);
+    const { count } = await db
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('assigned_technician_id', session.user.id)
+      .eq('status', 'completed')
+      .gte('job_completed_at', sod.toISOString());
+    completedTodayCount = count ?? 0;
   }
 
   return (
-    <DashboardShell title='Technician workspace' subtitle='Dispatch-grade command center — jobs, leads, analytics, field tools.' role='technician'>
+    <DashboardShell title='Field mode' subtitle='Today’s route, active job, and work orders — mobile-first.' role='technician'>
       <TechPremiumShell
         techName={techName}
         roleLabel={roleLabel}
         jobs={jobs}
+        completedTodayCount={completedTodayCount}
         revenueTodayCents={revenueTodayCents}
         revenueWeekCents={revenueWeekCents}
         analytics={analytics}
@@ -718,6 +747,7 @@ export default async function TechnicianDashboardPage({
         goalTargetCents={goalTargetCents}
         justStarted={justStarted}
         activeDebug={activeDebug}
+        isSuperAdmin={session.profile?.role === 'super_admin'}
       />
     </DashboardShell>
   );
