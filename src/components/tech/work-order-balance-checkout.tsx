@@ -51,9 +51,11 @@ export function WorkOrderBalanceCheckout({
     const data = (await res.json().catch(() => ({}))) as CheckoutResponse;
     if (!res.ok || !data.ok || !data.url) {
       const msg =
-        data.code === 'NO_BALANCE_DUE'
-          ? 'No balance due.'
-          : data.error ?? 'Could not create balance checkout.';
+        data.code === 'STRIPE_NOT_CONFIGURED'
+          ? 'Stripe is not configured for this environment. Set STRIPE_SECRET_KEY in .env.local or record cash payment.'
+          : data.code === 'NO_BALANCE_DUE'
+            ? 'No balance due.'
+            : data.error ?? 'Could not create balance checkout.';
       throw new Error(msg);
     }
     return { url: data.url, balanceCents: data.balanceCents ?? balanceDueCents };

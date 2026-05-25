@@ -92,9 +92,13 @@ export function WorkOrderInvoiceBuilder({
   totalPaid,
   paymentComplete,
   receiptPdfHref,
+  customerName,
+  vehicleBreakdownLines,
   defaultVehicleClass = 'sedan',
 }: {
   jobId: string;
+  customerName?: string;
+  vehicleBreakdownLines?: Array<{ label: string; amount: string }>;
   defaultVehicleClass?: UiVehicleClass;
   appointmentId?: string;
   fallbackBookingId?: string;
@@ -275,8 +279,14 @@ export function WorkOrderInvoiceBuilder({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appointmentId }),
     });
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
-    if (!res.ok || !data.ok || !data.url) throw new Error(data.error ?? 'Checkout failed.');
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string; code?: string };
+    if (!res.ok || !data.ok || !data.url) {
+      throw new Error(
+        data.code === 'STRIPE_NOT_CONFIGURED'
+          ? 'Stripe is not configured for this environment. Set STRIPE_SECRET_KEY in .env.local.'
+          : data.error ?? 'Checkout failed.',
+      );
+    }
     return data.url;
   };
 
@@ -473,10 +483,14 @@ export function WorkOrderInvoiceBuilder({
       <div className='mt-5 rounded-xl border border-gold/30 bg-black/60 p-4'>
         <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Live invoice preview</p>
         <ul className='mt-3 space-y-2 text-sm'>
-          {livePricing.vehicleSubtotalCents > 0 ? (
+          {customerName ? <PreviewRow label='Customer' value={customerName} /> : null}
+          {vehicleBreakdownLines?.map((line) => (
+            <PreviewRow key={`${line.label}-${line.amount}`} label={line.label} value={line.amount} muted={line.label.startsWith('  ')} />
+          ))}
+          {vehicleBreakdownLines && vehicleBreakdownLines.length > 0 ? null : livePricing.vehicleSubtotalCents > 0 ? (
             <PreviewRow label='Base services subtotal' value={money(livePricing.vehicleSubtotalCents)} />
           ) : null}
-          {livePricing.addOnSubtotalCents > 0 ? (
+          {vehicleBreakdownLines && vehicleBreakdownLines.length > 0 ? null : livePricing.addOnSubtotalCents > 0 ? (
             <PreviewRow label='Add-ons subtotal' value={money(livePricing.addOnSubtotalCents)} />
           ) : null}
           {livePricing.multiCarDiscountCents > 0 ? (

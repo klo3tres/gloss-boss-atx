@@ -11,6 +11,7 @@ import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
 import { syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
 function num(v: unknown): number {
@@ -333,7 +334,8 @@ export default async function TechWorkOrderDetailPage({
   });
 
   const agreementRow = (agreementRes.data as Row | null) ?? null;
-  const agreementSigned = Boolean(agreementRow?.id);
+  const agreementSigned =
+    Boolean(agreementRow?.id) || (await resolveAgreementSigned(admin, queryId, isFallback, row));
   const agreementCaptureHref = `/tech/work-orders/${encodeURIComponent(id)}/recapture-agreement${shellRole === 'admin' ? '?shell=admin' : ''}`;
   const agreementDetailHref = agreementRow?.id
     ? shellRole === 'admin'
@@ -351,6 +353,11 @@ export default async function TechWorkOrderDetailPage({
   const pricing = orderSnapshot?.pricing ?? (await import('@/lib/job-pricing-display')).resolveJobPricing(row, paymentRows);
   const receiptBreakdownLines = buildReceiptBreakdown(row, pricing);
   const photoUploadDisabled = resolved.orphanSession || isTestLikeJob(row);
+  const photoUploadDisableReason = resolved.orphanSession
+    ? 'Orphan session — link a live appointment before uploading.'
+    : isTestLikeJob(row)
+      ? 'Test/archived job — photo upload disabled.'
+      : null;
   const canManagePayments = isStaffRole(session.profile?.role ?? null);
   const workOrderPath = `/tech/work-orders/${encodeURIComponent(id)}${shellRole === 'admin' ? '?shell=admin' : ''}`;
   await syncJobBalanceDue(admin, row, pricing, {
@@ -469,6 +476,8 @@ export default async function TechWorkOrderDetailPage({
     },
     receiptBreakdownLines,
     photoUploadDisabled,
+    photoUploadDisableReason: photoUploadDisableReason ?? undefined,
+    photoUploadResolvedContext: !photoUploadDisabled,
     uploadContextDebug: showDebug
       ? {
           workOrderId: queryId,
@@ -477,6 +486,10 @@ export default async function TechWorkOrderDetailPage({
           workflowSessionId: workflowSessionId ?? '',
           customerId: str(row.customer_id),
           urlParamId: id,
+          source: isFallback ? 'fallback' : 'appointment',
+          uploadEnabled: !photoUploadDisabled,
+          disableReason: photoUploadDisableReason ?? '',
+          partialLoad: Boolean(partialLoad),
         }
       : undefined,
     canManagePayments,

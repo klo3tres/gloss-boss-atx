@@ -77,12 +77,32 @@ function canAccessJob(role: AppRole | null, userId: string, assigned: string | n
   return false;
 }
 
+function isSelectDrift(msg: string) {
+  return /column|schema cache|Could not find/i.test(msg);
+}
+
+/** Minimal columns — avoids false "job not found" when optional columns drift. */
 async function loadAppointmentById(admin: NonNullable<Awaited<ReturnType<typeof tryCreateAdminSupabase>>>, id: string) {
-  return admin
-    .from('appointments')
-    .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source, status')
-    .eq('id', id)
-    .maybeSingle();
+  const attempts = [
+    () =>
+      admin
+        .from('appointments')
+        .select('id, assigned_technician_id, customer_id, vehicle_id, booking_source, status')
+        .eq('id', id)
+        .maybeSingle(),
+    () =>
+      admin.from('appointments').select('id, assigned_technician_id, customer_id, status').eq('id', id).maybeSingle(),
+    () => admin.from('appointments').select('id, assigned_technician_id, customer_id').eq('id', id).maybeSingle(),
+    () => admin.from('appointments').select('id').eq('id', id).maybeSingle(),
+  ];
+  let last = { data: null as Record<string, unknown> | null, error: null as { message: string } | null };
+  for (const run of attempts) {
+    const res = await run();
+    if (!res.error && res.data) return { data: res.data as Record<string, unknown>, error: null };
+    last = { data: (res.data as Record<string, unknown> | null) ?? null, error: res.error };
+    if (res.error && !isSelectDrift(res.error.message)) break;
+  }
+  return last;
 }
 
 async function loadFallbackById(admin: NonNullable<Awaited<ReturnType<typeof tryCreateAdminSupabase>>>, id: string) {
@@ -118,6 +138,7 @@ export async function POST(request: Request) {
     const workflowSessionIdForm = String(form.get('workflowSessionId') ?? '').trim();
     const techWorkflowSessionId =
       String(form.get('techWorkflowSessionId') ?? '').trim() || workflowSessionIdForm;
+    const resolvedContextTrust = String(form.get('resolvedContextTrust') ?? '') === 'true';
     const accessToken = String(form.get('accessToken') ?? '').trim();
     const jobReference = String(form.get('jobReference') ?? '').trim();
     const currentStep = String(form.get('currentStep') ?? '').trim();
@@ -171,22 +192,28 @@ export async function POST(request: Request) {
       fallbackBookingId,
       workflowSessionId: techWorkflowSessionId,
     });
+    let unifiedTrusted = resolvedContextTrust;
     if (unified) {
       const accessErr = assertMediaUploadAccess(role, user.id, unified);
       if (accessErr) {
-        return NextResponse.json({ error: accessErr }, { status: unified.orphanSession ? 403 : 403 });
+        return NextResponse.json({ error: accessErr }, { status: 403 });
       }
       appointmentId = unified.appointmentId;
       fallbackBookingId = unified.fallbackBookingId;
       customerId = unified.customerId ?? customerId;
+      unifiedTrusted = true;
       if (unified.appointmentId) {
         appointmentUsable = true;
         linkedAppointmentId = unified.appointmentId;
+      }
+      if (unified.fallbackBookingId) {
+        fallbackBookingId = unified.fallbackBookingId;
       }
       logDebug('unified.resolve', {
         appointmentId: appointmentId || null,
         fallbackBookingId: fallbackBookingId || null,
         orphan: unified.orphanSession,
+        resolvedContextTrust,
       });
     }
 
@@ -202,17 +229,27 @@ export async function POST(request: Request) {
       currentStep,
       hasSubmittedContext: Boolean(customerName || customerPhone || vehicleSummary || serviceSlug),
       userId: user.id,
+      resolvedContextTrust,
+      unifiedTrusted,
     });
 
+    if (unifiedTrusted && (appointmentUsable || fallbackBookingId)) {
+      logDebug('unified.trusted_skip_requery', {
+        appointmentUsable,
+        fallbackBookingId: fallbackBookingId || null,
+      });
+    } else {
     if (!appointmentUsable) appointmentUsable = Boolean(appointmentId);
     if (!linkedAppointmentId && appointmentId) linkedAppointmentId = appointmentId;
     if (appointmentId) {
       const appt = await loadAppointmentById(admin, appointmentId);
       const a = appt.data as Record<string, unknown> | null;
-      logDebug('appointments.by_id', { found: Boolean(a), error: appt.error?.message ?? null });
+      logDebug('appointments.by_id', { found: Boolean(a), error: appt.error?.message ?? null, unifiedTrusted });
       if (appt.error || !a) {
-        appointmentUsable = false;
-        linkedAppointmentId = '';
+        if (!unifiedTrusted) {
+          appointmentUsable = false;
+          linkedAppointmentId = '';
+        }
       } else {
         const assigned = typeof a.assigned_technician_id === 'string' ? a.assigned_technician_id : null;
         const status = strCell(a.status);
@@ -296,7 +333,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (fallbackBookingId) {
+    if (fallbackBookingId && !unifiedTrusted) {
       const { data: fb, error } = await admin
         .from('booking_fallbacks')
         .select('id, assigned_technician_id')
@@ -313,6 +350,9 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'Invalid fallback for this technician.' }, { status: 400 });
         }
       }
+    } else if (fallbackBookingId && unifiedTrusted) {
+      appointmentUsable = false;
+      logDebug('booking_fallbacks.trusted', { fallbackBookingId });
     }
 
     if (!appointmentUsable && !fallbackBookingId) {
@@ -578,12 +618,31 @@ export async function POST(request: Request) {
         });
       }
     }
+    }
 
     if (!appointmentUsable && !fallbackBookingId) {
-      console.warn('[job-media-upload] job not resolved', debug);
+      console.warn('[job-media-upload] job not resolved', {
+        workOrderId,
+        appointmentId,
+        fallbackBookingId,
+        workflowSessionId: techWorkflowSessionId,
+        customerId,
+        unifiedTrusted,
+        debug,
+      });
       return NextResponse.json(
         {
           error: 'Job not found. Open the work order and try again, or check appointment / fallback id.',
+          context: isAdminLevel(role)
+            ? {
+                workOrderId,
+                appointmentId: appointmentId || null,
+                fallbackBookingId: fallbackBookingId || null,
+                workflowSessionId: techWorkflowSessionId || null,
+                customerId: customerId || null,
+                unifiedTrusted,
+              }
+            : undefined,
         },
         { status: 404 },
       );

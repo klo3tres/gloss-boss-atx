@@ -45,6 +45,17 @@ function chicago(iso: string) {
   }).format(d);
 }
 
+function googleCalendarHref(summary: Summary) {
+  const start = new Date(summary.scheduledStart);
+  if (Number.isNaN(start.getTime())) return '';
+  const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const title = encodeURIComponent('Gloss Boss ATX — Mobile Detail');
+  const details = encodeURIComponent(`Booking ${summary.bookingNumber} · ${summary.guestPhone}`);
+  const location = encodeURIComponent(summary.serviceAddress || 'Mobile service');
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
+}
+
 function ConfirmationInner() {
   const sp = useSearchParams();
   const appointmentId = sp.get('appointment_id') ?? sp.get('appointmentId') ?? '';
@@ -84,50 +95,45 @@ function ConfirmationInner() {
   const paidDeposit = summary.depositPaidCents > 0 || summary.paymentStatus.includes('deposit');
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
 
-  return (
-    <div className='space-y-8'>
-      <div>
-        <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
-        <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-4xl'>Booking confirmed</h1>
-        <p className='mt-2 text-sm text-zinc-400'>Reference {summary.bookingNumber}</p>
-      </div>
+  const calHref = googleCalendarHref(summary);
 
-      <section className='gb-glass rounded-3xl border border-gold/25 p-6'>
-        <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Appointment</h2>
-        <p className='mt-3 text-xl font-bold text-white'>{chicago(summary.scheduledStart)}</p>
+  return (
+    <div className='space-y-6'>
+      <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
+        <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
+        <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-5xl'>You&apos;re booked</h1>
+        <p className='mt-2 text-sm text-zinc-400'>Ref {summary.bookingNumber}</p>
+        <p className='mt-4 text-xl font-bold text-white'>{chicago(summary.scheduledStart)}</p>
         <p className='mt-2 text-sm text-zinc-300'>{summary.serviceAddress || 'Mobile service at your address'}</p>
-        <p className='mt-4 text-sm text-zinc-400'>
-          {summary.guestName} · {summary.guestEmail} · {summary.guestPhone}
-        </p>
+        {calHref ? (
+          <a
+            href={calHref}
+            target='_blank'
+            rel='noreferrer'
+            className='mt-6 inline-flex rounded-2xl border border-gold/40 bg-gold/10 px-6 py-3 text-xs font-black uppercase text-gold-soft'
+          >
+            Add to Google Calendar
+          </a>
+        ) : null}
       </section>
 
-      <section className='gb-glass rounded-3xl border border-white/10 p-6'>
-        <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Vehicles & services</h2>
-        <ul className='mt-4 space-y-4'>
+      <section className='gb-glass rounded-3xl border border-gold/20 p-6'>
+        <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Your detail</h2>
+        <ul className='mt-4 space-y-3'>
           {summary.vehicles.map((v, i) => (
             <li key={i} className='rounded-2xl border border-white/10 bg-black/40 p-4'>
               <p className='font-bold text-white'>{v.description}</p>
               <p className='text-xs text-zinc-500'>
                 {v.serviceSlug.replace(/-/g, ' ')} · {v.vehicleClass}
+                {v.priceCents > 0 ? ` · ${money(v.priceCents)}` : ''}
               </p>
-              {v.priceCents > 0 ? <p className='mt-2 text-sm text-gold-soft'>{money(v.priceCents)}</p> : null}
               {v.addOns.length > 0 ? (
-                <ul className='mt-2 space-y-1 text-xs text-zinc-400'>
-                  {v.addOns.map((a, j) => (
-                    <li key={j}>
-                      + {a.label} {a.priceCents > 0 ? money(a.priceCents) : ''}
-                    </li>
-                  ))}
-                </ul>
+                <p className='mt-2 text-xs text-zinc-400'>{v.addOns.map((a) => a.label).join(' · ')}</p>
               ) : null}
             </li>
           ))}
         </ul>
-      </section>
-
-      <section className='gb-glass rounded-3xl border border-white/10 p-6'>
-        <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Payment</h2>
-        <dl className='mt-4 space-y-2 text-sm'>
+        <dl className='mt-6 space-y-2 border-t border-white/10 pt-4 text-sm'>
           <div className='flex justify-between gap-4'>
             <dt className='text-zinc-400'>Total</dt>
             <dd className='font-bold text-white'>{money(summary.finalTotalCents)}</dd>
@@ -173,41 +179,26 @@ function ConfirmationInner() {
         </dl>
       </section>
 
-      <section className='rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-relaxed text-amber-100'>
-        <p className='font-bold text-amber-50'>Before we arrive</p>
-        <ul className='mt-2 list-inside list-disc space-y-1 text-amber-100/90'>
-          <li>Ensure water and power access at the service location.</li>
-          <li>Clear space around each vehicle where possible.</li>
-          <li>Gate codes and parking details help us arrive on time.</li>
-        </ul>
-      </section>
-
-      <section className='gb-glass rounded-2xl border border-white/10 p-5 text-sm text-zinc-300'>
-        <p className='font-bold text-white'>What happens next</p>
-        <ol className='mt-2 list-inside list-decimal space-y-1'>
-          <li>Confirmation email with receipt details (when payment processes).</li>
-          <li>Sign your service agreement (required before your appointment).</li>
-          <li>We arrive at your scheduled time — track updates in your dashboard.</li>
-          <li>Pay any remaining balance after service if applicable.</li>
+      <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm text-zinc-300'>
+        <p className='font-black uppercase tracking-wider text-gold-soft'>Next steps</p>
+        <ol className='mt-3 space-y-2'>
+          <li>1 — Sign your service agreement (required)</li>
+          <li>2 — Watch for confirmation email & receipt</li>
+          <li>3 — Water & power access ready at arrival</li>
+          <li>4 — Track live updates in your dashboard</li>
         </ol>
       </section>
 
-      <div className='flex flex-wrap gap-3'>
-        <Link href={signHref} className='rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase text-black'>
-          Sign agreement
+      <div className='grid gap-3 sm:grid-cols-2'>
+        <Link href={signHref} className='rounded-2xl bg-gold px-6 py-4 text-center text-sm font-black uppercase text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'>
+          Sign agreement now
         </Link>
-        <Link href='/signup' className='rounded-xl border border-gold/40 px-6 py-3 text-xs font-black uppercase text-gold-soft'>
-          Create account
+        <Link href='/signup' className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'>
+          Create your account
         </Link>
-        <Link href='/login' className='rounded-xl border border-white/15 px-6 py-3 text-xs font-bold uppercase text-zinc-300'>
+        <Link href='/login' className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300 sm:col-span-2'>
           Claim booking in dashboard
         </Link>
-        <a
-          href='mailto:info@glossbossatx.com'
-          className='rounded-xl border border-white/15 px-6 py-3 text-xs font-bold uppercase text-zinc-300'
-        >
-          Contact Gloss Boss ATX
-        </a>
       </div>
     </div>
   );

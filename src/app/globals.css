@@ -33,6 +33,54 @@ body {
   padding-bottom: 6rem;
 }
 
+.gb-mission-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+.gb-wo-mission-pad {
+  padding-top: 5.5rem;
+}
+
+@media (min-width: 1024px) {
+  .gb-wo-mission-pad {
+    padding-top: 6rem;
+  }
+}
+
+.gb-gallery-masonry {
+  column-count: 1;
+  column-gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .gb-gallery-masonry {
+    column-count: 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .gb-gallery-masonry {
+    column-count: 3;
+  }
+}
+
+.gb-gallery-masonry-item {
+  display: inline-block;
+  width: 100%;
+}
+
+.gb-mission-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .gb-mission-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 1024px) {
   .gb-sticky-actions {
     position: sticky;

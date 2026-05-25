@@ -63,7 +63,7 @@ export default async function TechnicianProfilePage({ params }: { params: Promis
       .eq('created_by', id)
       .order('created_at', { ascending: false })
       .limit(25),
-    admin.from('job_mileage_logs').select('*').eq('created_by', id).order('logged_on', { ascending: false }).limit(15),
+    admin.from('job_mileage_logs').select('*').eq('created_by', id).order('created_at', { ascending: false }).limit(15),
   ]);
 
   const completed = (completedRes.data ?? []) as Row[];

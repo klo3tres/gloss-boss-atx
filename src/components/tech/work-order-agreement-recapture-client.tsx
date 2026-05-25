@@ -46,9 +46,9 @@ export function WorkOrderAgreementRecaptureClient(props: {
       setMsg(res.error);
       return;
     }
-    setMsg('Agreement saved.');
+    setMsg('Agreement saved — refreshing work order progress.');
     router.refresh();
-    router.push(`/tech/work-orders/${props.workOrderId}`);
+    router.push(`/tech/work-orders/${encodeURIComponent(props.workOrderId)}`);
   }
 
   return (

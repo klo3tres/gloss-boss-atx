@@ -124,8 +124,11 @@ export function glossBossEmailLayout(params: GlossBossEmailLayoutParams): string
             </td>
           </tr>
           <tr>
-            <td style="padding:16px 28px 24px;border-top:1px solid #27272a;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#71717a;text-align:center;line-height:1.6;">
-              Austin mobile detailing · ${escapeEmailHtml(GLOSS_BOSS_BRAND_NAME)}
+            <td style="padding:20px 28px 28px;border-top:1px solid rgba(201,169,98,0.35);background:linear-gradient(180deg,#0a0a0a 0%,#050505 100%);font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#71717a;text-align:center;line-height:1.7;">
+              <p style="margin:0 0 8px;font-size:10px;font-weight:800;letter-spacing:0.28em;text-transform:uppercase;color:#d4af37;">${escapeEmailHtml(GLOSS_BOSS_BRAND_NAME)}</p>
+              <p style="margin:0 0 12px;color:#a1a1aa;">Premium mobile auto care · Austin, TX</p>
+              <p style="margin:0;"><a href="${GLOSS_BOSS_SUPPORT_MAILTO}" style="color:#d4af37;font-weight:700;text-decoration:none;">${GLOSS_BOSS_SUPPORT_EMAIL}</a></p>
+              <p style="margin:12px 0 0;font-size:10px;color:#52525b;">You received this because you booked or manage service with Gloss Boss ATX.</p>
             </td>
           </tr>
         </table>

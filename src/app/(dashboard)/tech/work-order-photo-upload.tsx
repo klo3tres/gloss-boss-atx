@@ -13,6 +13,8 @@ export function WorkOrderPhotoUpload({
   workOrderId,
   customerId,
   workflowSessionId,
+  source,
+  resolvedContextTrust,
   vehicleIndex,
   vehicleLabel,
 }: {
@@ -21,6 +23,9 @@ export function WorkOrderPhotoUpload({
   workOrderId?: string | null;
   customerId?: string | null;
   workflowSessionId?: string | null;
+  source?: 'appointment' | 'fallback';
+  /** Server already resolved this job on the work order page — do not re-resolve away. */
+  resolvedContextTrust?: boolean;
   vehicleIndex: number;
   vehicleLabel: string;
 }) {
@@ -46,7 +51,9 @@ export function WorkOrderPhotoUpload({
     fd.set('workOrderId', woId);
     if (appointmentId) fd.set('appointmentId', appointmentId);
     if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+    if (source) fd.set('source', source);
     if (customerId) fd.set('customerId', customerId);
+    if (resolvedContextTrust) fd.set('resolvedContextTrust', 'true');
     if (workflowSessionId) {
       fd.set('workflowSessionId', workflowSessionId);
       fd.set('techWorkflowSessionId', workflowSessionId);
@@ -121,9 +128,9 @@ export function WorkOrderPhotoUpload({
           </button>
         ))}
       </div>
-      <label className='mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-gold/40 bg-gradient-to-r from-gold/20 to-transparent px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft transition hover:border-gold'>
-        <Camera className='h-4 w-4' />
-        {busy ? 'Uploading…' : 'Camera / choose file'}
+      <label className='mt-3 flex min-h-[3.25rem] cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-gradient-to-r from-gold/25 to-transparent px-4 py-4 text-sm font-black uppercase tracking-wider text-gold-soft transition active:scale-[0.98] hover:border-gold'>
+        <Camera className='h-5 w-5' />
+        {busy ? 'Uploading…' : 'Tap to capture photo'}
         <input
           type='file'
           accept='image/jpeg,image/png,image/webp,image/*'
@@ -137,7 +144,7 @@ export function WorkOrderPhotoUpload({
         />
       </label>
       {preview ? (
-        <img src={preview} alt='Upload preview' className='mt-3 h-24 w-24 rounded-xl border border-gold/30 object-cover shadow-[0_0_20px_rgba(212,175,55,0.2)]' />
+        <img src={preview} alt='Upload preview' className='mt-4 h-40 w-full max-w-sm rounded-2xl border border-gold/30 object-cover shadow-[0_0_24px_rgba(212,175,55,0.25)] sm:h-48' />
       ) : null}
       {status ? (
         <p className={`mt-3 rounded-xl border px-3 py-2 text-xs ${statusClass}`} role='status'>

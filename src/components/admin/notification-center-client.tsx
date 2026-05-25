@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
   installAllNotificationDefaultsAction,
@@ -57,6 +58,7 @@ export function NotificationCenterClient({
   resendOk: boolean;
   twilioOk: boolean;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Templates');
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
@@ -86,8 +88,12 @@ export function NotificationCenterClient({
 
       {tab === 'Templates' ? (
         <div className='grid gap-6 lg:grid-cols-2'>
+          <p className='lg:col-span-2 text-sm text-zinc-400'>
+            App notification templates for booking confirmations, reminders, receipts, and internal alerts. Customer emails also use branded layouts in code.
+          </p>
           <form action={saveNotificationTemplateAction} className='gb-glass rounded-3xl border border-gold/20 p-5'>
             <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Create / update template</p>
+            <p className='mt-1 text-xs text-zinc-500'>Saved templates: {templates.length}</p>
             <div className='mt-4 grid gap-3'>
               <input name='key' placeholder='Template key' className='gb-input' required />
               <select name='channel' defaultValue='email' className='gb-input'>
@@ -117,6 +123,7 @@ export function NotificationCenterClient({
                 void installAllNotificationDefaultsAction().then((r) => {
                   setInstallMsg(r.message);
                   setInstalling(false);
+                  if (r.ok) router.refresh();
                 });
               }}
               className='mt-3 w-full rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs font-black uppercase text-gold-soft disabled:opacity-50'

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, CreditCard, FileSignature, MapPin, Phone } from 'lucide-react';
+import { Clock, CreditCard, FileSignature } from 'lucide-react';
 import { useMemo } from 'react';
-import { PremiumBadge, ProgressTracker, SectionEyebrow, StickyActionBar, TimelineRail } from '@/components/ui/premium';
-import { NotificationSendForm } from '@/components/tech/notification-send-form';
+import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
+import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
 import { WorkOrderInvoiceBuilder, type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
 import { WorkOrderReceiptPanel } from '@/components/tech/work-order-receipt-panel';
 import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
@@ -97,6 +97,8 @@ export type WorkOrderConsoleData = {
   receiptPdfHref?: string;
   receiptBreakdownLines?: ReceiptBreakdownLine[];
   photoUploadDisabled?: boolean;
+  photoUploadDisableReason?: string;
+  photoUploadResolvedContext?: boolean;
   uploadContextDebug?: {
     workOrderId: string;
     appointmentId: string;
@@ -104,6 +106,10 @@ export type WorkOrderConsoleData = {
     workflowSessionId: string;
     customerId: string;
     urlParamId: string;
+    source?: string;
+    uploadEnabled?: boolean;
+    disableReason?: string;
+    partialLoad?: boolean;
   };
   canManagePayments?: boolean;
   workOrderPath?: string;
@@ -192,8 +198,16 @@ export function WorkOrderConsoleClient({
 
   const jobId = data.canonicalId;
 
+  const vehicleLine = data.vehicles.map((v) => v.label).join(' · ') || data.serviceLabel;
+
   return (
-    <div className='gb-page-pad space-y-5 pb-40 md:space-y-8 md:pb-24'>
+    <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-24 md:space-y-6'>
+      <WorkOrderMissionBar
+        guestPhone={data.guestPhone}
+        mapsHref={data.mapsHref}
+        hasPreInspection={Boolean(data.preInspection)}
+        timerRunning={Boolean(data.openTimerId)}
+      />
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -211,23 +225,36 @@ export function WorkOrderConsoleClient({
           </PremiumBadge>
         </div>
         <h1 className='mt-4 text-2xl font-black text-white sm:text-4xl'>{data.guestName}</h1>
-        <p className='mt-1 text-sm text-zinc-400'>
-          {data.serviceLabel} · {progressPct}% · {data.scheduledStart || 'Schedule TBD'}
+        <p className='mt-2 text-sm font-semibold text-gold-soft'>{vehicleLine}</p>
+        {data.fullAddress ? (
+          <p className='mt-1 text-sm text-zinc-400'>{data.fullAddress}</p>
+        ) : null}
+        <p className='mt-2 text-sm text-zinc-500'>
+          {data.scheduledStart || 'Schedule TBD'}
           {data.scheduledEnd ? ` → ${data.scheduledEnd}` : ''}
+          {data.technicianName ? ` · ${data.technicianName}` : ''}
         </p>
+        <div className='gb-mission-metrics mt-6'>
+          <div className='gb-glass rounded-2xl border border-gold/25 px-4 py-3'>
+            <p className='text-[9px] font-black uppercase text-zinc-500'>Final total</p>
+            <p className='mt-1 font-mono text-lg font-bold text-gold-soft'>{data.finalTotal ?? data.baseSubtotal}</p>
+          </div>
+          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
+            <p className='text-[9px] font-black uppercase text-zinc-500'>Balance</p>
+            <p className='mt-1 font-mono text-lg font-bold text-white'>{data.balanceDue}</p>
+          </div>
+          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
+            <p className='text-[9px] font-black uppercase text-zinc-500'>Paid</p>
+            <p className='mt-1 font-mono text-lg font-bold text-emerald-300'>{data.totalPaid ?? '—'}</p>
+          </div>
+          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
+            <p className='text-[9px] font-black uppercase text-zinc-500'>Progress</p>
+            <p className='mt-1 font-mono text-lg font-bold text-white'>{progressPct}%</p>
+          </div>
+        </div>
         <div className='mt-4 flex flex-wrap gap-2'>
-          {data.guestPhone ? (
-            <a href={`tel:${data.guestPhone}`} className='inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-[10px] font-black uppercase text-black'>
-              <Phone className='h-4 w-4' /> Call
-            </a>
-          ) : null}
-          {data.fullAddress ? (
-            <a href={data.mapsHref} target='_blank' rel='noreferrer' className='inline-flex items-center gap-2 rounded-xl border border-gold/35 px-4 py-2.5 text-[10px] font-black uppercase text-gold-soft'>
-              <MapPin className='h-4 w-4' /> Map
-            </a>
-          ) : null}
           <Link href={data.shellBackHref} className='rounded-xl border border-white/15 px-4 py-2.5 text-[10px] font-black uppercase text-zinc-300'>
-            Back
+            ← Back
           </Link>
         </div>
         <div className='mt-6'>
@@ -235,7 +262,35 @@ export function WorkOrderConsoleClient({
         </div>
       </motion.section>
 
-      <div className='rounded-2xl border border-white/10 bg-black/50 px-4 py-3 lg:sticky lg:top-2 lg:z-10 lg:border-gold/30 lg:bg-black/90 lg:backdrop-blur-md'>
+      <section id='wo-agreement' className='scroll-mt-28'>
+        <WorkOrderCollapsible
+          title='Agreement & acknowledgement'
+          defaultOpen={!data.agreementSigned}
+          badge={data.agreementSigned ? 'Signed' : 'Required'}
+        >
+          <p className='text-sm text-zinc-400'>
+            {data.agreementSigned
+              ? 'Legal acknowledgement is on file for this job.'
+              : 'Capture acknowledgement before field work — this is step 1 in job progress.'}
+          </p>
+          <div className='mt-4 flex flex-wrap gap-2'>
+            <Link
+              href={data.agreementCaptureHref}
+              className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'
+            >
+              {data.agreementSigned ? 'Recapture agreement' : 'Capture agreement'}
+            </Link>
+            <Link
+              href={data.agreementDetailHref}
+              className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200'
+            >
+              View agreement
+            </Link>
+          </div>
+        </WorkOrderCollapsible>
+      </section>
+
+      <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 px-4 py-3 lg:sticky lg:top-2 lg:z-10 lg:bg-black/90 lg:backdrop-blur-md'>
         <div className='flex items-center gap-2'>
           <Clock className='h-4 w-4 text-gold-soft' />
           <SectionEyebrow>Timer</SectionEyebrow>
@@ -250,7 +305,7 @@ export function WorkOrderConsoleClient({
       </div>
 
       <section className='space-y-4'>
-        <WorkOrderCollapsible title='Job summary' defaultOpen>
+        <WorkOrderCollapsible title='Job summary' defaultOpen={false}>
           <div className='grid gap-2 text-sm sm:grid-cols-2'>
             <p className='text-zinc-400'>
               Base subtotal <span className='font-mono text-white'>{data.baseSubtotal}</span>
@@ -297,7 +352,7 @@ export function WorkOrderConsoleClient({
           </div>
         </WorkOrderCollapsible>
 
-        <WorkOrderCollapsible title='Customer & address'>
+        <WorkOrderCollapsible title='Customer & address' defaultOpen={false}>
           {data.guestPhone ? <p className='mt-2 text-sm text-zinc-300'>{data.guestPhone}</p> : null}
           {data.guestEmail ? <p className='text-sm text-zinc-400'>{data.guestEmail}</p> : null}
           {data.fullAddress ? <p className='mt-2 text-sm text-zinc-500'>{data.fullAddress}</p> : null}
@@ -326,7 +381,7 @@ export function WorkOrderConsoleClient({
           </form>
         </WorkOrderCollapsible>
 
-        <WorkOrderCollapsible title='Vehicles' badge={`${data.vehicles.length}`} defaultOpen>
+        <WorkOrderCollapsible title='Vehicles' badge={`${data.vehicles.length}`} defaultOpen={false}>
           <WorkOrderVehiclesForm
             id={jobId}
             source={data.source}
@@ -346,16 +401,23 @@ export function WorkOrderConsoleClient({
           />
         </WorkOrderCollapsible>
 
-        {data.uploadContextDebug ? (
-          <p className='rounded-xl border border-dashed border-zinc-600 bg-zinc-950 px-3 py-2 font-mono text-[10px] text-zinc-500'>
-            Upload context (admin): WO {data.uploadContextDebug.workOrderId} · appt {data.uploadContextDebug.appointmentId || '—'} ·
-            fb {data.uploadContextDebug.fallbackBookingId || '—'} · session {data.uploadContextDebug.workflowSessionId || '—'} · URL{' '}
-            {data.uploadContextDebug.urlParamId}
-          </p>
+        {canAdminOverride && data.uploadContextDebug ? (
+          <div className='rounded-xl border border-dashed border-gold/30 bg-zinc-950 px-4 py-3 font-mono text-[10px] text-zinc-400'>
+            <p className='font-black uppercase text-gold-soft'>Upload context (admin)</p>
+            <p className='mt-2'>
+              Enabled: {data.uploadContextDebug.uploadEnabled ? 'yes' : 'no'}
+              {data.uploadContextDebug.disableReason ? ` — ${data.uploadContextDebug.disableReason}` : ''}
+            </p>
+            <p>Source: {data.uploadContextDebug.source ?? '—'} · partial: {data.uploadContextDebug.partialLoad ? 'yes' : 'no'}</p>
+            <p>WO {data.uploadContextDebug.workOrderId}</p>
+            <p>Appt {data.uploadContextDebug.appointmentId || '—'} · FB {data.uploadContextDebug.fallbackBookingId || '—'}</p>
+            <p>Session {data.uploadContextDebug.workflowSessionId || '—'} · customer {data.uploadContextDebug.customerId || '—'}</p>
+          </div>
         ) : null}
 
         {data.preInspection ? (
-          <WorkOrderCollapsible title='Pre-inspection' defaultOpen badge={data.preInspection.photoProgress}>
+          <div id='wo-preinspect' className='scroll-mt-28'>
+          <WorkOrderCollapsible title='Pre-inspection & checklist' defaultOpen badge={data.preInspection.photoProgress}>
             <WorkOrderPreInspection
               appointmentId={data.isFallback ? null : jobId}
               fallbackBookingId={data.isFallback ? jobId : null}
@@ -370,13 +432,14 @@ export function WorkOrderConsoleClient({
               {...data.preInspection}
             />
           </WorkOrderCollapsible>
+          </div>
         ) : null}
 
-        <div id='photos'>
-          <WorkOrderCollapsible title='After photos & gallery' defaultOpen={data.preInspection?.isJobStarted} badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
+        <div id='wo-photos' className='scroll-mt-28'>
+          <WorkOrderCollapsible title='Photos & gallery' defaultOpen badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
             {data.photoUploadDisabled ? (
               <p className='mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
-                Archived / test job — photo upload disabled. Link a live work order to enable uploads.
+                {data.photoUploadDisableReason ?? 'Photo upload disabled for archived/test/orphan job.'}
               </p>
             ) : null}
             {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
@@ -391,9 +454,11 @@ export function WorkOrderConsoleClient({
                   <WorkOrderPhotoUpload
                     appointmentId={data.isFallback ? null : jobId}
                     fallbackBookingId={data.isFallback ? jobId : null}
-                    workOrderId={jobId}
+                    workOrderId={data.canonicalId}
                     customerId={data.customerId}
                     workflowSessionId={data.workflowSessionId}
+                    source={data.isFallback ? 'fallback' : 'appointment'}
+                    resolvedContextTrust={data.photoUploadResolvedContext}
                     vehicleIndex={vg.vehicleIndex}
                     vehicleLabel={vg.label}
                   />
@@ -430,10 +495,16 @@ export function WorkOrderConsoleClient({
           <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
         ) : null}
 
-        <WorkOrderCollapsible title='Payment' defaultOpen>
+        <div id='wo-payment' className='scroll-mt-28'>
+        <WorkOrderCollapsible title='Payment & invoice' defaultOpen>
+          <div id='wo-invoice'>
           {data.pricingSnapshot ? (
             <WorkOrderInvoiceBuilder
               jobId={jobId}
+              customerName={data.guestName}
+              vehicleBreakdownLines={(data.receiptBreakdownLines ?? [])
+                .filter((l) => l.label !== 'Customer' && !['Final total', 'Balance due', 'Deposit paid', 'Total paid', 'Stripe paid', 'Zelle / Venmo paid', 'Manual / check paid', 'Cash paid'].includes(l.label) && !l.label.startsWith('Multi-car') && !l.label.startsWith('Online') && !l.label.startsWith('Promo') && l.label !== 'Manual discount')
+                .map((l) => ({ label: l.label, amount: l.amount }))}
               appointmentId={data.isFallback ? undefined : jobId}
               fallbackBookingId={data.isFallback ? jobId : undefined}
               source={data.isFallback ? 'fallback' : 'appointment'}
@@ -458,6 +529,7 @@ export function WorkOrderConsoleClient({
               Pricing data unavailable — refresh the page.
             </p>
           )}
+          </div>
           <ul className='mt-4 space-y-2 text-sm'>
             {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
             {data.recentPayments.map((p) => (
@@ -487,6 +559,7 @@ export function WorkOrderConsoleClient({
               workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
             />
           ) : null}
+          <div id='wo-receipt'>
           {data.canManagePayments && data.pricingSnapshot && data.receiptBreakdownLines ? (
             <WorkOrderReceiptPanel
               appointmentId={data.isFallback ? undefined : jobId}
@@ -517,18 +590,25 @@ export function WorkOrderConsoleClient({
               workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
             />
           ) : null}
-        </WorkOrderCollapsible>
-
-        <WorkOrderCollapsible title='Agreement' defaultOpen={!data.agreementSigned}>
-          <div className='flex flex-wrap gap-2'>
-            <Link href={data.agreementCaptureHref} className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'>
-              Recapture
-            </Link>
-            <Link href={data.agreementDetailHref} className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200'>
-              View agreement
-            </Link>
           </div>
         </WorkOrderCollapsible>
+        </div>
+
+        <div id='wo-timeline' className='scroll-mt-28'>
+        <WorkOrderCollapsible title='Timeline & notifications' defaultOpen={false} badge={String(data.timeline.length)}>
+          <TimelineRail events={data.timeline} />
+          {data.outbox.length > 0 ? (
+            <ul className='mt-4 space-y-2 text-xs text-zinc-400'>
+              {data.outbox.map((o) => (
+                <li key={o.id} className='rounded-lg border border-white/10 px-3 py-2'>
+                  {o.kind} · {o.status} · {o.time}
+                  {o.skipped ? ` · ${o.skipped}` : ''}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </WorkOrderCollapsible>
+        </div>
 
         <WorkOrderCollapsible title='Notes' badge={String(data.notes.length)} defaultOpen={false}>
           {data.notes.length === 0 ? <p className='text-sm text-zinc-500'>No notes yet.</p> : null}
@@ -554,29 +634,6 @@ export function WorkOrderConsoleClient({
         />
       </section>
 
-      <StickyActionBar>
-        <Link href={data.agreementCaptureHref} className='flex-1 rounded-xl border border-gold/40 px-3 py-3 text-center text-[10px] font-black uppercase text-gold-soft'>
-          Agreement
-        </Link>
-        <a href='#photos' className='flex-1 rounded-xl border border-white/20 px-3 py-3 text-center text-[10px] font-black uppercase text-zinc-200'>
-          Photos
-        </a>
-        {data.balanceDueCents > 0 && !data.isFallback ? (
-          <NotificationSendForm
-            kind='payment_link'
-            appointmentId={jobId}
-            buttonClassName='flex-1 rounded-xl bg-gold px-3 py-3 text-center text-[10px] font-black uppercase text-black'
-          >
-            Balance link
-          </NotificationSendForm>
-        ) : null}
-        <Link
-          href={`#complete-job`}
-          className='flex-1 rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 py-3 text-center text-[10px] font-black uppercase text-emerald-200'
-        >
-          Complete
-        </Link>
-      </StickyActionBar>
     </div>
   );
 }

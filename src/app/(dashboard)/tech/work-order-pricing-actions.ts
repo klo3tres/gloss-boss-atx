@@ -214,6 +214,46 @@ export async function toggleWorkOrderDiscountAction(formData: FormData) {
   return { ok: true };
 }
 
+/** Super admin: align final total to paid amount and clear balance (Eugene-style fixes). */
+export async function markWorkOrderBalancedAction(formData: FormData) {
+  const gate = await requireAdmin();
+  if (!gate) return { ok: false, error: 'Unauthorized' };
+  const ctx = await loadJob(gate.admin, formData);
+  if (!ctx) return { ok: false, error: 'Job not found' };
+
+  const reason = str(formData.get('reason'));
+  if (!reason) return { ok: false, error: 'Reason required' };
+
+  const payments = await fetchPaymentsForJob(gate.admin, ctx.job, {
+    appointmentId: ctx.isFallback ? undefined : ctx.jobId,
+    fallbackBookingId: ctx.isFallback ? ctx.jobId : undefined,
+    isFallback: ctx.isFallback,
+  });
+  const pricing = resolveJobPricing(ctx.job, payments);
+  const paidCents = pricing.rawTotalPaidCents;
+  if (paidCents <= 0) return { ok: false, error: 'No succeeded payments to balance against' };
+
+  const b = { ...(ctx.job.booking_pricing_breakdown as Record<string, unknown>) };
+  b.adminOverrideFinalTotalCents = paidCents;
+  b.finalTotalCents = paidCents;
+  b.adminOverrideReason = reason;
+  b.balanceClearedAt = new Date().toISOString();
+  b.balanceClearedBy = gate.userId;
+  b.balanceClearedReason = reason;
+
+  await persistPricing(ctx, gate.admin, b);
+  await gate.admin
+    .from(ctx.table)
+    .update({
+      balance_due_cents: 0,
+      payment_status: 'paid',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', ctx.jobId);
+
+  return { ok: true };
+}
+
 export async function overrideWorkOrderFinalTotalAction(formData: FormData) {
   const gate = await requireAdmin();
   if (!gate) return { ok: false, error: 'Unauthorized' };

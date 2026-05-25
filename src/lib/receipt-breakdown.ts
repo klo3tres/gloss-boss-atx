@@ -2,13 +2,17 @@ import { displayMoney } from '@/lib/display-format';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { buildPerVehicleReceiptLines, receiptUsesPerVehicleLayout } from '@/lib/receipt-vehicle-lines';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
-import type { Row } from '@/lib/work-order-resolve';
+import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
 export type ReceiptBreakdownLine = { label: string; amount: string; tone?: 'discount' | 'charge' | 'total' | 'paid' };
 
 /** Single breakdown for receipt page, PDF, and email — matches work order pricing engine. */
 export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): ReceiptBreakdownLine[] {
   const lines: ReceiptBreakdownLine[] = [];
+  const customerName = String(job.guest_name ?? '').trim();
+  if (customerName) {
+    lines.push({ label: 'Customer', amount: customerName, tone: 'charge' });
+  }
   const b = job.booking_pricing_breakdown as Record<string, unknown> | undefined;
   const vehicleSub =
     typeof b?.vehicleSubtotalCents === 'number'
@@ -16,7 +20,8 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
       : pricing.vehicleLines.reduce((s, v) => s + v.priceCents, 0);
   const addOnSub = typeof b?.addOnSubtotalCents === 'number' ? (b.addOnSubtotalCents as number) : 0;
 
-  if (receiptUsesPerVehicleLayout(job)) {
+  const vehicles = vehiclesFromRow(job);
+  if (vehicles.length > 0 || receiptUsesPerVehicleLayout(job)) {
     lines.push(...buildPerVehicleReceiptLines(job));
   } else {
     if (vehicleSub > 0) {

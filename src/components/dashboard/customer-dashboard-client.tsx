@@ -111,18 +111,29 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     ? apptFromSnapshot(props.liveJob, props.snapshotByAppt?.[props.liveJob.id])
     : null;
 
+  const reviewUrl = props.googleReviewUrl?.trim() || '';
+
   return (
     <div className='gb-premium-hero space-y-8 rounded-3xl border border-gold/15 p-5 sm:p-8'>
-      {props.googleReviewUrl ? (
-        <a
-          href={props.googleReviewUrl}
-          target='_blank'
-          rel='noreferrer'
-          className='flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-wider text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'
-        >
-          <Star className='h-5 w-5' /> Leave Google review
-        </a>
-      ) : null}
+      <section className='gb-glass rounded-3xl border border-gold/30 p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)]'>
+        <SectionEyebrow>Thank you</SectionEyebrow>
+        <p className='mt-2 text-lg font-black text-white'>Love your shine? Leave a Google review</p>
+        <p className='mt-1 text-sm text-zinc-400'>Helps Gloss Boss ATX grow — takes under a minute.</p>
+        {reviewUrl ? (
+          <a
+            href={reviewUrl}
+            target='_blank'
+            rel='noreferrer'
+            className='mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-wider text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'
+          >
+            <Star className='h-5 w-5 fill-black' /> Leave Google review
+          </a>
+        ) : (
+          <p className='mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+            Review link loading — refresh shortly or contact support.
+          </p>
+        )}
+      </section>
       {liveJob ? (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className='gb-glass rounded-3xl border border-emerald-500/35 p-6 shadow-[0_0_40px_rgba(16,185,129,0.12)]'>
           <div className='flex items-center gap-2'>

@@ -74,18 +74,23 @@ export default async function AdminRevenuePage() {
   const avgTicketCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0;
 
   return (
-    <DashboardShell title='Revenue' subtitle='Collected payments, balances due, and method breakdown (voided rows excluded).' role='admin'>
-      <div className='mb-6 flex flex-wrap gap-2'>
-        <Link href='/admin/payments' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
-          Stripe ledger
-        </Link>
-        <Link href='/admin/receipts' className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'>
-          Receipts
-        </Link>
-      </div>
+    <DashboardShell title='Revenue' subtitle='Cash collected — voided payments excluded.' role='admin'>
+      <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner revenue</p>
+        <p className='mt-2 font-mono text-4xl font-black text-gold-soft sm:text-5xl'>{money(month.grossCents)}</p>
+        <p className='mt-1 text-sm text-zinc-400'>Collected this month · {month.paymentCount} payments</p>
+        <div className='mt-6 flex flex-wrap gap-2'>
+          <Link href='/admin' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
+            ← Command center
+          </Link>
+          <Link href='/admin/receipts' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
+            Receipts
+          </Link>
+        </div>
+      </section>
 
       <section className='space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected (non-voided)</p>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
           <StatBlock label='This week' value={money(week.grossCents)} hint={`${week.paymentCount} payment(s)`} href='/admin/payments?range=week' />

@@ -26,12 +26,14 @@ export default function GalleryPage() {
         </div>
       </header>
 
-      <div className='mx-auto max-w-6xl px-4 py-16 sm:px-8'>
-        <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Transformation portfolio</p>
-        <h1 className='mt-3 text-4xl font-black uppercase sm:text-5xl'>Real results</h1>
-        <p className='mt-4 max-w-2xl text-sm text-zinc-400'>
-          Before/after documentation from Gloss Boss ATX mobile detailing. Tap any image for full-screen view.
-        </p>
+      <div className='mx-auto max-w-7xl px-4 py-16 sm:px-8'>
+        <section className='gb-premium-hero rounded-3xl px-6 py-10 sm:px-10'>
+          <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Transformation portfolio</p>
+          <h1 className='mt-3 text-4xl font-black text-white sm:text-6xl'>Real results</h1>
+          <p className='mt-4 max-w-2xl text-sm text-zinc-400'>
+            Swipe through before/after pairs · full-screen zoom · featured work from Gloss Boss ATX.
+          </p>
+        </section>
         <div className='mt-12'>
           <PublicGalleryPortfolio />
         </div>

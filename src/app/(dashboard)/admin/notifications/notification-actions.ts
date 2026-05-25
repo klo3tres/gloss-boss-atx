@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { countNotificationTemplates, upsertNotificationTemplate } from '@/lib/notification-template-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 async function requireAdmin() {
@@ -137,29 +138,42 @@ export async function installAllNotificationDefaultsAction(): Promise<{ message:
   const defaults: Array<[string, string, string, string, string]> = [
     ['booking_confirmation', 'email', 'Booking Confirmation', 'Gloss Boss ATX: Appointment confirmed', 'Your appointment is confirmed for {{appointment_time}}.'],
     ['booking_reminder', 'sms', 'Booking Reminder', '', 'Reminder: Gloss Boss ATX at {{appointment_time}} for {{vehicle}}.'],
-    ['review_request', 'sms', 'Review Request', '', 'Thanks! Leave a review: {{review_link}}'],
+    ['admin_new_booking', 'sms', 'Admin New Booking', '', 'New booking {{customer}} {{appointment_time}} Total {{payment_link}}'],
+    ['job_started', 'sms', 'Job Started', '', 'Your {{service}} has started for {{vehicle}}.'],
+    ['technician_en_route', 'sms', 'Technician En Route', '', 'Gloss Boss ATX: Your technician is on the way for {{appointment_time}}.'],
+    ['pay_balance', 'sms', 'Pay Balance', '', 'Balance due: {{payment_link}}'],
     ['invoice_receipt', 'email', 'Invoice / Receipt', 'Your Gloss Boss ATX receipt', 'Receipt for {{service}} — {{payment_link}}'],
+    ['review_request', 'sms', 'Review Request', '', 'Thanks! Leave a review: {{review_link}}'],
+    ['account_claim', 'email', 'Account Claim', 'Claim your booking', 'Claim your booking: {{payment_link}}'],
+    ['reschedule_cancel', 'sms', 'Reschedule / Cancel', '', 'Appointment update for {{appointment_time}}.'],
   ];
 
-  let count = 0;
+  const errors: string[] = [];
+  let saved = 0;
   for (const [key, channel, name, subject, body] of defaults) {
-    const { data: existing } = await admin.from('notification_templates').select('id').eq('template_key', key).maybeSingle();
-    const row = {
+    const res = await upsertNotificationTemplate(admin, {
       template_key: key,
       channel,
       name,
       subject: subject || null,
       body,
       enabled: true,
-      updated_at: new Date().toISOString(),
-    };
-    if (existing?.id) {
-      await admin.from('notification_templates').update(row).eq('id', existing.id);
-    } else {
-      await admin.from('notification_templates').insert(row);
-    }
-    count += 1;
+    });
+    if (res.ok) saved += 1;
+    else if (res.error) errors.push(`${key}/${channel}: ${res.error}`);
   }
+
+  const total = await countNotificationTemplates(admin);
   revalidatePath('/admin/notifications');
-  return { ok: true, message: `Installed/updated ${count} default templates.` };
+
+  if (saved === 0 && errors.length > 0) {
+    return { ok: false, message: `Install failed — ${errors[0]}` };
+  }
+  if (total === 0) {
+    return { ok: false, message: 'No templates in database after install. Apply migration 000059_qa_hard_fix.sql.' };
+  }
+  return {
+    ok: true,
+    message: `Installed/updated ${saved} template(s). ${total} row(s) now in notification_templates.${errors.length ? ` Warnings: ${errors.slice(0, 2).join('; ')}` : ''}`,
+  };
 }

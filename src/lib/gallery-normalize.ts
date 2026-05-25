@@ -14,6 +14,25 @@ export type NormalizedGalleryImage = {
   featured?: boolean;
 };
 
+/** Marketing / public portfolio — includes before/after pair fields when stored on row or metadata. */
+export type PublicGalleryItem = NormalizedGalleryImage & {
+  beforeUrl?: string | null;
+  afterUrl?: string | null;
+  vehicleLabel?: string | null;
+  serviceLabel?: string | null;
+};
+
+function galleryMetaField(row: Record<string, unknown>, key: string): string {
+  const direct = str(row[key]);
+  if (direct) return direct;
+  const meta = row.metadata;
+  if (meta && typeof meta === 'object') {
+    const v = (meta as Record<string, unknown>)[key];
+    if (typeof v === 'string') return v.trim();
+  }
+  return '';
+}
+
 function str(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v.trim();
@@ -48,8 +67,23 @@ export function resolveGalleryCaption(row: Record<string, unknown>): string | nu
   return c || null;
 }
 
+const RAW_FILENAME_RE = /\.(jpe?g|png|webp|gif|heic)$/i;
+
+/** Never show storage paths or filenames to customers. */
+export function publicGalleryDisplayTitle(row: PublicGalleryItem | Record<string, unknown>): string {
+  const r = row as Record<string, unknown>;
+  const caption = str(r.caption);
+  const vehicle = str(r.vehicleLabel) || str(r.vehicle_label);
+  const service = str(r.serviceLabel) || str(r.service_label);
+  if (caption && !RAW_FILENAME_RE.test(caption) && !caption.includes('/') && caption.length < 80) return caption;
+  if (vehicle && service) return `${vehicle} · ${service.replace(/-/g, ' ')}`;
+  if (vehicle) return vehicle;
+  if (service) return service.replace(/-/g, ' ');
+  return 'Gloss Boss ATX detail';
+}
+
 /** Marketing/public: skip rows without a real uploaded URL (no stock placeholders). */
-export function normalizeGalleryRowPublic(row: Record<string, unknown>): NormalizedGalleryImage | null {
+export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicGalleryItem | null {
   const id = str(row.id);
   if (!id) return null;
   const url = resolveGalleryImageUrl(row);
@@ -68,7 +102,19 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): Normali
         : null;
   const published = (row.published ?? row.active ?? true) as boolean | undefined;
   const featured = typeof row.featured === 'boolean' ? row.featured : false;
-  return {
+  const beforeUrl =
+    galleryMetaField(row, 'before_url') ||
+    galleryMetaField(row, 'beforeUrl') ||
+    galleryMetaField(row, 'before_image_url') ||
+    null;
+  const afterUrl =
+    galleryMetaField(row, 'after_url') ||
+    galleryMetaField(row, 'afterUrl') ||
+    galleryMetaField(row, 'after_image_url') ||
+    url;
+  const vehicleLabel = galleryMetaField(row, 'vehicle_label') || galleryMetaField(row, 'vehicleLabel') || null;
+  const serviceLabel = galleryMetaField(row, 'service_label') || galleryMetaField(row, 'serviceLabel') || null;
+  const item: PublicGalleryItem = {
     id,
     url,
     image_url: url,
@@ -77,12 +123,17 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): Normali
     order_index: order_index ?? null,
     published: typeof published === 'boolean' ? published : true,
     featured,
+    beforeUrl: beforeUrl || null,
+    afterUrl: afterUrl || url,
+    vehicleLabel: vehicleLabel || null,
+    serviceLabel: serviceLabel || null,
   };
+  return item;
 }
 
-export function normalizeGalleryRowsPublic(rows: unknown[] | null | undefined): NormalizedGalleryImage[] {
+export function normalizeGalleryRowsPublic(rows: unknown[] | null | undefined): PublicGalleryItem[] {
   if (!Array.isArray(rows)) return [];
-  const out: NormalizedGalleryImage[] = [];
+  const out: PublicGalleryItem[] = [];
   for (const r of rows) {
     if (!r || typeof r !== 'object') continue;
     const n = normalizeGalleryRowPublic(r as Record<string, unknown>);

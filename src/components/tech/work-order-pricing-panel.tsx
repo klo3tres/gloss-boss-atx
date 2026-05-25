@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  markWorkOrderBalancedAction,
   overrideWorkOrderFinalTotalAction,
   recalculateWorkOrderPricingAction,
   setWorkOrderPromoAction,
@@ -199,6 +200,30 @@ export function WorkOrderPricingPanel({
           />
           <button type='submit' disabled={pending} className='rounded-lg bg-amber-600 px-4 py-2 text-[10px] font-black uppercase text-black'>
             Override total
+          </button>
+        </div>
+      </form>
+
+      <form
+        className='rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3'
+        onSubmit={(e) => {
+          e.preventDefault();
+          const fd = baseFd();
+          fd.set('reason', (e.currentTarget.elements.namedItem('balanceReason') as HTMLInputElement).value);
+          run((f) => markWorkOrderBalancedAction(f), fd);
+        }}
+      >
+        <p className='text-xs font-bold uppercase text-emerald-200'>Mark balanced / clear remaining balance</p>
+        <p className='mt-1 text-[11px] text-zinc-500'>Sets final total to total paid and balance to $0 (super admin).</p>
+        <div className='mt-2 flex flex-wrap gap-2'>
+          <input
+            name='balanceReason'
+            placeholder='Reason (required) — e.g. paid $200 cash, job complete'
+            className='min-w-[220px] flex-1 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+            required
+          />
+          <button type='submit' disabled={pending} className='rounded-lg bg-emerald-600 px-4 py-2 text-[10px] font-black uppercase text-black'>
+            Mark balanced
           </button>
         </div>
       </form>

@@ -51,7 +51,10 @@ export async function GET() {
     }
 
     const rawRows = await fetchPublishedGalleryRows(supabase);
-    const images = normalizeGalleryRowsPublic(rawRows).filter((row) => row.featured === true);
+    const images = normalizeGalleryRowsPublic(rawRows).sort((a, b) => {
+      if (a.featured !== b.featured) return a.featured ? -1 : 1;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    });
 
     return NextResponse.json(
       { images },

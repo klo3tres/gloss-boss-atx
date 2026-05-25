@@ -1,4 +1,16 @@
-const TEST_HINTS = ['test@test', '@test.', 'test booking', 'test job', 'qa@test', 'demo@test'];
+const TEST_HINTS = [
+  'test@test',
+  '@test.',
+  'test booking',
+  'test job',
+  'qa@test',
+  'demo@test',
+  'test1',
+  'test2',
+  'sandbox',
+  'fake booking',
+  'orphan',
+];
 
 export function isTestLikeJob(row: {
   guest_email?: string | null;
@@ -12,7 +24,8 @@ export function isTestLikeJob(row: {
   const phone = String(row.guest_phone ?? '').replace(/\D/g, '');
   const notes = String(row.notes ?? '').toLowerCase();
   if (email.includes('test@') || email.endsWith('@test.com')) return true;
-  if (name === 'test' || name.startsWith('test ')) return true;
+  if (name === 'test' || name.startsWith('test ') || name.includes('test user')) return true;
+  if (/^test\d*$/i.test(name.replace(/\s/g, ''))) return true;
   if (phone === '5555555555' || phone === '5125550100') return true;
   if (notes.includes('test job') || notes.includes('qa test')) return true;
   for (const h of TEST_HINTS) {

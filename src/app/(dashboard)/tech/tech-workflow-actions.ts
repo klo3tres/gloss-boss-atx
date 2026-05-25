@@ -306,6 +306,19 @@ export async function techSignWalkInAgreementAction(input: {
     if (fbErr || !fb?.id) return { ok: false, error: 'Fallback job not found' };
     const assigned = typeof fb.assigned_technician_id === 'string' ? fb.assigned_technician_id : null;
     if (assigned && assigned !== session.user.id && !isAdminLevel(role)) return { ok: false, error: 'This fallback job is not assigned to you' };
+    const snapshot =
+      input.agreementSnapshotOverride?.trim() ||
+      buildNativeAgreementSnapshot({
+        customerName: signerLegalName,
+        customerEmail: null,
+        customerPhone: null,
+        vehicleDescription: 'See job notes.',
+        serviceLabel: 'Mobile detailing',
+        vehicleClassLabel: 'Standard',
+        totalDollars: '0.00',
+        depositNote: 'Per shop policy.',
+        technicianName: `${witnessName} (${witnessRole.replace(/_/g, ' ')})`,
+      });
     const prevPayload = ((fb as { payload?: unknown }).payload && typeof (fb as { payload?: unknown }).payload === 'object'
       ? ((fb as { payload?: Record<string, unknown> }).payload ?? {})
       : {}) as Record<string, unknown>;
@@ -322,13 +335,38 @@ export async function techSignWalkInAgreementAction(input: {
         technician_witness_name: witnessName,
         technician_witness_role: witnessRole,
         technician_witnessed_at: witnessAt,
+        agreement_snapshot: snapshot,
         stored_at: new Date().toISOString(),
       },
     };
     const up = await admin.from('booking_fallbacks').update({ payload: nextPayload }).eq('id', fallbackBookingId);
     if (up.error) return { ok: false, error: up.error.message };
+    await insertSignedAgreementFlexible(admin, {
+      fallback_booking_id: fallbackBookingId,
+      signer_legal_name: signerLegalName,
+      signature_type: input.signatureType,
+      signature_data: input.signatureData ?? null,
+      agreement_snapshot: snapshot,
+      sms_consent: smsConsent,
+      sms_consent_at: smsConsentAt,
+      sms_consent_text: smsConsentText,
+      technician_witness_id: session.user.id,
+      technician_witness_name: witnessName,
+      technician_witness_role: witnessRole,
+      technician_witnessed_at: witnessAt,
+    });
+    await insertJobAgreementFlexible(admin, {
+      fallback_booking_id: fallbackBookingId,
+      signer_legal_name: signerLegalName,
+      agreement_snapshot: snapshot,
+      signature_type: input.signatureType,
+      signature_data: input.signatureData ?? null,
+      signed_at: new Date().toISOString(),
+    });
     revalidatePath('/tech');
     revalidatePath('/tech/workflow');
+    revalidatePath(`/tech/work-orders/${fallbackBookingId}`);
+    revalidatePath('/admin/work-orders');
     return { ok: true };
   }
 
@@ -363,7 +401,8 @@ export async function techSignWalkInAgreementAction(input: {
   }
 
   const { data: existing } = await admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).maybeSingle();
-  if (existing) {
+  const recaptureSnapshot = input.agreementSnapshotOverride?.trim();
+  if (existing?.id && !recaptureSnapshot) {
     const { data: existingIntake } = await admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).maybeSingle();
     const existingForm = (existingIntake?.form_data as Record<string, unknown>) ?? {};
     await admin
@@ -390,6 +429,7 @@ export async function techSignWalkInAgreementAction(input: {
       .eq('id', appointmentId);
     revalidatePath('/tech');
     revalidatePath('/tech/workflow');
+    revalidatePath(`/tech/work-orders/${appointmentId}`);
     return { ok: true };
   }
 
@@ -427,6 +467,34 @@ export async function techSignWalkInAgreementAction(input: {
         depositNote,
         technicianName: `${witnessName} (${witnessRole.replace(/_/g, ' ')})`,
       });
+
+  if (existing?.id) {
+    await admin
+      .from('signed_agreements')
+      .update({
+        agreement_snapshot: snapshot,
+        signer_legal_name: signerLegalName,
+        signature_type: input.signatureType,
+        signature_data: input.signatureData ?? null,
+        sms_consent: smsConsent,
+        sms_consent_at: smsConsentAt,
+        signed_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+    await insertJobAgreementFlexible(admin, {
+      appointment_id: appointmentId,
+      signer_legal_name: signerLegalName,
+      agreement_snapshot: snapshot,
+      signature_type: input.signatureType,
+      signature_data: input.signatureData ?? null,
+      signed_at: new Date().toISOString(),
+    });
+    revalidatePath('/tech');
+    revalidatePath('/tech/workflow');
+    revalidatePath(`/tech/work-orders/${appointmentId}`);
+    revalidatePath('/admin/work-orders');
+    return { ok: true };
+  }
 
   const insertRow: Record<string, unknown> = {
     appointment_id: appointmentId,
@@ -547,5 +615,7 @@ export async function techSignWalkInAgreementAction(input: {
 
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath('/admin/work-orders');
   return { ok: true };
 }

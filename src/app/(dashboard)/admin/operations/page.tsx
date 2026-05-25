@@ -1,5 +1,6 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { OperationsDashboardClient } from '@/components/admin/operations-dashboard-client';
+import { fetchBusinessExpenses, fetchJobMileageLogs } from '@/lib/operations-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +21,8 @@ export default async function AdminOperationsPage() {
   }
 
   const [expRes, mileRes, fleetRes] = await Promise.all([
-    admin.from('business_expenses').select('*').order('incurred_on', { ascending: false }).limit(80),
-    admin.from('job_mileage_logs').select('*').order('logged_on', { ascending: false }).limit(80),
+    fetchBusinessExpenses(admin, 80),
+    fetchJobMileageLogs(admin, 80),
     admin.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb']).limit(5),
   ]);
 

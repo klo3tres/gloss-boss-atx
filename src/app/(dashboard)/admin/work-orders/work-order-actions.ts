@@ -85,9 +85,20 @@ export async function bulkWorkOrderAction(formData: FormData) {
   const patch = action === 'delete'
     ? { archived: true, archived_at: now, deleted_at: now, status: 'deleted', updated_at: now }
     : { archived: true, archived_at: now, updated_at: now };
-  await gate.admin.from('appointments').update(patch).in('id', ids);
-  await gate.admin.from('booking_fallbacks').update(action === 'delete' ? { status: 'deleted', archived_at: now, updated_at: now } : { archived: true, archived_at: now, status: 'archived', updated_at: now }).in('id', ids);
+  const { error: apptErr } = await gate.admin.from('appointments').update(patch).in('id', ids);
+  if (apptErr && !/archived|deleted_at|column/i.test(apptErr.message)) {
+    return { ok: false, error: apptErr.message };
+  }
+  const fbPatch =
+    action === 'delete'
+      ? { status: 'deleted', archived_at: now, updated_at: now }
+      : { archived: true, archived_at: now, status: 'archived', updated_at: now };
+  const { error: fbErr } = await gate.admin.from('booking_fallbacks').update(fbPatch).in('id', ids);
+  if (fbErr && !/archived|column/i.test(fbErr.message)) {
+    return { ok: false, error: fbErr.message };
+  }
   revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/dispatch');
   revalidatePath('/tech');
   return { ok: true };
 }

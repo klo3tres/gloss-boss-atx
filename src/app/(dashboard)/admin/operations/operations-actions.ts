@@ -28,10 +28,19 @@ export async function addBusinessExpenseActionState(_prev: ActionResult | null, 
     category,
     notes,
     incurred_at: incurredAt,
+    incurred_on: incurredAt,
     created_by: gate.userId,
   };
   let { error } = await gate.admin.from('business_expenses').insert(row);
-  if (error && /incurred_at|notes|column/i.test(error.message)) {
+  if (error && /incurred_at|incurred_on|notes|column/i.test(error.message)) {
+    ({ error } = await gate.admin.from('business_expenses').insert({
+      amount_cents: row.amount_cents,
+      category: row.category,
+      incurred_on: incurredAt,
+      created_by: gate.userId,
+    }));
+  }
+  if (error && /incurred_on|column/i.test(error.message)) {
     ({ error } = await gate.admin.from('business_expenses').insert({
       amount_cents: row.amount_cents,
       category: row.category,
@@ -52,14 +61,24 @@ export async function addJobMileageLogActionState(_prev: ActionResult | null, fo
   const note = String(formData.get('note') ?? '').trim() || null;
   if (!Number.isFinite(miles) || miles <= 0) return actionErr('Enter valid miles.');
 
+  const loggedOn = new Date().toISOString();
   const row = {
     total_miles: miles,
     appointment_id: appointmentId,
     notes: note,
+    logged_on: loggedOn,
     created_by: gate.userId,
   };
   let { error } = await gate.admin.from('job_mileage_logs').insert(row);
-  if (error && /total_miles|notes|column/i.test(error.message)) {
+  if (error && /total_miles|logged_on|notes|column/i.test(error.message)) {
+    ({ error } = await gate.admin.from('job_mileage_logs').insert({
+      estimated_miles: miles,
+      appointment_id: appointmentId,
+      logged_on: loggedOn,
+      created_by: gate.userId,
+    }));
+  }
+  if (error && /logged_on|column/i.test(error.message)) {
     ({ error } = await gate.admin.from('job_mileage_logs').insert({
       estimated_miles: miles,
       appointment_id: appointmentId,

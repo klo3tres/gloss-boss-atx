@@ -1,6 +1,7 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { NotificationCenterClient } from '@/components/admin/notification-center-client';
 import { resendConfigured, twilioConfigured } from '@/lib/email-send';
+import { normalizeNotificationTemplateRow } from '@/lib/notification-template-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -20,18 +21,7 @@ export default async function AdminNotificationsPage() {
       : Promise.resolve({ data: [] }),
   ]);
 
-  const templateRows = (templates ?? []).map((r) => {
-    const row = r as Record<string, unknown>;
-    return {
-      id: str(row.id),
-      template_key: str(row.template_key),
-      channel: str(row.channel),
-      name: str(row.name),
-      subject: str(row.subject),
-      body: str(row.body),
-      enabled: row.enabled !== false,
-    };
-  });
+  const templateRows = (templates ?? []).map((r) => normalizeNotificationTemplateRow(r as Record<string, unknown>));
 
   const outboxRows = (outbox ?? []).map((r) => {
     const row = r as Record<string, unknown>;
