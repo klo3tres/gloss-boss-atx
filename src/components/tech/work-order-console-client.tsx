@@ -12,6 +12,8 @@ import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-up
 import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
+import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
+import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 
 export type WorkOrderConsoleData = {
   id: string;
@@ -106,6 +108,27 @@ export type WorkOrderConsoleData = {
   vehicleForms: {
     defaultService: string;
     defaultClass: string;
+  };
+  preInspection?: {
+    photoProgress: string;
+    slotFilled: Record<RequiredBeforeSlot, boolean>;
+    missingStartItems: string[];
+    canStartJob: boolean;
+    isJobStarted: boolean;
+    preInspectionOverridden: boolean;
+    damageAck: {
+      damageNotes: string;
+      noVisibleDamage: boolean;
+      customerAcknowledged: boolean;
+      customerSignatureName: string;
+      witnessName: string;
+      acknowledgedAt: string;
+      damageAckComplete: boolean;
+    };
+    vehicleIndex: number;
+    vehicleLabel: string;
+    serviceSlug: string;
+    technicianName: string;
   };
 };
 
@@ -285,8 +308,25 @@ export function WorkOrderConsoleClient({
           />
         </WorkOrderCollapsible>
 
+        {data.preInspection ? (
+          <WorkOrderCollapsible title='Pre-inspection' defaultOpen badge={data.preInspection.photoProgress}>
+            <WorkOrderPreInspection
+              appointmentId={data.isFallback ? null : jobId}
+              fallbackBookingId={data.isFallback ? jobId : null}
+              workOrderId={data.canonicalId}
+              customerId={data.customerId}
+              workflowSessionId={data.workflowSessionId}
+              agreementSigned={data.agreementSigned}
+              canAdminOverride={canAdminOverride}
+              checklistSaved={data.requirements.find((r) => r.label.startsWith('Checklist'))?.ok ?? false}
+              jobStatus={data.job.status}
+              {...data.preInspection}
+            />
+          </WorkOrderCollapsible>
+        ) : null}
+
         <div id='photos'>
-          <WorkOrderCollapsible title='Photos' defaultOpen badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
+          <WorkOrderCollapsible title='After photos & gallery' defaultOpen={data.preInspection?.isJobStarted} badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
             {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
               <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-4'>
                 <p className='text-base font-black text-white'>
@@ -326,6 +366,11 @@ export function WorkOrderConsoleClient({
               totalPaid={data.totalPaid}
               paymentComplete={data.paymentComplete}
               receiptPdfHref={data.receiptPdfHref}
+              defaultVehicleClass={
+                (data.vehicles[0]?.vehicleClass === 'suv' || data.vehicles[0]?.vehicleClass === 'truck'
+                  ? data.vehicles[0].vehicleClass
+                  : 'sedan') as 'sedan' | 'suv' | 'truck'
+              }
             />
           ) : (
             <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
@@ -390,6 +435,19 @@ export function WorkOrderConsoleClient({
                 <input type='checkbox' name='adminOverride' value='true' className='rounded border-amber-400' />
                 Admin override — complete with balance due
               </label>
+            ) : null}
+            {canAdminOverride ? (
+              <>
+                <label className='flex cursor-pointer items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
+                  <input type='checkbox' name='completionOverride' value='true' className='rounded border-amber-400' />
+                  Admin override — skip after photos / checklist
+                </label>
+                <input
+                  name='completionOverrideReason'
+                  placeholder='Override reason (required if skipping requirements)'
+                  className='w-full rounded-xl border border-amber-500/30 bg-black px-3 py-2 text-sm text-white'
+                />
+              </>
             ) : null}
             <button type='submit' className='gb-premium-btn flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-5 py-4 text-sm font-black uppercase text-black'>
               <CheckCircle2 className='h-5 w-5' /> Complete job

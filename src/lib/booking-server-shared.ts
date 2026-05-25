@@ -1,6 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { parseBookingAvailabilityConfig } from '@/lib/booking-availability-config';
+import {
+  applyPromoToBreakdown,
+  incrementPromoUse,
+  loadPromoByCode,
+  validatePromoRow,
+  type PromoValidationResult,
+} from '@/lib/promo-engine';
 import { parseDealConfig } from '@/lib/public-site-data';
 import { safePriceCentsForBooking, type PriceRowInput } from '@/lib/safe-price-resolver';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
@@ -220,6 +227,38 @@ export async function loadClaimedOffer(admin: SupabaseClient, offerRef: string |
     return null;
   }
   return parseClaimedOfferRow(data as Record<string, unknown> | null);
+}
+
+/** Per-addon cents keyed by slug/label/name (lowercase). */
+export async function sumAddonCentsBySlug(admin: SupabaseClient, selections: string[]): Promise<Record<string, number>> {
+  const map: Record<string, number> = {};
+  if (selections.length === 0) return map;
+  try {
+    let { data, error } = await admin.from('addons').select('*').eq('active', true);
+    if (error && isSchemaDriftError(error.message)) {
+      ({ data, error } = await admin.from('addons').select('slug, name, price_cents').eq('active', true));
+    }
+    if (error) return map;
+    const rows = (data ?? []) as Record<string, unknown>[];
+    for (const sel of selections) {
+      const key = sel.trim().toLowerCase();
+      const hit = rows.find((r) => {
+        const slug = typeof r.slug === 'string' ? r.slug.toLowerCase() : '';
+        const lab = r.label != null ? String(r.label).trim().toLowerCase() : '';
+        const nam = r.name != null ? String(r.name).trim().toLowerCase() : '';
+        return slug === key || lab === key || nam === key;
+      });
+      const cents = hit && typeof hit.price_cents === 'number' && !Number.isNaN(hit.price_cents) ? hit.price_cents : 0;
+      if (cents > 0) {
+        map[key] = cents;
+        const slug = typeof hit?.slug === 'string' ? hit.slug.toLowerCase() : '';
+        if (slug) map[slug] = cents;
+      }
+    }
+  } catch {
+    return map;
+  }
+  return map;
 }
 
 export async function sumSelectedAddonCents(admin: SupabaseClient, selections: string[]): Promise<number> {
@@ -463,11 +502,23 @@ export async function resolveVehicleLinesPricing(
   return { ok: true, resolved, vehicleLineCents };
 }
 
-/** Full quote: vehicles + add-ons + deals + optional offer (single source of truth with UI). */
+export type QuotePromoMeta = {
+  code: string | null;
+  applied: PromoValidationResult & { ok: true } | null;
+  freePromoApplied: boolean;
+  testOneDollar: boolean;
+  message: string | null;
+};
+
+/** Full quote: vehicles + add-ons + deals + optional offer + promo (single source of truth with UI). */
 export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
   lines: VehicleLineInput[];
   addOns: string[];
   offerRef?: string;
+  promoCode?: string;
+  paymentChoice?: 'deposit' | 'full';
+  allowFreeTestPromo?: boolean;
+  incrementPromoOnApply?: boolean;
 }): Promise<
   | { ok: false; error: string; status: number }
   | {
@@ -475,6 +526,7 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
       resolved: ResolvedVehicleLine[];
       breakdown: BookingPricingBreakdown;
       claimed: ClaimedOfferRow | null;
+      promo: QuotePromoMeta;
     }
 > {
   if (
@@ -493,10 +545,11 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
   const pricedLines = await resolveVehicleLinesPricing(admin, params.lines);
   if (!pricedLines.ok) return pricedLines;
 
-  const addOnCentsSum = await sumSelectedAddonCents(admin, params.addOns);
+  const addOnCentsBySlug = await sumAddonCentsBySlug(admin, params.addOns);
+  const addOnCentsSum = Object.values(addOnCentsBySlug).reduce((s, n) => s + n, 0);
   const deals = await loadDealConfigForBooking(admin);
   const claimed = await loadClaimedOffer(admin, params.offerRef);
-  const breakdown = computeBookingPricing({
+  let breakdown = computeBookingPricing({
     vehicleLineCents: pricedLines.vehicleLineCents,
     addOnCentsSum,
     deals,
@@ -507,14 +560,57 @@ export async function computeQuoteFromInputs(admin: SupabaseClient, params: {
           stackableWithSitePromo: claimed.stackableWithSitePromo,
         }
       : null,
-    depositPercent: 30,
+    depositPercent: params.paymentChoice === 'full' ? 100 : 30,
   });
 
   if ('kind' in breakdown) {
     return { ok: false, error: 'Invalid pricing', status: 400 };
   }
 
-  return { ok: true, resolved: pricedLines.resolved, breakdown, claimed };
+  const promoCode = String(params.promoCode ?? '').trim().toUpperCase();
+  const promoMeta: QuotePromoMeta = {
+    code: promoCode || null,
+    applied: null,
+    freePromoApplied: false,
+    testOneDollar: false,
+    message: null,
+  };
+
+  if (promoCode) {
+    const promoRow = await loadPromoByCode(admin, promoCode);
+    if (!promoRow) {
+      return { ok: false, error: 'Invalid or inactive promo code.', status: 400 };
+    }
+    const baseEligibleCents = Math.max(
+      0,
+      breakdown.afterMultiCarVehicleCents - breakdown.offerDiscountCents - breakdown.websitePromoDiscountCents,
+    );
+    const validated = validatePromoRow(promoRow, {
+      code: promoCode,
+      paymentChoice: params.paymentChoice,
+      vehicleLines: pricedLines.resolved.map((r) => ({ serviceSlug: r.serviceSlug, vehicleClass: r.vehicleClass })),
+      vehicleLineCents: pricedLines.vehicleLineCents,
+      baseEligibleCents,
+      addOnSubtotalCents: breakdown.addOnSubtotalCents,
+      orderCents: breakdown.prePromoCents,
+      addOnSlugs: params.addOns,
+      addOnCentsBySlug,
+      allowFreeTestPromo: params.allowFreeTestPromo,
+    });
+    if (!validated.ok) {
+      return { ok: false, error: validated.error, status: 400 };
+    }
+    breakdown = applyPromoToBreakdown(breakdown, validated);
+    promoMeta.applied = validated;
+    promoMeta.freePromoApplied = validated.comped;
+    promoMeta.testOneDollar = validated.testOneDollar;
+    promoMeta.message = validated.message;
+    if (params.incrementPromoOnApply) {
+      await incrementPromoUse(admin, promoCode);
+    }
+  }
+
+  return { ok: true, resolved: pricedLines.resolved, breakdown, claimed, promo: promoMeta };
 }
 
 /** Field invoices charge 100% of quoted total (deposit engine == full total). */

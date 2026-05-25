@@ -24,15 +24,23 @@ function notesJson(v: Row) {
   });
 }
 
-async function existingDescriptions(admin: SupabaseClient, customerId: string) {
+function vehicleKey(year: string, make: string, model: string, color: string, description: string) {
+  const core = [year, make, model].filter(Boolean).join(' ').trim().toLowerCase();
+  if (core) return `${core}|${color.trim().toLowerCase()}`;
+  return description.trim().toLowerCase();
+}
+
+async function existingVehicleKeys(admin: SupabaseClient, customerId: string) {
   const { data } = await admin.from('vehicles').select('description, notes').eq('customer_id', customerId).limit(200);
   const set = new Set<string>();
   for (const row of data ?? []) {
     const r = row as { description?: string; notes?: string };
     if (r.description) set.add(r.description.trim().toLowerCase());
     try {
-      const n = r.notes ? (JSON.parse(r.notes) as { make?: string; model?: string; year?: string }) : null;
-      if (n) set.add([n.year, n.make, n.model].filter(Boolean).join(' ').toLowerCase());
+      const n = r.notes ? (JSON.parse(r.notes) as { make?: string; model?: string; year?: string; color?: string }) : null;
+      if (n) {
+        set.add(vehicleKey(str(n.year), str(n.make), str(n.model), str(n.color), ''));
+      }
     } catch {
       /* ignore */
     }
@@ -62,15 +70,16 @@ export async function syncVehiclesToCustomer(
   const lines = vehiclesFromRow(row);
   if (lines.length === 0) return { inserted: 0 };
 
-  const seen = await existingDescriptions(admin, customerId);
+  const seen = await existingVehicleKeys(admin, customerId);
   let inserted = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const v = lines[i] as Row;
     const description = vehicleDescriptionFromLine(v, i);
-    const key = description.toLowerCase();
-    if (seen.has(key)) continue;
+    const key = vehicleKey(str(v.year), str(v.make), str(v.model), str(v.vehicle_color || v.color), description);
+    if (seen.has(key) || seen.has(description.toLowerCase())) continue;
     seen.add(key);
+    seen.add(description.toLowerCase());
 
     const { error } = await admin.from('vehicles').insert({
       customer_id: customerId,

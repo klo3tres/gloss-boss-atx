@@ -98,6 +98,12 @@ export default async function AdminPromotionsPage() {
           <input name='startsAt' type='datetime-local' className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
           <input name='endsAt' type='datetime-local' className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
           <input name='maxUses' type='number' min='0' placeholder='Max uses' className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
+          <textarea
+            name='rulesJson'
+            rows={2}
+            placeholder='{"appliesTo":"specific_addon","addonSlug":"upholstery-shampoo"}'
+            className='rounded border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white md:col-span-2'
+          />
           <label className='flex items-center gap-2 text-sm text-zinc-300'><input name='enabled' type='checkbox' /> Enabled</label>
           <button className='rounded bg-gold px-4 py-2 text-xs font-black uppercase text-black md:col-span-2'>Save promo code</button>
         </form>
@@ -120,6 +126,12 @@ export default async function AdminPromotionsPage() {
                 <input name='discountValue' type='number' min='0' step='0.01' defaultValue={str(r.discount_value)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
                 <input name='serviceRestrictions' defaultValue={serviceRestrictionsText(r.service_restrictions)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white md:col-span-2' />
                 <input name='maxUses' type='number' min='0' defaultValue={str(r.max_uses)} className='rounded border border-zinc-700 bg-black px-3 py-2 text-white' />
+                <textarea
+                  name='rulesJson'
+                  rows={2}
+                  defaultValue={r.rules && typeof r.rules === 'object' ? JSON.stringify(r.rules) : ''}
+                  className='rounded border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white md:col-span-2'
+                />
                 <label className='flex items-center gap-2 text-sm text-zinc-300'><input name='enabled' type='checkbox' defaultChecked={r.enabled === true} /> Enabled</label>
                 <button className='rounded border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Save</button>
               </form>

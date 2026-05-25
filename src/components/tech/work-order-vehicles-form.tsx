@@ -106,10 +106,28 @@ export function WorkOrderVehiclesForm({
     );
   }
 
+  const vehiclesPayload = useMemo(
+    () =>
+      JSON.stringify(
+        rows.map((v) => ({
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          vehicle_description: v.description || [v.year, v.make, v.model].filter(Boolean).join(' '),
+          vehicle_color: v.color,
+          service_slug: v.service,
+          vehicle_class: v.vehicleClass,
+          price_cents: quoteForRow(v) ?? v.priceCents ?? 0,
+        })),
+      ),
+    [rows, catalog],
+  );
+
   return (
     <form action={saveAction} className='space-y-4'>
       <input type='hidden' name='id' value={id} />
       <input type='hidden' name='source' value={source} />
+      <input type='hidden' name='vehiclesPayload' value={vehiclesPayload} />
 
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Vehicles</p>
@@ -234,9 +252,22 @@ export function WorkOrderVehiclesForm({
       >
         + Add vehicle
       </button>
-      <button type='submit' className='w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase text-black'>
-        Save vehicles & update total
-      </button>
+      <div className='grid gap-2 sm:grid-cols-2'>
+        <button type='submit' className='w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase text-black'>
+          Save vehicles (keep booked pricing)
+        </button>
+        <button
+          type='submit'
+          name='recalculateFromCatalog'
+          value='true'
+          className='w-full rounded-2xl border border-amber-500/40 bg-amber-500/10 py-3 text-xs font-black uppercase text-amber-100'
+        >
+          Recalculate using current prices
+        </button>
+      </div>
+      <p className='text-[10px] text-zinc-500'>
+        Default save updates vehicle details without changing historical booked prices. Use recalculate only when you intend to reprice this job.
+      </p>
     </form>
   );
 }

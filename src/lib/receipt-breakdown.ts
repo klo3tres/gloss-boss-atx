@@ -78,8 +78,17 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
   if (pricing.stripePaidCents > 0) {
     lines.push({ label: 'Stripe paid', amount: displayMoney(pricing.stripePaidCents), tone: 'paid' });
   }
+  if (pricing.zellePaidCents > 0) {
+    lines.push({ label: 'Zelle / Venmo paid', amount: displayMoney(pricing.zellePaidCents), tone: 'paid' });
+  }
+  if (pricing.manualPaidCents > 0) {
+    lines.push({ label: 'Manual / check paid', amount: displayMoney(pricing.manualPaidCents), tone: 'paid' });
+  }
   if (pricing.cashPaidCents > 0) {
     lines.push({ label: 'Cash paid', amount: displayMoney(pricing.cashPaidCents), tone: 'paid' });
+  }
+  if (pricing.totalPaidCents > 0) {
+    lines.push({ label: 'Total paid', amount: displayMoney(pricing.totalPaidCents), tone: 'paid' });
   }
   lines.push({
     label: 'Balance due',

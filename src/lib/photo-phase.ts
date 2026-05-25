@@ -15,10 +15,12 @@ const BEFORE_SLOTS = new Set([
   'rear',
   'driver_side',
   'passenger_side',
+  'roof',
   'interior',
   'wheels',
   'inspection',
   'damage',
+  'existing_damage',
   'other',
 ]);
 
@@ -44,8 +46,21 @@ export const PHOTO_SLOT_OPTIONS = [
   'rear',
   'driver_side',
   'passenger_side',
+  'roof',
   'interior',
   'wheels',
+  'existing_damage',
   'damage',
   'other',
+] as const;
+
+export const PRE_INSPECTION_BEFORE_SLOTS = [
+  'front',
+  'rear',
+  'driver_side',
+  'passenger_side',
+  'roof',
+  'wheels',
+  'interior',
+  'existing_damage',
 ] as const;

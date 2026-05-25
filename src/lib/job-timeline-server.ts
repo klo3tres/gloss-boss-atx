@@ -10,6 +10,7 @@ export type JobTimelineEventType =
   | 'photo_inspection'
   | 'photo_damage'
   | 'checklist_saved'
+  | 'pre_inspection_ack_saved'
   | 'job_completed'
   | 'payment_received'
   | 'intake_submitted';

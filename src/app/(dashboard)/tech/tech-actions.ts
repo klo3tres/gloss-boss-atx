@@ -346,10 +346,12 @@ const BEFORE_PHOTO_CATEGORIES = new Set([
   'rear',
   'driver_side',
   'passenger_side',
+  'roof',
   'interior',
   'wheels',
   'inspection',
   'damage',
+  'existing_damage',
 ]);
 
 function photoMatchesPhase(row: Record<string, unknown>, phase: 'before' | 'after'): boolean {
@@ -542,20 +544,71 @@ export async function techStartJobAction(
   const workflowSessionId = String(formData.get('workflowSessionId') ?? '').trim();
   const accessToken = String(formData.get('accessToken') ?? '').trim();
   const jobReference = String(formData.get('jobReference') ?? '').trim();
-  const uploadedProofCount = countUploadedPhotoProof(formData.get('uploadedPhotoProof'), {
-    appointmentId,
-    fallbackBookingId,
-    workflowSessionId,
-    accessToken,
-    jobReference,
-  });
-  if (!appointmentId) return { error: 'Missing job reference.' };
+  const preInspectionOverride = String(formData.get('preInspectionOverride') ?? '') === 'true';
+  const preInspectionOverrideReason = String(formData.get('preInspectionOverrideReason') ?? '').trim();
+  if (!appointmentId && !fallbackBookingId) return { error: 'Missing job reference.' };
 
   const gate = await requireTechSupabase();
   if (!gate.ok) return { error: 'Session unavailable.' };
 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
+
+  if (!appointmentId && fallbackBookingId) {
+    const { data: fb, error: fbErr } = await db
+      .from('booking_fallbacks')
+      .select('id, status, guest_email, guest_phone, guest_name, service_slug, scheduled_start')
+      .eq('id', fallbackBookingId)
+      .maybeSingle();
+    if (fbErr || !fb) return { error: 'Job not found.' };
+    const fbStatus = String((fb as { status?: string }).status ?? '');
+    if (fbStatus === 'in_progress') return null;
+    if (!['assigned', 'confirmed', 'awaiting_payment', 'deposit_paid'].includes(fbStatus)) {
+      return { error: `Job cannot start from status “${fbStatus || 'unknown'}”.` };
+    }
+    const legalAckFb = await hasLegalAgreementForJob(db, {
+      fallbackBookingId,
+      guestEmail: (fb as { guest_email?: string }).guest_email ?? null,
+      guestPhone: (fb as { guest_phone?: string }).guest_phone ?? null,
+    });
+    if (!legalAckFb) {
+      return { error: 'Liability agreement must be on file before starting.' };
+    }
+    const sessionFb = await getSessionWithProfile();
+    const canOverrideFb = preInspectionOverride && isAdminLevel(sessionFb.profile?.role ?? null);
+    if (preInspectionOverride && !canOverrideFb) return { error: 'Only admins can override pre-inspection requirements.' };
+    if (canOverrideFb && !preInspectionOverrideReason) return { error: 'Admin override requires a written reason.' };
+    const { listJobPhotosForRefs, loadPreInspectionDamageAck, evaluatePreInspectionStartGate } = await import(
+      '@/lib/pre-inspection',
+    );
+    const photoRowsFb = await listJobPhotosForRefs(db, { fallbackBookingId, workflowSessionIds: workflowSessionId ? [workflowSessionId] : [] });
+    const damageAckFb = await loadPreInspectionDamageAck(db, { fallbackBookingId, vehicleIndex: 0 });
+    const startGateFb = evaluatePreInspectionStartGate({
+      photos: photoRowsFb,
+      damageAck: damageAckFb,
+      agreementSigned: true,
+      preInspectionOverridden: Boolean(canOverrideFb),
+    });
+    if (!startGateFb.canStart) {
+      return { error: `Cannot start job. ${startGateFb.missingItems.join('; ')}.` };
+    }
+    if (canOverrideFb && admin) {
+      await admin
+        .from('booking_fallbacks')
+        .update({
+          pre_inspection_override_reason: preInspectionOverrideReason,
+          pre_inspection_override_by: gate.userId,
+          pre_inspection_override_at: new Date().toISOString(),
+        })
+        .eq('id', fallbackBookingId);
+    }
+    await updateFallbackSafely(db, fallbackBookingId, 'in_progress');
+    await updateWorkflowSessionSafely(db, workflowSessionId, 'in_progress');
+    revalidatePath('/tech');
+    revalidatePath(`/tech/work-orders/${fallbackBookingId}`);
+    return null;
+  }
+
   const { data: appt, error: fetchErr } = await fetchAppointmentForStart(db, appointmentId);
 
   const assigned = appt && typeof appt.assigned_technician_id === 'string' ? appt.assigned_technician_id : null;
@@ -605,44 +658,77 @@ export async function techStartJobAction(
     };
   }
 
+  const session = await getSessionWithProfile();
+  const canOverridePreInspection = preInspectionOverride && isAdminLevel(session.profile?.role ?? null);
+  if (preInspectionOverride && !canOverridePreInspection) {
+    return { error: 'Only admins can override pre-inspection requirements.' };
+  }
+  if (canOverridePreInspection && !preInspectionOverrideReason) {
+    return { error: 'Admin override requires a written reason.' };
+  }
+
+  const { listJobPhotosForRefs, loadPreInspectionDamageAck, evaluatePreInspectionStartGate } = await import(
+    '@/lib/pre-inspection',
+  );
+
+  const workflowSessionIds = workflowSessionId ? [workflowSessionId] : [];
+  const photoRows = await listJobPhotosForRefs(db, {
+    appointmentId,
+    fallbackBookingId,
+    workflowSessionIds,
+  });
+  const damageAck = await loadPreInspectionDamageAck(db, {
+    appointmentId: appointmentId || undefined,
+    fallbackBookingId: fallbackBookingId || undefined,
+    vehicleIndex: 0,
+  });
+  const startGate = evaluatePreInspectionStartGate({
+    photos: photoRows,
+    damageAck,
+    agreementSigned: true,
+    preInspectionOverridden: canOverridePreInspection,
+  });
+
+  if (!startGate.canStart) {
+    const detail = startGate.missingItems
+      .map((m) => {
+        if (m.startsWith('Before photos')) {
+          const labels = startGate.missingPhotoLabels.join(', ');
+          return labels ? `${m} — missing: ${labels}` : m;
+        }
+        return m;
+      })
+      .join('; ');
+    return {
+      error: `Cannot start job. ${detail}. Complete pre-inspection on the work order or use admin override with reason.`,
+    };
+  }
+
+  if (canOverridePreInspection && admin) {
+    const overridePatch = {
+      pre_inspection_override_reason: preInspectionOverrideReason,
+      pre_inspection_override_by: gate.userId,
+      pre_inspection_override_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (appointmentId) await updateAppointmentSafely(admin, appointmentId, [overridePatch]);
+    if (fallbackBookingId) {
+      await admin.from('booking_fallbacks').update(overridePatch).eq('id', fallbackBookingId);
+    }
+    await recordJobTimelineEvent(gate.supabase, {
+      appointmentId,
+      eventType: 'pre_inspection_ack_saved',
+      meta: { admin_override: true, reason: preInspectionOverrideReason },
+      createdBy: gate.userId,
+    });
+  }
+
   const existingTimer = await findExistingOpenTechTimer(db, {
     appointmentId,
     fallbackBookingId,
     workflowSessionId,
     technicianId: gate.userId,
   });
-
-  if (!existingTimer) {
-    const beforeGate = await countWorkflowPhotos(db, {
-      appointmentId,
-      fallbackBookingId,
-      workflowSessionId,
-      accessToken,
-      jobReference,
-      technicianId: gate.userId,
-      phase: 'before',
-    });
-    const sessionPhotoCount = await countWorkflowSessionPhotos(db, {
-      appointmentId,
-      fallbackBookingId,
-      workflowSessionId,
-      technicianId: gate.userId,
-      phase: 'before',
-    });
-    if (beforeGate.error) {
-      console.warn('[tech] before photo count', beforeGate.error);
-      if (uploadedProofCount < 1 && sessionPhotoCount < 1) {
-        return {
-          error: `Could not verify before photos. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || 'no job reference'}`,
-        };
-      }
-    }
-    if (beforeGate.count < 1 && uploadedProofCount < 1 && sessionPhotoCount < 1) {
-      return {
-        error: `Add at least one vehicle photo before starting. Uploaded proof: ${uploadedProofCount}. DB: ${beforeGate.count}. Workflow session: ${sessionPhotoCount}. Checked: ${beforeGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
-      };
-    }
-  }
 
   const startedAt = new Date().toISOString();
   const statusUpdate = await updateAppointmentSafely(gate.supabase, appointmentId, [
@@ -709,6 +795,7 @@ export async function techStartJobAction(
   });
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
   return null;
 }
 
@@ -1145,8 +1232,17 @@ export async function techCompleteJobAction(
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
   const adminOverride = String(formData.get('adminOverride') ?? '') === 'true';
+  const completionOverride = String(formData.get('completionOverride') ?? '') === 'true';
+  const completionOverrideReason = String(formData.get('completionOverrideReason') ?? '').trim();
   const session = await getSessionWithProfile();
-  const canOverride = adminOverride && isAdminLevel(session.profile?.role ?? null);
+  const canOverridePayment = adminOverride && isAdminLevel(session.profile?.role ?? null);
+  const canOverrideCompletion = completionOverride && isAdminLevel(session.profile?.role ?? null);
+  if (completionOverride && !canOverrideCompletion) {
+    return { error: 'Only admins can override completion requirements.' };
+  }
+  if (canOverrideCompletion && !completionOverrideReason) {
+    return { error: 'Completion override requires a written reason.' };
+  }
 
   const { data: appt, error: fetchErr } = await db
     .from('appointments')
@@ -1189,30 +1285,14 @@ export async function techCompleteJobAction(
     };
   }
 
-  const beforeGate = await countWorkflowPhotos(db, {
-    appointmentId,
-    fallbackBookingId,
-    workflowSessionId,
-    accessToken,
-    jobReference,
-    technicianId: gate.userId,
-    phase: 'before',
-  });
-  if (beforeGate.error || beforeGate.count < 1) {
-    return { error: 'At least one before photo is required before completing this job.' };
-  }
+  const { listJobPhotosForRefs, evaluateJobCompletionGate } = await import('@/lib/pre-inspection');
 
-  const afterGate = await countWorkflowPhotos(db, {
+  const workflowSessionIds = workflowSessionId ? [workflowSessionId] : [];
+  const photoRows = await listJobPhotosForRefs(db, {
     appointmentId,
     fallbackBookingId,
-    workflowSessionId,
-    accessToken,
-    jobReference,
-    technicianId: gate.userId,
-    phase: 'after',
+    workflowSessionIds,
   });
-  const completionMissing: string[] = [];
-  if (afterGate.error || afterGate.count < 1) completionMissing.push('after photo missing');
 
   const { data: checklistRow } = await gate.supabase
     .from('job_timeline_events')
@@ -1222,21 +1302,46 @@ export async function techCompleteJobAction(
     .limit(1)
     .maybeSingle();
 
-  if (!checklistRow) completionMissing.push('checklist incomplete');
-
   const jobRow = appt as Record<string, unknown>;
   const pays = await fetchPaymentsForJob(db, jobRow, { appointmentId });
   const pricing = resolveJobPricing(jobRow, pays);
-  if (!canOverride && pricing.remainingBalanceCents > 0) {
+  const paymentComplete = pricing.remainingBalanceCents <= 0;
+
+  const completionGate = evaluateJobCompletionGate({
+    photos: photoRows,
+    checklistSaved: Boolean(checklistRow),
+    paymentComplete,
+    agreementSigned: legalAck,
+    completionOverridden: canOverrideCompletion,
+    adminPaymentOverride: canOverridePayment,
+  });
+
+  if (!canOverridePayment && pricing.remainingBalanceCents > 0) {
     return {
-      error: `Balance due ${displayMoney(pricing.remainingBalanceCents)} must be paid before completing (or admin override).`,
+      error: `Balance due ${displayMoney(pricing.remainingBalanceCents)} must be paid before completing (or admin payment override).`,
     };
   }
 
-  if (completionMissing.length > 0) {
+  if (!completionGate.canComplete) {
     return {
-      error: `Cannot complete job: ${completionMissing.join('; ')}. ${afterGate.error ? `Photo check: ${afterGate.error}. ` : ''}Checked: ${afterGate.checked.join(', ') || appointmentId.slice(0, 8)}`,
+      error: `Cannot complete job: ${completionGate.missingItems.join('; ')}.`,
     };
+  }
+
+  if (canOverrideCompletion && admin) {
+    const overridePatch = {
+      completion_override_reason: completionOverrideReason,
+      completion_override_by: gate.userId,
+      completion_override_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await updateAppointmentSafely(admin, appointmentId, [overridePatch]);
+    await recordJobTimelineEvent(gate.supabase, {
+      appointmentId,
+      eventType: 'checklist_saved',
+      meta: { completion_admin_override: true, reason: completionOverrideReason },
+      createdBy: gate.userId,
+    });
   }
 
   const { data: openTimer } = await gate.supabase

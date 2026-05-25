@@ -6,9 +6,14 @@ import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
-import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
+import { syncJobBalanceDue } from '@/lib/job-pricing-display';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
+
+function num(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
@@ -18,6 +23,14 @@ import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
+import {
+  assessBeforePhotoSlots,
+  buildPreInspectionRequirements,
+  evaluatePreInspectionStartGate,
+  loadPreInspectionDamageAck,
+  REQUIRED_BEFORE_SLOTS,
+  type RequiredBeforeSlot,
+} from '@/lib/pre-inspection';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,76 +92,125 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
   const source = str(formData.get('source')).trim();
   if (!id) return;
   const table = source === 'fallback' ? 'booking_fallbacks' : 'appointments';
-  const { data: jobRow } = await admin.from(table).select('scheduled_start, deposit_amount_cents, payment_status').eq('id', id).maybeSingle();
-  const scheduledIso = str((jobRow as Row | null)?.scheduled_start) || new Date().toISOString();
-  const descriptions = formData.getAll('vehicleDescription').map((v) => str(v).trim());
-  const years = formData.getAll('vehicleYear').map((v) => str(v).trim());
-  const makes = formData.getAll('vehicleMake').map((v) => str(v).trim());
-  const models = formData.getAll('vehicleModel').map((v) => str(v).trim());
-  const colors = formData.getAll('vehicleColor').map((v) => str(v).trim());
-  const services = formData.getAll('vehicleService').map((v) => str(v).trim());
-  const classes = formData.getAll('vehicleClass').map((v) => str(v).trim());
-  const prices = formData.getAll('vehiclePriceCents').map((v) => Number(str(v)) || 0);
-  const vehicles = descriptions
-    .map((description, index) => ({
-      year: years[index] || null,
-      make: makes[index] || null,
-      model: models[index] || null,
-      vehicle_description: description || [years[index], makes[index], models[index]].filter(Boolean).join(' ') || `Vehicle ${index + 1}`,
-      vehicle_color: colors[index] || null,
-      service_slug: services[index] || null,
-      vehicle_class: classes[index] || null,
-      price_cents: prices[index] > 0 ? prices[index] : null,
-    }))
-    .filter((v) => str(v.vehicle_description));
-  const baseTotal = vehicles.reduce((s, v) => s + (typeof v.price_cents === 'number' ? v.price_cents : 0), 0);
-  const patch: Row = {
-    booking_vehicles: vehicles,
-    vehicle_description: vehicles.map((v) => v.vehicle_description).join(' · '),
-    service_slug: vehicles[0]?.service_slug,
-    vehicle_class: vehicles[0]?.vehicle_class,
-    updated_at: new Date().toISOString(),
-  };
-  if (baseTotal > 0) {
-    const { data: existing } = await admin.from(table).select('deposit_amount_cents, payment_status, booking_pricing_breakdown').eq('id', id).maybeSingle();
-    const prevBreakdown =
-      (existing as Row | null)?.booking_pricing_breakdown && typeof (existing as Row).booking_pricing_breakdown === 'object'
-        ? ((existing as Row).booking_pricing_breakdown as Row)
-        : {};
-    const multiCarDiscountCents = typeof prevBreakdown.multiCarDiscountCents === 'number' ? Number(prevBreakdown.multiCarDiscountCents) : 0;
-    const onlineDiscountCents =
-      typeof prevBreakdown.websitePromoDiscountCents === 'number'
-        ? Number(prevBreakdown.websitePromoDiscountCents)
-        : typeof prevBreakdown.onlineDiscountCents === 'number'
-          ? Number(prevBreakdown.onlineDiscountCents)
-          : 0;
-    const promoDiscountCents =
-      typeof prevBreakdown.offerDiscountCents === 'number'
-        ? Number(prevBreakdown.offerDiscountCents)
-        : typeof prevBreakdown.promoDiscountCents === 'number'
-          ? Number(prevBreakdown.promoDiscountCents)
-          : 0;
-    const finalTotalCents = Math.max(0, baseTotal - multiCarDiscountCents - onlineDiscountCents - promoDiscountCents);
-    patch.base_price_cents = finalTotalCents;
-    patch.booking_pricing_breakdown = {
-      ...prevBreakdown,
-      vehicleSubtotalCents: baseTotal,
-      prePromoCents: baseTotal,
-      finalTotalCents,
-      multiCarDiscountCents,
-      websitePromoDiscountCents: onlineDiscountCents,
-      offerDiscountCents: promoDiscountCents,
-    };
-    const deposit = typeof (existing as Row | null)?.deposit_amount_cents === 'number' ? Number((existing as Row).deposit_amount_cents) : 0;
-    const paid = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(str((existing as Row | null)?.payment_status).toLowerCase());
-    if (!paid) patch.balance_due_cents = Math.max(0, finalTotalCents - deposit);
-    const scheduleLines = vehicles.map((v) => ({
-      serviceSlug: str(v.service_slug) || 'exterior-wash',
-      vehicleClass: str(v.vehicle_class) || 'sedan',
-    }));
-    Object.assign(patch, buildAppointmentScheduleFields(scheduledIso, scheduleLines));
-    patch.estimated_duration_minutes = totalBookingDurationMinutes(scheduleLines);
+  const recalculateFromCatalog = str(formData.get('recalculateFromCatalog')) === 'true';
+
+  const { data: existing } = await admin
+    .from(table)
+    .select('scheduled_start, deposit_amount_cents, payment_status, booking_pricing_breakdown, booking_vehicles, custom_line_items, base_price_cents')
+    .eq('id', id)
+    .maybeSingle();
+  const scheduledIso = str((existing as Row | null)?.scheduled_start) || new Date().toISOString();
+  const prevBreakdown =
+    (existing as Row | null)?.booking_pricing_breakdown && typeof (existing as Row).booking_pricing_breakdown === 'object'
+      ? ((existing as Row).booking_pricing_breakdown as Record<string, unknown>)
+      : {};
+  const prevVehicles = vehiclesFromRow((existing ?? {}) as Row);
+
+  let vehicles: Array<{
+    year: string | null;
+    make: string | null;
+    model: string | null;
+    vehicle_description: string;
+    vehicle_color: string | null;
+    service_slug: string | null;
+    vehicle_class: string | null;
+    price_cents: number | null;
+  }> = [];
+
+  const payloadRaw = str(formData.get('vehiclesPayload'));
+  if (payloadRaw) {
+    try {
+      const parsed = JSON.parse(payloadRaw) as unknown;
+      if (Array.isArray(parsed)) {
+        vehicles = parsed
+          .map((row, index) => {
+            const r = row as Record<string, unknown>;
+            const year = str(r.year) || null;
+            const make = str(r.make) || null;
+            const model = str(r.model) || null;
+            const description =
+              str(r.vehicle_description) || [year, make, model].filter(Boolean).join(' ') || `Vehicle ${index + 1}`;
+            const price = Number(r.price_cents);
+            return {
+              year,
+              make,
+              model,
+              vehicle_description: description,
+              vehicle_color: str(r.vehicle_color) || null,
+              service_slug: str(r.service_slug) || null,
+              vehicle_class: str(r.vehicle_class) || null,
+              price_cents: Number.isFinite(price) && price > 0 ? price : null,
+            };
+          })
+          .filter((v) => str(v.vehicle_description));
+      }
+    } catch {
+      /* fall through to legacy fields */
+    }
   }
+
+  if (vehicles.length === 0) {
+    const descriptions = formData.getAll('vehicleDescription').map((v) => str(v).trim());
+    const years = formData.getAll('vehicleYear').map((v) => str(v).trim());
+    const makes = formData.getAll('vehicleMake').map((v) => str(v).trim());
+    const models = formData.getAll('vehicleModel').map((v) => str(v).trim());
+    const colors = formData.getAll('vehicleColor').map((v) => str(v).trim());
+    const services = formData.getAll('vehicleService').map((v) => str(v).trim());
+    const classes = formData.getAll('vehicleClass').map((v) => str(v).trim());
+    const prices = formData.getAll('vehiclePriceCents').map((v) => Number(str(v)) || 0);
+    vehicles = descriptions
+      .map((description, index) => ({
+        year: years[index] || null,
+        make: makes[index] || null,
+        model: models[index] || null,
+        vehicle_description: description || [years[index], makes[index], models[index]].filter(Boolean).join(' ') || `Vehicle ${index + 1}`,
+        vehicle_color: colors[index] || null,
+        service_slug: services[index] || null,
+        vehicle_class: classes[index] || null,
+        price_cents: prices[index] > 0 ? prices[index] : null,
+      }))
+      .filter((v) => str(v.vehicle_description));
+  }
+
+  if (vehicles.length === 0 && prevVehicles.length > 0) {
+    return;
+  }
+
+  const { mergeVehiclePricingOnSave } = await import('@/lib/historical-pricing');
+  const merged = mergeVehiclePricingOnSave({
+    vehicles,
+    prevBreakdown,
+    prevVehicles,
+    recalculateFromCatalog,
+  });
+
+  const customItems = readCustomLineItems(existing ?? {});
+  const customCents = customItems.reduce((s, i) => s + i.amountCents, 0);
+  const finalTotalCents = Math.max(0, num(merged.breakdownPatch.finalTotalCents) + customCents);
+
+  const patch: Row = {
+    booking_vehicles: merged.vehicles,
+    vehicle_description: merged.vehicles.map((v) => v.vehicle_description).join(' · '),
+    service_slug: merged.vehicles[0]?.service_slug,
+    vehicle_class: merged.vehicles[0]?.vehicle_class,
+    updated_at: new Date().toISOString(),
+    base_price_cents: finalTotalCents,
+    booking_pricing_breakdown: merged.breakdownPatch,
+  };
+
+  const deposit = num((existing as Row | null)?.deposit_amount_cents);
+  const paid = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(
+    str((existing as Row | null)?.payment_status).toLowerCase(),
+  );
+  if (!paid) patch.balance_due_cents = Math.max(0, finalTotalCents - deposit);
+
+  const scheduleLines = merged.vehicles.map((v) => ({
+    serviceSlug: str(v.service_slug) || 'exterior-wash',
+    vehicleClass: str(v.vehicle_class) || 'sedan',
+  }));
+  Object.assign(patch, buildAppointmentScheduleFields(scheduledIso, scheduleLines));
+  patch.estimated_duration_minutes = totalBookingDurationMinutes(scheduleLines);
+
   await admin.from(table).update(patch).eq('id', id);
 
   const woSource = source === 'fallback' ? 'fallback' : 'appointment';
@@ -277,7 +339,13 @@ export default async function TechWorkOrderDetailPage({
     : agreementCaptureHref;
 
   const paymentRows = paymentRowsFetched;
-  const pricing = resolveJobPricing(row, paymentRows);
+  const orderSnapshot = await loadOrderSnapshot(admin, {
+    workOrderId: queryId,
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    sourceHint: isFallback ? 'fallback' : 'appointment',
+  });
+  const pricing = orderSnapshot?.pricing ?? (await import('@/lib/job-pricing-display')).resolveJobPricing(row, paymentRows);
   await syncJobBalanceDue(admin, row, pricing, {
     appointmentId: !isFallback ? queryId : undefined,
     fallbackBookingId: isFallback ? queryId : undefined,
@@ -291,13 +359,37 @@ export default async function TechWorkOrderDetailPage({
   const guestEmail = displayText(row.guest_email);
 
   const checklistSaved = ((timelineRes.data ?? []) as Row[]).some((t) => str(t.event_type) === 'checklist_saved');
-  const requirements = [
-    { label: 'Agreement', ok: agreementSigned },
-    { label: 'Before photos', ok: before.length > 0 },
-    { label: 'Checklist', ok: checklistSaved },
-    { label: 'After photos', ok: after.length > 0 },
-    { label: 'Payment', ok: paymentComplete },
-  ];
+  const jobStarted = str(row.status) === 'in_progress' || Boolean(row.job_started_at);
+  const preInspectionOverridden = Boolean(str(row.pre_inspection_override_reason));
+  const damageAckRow = await loadPreInspectionDamageAck(admin, {
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    vehicleIndex: 0,
+  });
+  const beforeSlotAssessment = assessBeforePhotoSlots(before);
+  const slotFilled = Object.fromEntries(
+    REQUIRED_BEFORE_SLOTS.map((s) => [s, beforeSlotAssessment.filled.has(s)]),
+  ) as Record<RequiredBeforeSlot, boolean>;
+  const startGate = evaluatePreInspectionStartGate({
+    photos: before,
+    damageAck: damageAckRow,
+    agreementSigned,
+    preInspectionOverridden,
+  });
+  const requirements = buildPreInspectionRequirements({
+    agreementSigned,
+    photoProgress: beforeSlotAssessment.count + '/' + beforeSlotAssessment.total,
+    photosComplete: beforeSlotAssessment.missing.length === 0,
+    damageAckComplete: startGate.damageAckComplete,
+    checklistSaved,
+    afterPhotosOk: after.length > 0,
+    paymentComplete,
+    jobStarted,
+    preInspectionOverridden,
+  });
+  const primaryVehicle = vehicles[0];
+  const primaryVehicleLabel =
+    str(primaryVehicle?.vehicle_description || primaryVehicle?.description) || 'Vehicle 1';
 
   const canDeletePhotos = isAdminLevel(session.profile?.role ?? null);
 
@@ -456,6 +548,27 @@ export default async function TechWorkOrderDetailPage({
     openTimerId: str((openTimer.data as Row | null)?.id),
     openTimerStartedAt: str((openTimer.data as Row | null)?.started_at || (openTimer.data as Row | null)?.created_at),
     vehicleForms: { defaultService: str(row.service_slug), defaultClass: str(row.vehicle_class) },
+    preInspection: {
+      photoProgress: startGate.photoProgress,
+      slotFilled,
+      missingStartItems: startGate.missingItems,
+      canStartJob: startGate.canStart,
+      isJobStarted: jobStarted,
+      preInspectionOverridden,
+      damageAck: {
+        damageNotes: str(damageAckRow?.damage_notes),
+        noVisibleDamage: Boolean(damageAckRow?.no_visible_damage),
+        customerAcknowledged: Boolean(damageAckRow?.customer_acknowledged),
+        customerSignatureName: str(damageAckRow?.customer_signature_name),
+        witnessName: str(damageAckRow?.witness_name),
+        acknowledgedAt: damageAckRow?.acknowledged_at ? displayChicago(damageAckRow.acknowledged_at) : '',
+        damageAckComplete: startGate.damageAckComplete,
+      },
+      vehicleIndex: 0,
+      vehicleLabel: primaryVehicleLabel,
+      serviceSlug: str(row.service_slug),
+      technicianName: resolved.technicianName ?? 'Technician',
+    },
     recentPayments: paymentRows.map((p) => ({
       id: str(p.id),
       amount: displayMoney(p.amount_cents),

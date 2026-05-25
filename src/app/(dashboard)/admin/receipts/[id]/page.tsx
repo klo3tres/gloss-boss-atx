@@ -9,7 +9,9 @@ import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-b
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { ReceiptAdminControls } from '@/components/admin/receipt-admin-controls';
 import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
 import { sendReceiptActionState } from '../receipt-actions';
 
@@ -129,7 +131,14 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
         ? pricingMeta.tax_cents
         : undefined;
 
-  const breakdownLines = buildReceiptBreakdown(job, jobPricing);
+  const orderSnapshot = await loadOrderSnapshot(admin, {
+    appointmentId: appointmentId || undefined,
+    fallbackBookingId: fallbackId || undefined,
+    receiptId: str(receipt?.id) || undefined,
+    paymentId: paymentId || undefined,
+  });
+  const snapshotPricing = orderSnapshot?.pricing ?? jobPricing;
+  const breakdownLines = orderSnapshot?.receiptLines ?? buildReceiptBreakdown(job, snapshotPricing);
 
   const docProps = {
     receiptNumber,
@@ -144,19 +153,19 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
     customerPhone: str(job.guest_phone || customer.phone || payment?.phone) || 'Not provided',
     serviceAddress: address(job, paymentMeta) || 'Service address not provided',
     vehicles: vehicleRows,
-    baseTotal: money(jobPricing.vehicleSubtotalCents),
-    addOnSubtotal: jobPricing.addOnSubtotalCents > 0 ? money(jobPricing.addOnSubtotalCents) : undefined,
-    onlineDiscount: jobPricing.onlineDiscountCents > 0 ? `−${money(jobPricing.onlineDiscountCents)}` : money(0),
-    multiCarDiscount: jobPricing.multiCarDiscountCents > 0 ? `−${money(jobPricing.multiCarDiscountCents)}` : money(0),
-    promoLabel: str(job.promo_code || paymentMeta.promo_code) || 'Promo discount',
-    promoDiscount: jobPricing.promoDiscountCents > 0 ? `−${money(jobPricing.promoDiscountCents)}` : money(0),
-    manualDiscount: jobPricing.manualDiscountCents > 0 ? `−${money(jobPricing.manualDiscountCents)}` : undefined,
-    depositPaid: money(jobPricing.depositPaidCents || jobPricing.depositCents),
-    cashPaid: money(jobPricing.cashPaidCents),
-    stripePaid: money(jobPricing.stripePaidCents),
-    fullPaid: money(jobPricing.totalPaidCents),
-    remainingBalance: money(jobPricing.remainingBalanceCents),
-    finalTotal: money(jobPricing.finalTotalCents),
+    baseTotal: money(snapshotPricing.vehicleSubtotalCents),
+    addOnSubtotal: snapshotPricing.addOnSubtotalCents > 0 ? money(snapshotPricing.addOnSubtotalCents) : undefined,
+    onlineDiscount: snapshotPricing.onlineDiscountCents > 0 ? `−${money(snapshotPricing.onlineDiscountCents)}` : money(0),
+    multiCarDiscount: snapshotPricing.multiCarDiscountCents > 0 ? `−${money(snapshotPricing.multiCarDiscountCents)}` : money(0),
+    promoLabel: str(orderSnapshot?.promoCode || job.promo_code || paymentMeta.promo_code) || 'Promo discount',
+    promoDiscount: snapshotPricing.promoDiscountCents > 0 ? `−${money(snapshotPricing.promoDiscountCents)}` : money(0),
+    manualDiscount: snapshotPricing.manualDiscountCents > 0 ? `−${money(snapshotPricing.manualDiscountCents)}` : undefined,
+    depositPaid: money(snapshotPricing.depositPaidCents || snapshotPricing.depositCents),
+    cashPaid: money(snapshotPricing.cashPaidCents),
+    stripePaid: money(snapshotPricing.stripePaidCents),
+    fullPaid: money(snapshotPricing.totalPaidCents),
+    remainingBalance: money(snapshotPricing.remainingBalanceCents),
+    finalTotal: money(snapshotPricing.finalTotalCents),
     stripeSession: str(payment?.stripe_checkout_session_id || job.stripe_checkout_session_id) || 'Not provided',
     stripePaymentIntent: str(payment?.stripe_payment_intent_id) || 'Not provided',
     paymentRowId: paymentId || 'Not provided',
@@ -193,6 +202,14 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
           label='Download invoice PDF'
         />
       </div>
+
+      <ReceiptAdminControls
+        appointmentId={appointmentId}
+        fallbackBookingId={fallbackId}
+        receiptId={str(receipt?.id)}
+        paymentId={paymentId}
+        receiptPath={`/admin/receipts/${id}`}
+      />
 
       <PrintDocumentActions
         sendForm={

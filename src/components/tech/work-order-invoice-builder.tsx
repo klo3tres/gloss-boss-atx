@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, FileText, Plus, Save } from 'lucide-react';
 import { LINE_ITEM_KIND_LABELS, type WorkOrderLineItemKind } from '@/lib/work-order-line-items';
+import { suggestInvoiceLine } from '@/lib/invoice-line-suggestions';
+import type { UiVehicleClass } from '@/lib/vehicle-pricing';
 import { addWorkOrderLineItemAction } from '@/app/(dashboard)/tech/work-order-line-item-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
@@ -88,8 +90,10 @@ export function WorkOrderInvoiceBuilder({
   totalPaid,
   paymentComplete,
   receiptPdfHref,
+  defaultVehicleClass = 'sedan',
 }: {
   jobId: string;
+  defaultVehicleClass?: UiVehicleClass;
   appointmentId?: string;
   fallbackBookingId?: string;
   source: 'appointment' | 'fallback';
@@ -338,7 +342,16 @@ export function WorkOrderInvoiceBuilder({
           <select
             className='gb-input mt-1 w-full'
             value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as WorkOrderLineItemKind }))}
+            onChange={(e) => {
+              const category = e.target.value as WorkOrderLineItemKind;
+              const hint = suggestInvoiceLine(category, defaultVehicleClass);
+              setForm((f) => ({
+                ...f,
+                category,
+                title: hint.title,
+                amountDollars: hint.amountCents > 0 ? (hint.amountCents / 100).toFixed(2) : f.amountDollars,
+              }));
+            }}
           >
             {CATEGORIES.map((k) => (
               <option key={k} value={k}>

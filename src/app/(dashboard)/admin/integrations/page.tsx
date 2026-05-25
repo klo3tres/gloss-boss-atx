@@ -84,6 +84,13 @@ export default async function AdminIntegrationsPage() {
 
   return (
     <DashboardShell title='Integrations' subtitle='Connection status and safe send tests for customer communications and production infrastructure.' role='admin'>
+      <div className='mb-6 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-black to-zinc-950 p-5'>
+        <p className='text-xs font-black uppercase tracking-[0.22em] text-amber-200'>Twilio toll-free verification pending</p>
+        <p className='mt-2 text-sm text-zinc-200'>
+          Outbound SMS may fail with error <span className='font-mono text-amber-100'>30032</span> until Twilio toll-free verification completes for your sender.
+          Customer booking emails still send when Resend is configured. Check status in the Twilio Console → Messaging → Toll-Free Verification.
+        </p>
+      </div>
       {resendWarn ? (
         <p className='mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>{resendWarn}</p>
       ) : null}

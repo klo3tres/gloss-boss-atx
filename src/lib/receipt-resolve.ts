@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { loadOrderSnapshot, type OrderSnapshot } from '@/lib/order-snapshot-engine';
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
@@ -24,6 +25,7 @@ export type ResolvedReceiptContext = {
   receiptNumber: string;
   isFallback: boolean;
   workOrderId: string;
+  snapshot: OrderSnapshot | null;
 };
 
 function obj(v: unknown): Row {
@@ -162,7 +164,15 @@ export async function resolveReceiptContext(
     receipt = (inserted ?? null) as Row | null;
   }
 
-  const pricing = resolveJobPricing(job, payments);
+  const snapshot = await loadOrderSnapshot(admin, {
+    workOrderId,
+    appointmentId,
+    fallbackBookingId: fallbackId,
+    receiptId: str(receipt?.id),
+    paymentId: str(payment?.id),
+    sourceHint,
+  });
+  const pricing = snapshot?.pricing ?? resolveJobPricing(job, payments);
   const receiptNumber =
     str(receipt?.receipt_number) ||
     `RCPT-${str(payment?.id || workOrderId).slice(0, 8).toUpperCase()}`;
@@ -177,6 +187,7 @@ export async function resolveReceiptContext(
     receiptNumber,
     isFallback,
     workOrderId,
+    snapshot,
   };
 }
 
@@ -185,19 +196,39 @@ function address(job: Row) {
 }
 
 export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Array {
-  const { job, payment, pricing, techName, receiptNumber } = ctx;
+  const { job, payment, pricing, techName, receiptNumber, snapshot } = ctx;
   const discountTotal =
     pricing.multiCarDiscountCents + pricing.onlineDiscountCents + pricing.promoDiscountCents;
 
-  const vehicleRows = [
-    ...pricing.vehicleLines.map((v) => ({
-      name: v.name,
-      service: displayLabel(v.service),
-      color: v.color || '—',
-      price: displayMoney(v.priceCents),
-    })),
-    ...customLineItemsAsReceiptRows(job),
-  ];
+  const vehicleRows = snapshot?.vehicles.length
+    ? snapshot.vehicles.flatMap((v) => {
+        const rows = [
+          {
+            name: v.description,
+            service: displayLabel(v.serviceSlug),
+            color: v.color || '—',
+            price: displayMoney(v.priceCents),
+          },
+        ];
+        for (const a of v.addOns) {
+          rows.push({
+            name: `  ↳ ${a.label}`,
+            service: 'Add-on',
+            color: '—',
+            price: displayMoney(a.priceCents),
+          });
+        }
+        return rows;
+      })
+    : [
+        ...pricing.vehicleLines.map((v) => ({
+          name: v.name,
+          service: displayLabel(v.service),
+          color: v.color || '—',
+          price: displayMoney(v.priceCents),
+        })),
+        ...customLineItemsAsReceiptRows(job),
+      ];
 
   const input: ReceiptPdfInput = {
     receiptNumber,
@@ -219,7 +250,7 @@ export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Ar
       : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug), color: '—', price: displayMoney(pricing.finalTotalCents) }],
     baseTotal: displayMoney(pricing.vehicleSubtotalCents),
     addOnSubtotal: pricing.addOnSubtotalCents > 0 ? displayMoney(pricing.addOnSubtotalCents) : '',
-    breakdownLines: buildReceiptBreakdown(job, pricing),
+    breakdownLines: snapshot?.receiptLines ?? buildReceiptBreakdown(job, pricing),
     discounts: discountTotal > 0 ? displayMoney(discountTotal) : '',
     taxAmount: '',
     finalTotal: displayMoney(pricing.finalTotalCents),
@@ -227,6 +258,8 @@ export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Ar
     fullPaid: displayMoney(pricing.totalPaidCents),
     cashPaid: displayMoney(pricing.cashPaidCents),
     stripePaid: displayMoney(pricing.stripePaidCents),
+    zellePaid: pricing.zellePaidCents > 0 ? displayMoney(pricing.zellePaidCents) : '',
+    manualPaid: pricing.manualPaidCents > 0 ? displayMoney(pricing.manualPaidCents) : '',
     remainingBalance: displayMoney(pricing.remainingBalanceCents),
   };
 

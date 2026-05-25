@@ -27,6 +27,8 @@ export type ReceiptPdfInput = {
   fullPaid: string;
   cashPaid?: string;
   stripePaid?: string;
+  zellePaid?: string;
+  manualPaid?: string;
   remainingBalance: string;
 };
 

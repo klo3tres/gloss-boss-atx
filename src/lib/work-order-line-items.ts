@@ -14,6 +14,10 @@ export type WorkOrderLineItemKind =
 
   | 'pet_hair_surcharge'
 
+  | 'engine_bay'
+
+  | 'clay_bar'
+
   | 'custom_addon'
 
   | 'discount_adjustment'
@@ -57,6 +61,10 @@ export const LINE_ITEM_KIND_LABELS: Record<WorkOrderLineItemKind, string> = {
   stain_removal: 'Stain removal',
 
   pet_hair_surcharge: 'Pet hair surcharge',
+
+  engine_bay: 'Engine bay detail',
+
+  clay_bar: 'Clay bar treatment',
 
   custom_addon: 'Custom add-on',
 

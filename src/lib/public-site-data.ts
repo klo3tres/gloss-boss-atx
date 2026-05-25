@@ -53,6 +53,8 @@ export type PublicSiteDataPayload = {
   /** True when `featured_showcase` CMS JSON produced at least one published slide. */
   featuredShowcaseFromCms?: boolean;
   googleReviewUrl: string;
+  fleetServicesEnabled?: boolean;
+  fleetServicesBlurb?: string;
 };
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */

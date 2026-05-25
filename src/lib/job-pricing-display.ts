@@ -28,7 +28,22 @@ function isCash(p: Row) {
 function isStripe(p: Row) {
   if (isCash(p)) return false;
   const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-  return method.includes('stripe') || Boolean(p.stripe_checkout_session_id || p.stripe_payment_intent_id);
+  if (method.includes('zelle') || method.includes('venmo') || method.includes('manual') || method.includes('check')) return false;
+  return method.includes('stripe') || method.includes('card') || Boolean(p.stripe_checkout_session_id || p.stripe_payment_intent_id);
+}
+
+function isZelle(p: Row) {
+  const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
+  return method.includes('zelle') || method.includes('venmo');
+}
+
+function isManual(p: Row) {
+  const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
+  return method.includes('manual') || method.includes('check') || method.includes('transfer');
+}
+
+function isVoided(p: Row) {
+  return Boolean(p.voided_at || p.voided === true) || str(p.status).toLowerCase() === 'voided';
 }
 
 /** Single pricing snapshot for work order, receipt HTML/PDF, and email. */
@@ -47,6 +62,8 @@ export type JobPricingDisplay = {
   depositPaidCents: number;
   stripePaidCents: number;
   cashPaidCents: number;
+  zellePaidCents: number;
+  manualPaidCents: number;
   totalPaidCents: number;
   remainingBalanceCents: number;
   customLineItemsCents: number;
@@ -73,7 +90,9 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   const multiCarDiscountCents = pick('multiCarDiscountCents');
   const onlineDiscountCents =
     pick('websitePromoDiscountCents') || pick('onlineDiscountCents') || pick('sitewideDiscountCents');
-  const promoDiscountCents = pick('offerDiscountCents') || pick('promoDiscountCents');
+  const offerDiscountCents = pick('offerDiscountCents');
+  const promoCodeDiscountCents = pick('promoDiscountCents');
+  const promoDiscountCents = offerDiscountCents + promoCodeDiscountCents;
 
   let prePromoCents = pick('prePromoCents');
   if (prePromoCents <= 0) {
@@ -90,7 +109,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   let serviceFinalCents = pick('finalTotalCents');
   if (serviceFinalCents <= 0 && prePromoCents > 0) {
-    serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - promoDiscountCents);
+    serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - offerDiscountCents - promoCodeDiscountCents);
   }
   if (serviceFinalCents <= 0) {
     const baseStored = num(job.base_price_cents);
@@ -100,11 +119,26 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   const depositOnFile = num(job.deposit_amount_cents) || pick('depositCents');
 
-  const succeeded = payments.filter(isSucceeded);
+  const succeeded = payments.filter((p) => isSucceeded(p) && !isVoided(p));
+  const seenPayIds = new Set<string>();
 
-  let cashPaidCents = succeeded.filter(isCash).reduce((s, p) => s + num(p.amount_cents), 0);
-  let stripePaidCents = succeeded.filter(isStripe).reduce((s, p) => s + num(p.amount_cents), 0);
-  let totalPaidCents = succeeded.reduce((s, p) => s + num(p.amount_cents), 0);
+  let cashPaidCents = 0;
+  let stripePaidCents = 0;
+  let zellePaidCents = 0;
+  let manualPaidCents = 0;
+  let totalPaidCents = 0;
+  for (const p of succeeded) {
+    const pid = str(p.id);
+    if (pid && seenPayIds.has(pid)) continue;
+    if (pid) seenPayIds.add(pid);
+    const amt = num(p.amount_cents);
+    totalPaidCents += amt;
+    if (isCash(p)) cashPaidCents += amt;
+    else if (isZelle(p)) zellePaidCents += amt;
+    else if (isManual(p)) manualPaidCents += amt;
+    else if (isStripe(p)) stripePaidCents += amt;
+    else manualPaidCents += amt;
+  }
 
   // Deposit recorded on appointment but payment row missing — credit deposit when Stripe session / status indicates paid
   if (totalPaidCents < depositOnFile && depositOnFile > 0) {
@@ -150,6 +184,8 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     depositPaidCents,
     stripePaidCents,
     cashPaidCents,
+    zellePaidCents,
+    manualPaidCents,
     totalPaidCents,
     remainingBalanceCents,
     customLineItemsCents,

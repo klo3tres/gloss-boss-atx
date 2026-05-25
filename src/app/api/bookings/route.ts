@@ -15,6 +15,7 @@ import {
   loadBookingAvailabilityRules,
   type VehicleLineInput,
 } from '@/lib/booking-server-shared';
+import { incrementPromoUse } from '@/lib/promo-engine';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
@@ -170,35 +171,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const quote = await computeQuoteFromInputs(admin, { lines, addOns, offerRef: body.offerId });
+    const quote = await computeQuoteFromInputs(admin, {
+      lines,
+      addOns,
+      offerRef: body.offerId,
+      promoCode: promoCode || undefined,
+      paymentChoice,
+      allowFreeTestPromo,
+    });
     if (!quote.ok) {
       return NextResponse.json({ error: quote.error }, { status: quote.status });
     }
     const priced = quote.breakdown;
     const resolved = quote.resolved;
     const claimed = quote.claimed;
-    if (promoCode === 'FREE' && !allowFreeTestPromo) {
-      return NextResponse.json({ error: 'Promo code not available.' }, { status: 400 });
-    }
-    const freePromoApplied =
-      promoCode === 'FREE' &&
-      allowFreeTestPromo &&
-      resolved.length === 1 &&
-      resolved[0]?.serviceSlug === 'exterior-wash' &&
-      normalizeVehicleClass(resolved[0]?.vehicleClass ?? '') === 'sedan';
-    if (promoCode === 'FREE' && allowFreeTestPromo && !freePromoApplied) {
-      const reason = resolved.length !== 1
-        ? 'FREE only applies to one vehicle at a time.'
-        : resolved[0]?.serviceSlug !== 'exterior-wash'
-          ? 'FREE only applies to Exterior Wash.'
-          : normalizeVehicleClass(resolved[0]?.vehicleClass ?? '') !== 'sedan'
-            ? 'FREE only applies to Sedan vehicle class.'
-            : 'FREE only applies to a Sedan Exterior Wash test booking.';
-      return NextResponse.json({ error: reason }, { status: 400 });
+    const freePromoApplied = quote.promo.freePromoApplied;
+    const testOneDollar = quote.promo.testOneDollar;
+    if (testOneDollar && paymentChoice !== 'full') {
+      return NextResponse.json({ error: 'TEST1 requires pay in full.' }, { status: 400 });
     }
 
-    const totalBaseCents = freePromoApplied ? 0 : priced.finalTotalCents;
-    const depositAmountCents = freePromoApplied ? 0 : priced.depositCents;
+    const totalBaseCents = priced.finalTotalCents;
+    const depositAmountCents = priced.depositCents;
     const primary = resolved[0]!;
     const offerRowId = claimed?.offerId ?? null;
 
@@ -365,7 +359,11 @@ export async function POST(request: Request) {
       payment_choice: paymentChoice,
       balance_due_cents: paymentChoice === 'full' || freePromoApplied ? 0 : Math.max(0, totalBaseCents - depositAmountCents),
       promo_code: promoCode || null,
-      comp_reason: freePromoApplied ? 'FREE test promo applied to Exterior Wash booking' : null,
+      comp_reason: freePromoApplied
+        ? `${promoCode || 'FREE'} comp applied`
+        : testOneDollar
+          ? 'TEST1 $1 Stripe test checkout'
+          : null,
       booking_vehicles: bookingVehicles,
       booking_pricing_breakdown: breakdownWithSnapshot,
       booking_add_ons: addOns,
@@ -419,6 +417,10 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    if (promoCode && quote.promo.applied) {
+      await incrementPromoUse(admin, promoCode);
+    }
 
     if (customerId) {
       void syncVehiclesToCustomer(admin, {

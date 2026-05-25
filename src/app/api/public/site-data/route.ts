@@ -54,7 +54,7 @@ export async function GET() {
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -65,6 +65,7 @@ export async function GET() {
       loadActiveServicesResilient(client),
       client.from('review_settings').select('value').eq('key', 'google_business').maybeSingle(),
       client.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
+      client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb']),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -155,6 +156,15 @@ export async function GET() {
       }
     }
 
+    const fleetRows = (fleetRes.data ?? []) as Array<{ key?: string; value?: unknown }>;
+    const fleetServicesEnabled = fleetRows.some(
+      (r) => r.key === 'fleet_services_enabled' && String(r.value ?? '').toLowerCase() === 'true',
+    );
+    const fleetServicesBlurb = String(
+      fleetRows.find((r) => r.key === 'fleet_services_blurb')?.value ??
+        'Fleet, dealership, and business accounts — call for volume pricing and on-site schedules.',
+    );
+
     const payload: PublicSiteDataPayload = {
       ok: schemaWarnings.length === 0 && svcList.length > 0 && !sErr,
       schemaWarnings,
@@ -165,6 +175,8 @@ export async function GET() {
       featuredShowcase,
       featuredShowcaseFromCms,
       googleReviewUrl,
+      fleetServicesEnabled,
+      fleetServicesBlurb,
     };
 
     return NextResponse.json(payload);

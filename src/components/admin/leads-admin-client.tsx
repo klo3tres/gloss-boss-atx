@@ -6,6 +6,8 @@ import { useMemo, useState } from 'react';
 import {
   assignLeadTechnicianAction,
   archiveLeadAction,
+  bulkArchiveLeadsAction,
+  bulkDeleteLeadsAction,
   convertLeadToCustomerAction,
   createLeadAction,
   deleteLeadAction,
@@ -60,6 +62,16 @@ export function LeadsAdminClient({
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'list'>('pipeline');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const techOptions = useMemo(
     () => [...technicians].sort((a, b) => (a.full_name ?? a.email ?? '').localeCompare(b.full_name ?? b.email ?? '')),
@@ -103,6 +115,36 @@ export function LeadsAdminClient({
         <Link href='/admin/dispatch' className='text-[10px] font-bold uppercase text-zinc-400 underline'>
           Dispatch board →
         </Link>
+        {selected.size > 0 ? (
+          <div className='ml-auto flex flex-wrap gap-2'>
+            <form
+              action={async (fd) => {
+                fd.set('leadIds', [...selected].join(','));
+                const res = await bulkArchiveLeadsAction(fd);
+                setMsg(res.ok ? `Archived ${res.count ?? selected.size} lead(s).` : res.error ?? 'Failed');
+                setSelected(new Set());
+                router.refresh();
+              }}
+            >
+              <button type='submit' className='rounded border border-amber-500/40 px-3 py-1.5 text-[10px] font-black uppercase text-amber-200'>
+                Archive selected ({selected.size})
+              </button>
+            </form>
+            <form
+              action={async (fd) => {
+                fd.set('leadIds', [...selected].join(','));
+                const res = await bulkDeleteLeadsAction(fd);
+                setMsg(res.ok ? `Deleted ${res.count ?? selected.size} lead(s).` : res.error ?? 'Failed');
+                setSelected(new Set());
+                router.refresh();
+              }}
+            >
+              <button type='submit' className='rounded border border-red-500/40 px-3 py-1.5 text-[10px] font-black uppercase text-red-200'>
+                Delete selected
+              </button>
+            </form>
+          </div>
+        ) : null}
       </div>
 
       <section className='rounded-2xl border border-white/10 bg-zinc-950/80 p-4'>
@@ -173,6 +215,10 @@ export function LeadsAdminClient({
                       key={id}
                       className='gb-glass rounded-2xl border border-white/10 p-4 text-sm text-zinc-300 transition hover:border-gold/30 hover:shadow-[0_0_20px_rgba(212,175,55,0.1)]'
                     >
+                      <label className='mb-2 flex items-center gap-2 text-[10px] text-zinc-500'>
+                        <input type='checkbox' checked={selected.has(id)} onChange={() => toggleSelect(id)} />
+                        Select
+                      </label>
                       <div className='flex items-start gap-3'>
                         <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold/30 to-gold/5 text-sm font-black text-gold-soft'>
                           {String(r.name ?? '?').slice(0, 2).toUpperCase()}

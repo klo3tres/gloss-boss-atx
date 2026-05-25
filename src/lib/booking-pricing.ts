@@ -11,6 +11,8 @@ export type BookingPricingBreakdown = {
   prePromoCents: number;
   websitePromoDiscountCents: number;
   offerDiscountCents: number;
+  /** Scoped promo code discount (may apply to base only or specific add-on per rules). */
+  promoDiscountCents: number;
   finalTotalCents: number;
   depositCents: number;
   depositPercent: number;
@@ -94,6 +96,7 @@ export function computeBookingPricing(params: {
     prePromoCents,
     websitePromoDiscountCents,
     offerDiscountCents,
+    promoDiscountCents: 0,
     finalTotalCents,
     depositCents,
     depositPercent,

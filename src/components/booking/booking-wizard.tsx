@@ -582,7 +582,7 @@ export function BookingWizard() {
     setExtraVehicles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const applyPromo = () => {
+  const applyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
     setPromoMessage(null);
     if (!code) {
@@ -590,34 +590,50 @@ export function BookingWizard() {
       setPromoMessage('Enter a promo code first.');
       return;
     }
-    if (code !== 'FREE') {
+    if (bookingLines.length === 0) {
+      setAppliedPromoCode('');
+      setPromoMessage('Add at least one vehicle before applying a promo.');
+      return;
+    }
+    setPromoMessage('Checking promo…');
+    try {
+      const res = await fetch('/api/bookings/validate-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          promoCode: code,
+          paymentChoice,
+          allowFreeTestPromo,
+          offerId: claimedOfferSnap?.id,
+          lines: bookingLines.map((l) => ({
+            serviceSlug: l.serviceSlug,
+            vehicleClass: l.vehicleClass,
+            vehicleDescription: l.vehicleDescription,
+            vehicleColor: l.vehicleColor,
+          })),
+          addOns: selectedAddOnSlugs,
+        }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        comped?: boolean;
+        testOneDollar?: boolean;
+      };
+      if (!res.ok || !json.ok) {
+        setAppliedPromoCode('');
+        setPromoMessage(json.error ?? 'Promo could not be applied.');
+        return;
+      }
       setAppliedPromoCode(code);
-      setPromoMessage('Promo will be checked at booking.');
-      return;
-    }
-    if (!allowFreeTestPromo) {
+      if (json.comped || code === 'FREE') setPaymentChoice('full');
+      if (json.testOneDollar || code === 'TEST1') setPaymentChoice('full');
+      setPromoMessage(json.message ?? `${code} applied.`);
+    } catch {
       setAppliedPromoCode('');
-      setPromoMessage('FREE is disabled by admin. Enable “FREE test promo” in Admin → Promotions.');
-      return;
+      setPromoMessage('Could not reach promo service. Try again.');
     }
-    if (bookingLines.length !== 1) {
-      setAppliedPromoCode('');
-      setPromoMessage('FREE only applies to one vehicle at a time.');
-      return;
-    }
-    if (serviceSlug !== 'exterior-wash') {
-      setAppliedPromoCode('');
-      setPromoMessage('FREE only applies to Exterior Wash.');
-      return;
-    }
-    if (normalizeVehicleClass(vehicleClass) !== 'sedan') {
-      setAppliedPromoCode('');
-      setPromoMessage('FREE only applies to Sedan vehicle class.');
-      return;
-    }
-    setAppliedPromoCode('FREE');
-    setPaymentChoice('full');
-    setPromoMessage('FREE test comp applied. Total is $0.00 and Stripe will be bypassed.');
   };
 
   const startStripeCheckout = async (bookingJson: SavedBookingRef & { accessToken: string }) => {

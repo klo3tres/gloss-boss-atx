@@ -59,6 +59,15 @@ export async function savePromoCodeAction(formData: FormData) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const rulesRaw = String(formData.get('rulesJson') ?? '').trim();
+  let rules: Record<string, unknown> = {};
+  if (rulesRaw) {
+    try {
+      rules = JSON.parse(rulesRaw) as Record<string, unknown>;
+    } catch {
+      console.warn('[promotions] invalid rules JSON ignored');
+    }
+  }
   const row = {
     code,
     description: String(formData.get('description') ?? '').trim() || null,
@@ -66,6 +75,7 @@ export async function savePromoCodeAction(formData: FormData) {
     discount_type: isFree ? 'comp' : String(formData.get('discountType') ?? 'percent'),
     discount_value: isFree ? 100 : Number(formData.get('discountValue') ?? 0),
     service_restrictions: isFree && restrictions.length === 0 ? ['exterior-wash'] : restrictions,
+    rules,
     starts_at: String(formData.get('startsAt') ?? '').trim() || null,
     ends_at: String(formData.get('endsAt') ?? '').trim() || null,
     max_uses: String(formData.get('maxUses') ?? '').trim() ? Number(formData.get('maxUses')) : null,

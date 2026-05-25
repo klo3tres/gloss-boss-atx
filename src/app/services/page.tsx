@@ -40,6 +40,8 @@ export default function ServicesPage() {
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [fleetEnabled, setFleetEnabled] = useState(false);
+  const [fleetBlurb, setFleetBlurb] = useState("");
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : emptyDeals;
@@ -68,6 +70,8 @@ export default function ServicesPage() {
         setDeals(data.deals ?? emptyDeals);
         setMultiCar(data.multiCar ?? null);
         setOffers(data.offers ?? []);
+        setFleetEnabled(Boolean(data.fleetServicesEnabled));
+        setFleetBlurb(String(data.fleetServicesBlurb ?? ""));
         setSchemaWarnings(data.schemaWarnings ?? []);
         setLoaded(true);
       })
@@ -208,6 +212,22 @@ export default function ServicesPage() {
                 </article>
               ))}
         </div>
+        ) : null}
+
+        {fleetEnabled ? (
+          <section className="mt-10 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6">
+            <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Fleet & business</p>
+            <h2 className="mt-2 text-2xl font-black uppercase text-white">Dealerships, fleets & commercial</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link href="/contact" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">
+                Request fleet quote
+              </Link>
+              <a href="tel:+15124812319" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
+                Call (512) 481-2319
+              </a>
+            </div>
+          </section>
         ) : null}
 
         <section className="mt-10 rounded-2xl border border-gold/20 bg-zinc-950 p-5">

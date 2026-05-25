@@ -338,3 +338,45 @@ export async function createLeadAction(formData: FormData) {
   revalidatePath('/tech');
   return { ok: true as const };
 }
+
+export async function bulkArchiveLeadsAction(formData: FormData) {
+  const ids = String(formData.get('leadIds') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return { ok: false as const, error: 'Select at least one lead.' };
+
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  const now = new Date().toISOString();
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ archived: true, archived_at: now, status: 'lost', updated_at: now })
+    .in('id', ids);
+
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath('/admin/leads');
+  return { ok: true as const, count: ids.length };
+}
+
+export async function bulkDeleteLeadsAction(formData: FormData) {
+  const ids = String(formData.get('leadIds') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return { ok: false as const, error: 'Select at least one lead.' };
+
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  const now = new Date().toISOString();
+  const { error } = await gate.supabase
+    .from('leads')
+    .update({ deleted_at: now, status: 'deleted', updated_at: now })
+    .in('id', ids);
+
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath('/admin/leads');
+  return { ok: true as const, count: ids.length };
+}

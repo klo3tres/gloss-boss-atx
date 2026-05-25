@@ -7,7 +7,6 @@ import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-ma
 import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
-import { syncVehiclesForCustomerRecord } from '@/lib/crm-vehicle-sync';
 import { workOrderPath } from '@/lib/work-order-links';
 
 export const dynamic = 'force-dynamic';
@@ -28,8 +27,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const { data: customer } = await admin.from('customers').select('*').eq('id', id).maybeSingle();
   if (!customer) notFound();
-
-  await syncVehiclesForCustomerRecord(admin, id);
 
   const c = customer as Record<string, unknown>;
 
