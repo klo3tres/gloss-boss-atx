@@ -15,3 +15,4 @@ public/assets/app-layout.css
 .DS_Store
 *.log
 npm-debug.log*
+tsconfig.tsbuildinfo 
