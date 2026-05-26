@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
+import { formatAppointmentLabel } from '@/lib/appointment-label';
 import { fetchJobMileageLogs } from '@/lib/operations-db';
 
 export const runtime = 'nodejs';
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
     roundTrip: number;
     gas: string;
     appointmentId: string;
+    appointmentLabel: string;
   };
 
   const parsed: Row[] = [];
@@ -78,6 +80,7 @@ export async function GET(request: Request) {
       roundTrip: miles * 2,
       gas: typeof r.gas_cost_cents === 'number' ? (r.gas_cost_cents / 100).toFixed(2) : '',
       appointmentId: String(r.appointment_id ?? ''),
+      appointmentLabel: formatAppointmentLabel(appt),
     });
   }
 
@@ -86,6 +89,7 @@ export async function GET(request: Request) {
   const header = [
     'Month',
     'Date',
+    'Appointment',
     'Customer',
     'Vehicle',
     'Address',
@@ -100,6 +104,7 @@ export async function GET(request: Request) {
       [
         row.monthKey,
         row.date,
+        row.appointmentLabel,
         row.customer,
         row.vehicle,
         row.address,

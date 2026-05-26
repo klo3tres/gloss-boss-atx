@@ -91,18 +91,24 @@ export async function testNotificationSendAction(formData: FormData): Promise<{ 
     };
   }
 
-  const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+  const { getResendEnvStatus, sendResendHtml } = await import('@/lib/email-send');
   const { glossBossEmailLayout } = await import('@/lib/email/templates/layout');
-  if (!resendConfigured()) {
+  const resendEnv = getResendEnvStatus();
+  if (!resendEnv.ready) {
+    const detail = resendEnv.missing.length
+      ? `Missing: ${resendEnv.missing.join(', ')}. Add to .env.local and restart the dev server.`
+      : 'Resend not configured.';
     await admin.from('notification_outbox').insert({
       kind: 'test_send',
       channel: 'email',
       status: 'skipped',
-      skipped_reason: 'Resend not configured',
-      payload: { to },
+      skipped_reason: detail,
+      payload: { to, resendEnv },
       created_at: new Date().toISOString(),
     });
-    return { message: 'Email skipped — set RESEND_API_KEY and RESEND_FROM_EMAIL.' };
+    return {
+      message: `Email skipped — ${detail} RESEND_API_KEY: ${resendEnv.apiKeySet ? 'set' : 'missing'}. RESEND_FROM_EMAIL: ${resendEnv.fromEmailSet ? resendEnv.fromEmail : 'missing'}.`,
+    };
   }
   const { GLOSS_BOSS_SUPPORT_EMAIL } = await import('@/lib/branding');
   const html = glossBossEmailLayout({

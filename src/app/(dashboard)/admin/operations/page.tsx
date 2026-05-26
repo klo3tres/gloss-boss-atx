@@ -1,5 +1,6 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { OperationsDashboardClient } from '@/components/admin/operations-dashboard-client';
+import { formatAppointmentLabel } from '@/lib/appointment-label';
 import { DEFAULT_FLEET_PRICING, parseFleetPricing } from '@/lib/fleet-pricing';
 import { fetchBusinessExpenses, fetchJobMileageLogs } from '@/lib/operations-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -62,15 +63,18 @@ export default async function AdminOperationsPage() {
       ? [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', ')
       : '';
     const miles = typeof r.total_miles === 'number' ? r.total_miles : typeof r.estimated_miles === 'number' ? r.estimated_miles : typeof r.miles === 'number' ? r.miles : 0;
+    const loggedAt = r.created_at ?? r.logged_on;
     return {
       ...r,
       customer_name: appt?.guest_name ?? '—',
       vehicle: appt?.vehicle_description ?? '—',
+      appointment_label: formatAppointmentLabel(appt),
       address: addr || '—',
       miles_one_way: miles,
       round_trip_miles: miles * 2,
       work_order_href: r.appointment_id ? `/tech/work-orders/${String(r.appointment_id)}?shell=admin` : null,
-      logged_at: r.created_at ?? r.logged_on,
+      logged_at: loggedAt,
+      logged_date: loggedAt ? String(loggedAt).slice(0, 10) : '—',
     };
   });
   const expenseTotal = expenses.reduce((s, r) => s + (typeof r.amount_cents === 'number' ? r.amount_cents : 0), 0);

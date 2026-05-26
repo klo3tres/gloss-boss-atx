@@ -177,21 +177,14 @@ export async function notifyJobCompletedPlaceholder(
   }
 }
 
-export async function notifyBusinessNewBookingQueued(params: {
-  guestName: string;
-  guestEmail: string;
-  guestPhone: string;
-  whenIso: string;
-  totalCents: number;
-  depositCents: number;
-  appointmentId: string;
-  vehicles: string;
-  bookingNumber?: string | null;
-  serviceAddress?: string | null;
-  comped?: boolean;
-}): Promise<void> {
+export async function notifyBusinessNewBookingQueued(
+  params: Parameters<typeof notifyBusinessNewBookingFull>[0],
+): Promise<void> {
   try {
-    await notifyBusinessNewBookingFull(params);
+    await notifyBusinessNewBookingFull({
+      eventKind: params.comped ? 'free_booking' : params.eventKind ?? 'new_booking',
+      ...params,
+    });
   } catch (e) {
     console.warn('[notify] business_booking', e);
   }

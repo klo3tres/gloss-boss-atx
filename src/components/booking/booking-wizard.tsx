@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { Car, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
 import { getLocalFallbackCatalog, mergeServicesWithPricesStable, servicesHaveQuotesForBooking } from '@/lib/catalog-fallback';
 import { isOfferWithinSchedule, offerHasDiscount, type SiteDataOfferCard } from '@/lib/public-site-data';
@@ -104,7 +104,8 @@ export function BookingWizard() {
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromoCode, setAppliedPromoCode] = useState('');
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
-  const [allowFreeTestPromo, setAllowFreeTestPromo] = useState(false);
+  /** From /api/public/site-settings — mirrors FREE row enabled (admin reads promo_codes). */
+  const [freePromoEnabledOnServer, setFreePromoEnabledOnServer] = useState(false);
   const [promoComped, setPromoComped] = useState(false);
   const [promoQuoteFinalCents, setPromoQuoteFinalCents] = useState<number | null>(null);
   const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
@@ -380,7 +381,7 @@ export function BookingWizard() {
       })
       .then((data) => {
         if (cancelled || !data?.bookingAvailability) return;
-        setAllowFreeTestPromo(data.allowFreeTestPromo === true);
+        setFreePromoEnabledOnServer(data.allowFreeTestPromo === true);
         const b = data.bookingAvailability;
         setBookingRules({
           ...DEFAULT_BOOKING_AVAILABILITY,
@@ -756,7 +757,7 @@ export function BookingWizard() {
     checkoutPhase,
   ]);
 
-  const applyPromo = async () => {
+  const applyPromo = useCallback(async () => {
     const code = promoCode.trim().toUpperCase();
     setPromoMessage(null);
     if (!code) {
@@ -779,7 +780,6 @@ export function BookingWizard() {
         body: JSON.stringify({
           promoCode: code,
           paymentChoice,
-          allowFreeTestPromo,
           offerId: claimedOfferSnap?.id,
           lines: bookingLines.map((l) => ({
             serviceSlug: l.serviceSlug,
@@ -816,7 +816,25 @@ export function BookingWizard() {
       setAppliedPromoCode('');
       setPromoMessage('Could not reach promo service. Try again.');
     }
-  };
+  }, [
+    promoCode,
+    bookingLines,
+    paymentChoice,
+    claimedOfferSnap?.id,
+    allAddOnSlugs,
+  ]);
+
+  useEffect(() => {
+    if (!freePromoEnabledOnServer) return;
+    const code = promoCode.trim().toUpperCase();
+    if (code !== 'FREE') return;
+    if (appliedPromoCode === 'FREE' && promoComped) return;
+    if (bookingLines.length === 0) return;
+    const t = window.setTimeout(() => {
+      void applyPromo();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [freePromoEnabledOnServer, promoCode, bookingLines.length, appliedPromoCode, promoComped, applyPromo]);
 
   const startStripeCheckout = async (bookingJson: SavedBookingRef & { accessToken: string }) => {
     setCheckoutPhase('creating_checkout');
@@ -868,21 +886,27 @@ export function BookingWizard() {
         ok?: boolean;
       };
 
-      if (checkoutJson.skipPayment && (checkoutJson.appointmentId || checkoutJson.fallbackBookingId)) {
-        const q = new URLSearchParams({ token: checkoutJson.accessToken ?? bookingJson.accessToken ?? '' });
-        if (checkoutJson.fallbackBookingId || bookingJson.fallbackBookingId) {
-          q.set('fallback_booking_id', checkoutJson.fallbackBookingId ?? bookingJson.fallbackBookingId ?? '');
-        }
-        if (checkoutJson.appointmentId ?? bookingJson.appointmentId) {
-          q.set('appointment_id', checkoutJson.appointmentId ?? bookingJson.appointmentId ?? '');
-        }
-        window.location.href = `/book/pending?${q.toString()}`;
+      if (checkoutJson.skipPayment) {
+        console.warn('[booking-wizard] unexpected skipPayment from checkout API', checkoutJson.code);
+        setCheckoutPhase('checkout_failed');
+        setCheckoutError(
+          checkoutJson.customerMessage ??
+            checkoutJson.message ??
+            checkoutJson.error ??
+            'Card checkout is unavailable. Your booking is saved — try Pay later or call (512) 481-2319.',
+        );
+        setSubmitting(false);
         return;
       }
 
-      if (!checkoutJson.url) {
+      if (!checkoutRes.ok || !checkoutJson.url) {
         setCheckoutPhase('checkout_failed');
-        setCheckoutError(checkoutJson.customerMessage ?? checkoutJson.message ?? checkoutJson.error ?? CHECKOUT_FAIL_COPY);
+        const stripeMsg =
+          checkoutJson.code === 'STRIPE_NOT_CONFIGURED'
+            ? 'Stripe is not configured on the server. Add STRIPE_SECRET_KEY in production env, or use Pay later.'
+            : checkoutJson.customerMessage ?? checkoutJson.message ?? checkoutJson.error ?? CHECKOUT_FAIL_COPY;
+        console.error('[booking-wizard] checkout failed', checkoutJson.code, stripeMsg);
+        setCheckoutError(stripeMsg);
         setSubmitting(false);
         return;
       }
@@ -1094,7 +1118,7 @@ export function BookingWizard() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className='space-y-8'>
+    <form onSubmit={handleSubmit} className='gb-booking-form space-y-8 overflow-x-hidden pb-28 lg:pb-8'>
       {draftExpiredNotice ? (
         <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
           Your old booking draft expired. Start fresh — we kept your name and email.
@@ -1157,8 +1181,8 @@ export function BookingWizard() {
         </p>
       ) : null}
 
-      <div className='grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]'>
-        <div className='space-y-8'>
+      <div className='grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,280px)]'>
+        <div className='min-w-0 space-y-8'>
           <section>
             <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>1. Package (vehicle 1)</p>
             <h2 className='mt-2 text-lg font-black uppercase text-white'>Select your detail</h2>
@@ -1514,10 +1538,12 @@ export function BookingWizard() {
                 <p className={clsx('mt-2 rounded-lg border p-2 text-xs font-semibold', appliedPromoCode === 'FREE' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100')}>
                   {promoMessage}
                 </p>
-              ) : promoCode.trim().toUpperCase() === 'FREE' ? (
+              ) : promoCode.trim().toUpperCase() === 'FREE' && !freePromoEnabledOnServer ? (
                 <p className='mt-2 text-xs text-amber-200'>
-                  Enable FREE in Admin → Promotions (FREE row), then tap Apply. Total becomes $0.00 and Stripe is skipped.
+                  FREE promo is off. In Admin → Promotions, enable the FREE row and save, then refresh this page.
                 </p>
+              ) : promoCode.trim().toUpperCase() === 'FREE' && freePromoEnabledOnServer && !freePromoEligible ? (
+                <p className='mt-2 text-xs text-emerald-200'>FREE is on — applying… total will be $0.00.</p>
               ) : null}
             </label>
           </section>
@@ -1582,9 +1608,9 @@ export function BookingWizard() {
             })}
             {priceSummary?.kind === 'ok' ? (
               <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
-                {freePromoRequested ? (
+                {freePromoEligible ? (
                   <p className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs font-bold text-emerald-100'>
-                    FREE test comp applied. Stripe will be bypassed for this Sedan Exterior Wash.
+                    Promo FREE applied — $0.00 total. Stripe skipped; you will continue to agreement signing.
                   </p>
                 ) : null}
                 <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
@@ -1677,6 +1703,32 @@ export function BookingWizard() {
           </button>
         </aside>
       </div>
+
+      {priceSummary?.kind === 'ok' ? (
+        <div
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 backdrop-blur-md lg:hidden'
+          role='status'
+          aria-live='polite'
+        >
+          <div className='mx-auto flex max-w-5xl items-center justify-between gap-3'>
+            <div className='min-w-0'>
+              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Total</p>
+              <p className='text-lg font-black tabular-nums text-white'>
+                ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
+              </p>
+              <p className='text-[10px] text-zinc-400'>
+                Deposit ${(priceSummary.breakdown.depositCents / 100).toFixed(2)} ·{' '}
+                {paymentChoice === 'full' || freePromoEligible ? 'Pay full' : 'Pay deposit'}
+              </p>
+            </div>
+            {freePromoEligible ? (
+              <span className='shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[10px] font-bold uppercase text-emerald-200'>
+                FREE
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }

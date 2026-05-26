@@ -7,8 +7,8 @@ export const metadata = {
 
 export default function BookPage() {
   return (
-    <main className='gb-luxury-page gb-booking-wizard min-h-screen px-4 py-24 text-foreground sm:px-6'>
-      <div className='mx-auto w-full max-w-5xl'>
+    <main className='gb-luxury-page gb-booking-wizard min-h-screen overflow-x-hidden px-4 py-24 text-foreground sm:px-6'>
+      <div className='mx-auto w-full max-w-5xl min-w-0'>
         <p className='gb-luxury-eyebrow'>Reserve your detail</p>
         <h1 className='gb-display-serif mt-2 text-3xl font-black uppercase tracking-tight sm:text-5xl'>
           Book <span className='text-gold'>Gloss Boss ATX</span>

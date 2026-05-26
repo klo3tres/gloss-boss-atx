@@ -1,6 +1,6 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { NotificationCenterClient } from '@/components/admin/notification-center-client';
-import { resendConfigured, twilioConfigured } from '@/lib/email-send';
+import { getResendEnvStatus, resendConfigured, twilioConfigured } from '@/lib/email-send';
 import { normalizeNotificationTemplateRow } from '@/lib/notification-template-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -63,6 +63,7 @@ export default async function AdminNotificationsPage() {
         templates={templateRows}
         outbox={outboxRows}
         resendOk={resendConfigured()}
+        resendEnv={getResendEnvStatus()}
         twilioOk={twilioConfigured()}
       />
     </DashboardShell>

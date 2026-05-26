@@ -516,7 +516,21 @@ export async function processCheckoutSessionCompleted(params: {
   if (!admin) return;
 
   if (session.metadata?.kind === 'gift_card') {
-    console.info('[checkout] gift card purchase completed', session.id, session.amount_total);
+    const amount = session.amount_total ?? Number(session.metadata?.amount_cents) ?? 0;
+    console.info('[checkout] gift card purchase completed', session.id, amount);
+    try {
+      const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+      await notifyOwnerBookingEvent({
+        kind: 'gift_card',
+        guestEmail: session.customer_details?.email ?? session.customer_email ?? '—',
+        guestName: session.customer_details?.name ?? 'Gift card buyer',
+        totalCents: amount,
+        paidCents: amount,
+        extraNote: `Gift card checkout ${session.id}`,
+      });
+    } catch (e) {
+      console.warn('[checkout] gift card owner notify', e);
+    }
     return;
   }
 

@@ -47,15 +47,25 @@ const DEFAULTS: Array<[string, string, string, string]> = [
   ['reschedule_cancel', 'sms', 'Reschedule / Cancel', 'Gloss Boss ATX: Appointment update for {{appointment_time}}.'],
 ];
 
+type ResendEnv = {
+  apiKeySet: boolean;
+  fromEmailSet: boolean;
+  fromEmail: string;
+  ready: boolean;
+  missing: string[];
+};
+
 export function NotificationCenterClient({
   templates,
   outbox,
   resendOk,
+  resendEnv,
   twilioOk,
 }: {
   templates: TemplateRow[];
   outbox: OutboxRow[];
   resendOk: boolean;
+  resendEnv: ResendEnv;
   twilioOk: boolean;
 }) {
   const router = useRouter();
@@ -190,6 +200,20 @@ export function NotificationCenterClient({
           className='gb-glass max-w-lg rounded-3xl border border-gold/20 p-5'
         >
           <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Test send</p>
+          <div
+            className={`mt-3 rounded-xl border px-3 py-2 text-xs ${resendEnv.ready ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'}`}
+          >
+            <p className='font-bold'>Resend (email test)</p>
+            <p className='mt-1'>
+              RESEND_API_KEY: {resendEnv.apiKeySet ? 'set' : 'missing'} · RESEND_FROM_EMAIL:{' '}
+              {resendEnv.fromEmailSet ? resendEnv.fromEmail : 'missing'}
+            </p>
+            {!resendEnv.ready ? (
+              <p className='mt-1'>
+                Email tests will be skipped until both are in <code className='text-amber-200'>.env.local</code> and the server is restarted.
+              </p>
+            ) : null}
+          </div>
           <div className='mt-4 grid gap-3'>
             <select name='channel' defaultValue='email' className='gb-input'>
               <option value='email'>Email</option>
@@ -214,8 +238,8 @@ export function NotificationCenterClient({
               {resendOk ? 'Configured' : 'Not configured — emails log as skipped/failed'}
             </p>
             <dl className='mt-3 space-y-1 text-xs text-zinc-400'>
-              <div>RESEND_API_KEY: {process.env.NEXT_PUBLIC_RESEND_CONFIGURED === '1' || resendOk ? 'set (server)' : 'missing'}</div>
-              <div>RESEND_FROM_EMAIL: see Integrations page</div>
+              <div>RESEND_API_KEY: {resendEnv.apiKeySet ? 'set' : 'missing'}</div>
+              <div>RESEND_FROM_EMAIL: {resendEnv.fromEmailSet ? resendEnv.fromEmail : 'missing'}</div>
             </dl>
             <p className='mt-3 text-xs text-zinc-500'>Test sends must return provider id in outbox before showing success. Webhook delivery may show accepted → delivered later.</p>
             <a href='/admin/integrations' className='mt-3 inline-block text-xs font-bold uppercase text-gold-soft underline'>

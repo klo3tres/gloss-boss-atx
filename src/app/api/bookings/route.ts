@@ -489,6 +489,21 @@ export async function POST(request: Request) {
         appointmentId: appointment.id,
       }).catch(() => {});
 
+      void notifyBusinessNewBookingQueued({
+        eventKind: 'free_booking',
+        guestName: guestName.trim(),
+        guestEmail: emailNorm,
+        guestPhone: phoneDigits,
+        whenIso: scheduled.toISOString(),
+        totalCents: priced.finalTotalCents,
+        depositCents: 0,
+        balanceCents: 0,
+        appointmentId: appointment.id,
+        vehicles: vehicleDescriptionJoined,
+        serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
+        comped: true,
+      }).catch((e) => console.warn('[api/bookings] FREE owner notify', e));
+
       return NextResponse.json({
         appointmentId: appointment.id,
         accessToken: appointment.access_token,
@@ -501,18 +516,21 @@ export async function POST(request: Request) {
 
     /* Booking confirmation + deposit receipt emails send after Stripe checkout via notifyBookingCheckoutPaid. */
 
+    const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
     void notifyBusinessNewBookingQueued({
+      eventKind: hasCeramic ? 'ceramic_quote' : 'new_booking',
       guestName: guestName.trim(),
       guestEmail: emailNorm,
       guestPhone: phoneDigits,
       whenIso: scheduled.toISOString(),
       totalCents: priced.finalTotalCents,
       depositCents: depositAmountCents,
+      balanceCents: Math.max(0, priced.finalTotalCents - depositAmountCents),
       appointmentId: appointment.id,
       vehicles: vehicleDescriptionJoined,
       serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
-      comped: freePromoApplied,
-    }).catch(() => {});
+      comped: false,
+    }).catch((e) => console.warn('[api/bookings] owner notify', e));
 
     return NextResponse.json({
       appointmentId: appointment.id,

@@ -39,6 +39,21 @@ export async function POST(request: Request) {
     } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const status = event.type === 'payment_intent.succeeded' ? 'succeeded' : 'failed';
+      if (event.type === 'payment_intent.payment_failed') {
+        try {
+          const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+          await notifyOwnerBookingEvent({
+            kind: 'payment_failed',
+            appointmentId: typeof pi.metadata?.appointment_id === 'string' ? pi.metadata.appointment_id : undefined,
+            guestEmail: pi.receipt_email ?? '—',
+            totalCents: pi.amount,
+            paidCents: 0,
+            extraNote: `PaymentIntent ${pi.id} failed: ${pi.last_payment_error?.message ?? 'unknown'}`,
+          });
+        } catch (e) {
+          console.warn('[stripe/webhook] payment_failed owner notify', e);
+        }
+      }
       const sid = typeof pi.metadata?.checkout_session_id === 'string' ? pi.metadata.checkout_session_id : null;
       if (admin) {
         const row = {

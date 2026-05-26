@@ -5,7 +5,23 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { applyCanonicalPriceSheet } from '@/lib/admin/ensure-canonical-service-catalog';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+
+export async function applyCanonicalPriceSheetAction() {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) {
+    redirect('/admin/services?priceErr=Unauthorized');
+  }
+  const admin = tryCreateAdminSupabase();
+  if (!admin) redirect('/admin/services?priceErr=Database%20unavailable');
+  const r = await applyCanonicalPriceSheet(admin);
+  if (!r.ok) redirect(`/admin/services?priceErr=${encodeURIComponent(r.error ?? 'Apply failed')}`);
+  revalidatePath('/admin/services');
+  revalidatePath('/book');
+  revalidatePath('/api/public/site-data');
+  redirect('/admin/services?priceSaved=1');
+}
 
 export async function updateServicePriceCentsAction(formData: FormData) {
   const priceId = String(formData.get('priceId') ?? '').trim();
@@ -24,10 +40,11 @@ export async function updateServicePriceCentsAction(formData: FormData) {
   const client = admin ?? supabase;
   const { error } = await client.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
   if (error) {
-    console.error('[admin/services] price update', error.message);
+    console.error('[admin/services] price update failed', { priceId, cents, message: error.message });
     redirect(`/admin/services?priceErr=${encodeURIComponent(error.message)}`);
   }
 
+  console.info('[admin/services] price saved', { priceId, cents });
   revalidatePath('/admin/services');
   revalidatePath('/admin/pricing');
   revalidatePath('/admin');

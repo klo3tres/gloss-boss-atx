@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { updateServiceActiveAction, updateServicePriceCentsAction } from '../service-pricing-actions';
+import { applyCanonicalPriceSheetAction, updateServiceActiveAction, updateServicePriceCentsAction } from '../service-pricing-actions';
 import { defaultServicePackages } from '@/lib/site-config';
 import { filterServicePriceRowsForAdminUi } from '@/lib/admin/filter-ui-price-rows';
 import { adminDisplayTitleForSlug, CERAMIC_COATING_SLUG } from '@/lib/admin/canonical-services';
@@ -76,6 +76,14 @@ export default async function AdminServicesPricingPage({
           Catalog seed note: {seedMsg} Check <code className='text-gold-soft'>SUPABASE_SERVICE_ROLE_KEY</code> for automatic seeding.
         </p>
       ) : null}
+      <form action={applyCanonicalPriceSheetAction} className='mb-4'>
+        <button
+          type='submit'
+          className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'
+        >
+          Apply default price sheet (Interior $165/$195/$225 · Wash $75/$90/$110 · etc.)
+        </button>
+      </form>
       {resolvedSearchParams.priceSaved === '1' ? (
         <p className='mb-4 rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-100'>
           Price saved. Public booking and services pages were revalidated.

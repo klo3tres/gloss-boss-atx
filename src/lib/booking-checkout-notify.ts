@@ -5,6 +5,7 @@ import { paymentReceivedEmailHtml } from '@/lib/email/templates/transactional';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { sendCustomerSms } from '@/lib/sms-send';
+import { notifyOwnerBookingEvent } from '@/lib/owner-alerts';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -175,5 +176,24 @@ export async function notifyBookingCheckoutPaid(params: {
     } catch (e) {
       console.warn('[booking-checkout-notify] sms', e);
     }
+  }
+
+  try {
+    await notifyOwnerBookingEvent({
+      kind: isFull ? 'paid_full' : 'deposit_paid',
+      appointmentId,
+      guestName,
+      guestEmail: email,
+      guestPhone: phone,
+      whenIso,
+      totalCents,
+      depositCents,
+      balanceCents: remainingCents,
+      paidCents: paidCents,
+      vehicles,
+      serviceAddress: addr,
+    });
+  } catch (e) {
+    console.warn('[booking-checkout-notify] owner alert', e);
   }
 }

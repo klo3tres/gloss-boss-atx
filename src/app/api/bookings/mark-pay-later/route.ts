@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     if (fallbackBookingId) {
       const { data: fb, error } = await admin
         .from('booking_fallbacks')
-        .select('id, access_token, guest_email, guest_name, guest_phone, scheduled_start, base_price_cents, deposit_amount_cents')
+        .select(
+          'id, access_token, guest_email, guest_name, guest_phone, scheduled_start, base_price_cents, deposit_amount_cents, balance_due_cents, vehicle_description, service_address, service_city, service_state, service_zip',
+        )
         .eq('id', fallbackBookingId)
         .maybeSingle();
       if (error || !fb || fb.access_token !== accessToken) {
@@ -65,7 +67,7 @@ export async function POST(request: Request) {
     const { data: appt, error } = await admin
       .from('appointments')
       .select(
-        'id, access_token, guest_email, guest_name, guest_phone, scheduled_start, base_price_cents, deposit_amount_cents, balance_due_cents, payment_choice',
+        'id, access_token, guest_email, guest_name, guest_phone, scheduled_start, base_price_cents, deposit_amount_cents, balance_due_cents, payment_choice, vehicle_description, service_address, service_city, service_state, service_zip',
       )
       .eq('id', appointmentId)
       .maybeSingle();
@@ -91,15 +93,19 @@ export async function POST(request: Request) {
     });
 
     void notifyBusinessNewBookingQueued({
+      eventKind: 'pay_later',
       guestName: String(appt.guest_name ?? 'Customer'),
       guestEmail: String(appt.guest_email ?? ''),
       guestPhone: String(appt.guest_phone ?? ''),
       whenIso: String(appt.scheduled_start ?? new Date().toISOString()),
       totalCents: typeof appt.base_price_cents === 'number' ? appt.base_price_cents : 0,
       depositCents: typeof appt.deposit_amount_cents === 'number' ? appt.deposit_amount_cents : 0,
+      balanceCents: typeof appt.balance_due_cents === 'number' ? appt.balance_due_cents : undefined,
       appointmentId: appointmentId!,
-      vehicles: 'Pay later — payment link pending',
-    }).catch(() => {});
+      vehicles: String(appt.vehicle_description ?? 'Pay later — payment pending'),
+      serviceAddress: [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', '),
+      extraNote: 'Customer chose pay later at booking.',
+    }).catch((e) => console.warn('[mark-pay-later] owner notify', e));
 
     return NextResponse.json({
       ok: true,

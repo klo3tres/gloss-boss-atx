@@ -244,6 +244,18 @@ body {
 
 .gb-booking-wizard {
   background: linear-gradient(180deg, rgba(10, 10, 10, 0.98) 0%, #000 40%);
+  overflow-x: hidden;
+}
+
+.gb-booking-form {
+  max-width: 100%;
+}
+
+.gb-booking-form input,
+.gb-booking-form select,
+.gb-booking-form textarea,
+.gb-booking-form button {
+  max-width: 100%;
 }
 
 .gb-admin-table-wrap {

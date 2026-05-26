@@ -89,7 +89,7 @@ export async function fetchBookedBlocks(
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
     const status = str(r.status).toLowerCase();
-    if (status === 'cancelled' || status === 'deleted' || status === 'test_comped') continue;
+    if (status === 'cancelled' || status === 'deleted') continue;
     const payStatus = str(r.payment_status).toLowerCase();
     if (payStatus === 'refunded' || payStatus === 'voided') continue;
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);

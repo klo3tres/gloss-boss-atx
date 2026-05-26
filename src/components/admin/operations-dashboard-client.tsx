@@ -214,8 +214,10 @@ export function OperationsDashboardClient({
                   <div className='flex flex-wrap items-start justify-between gap-2'>
                     <div>
                       <p className='font-bold text-white'>{String(r.customer_name ?? 'Customer')}</p>
+                      <p className='text-xs text-gold-soft/90'>{String(r.appointment_label ?? '—')}</p>
                       <p className='text-xs text-zinc-400'>{String(r.vehicle ?? 'Vehicle')}</p>
                       <p className='text-xs text-zinc-500'>{String(r.address ?? '')}</p>
+                      <p className='text-[10px] text-zinc-600'>Logged {String(r.logged_date ?? r.logged_at ?? '')}</p>
                       <p className='mt-1 text-xs text-gold-soft'>
                         One-way {String(r.miles_one_way ?? '—')} mi · Round-trip {String(r.round_trip_miles ?? '—')} mi
                         {typeof r.gas_cost_cents === 'number' ? ` · Gas ${money(r.gas_cost_cents)}` : ''}

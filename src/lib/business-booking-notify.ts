@@ -20,8 +20,35 @@ export function businessNotifyPhone(): string | null {
 }
 
 function adminWorkOrderUrl(appointmentId: string) {
+  if (appointmentId === '00000000-0000-0000-0000-000000000000') return `${appBaseUrl()}/admin`;
   return `${appBaseUrl()}/admin/work-orders/${appointmentId}`;
 }
+
+export type OwnerBookingEventKind =
+  | 'new_booking'
+  | 'free_booking'
+  | 'pay_later'
+  | 'deposit_paid'
+  | 'paid_full'
+  | 'quote_request'
+  | 'ceramic_quote'
+  | 'gift_card'
+  | 'payment_failed';
+
+const EVENT_COPY: Record<
+  OwnerBookingEventKind,
+  { headline: string; subjectPrefix: string; smsLead: string }
+> = {
+  new_booking: { headline: 'New booking received', subjectPrefix: 'New booking', smsLead: 'New booking' },
+  free_booking: { headline: 'FREE / comp booking', subjectPrefix: 'FREE booking', smsLead: 'FREE comp booking' },
+  pay_later: { headline: 'Pay later booking', subjectPrefix: 'Pay later booking', smsLead: 'Pay later booking' },
+  deposit_paid: { headline: 'Deposit received', subjectPrefix: 'Deposit paid', smsLead: 'Deposit paid' },
+  paid_full: { headline: 'Paid in full', subjectPrefix: 'Paid in full', smsLead: 'Paid in full' },
+  quote_request: { headline: 'Quote / contact request', subjectPrefix: 'Quote request', smsLead: 'Quote request' },
+  ceramic_quote: { headline: 'Ceramic coating inquiry', subjectPrefix: 'Ceramic quote', smsLead: 'Ceramic quote' },
+  gift_card: { headline: 'Gift card purchase', subjectPrefix: 'Gift card', smsLead: 'Gift card sold' },
+  payment_failed: { headline: 'Payment failed', subjectPrefix: 'Payment failed', smsLead: 'Payment FAILED' },
+};
 
 async function insertOutbox(
   admin: SupabaseClient | null,
@@ -51,19 +78,23 @@ async function insertOutbox(
   }
 }
 
-/** Owner phone/SMS + email when a customer books — includes total and dashboard link. */
+/** Owner phone/SMS + email — branded, ICS link, work order link, outbox. */
 export async function notifyBusinessNewBookingFull(params: {
+  eventKind?: OwnerBookingEventKind;
   guestName: string;
   guestEmail: string;
   guestPhone: string;
   whenIso: string;
   totalCents: number;
   depositCents: number;
+  balanceCents?: number;
+  paidCents?: number;
   appointmentId: string;
   vehicles: string;
   bookingNumber?: string | null;
   serviceAddress?: string | null;
   comped?: boolean;
+  extraNote?: string | null;
 }): Promise<void> {
   const admin = tryCreateAdminSupabase();
   const whenLabel = new Date(params.whenIso).toLocaleString('en-US', {
@@ -71,19 +102,32 @@ export async function notifyBusinessNewBookingFull(params: {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const kind = params.eventKind ?? (params.comped ? 'free_booking' : 'new_booking');
+  const copy = EVENT_COPY[kind];
   const dashUrl = adminWorkOrderUrl(params.appointmentId);
-  const icsUrl = `${appBaseUrl()}/api/calendar/appointment/${params.appointmentId}`;
-  const ref = params.bookingNumber?.trim() || params.appointmentId.slice(0, 8).toUpperCase();
+  const icsUrl =
+    params.appointmentId !== '00000000-0000-0000-0000-000000000000'
+      ? `${appBaseUrl()}/api/calendar/appointment/${params.appointmentId}`
+      : null;
+  const ref =
+    params.bookingNumber?.trim() ||
+    (params.appointmentId !== '00000000-0000-0000-0000-000000000000'
+      ? params.appointmentId.slice(0, 8).toUpperCase()
+      : 'ALERT');
   const total = money(params.totalCents);
   const deposit = money(params.depositCents);
+  const balance =
+    typeof params.balanceCents === 'number' ? money(params.balanceCents) : money(Math.max(0, params.totalCents - params.depositCents));
+  const paid = typeof params.paidCents === 'number' ? money(params.paidCents) : null;
   const addr = params.serviceAddress?.trim() || '';
 
   const smsBody = [
-    'Gloss Boss ATX — New booking',
+    `Gloss Boss ATX — ${copy.smsLead}`,
     `${params.guestName.trim() || 'Customer'}`,
     whenLabel,
-    `Total ${total} · Deposit ${deposit}`,
+    paid ? `Paid ${paid} · Total ${total} · Bal ${balance}` : `Total ${total} · Deposit ${deposit} · Bal ${balance}`,
     params.vehicles.slice(0, 60),
+    addr ? addr.slice(0, 40) : '',
     `View: ${dashUrl}`,
   ]
     .filter(Boolean)
@@ -134,17 +178,6 @@ export async function notifyBusinessNewBookingFull(params: {
   }
 
   const emailTo = businessNotifyDestination();
-  if (!emailTo) {
-    await insertOutbox(admin, {
-      appointment_id: params.appointmentId,
-      kind: 'admin_new_booking',
-      channel: 'email',
-      status: 'skipped',
-      skipped_reason: 'Set CONTACT_NOTIFY_EMAIL or BUSINESS_NOTIFY_EMAIL.',
-      payload: {},
-    });
-    return;
-  }
 
   if (!resendConfigured()) {
     await insertOutbox(admin, {
@@ -159,41 +192,42 @@ export async function notifyBusinessNewBookingFull(params: {
   }
 
   const inner = `
-    <p style="margin:0 0 16px;font-size:15px;color:#fafafa;">New online booking — open your dashboard to review.</p>
+    <p style="margin:0 0 16px;font-size:15px;color:#fafafa;">${copy.headline} — review in your dashboard.</p>
     <div style="border:1px solid #3f3f46;border-radius:10px;padding:16px;">
-      <p style="margin:0;font-size:12px;color:#fcd34d;text-transform:uppercase;letter-spacing:0.08em;">Booking ${ref}</p>
+      <p style="margin:0;font-size:12px;color:#fcd34d;text-transform:uppercase;letter-spacing:0.08em;">Ref ${ref}</p>
       <p style="margin:12px 0 0;font-size:16px;color:#fafafa;"><strong>${params.guestName}</strong></p>
       <p style="margin:8px 0 0;font-size:14px;color:#d4d4d8;">${params.guestEmail} · ${params.guestPhone}</p>
       <p style="margin:8px 0 0;font-size:14px;color:#a1a1aa;">When: ${whenLabel}</p>
-      <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Total ${total} · Deposit ${deposit}</p>
+      <p style="margin:8px 0 0;font-size:14px;color:#fcd34d;">Total ${total} · Deposit ${deposit} · Balance ${balance}${paid ? ` · Paid ${paid}` : ''}</p>
       <p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${params.vehicles}</p>
       ${addr ? `<p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${addr}</p>` : ''}
-      ${params.comped ? '<p style="margin:8px 0 0;font-size:13px;color:#86efac;">FREE / comp booking</p>' : ''}
+      ${params.comped ? '<p style="margin:8px 0 0;font-size:13px;color:#86efac;">FREE / comp — $0.00</p>' : ''}
+      ${params.extraNote ? `<p style="margin:8px 0 0;font-size:13px;color:#fcd34d;">${params.extraNote}</p>` : ''}
     </div>
-    <p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">Calendar: <a href="${icsUrl}" style="color:#fcd34d;">Add to calendar (.ics)</a> — Google Calendar API not required.</p>
+    ${icsUrl ? `<p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">Calendar: <a href="${icsUrl}" style="color:#fcd34d;">Add to calendar (.ics)</a> — Google Calendar API not required.</p>` : ''}
     <p style="margin:20px 0 0;text-align:center;">
       <a href="${dashUrl}" style="display:inline-block;padding:14px 28px;background:#d4a64d;color:#000;font-weight:800;text-decoration:none;border-radius:8px;font-size:14px;">Open work order</a>
     </p>`;
   const html = glossBossEmailLayout({
-    title: 'New booking',
-    preview: `New booking ${total}`,
-    headline: 'New booking received',
+    title: copy.headline,
+    preview: `${copy.subjectPrefix} ${total}`,
+    headline: copy.headline,
     bodyHtml: inner,
   });
 
   try {
     const sent = await sendResendHtml({
       to: emailTo,
-      subject: `Gloss Boss ATX — New booking ${ref}: ${params.guestName}`,
+      subject: `Gloss Boss ATX — ${copy.subjectPrefix} ${ref}: ${params.guestName}`,
       html,
     });
     await insertOutbox(admin, {
       appointment_id: params.appointmentId,
-      kind: 'admin_new_booking',
+      kind,
       channel: 'email',
       status: sent.ok ? 'sent' : 'failed',
       error_message: sent.ok ? null : sent.error ?? 'send failed',
-      payload: { to: emailTo, dashboard_url: dashUrl, ics_url: icsUrl, calendar_fallback: true },
+      payload: { to: emailTo, dashboard_url: dashUrl, ics_url: icsUrl, calendar_fallback: Boolean(icsUrl), event_kind: kind },
     });
   } catch (e) {
     await insertOutbox(admin, {

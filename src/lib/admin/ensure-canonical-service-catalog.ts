@@ -36,7 +36,7 @@ const ROWS: Array<{
     title: 'Interior Detail',
     subtitle: 'Deep interior reset package',
     sort_order: 30,
-    sedan_cents: 17500,
+    sedan_cents: 16500,
     suv_cents: 19500,
     truck_cents: 22500,
   },
@@ -103,11 +103,8 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
           .eq('vehicle_class', tier.vehicle_class)
           .maybeSingle();
         if (pr?.id) {
-          if (row.slug === 'ceramic-coating') {
-            /* Preserve admin-set ceramic prices — seed defaults are 0 (quote). */
-            continue;
-          }
-          await admin.from('service_prices').update({ price_cents: tier.cents }).eq('id', pr.id);
+          /* Preserve admin-edited prices — only insert missing rows on seed. */
+          continue;
         } else {
           await admin.from('service_prices').insert({
             service_id: serviceId,
@@ -120,5 +117,42 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'ensure catalog failed' };
+  }
+}
+
+/** Force-apply canonical price sheet — overwrites standard package cents (not ceramic). */
+export async function applyCanonicalPriceSheet(admin: SupabaseClient): Promise<{ ok: boolean; error?: string }> {
+  try {
+    for (const row of ROWS) {
+      if (row.slug === 'ceramic-coating') continue;
+      const { data: existing } = await admin.from('services').select('id').eq('slug', row.slug).maybeSingle();
+      const serviceId = existing?.id as string | undefined;
+      if (!serviceId) continue;
+      for (const tier of [
+        { vehicle_class: 'sedan', cents: row.sedan_cents },
+        { vehicle_class: 'suv', cents: row.suv_cents },
+        { vehicle_class: 'truck', cents: row.truck_cents },
+        { vehicle_class: 'suv_truck', cents: row.suv_cents },
+      ] as const) {
+        const { data: pr } = await admin
+          .from('service_prices')
+          .select('id')
+          .eq('service_id', serviceId)
+          .eq('vehicle_class', tier.vehicle_class)
+          .maybeSingle();
+        if (pr?.id) {
+          await admin.from('service_prices').update({ price_cents: tier.cents }).eq('id', pr.id);
+        } else {
+          await admin.from('service_prices').insert({
+            service_id: serviceId,
+            vehicle_class: tier.vehicle_class,
+            price_cents: tier.cents,
+          });
+        }
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'apply sheet failed' };
   }
 }

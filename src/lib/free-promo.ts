@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
+}
+
+/** Public routes: same source as validate-promo (service role — anon cannot read promo_codes). */
+export async function getPublicFreePromoEnabled(): Promise<boolean> {
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return false;
+  return isFreePromoEnabled(admin);
 }
 
 /** Single source of truth: FREE promo is on when the FREE row is enabled (not a separate site_settings gate). */

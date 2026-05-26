@@ -21,6 +21,30 @@ export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
 }
 
+export type ResendEnvStatus = {
+  apiKeySet: boolean;
+  fromEmailSet: boolean;
+  fromEmail: string;
+  ready: boolean;
+  missing: string[];
+};
+
+export function getResendEnvStatus(): ResendEnvStatus {
+  const apiKeySet = Boolean(process.env.RESEND_API_KEY?.trim());
+  const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() ?? '';
+  const fromEmailSet = Boolean(fromEmail);
+  const missing: string[] = [];
+  if (!apiKeySet) missing.push('RESEND_API_KEY');
+  if (!fromEmailSet) missing.push('RESEND_FROM_EMAIL');
+  return {
+    apiKeySet,
+    fromEmailSet,
+    fromEmail: fromEmailSet ? fromEmail : '(not set)',
+    ready: apiKeySet && fromEmailSet,
+    missing,
+  };
+}
+
 export async function sendResendHtml(params: {
   to: string;
   subject: string;
@@ -267,10 +291,12 @@ export async function sendJobCompletedEmailIfConfigured(params: {
   await sendResendHtml({ to, subject: 'Gloss Boss ATX — Service complete', html });
 }
 
-export function businessNotifyDestination(): string | null {
+const DEFAULT_OWNER_EMAIL = 'glossbossatx1@gmail.com';
+
+export function businessNotifyDestination(): string {
   const a = process.env.CONTACT_NOTIFY_EMAIL?.trim();
   const b = process.env.BUSINESS_NOTIFY_EMAIL?.trim();
-  return a || b || null;
+  return a || b || DEFAULT_OWNER_EMAIL;
 }
 
 export async function sendBusinessNewBookingEmailIfConfigured(params: {
