@@ -241,7 +241,11 @@ export function WorkOrderInvoiceBuilder({
         taxable: form.taxable,
       });
       setForm(emptyForm());
-      setSaveMsg({ tone: 'ok', text: 'Line item saved — totals updated.' });
+      setSaveMsg({ tone: 'ok', text: 'Line item saved — receipt rebuilt from latest totals.' });
+      const rebuildFd = new FormData();
+      if (appointmentId) rebuildFd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) rebuildFd.set('fallbackBookingId', fallbackBookingId);
+      await generateWorkOrderReceiptActionState(null, rebuildFd);
       await refreshPricing();
       router.refresh();
     } catch {
@@ -270,7 +274,11 @@ export function WorkOrderInvoiceBuilder({
         });
       }
       setDraftLines([]);
-      setSaveMsg({ tone: 'ok', text: `${draftLines.length} line item(s) saved.` });
+      setSaveMsg({ tone: 'ok', text: `${draftLines.length} line item(s) saved — receipt rebuilt.` });
+      const rebuildFd = new FormData();
+      if (appointmentId) rebuildFd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) rebuildFd.set('fallbackBookingId', fallbackBookingId);
+      await generateWorkOrderReceiptActionState(null, rebuildFd);
       await refreshPricing();
       router.refresh();
     } catch {

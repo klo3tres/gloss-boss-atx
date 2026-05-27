@@ -20,7 +20,14 @@ import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
 import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
 import { WorkOrderPricingPanel } from '@/components/tech/work-order-pricing-panel';
 import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-panel';
+import { AppointmentScheduleControls } from '@/components/admin/appointment-schedule-controls';
+import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
+
+function scrollToSection(id: string) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export type WorkOrderConsoleData = {
   id: string;
@@ -209,12 +216,14 @@ export function WorkOrderConsoleClient({
         timerRunning={Boolean(data.openTimerId)}
       />
       <motion.section
+        id='wo-overview'
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className='gb-premium-hero rounded-3xl px-5 py-6 sm:px-8 sm:py-8'
+        className='gb-invoice-card gb-premium-hero scroll-mt-36 rounded-3xl px-5 py-6 sm:px-8 sm:py-8'
       >
         <div className='flex flex-wrap gap-2'>
-          <PremiumBadge tone='gold'>{data.statusLabel}</PremiumBadge>
+          <PremiumBadge tone='gold'>WO #{data.canonicalId.slice(0, 8).toUpperCase()}</PremiumBadge>
+          <PremiumBadge tone='zinc'>{data.statusLabel}</PremiumBadge>
           <PremiumBadge tone={data.agreementSigned ? 'emerald' : 'amber'}>
             <FileSignature className='h-3 w-3' />
             {data.agreementSigned ? 'Signed' : 'Agreement'}
@@ -224,7 +233,10 @@ export function WorkOrderConsoleClient({
             {data.paymentComplete ? 'Paid' : data.paymentStatus}
           </PremiumBadge>
         </div>
-        <h1 className='mt-4 text-2xl font-black text-white sm:text-4xl'>{data.guestName}</h1>
+        <h1 className='mt-4 text-2xl font-black text-white sm:text-4xl'>
+          <span className='block text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500'>Work order</span>
+          <span className='mt-1 block'>{data.guestName}</span>
+        </h1>
         <p className='mt-2 text-sm font-semibold text-gold-soft'>{vehicleLine}</p>
         {data.fullAddress ? (
           <p className='mt-1 text-sm text-zinc-400'>{data.fullAddress}</p>
@@ -256,11 +268,27 @@ export function WorkOrderConsoleClient({
           <Link href={data.shellBackHref} className='rounded-xl border border-white/15 px-4 py-2.5 text-[10px] font-black uppercase text-zinc-300'>
             ← Back
           </Link>
+          <button
+            type='button'
+            onClick={() => scrollToSection('wo-timer')}
+            className='gb-premium-btn rounded-xl border border-emerald-500/45 bg-emerald-500/15 px-4 py-2.5 text-[10px] font-black uppercase text-emerald-100'
+          >
+            Timer
+          </button>
+          <button
+            type='button'
+            onClick={() => scrollToSection('wo-complete')}
+            className='gb-premium-btn rounded-xl border border-gold/50 bg-gold/15 px-4 py-2.5 text-[10px] font-black uppercase text-gold-soft'
+          >
+            Mark complete
+          </button>
         </div>
         <div className='mt-6'>
           <ProgressTracker steps={data.requirements} />
         </div>
       </motion.section>
+
+      <WorkOrderSectionTabs />
 
       <section id='wo-agreement' className='scroll-mt-28'>
         <WorkOrderCollapsible
@@ -494,6 +522,9 @@ export function WorkOrderConsoleClient({
         {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
           <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
         ) : null}
+        {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
+          <AppointmentScheduleControls appointmentId={jobId} scheduledStart={data.scheduledStartIso} />
+        ) : null}
 
         <div id='wo-payment' className='scroll-mt-28'>
         <WorkOrderCollapsible title='Payment & invoice' defaultOpen>
@@ -610,6 +641,7 @@ export function WorkOrderConsoleClient({
         </WorkOrderCollapsible>
         </div>
 
+        <div id='wo-notes' className='scroll-mt-32'>
         <WorkOrderCollapsible title='Notes' badge={String(data.notes.length)} defaultOpen={false}>
           {data.notes.length === 0 ? <p className='text-sm text-zinc-500'>No notes yet.</p> : null}
           <ul className='space-y-3'>
@@ -621,7 +653,9 @@ export function WorkOrderConsoleClient({
             ))}
           </ul>
         </WorkOrderCollapsible>
+        </div>
 
+        <div id='wo-complete' className='scroll-mt-32'>
         <WorkOrderCompletePanel
           jobId={jobId}
           isFallback={data.isFallback}
@@ -632,6 +666,7 @@ export function WorkOrderConsoleClient({
           guestEmail={data.guestEmail}
           agreementCaptureHref={data.agreementCaptureHref}
         />
+        </div>
       </section>
 
     </div>

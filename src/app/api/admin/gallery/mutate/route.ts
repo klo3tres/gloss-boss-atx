@@ -7,13 +7,15 @@ import {
   dbReorderGalleryStep,
   dbToggleGalleryFeatured,
   dbToggleGalleryPublished,
+  dbUpdateGalleryCaption,
 } from '@/lib/admin/gallery-db-mutations';
 
 export const runtime = 'nodejs';
 
 type Body = {
-  op: 'toggle-published' | 'toggle-featured' | 'delete' | 'reorder' | 'reorder-step';
+  op: 'toggle-published' | 'toggle-featured' | 'delete' | 'reorder' | 'reorder-step' | 'updateCaption';
   id?: string;
+  caption?: string;
   published?: boolean;
   featured?: boolean;
   order?: string[];
@@ -56,6 +58,13 @@ export async function POST(request: Request) {
     case 'reorder': {
       const order = Array.isArray(body.order) ? body.order.map((s) => String(s).trim()).filter(Boolean) : [];
       res = await dbReorderGalleryBulk(supabase, order);
+      break;
+    }
+    case 'updateCaption': {
+      const id = String(body.id ?? '').trim();
+      const caption = String(body.caption ?? '');
+      if (!id) return NextResponse.json({ ok: false, error: 'Missing id' }, { status: 400 });
+      res = await dbUpdateGalleryCaption(supabase, id, caption);
       break;
     }
     case 'reorder-step': {

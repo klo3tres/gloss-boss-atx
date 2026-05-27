@@ -19,6 +19,7 @@ import {
 } from "@/lib/public-site-data";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { OffersMarketingBand } from "@/components/marketing/offers-marketing-band";
+import { FleetInquiryForm } from "@/components/public/fleet-inquiry-form";
 
 const emptyDeals: DealConfig = {
   websitePromoPercent: 0,
@@ -236,9 +237,10 @@ export default function ServicesPage() {
               </li>
             </ul>
             <p className="mt-3 text-xs text-zinc-500">{fleetPricing?.commercialNotes ?? "Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site."}</p>
+            <FleetInquiryForm />
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/contact" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">
-                Request fleet quote
+              <Link href="/contact" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
+                General contact
               </Link>
               <a href="tel:+15124812319" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
                 Call (512) 481-2319

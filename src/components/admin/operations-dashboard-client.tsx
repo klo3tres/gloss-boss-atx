@@ -6,9 +6,12 @@ import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 import {
   addBusinessExpenseActionState,
   addJobMileageLogActionState,
+  deleteJobMileageLogActionState,
+  updateJobMileageLogActionState,
 } from '@/app/(dashboard)/admin/operations/operations-actions';
 import { setFleetPricingAction, setFleetServicesSettingAction } from '@/app/(dashboard)/admin/operations/fleet-actions';
 import type { FleetPricingConfig } from '@/lib/fleet-pricing';
+import { ExpenseReceiptUpload } from '@/components/admin/expense-receipt-upload';
 
 function money(cents: unknown) {
   const n = typeof cents === 'number' ? cents : 0;
@@ -110,7 +113,16 @@ export function OperationsDashboardClient({
       {schemaReady ? (
         <>
           <section className='rounded-2xl border border-white/10 bg-zinc-950 p-5'>
-            <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Add expense</p>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Expenses (tax archive)</p>
+              <a
+                href='/api/admin/operations/expenses-export'
+                className='rounded-lg border border-gold/40 px-3 py-2 text-[10px] font-black uppercase text-gold-soft'
+              >
+                Export expenses CSV
+              </a>
+            </div>
+            <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft mt-4'>Add expense</p>
             <ToastActionForm className='mt-3 grid gap-3 sm:grid-cols-4' action={addBusinessExpenseActionState}>
               <label className='text-xs text-zinc-400'>
                 Amount ($)
@@ -137,12 +149,21 @@ export function OperationsDashboardClient({
             <ul className='mt-4 space-y-2 text-sm text-zinc-300'>
               {expenses.length === 0 ? <li className='text-zinc-500'>No expenses yet.</li> : null}
               {expenses.map((r) => (
-                <li key={String(r.id)} className='flex justify-between rounded-lg border border-white/10 px-3 py-2'>
-                  <span>
-                    {String(r.category ?? 'general')} · {String(r.incurred_on ?? r.created_at ?? '')}
-                    {r.note ? ` — ${String(r.note)}` : ''}
-                  </span>
-                  <span className='font-bold text-gold-soft'>{money(r.amount_cents)}</span>
+                <li key={String(r.id)} className='rounded-lg border border-white/10 px-3 py-3'>
+                  <div className='flex flex-wrap justify-between gap-2'>
+                    <span>
+                      {String(r.category ?? 'general')} · {String(r.incurred_on ?? r.incurred_at ?? r.created_at ?? '').slice(0, 10)}
+                      {r.notes ? ` — ${String(r.notes)}` : r.note ? ` — ${String(r.note)}` : ''}
+                    </span>
+                    <span className='font-bold text-gold-soft'>{money(r.amount_cents)}</span>
+                  </div>
+                  {r.receipt_url ? (
+                    <a href={String(r.receipt_url)} target='_blank' rel='noreferrer' className='mt-2 inline-block text-[10px] font-bold uppercase text-gold-soft underline'>
+                      View receipt
+                    </a>
+                  ) : (
+                    <ExpenseReceiptUpload expenseId={String(r.id)} onDone={() => setMsg('Receipt attached.')} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -186,8 +207,15 @@ export function OperationsDashboardClient({
             <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Log mileage</p>
             <ToastActionForm className='mt-3 grid gap-3 sm:grid-cols-4' action={addJobMileageLogActionState}>
               <label className='text-xs text-zinc-400'>
-                Miles
-                <input name='miles' type='number' step='0.1' min='0.1' required className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' />
+                One-way miles
+                <input name='milesOneWay' type='number' step='0.1' min='0.1' required className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' />
+              </label>
+              <label className='text-xs text-zinc-400'>
+                Trip
+                <select name='tripMode' defaultValue='round_trip' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white'>
+                  <option value='round_trip'>Round-trip (×2)</option>
+                  <option value='one_way'>One-way only</option>
+                </select>
               </label>
               <label className='text-xs text-zinc-400 sm:col-span-2'>
                 Appointment ID (optional)
@@ -230,6 +258,45 @@ export function OperationsDashboardClient({
                       </a>
                     ) : null}
                   </div>
+                  <ToastActionForm action={updateJobMileageLogActionState} className='mt-3 grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-5'>
+                    <input type='hidden' name='id' value={String(r.id)} />
+                    <label className='text-[10px] text-zinc-500 sm:col-span-2'>
+                      Edit one-way mi
+                      <input
+                        name='milesOneWay'
+                        type='number'
+                        step='0.1'
+                        min='0.1'
+                        defaultValue={String(
+                          r.miles_one_way ??
+                            (Number(r.round_trip_miles ?? r.total_miles ?? 0) / 2 || ''),
+                        )}
+                        className='mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs text-white'
+                      />
+                    </label>
+                    <label className='text-[10px] text-zinc-500'>
+                      Trip
+                      <select name='tripMode' defaultValue={String(r.trip_mode ?? 'round_trip')} className='mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs text-white'>
+                        <option value='round_trip'>Round-trip</option>
+                        <option value='one_way'>One-way</option>
+                      </select>
+                    </label>
+                    <label className='text-[10px] text-zinc-500 sm:col-span-2'>
+                      Note
+                      <input name='note' defaultValue={String(r.notes ?? '')} className='mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs text-white' />
+                    </label>
+                    <div className='flex flex-wrap gap-2 sm:col-span-5'>
+                      <SubmitStatusButton pendingText='…' className='rounded border border-gold/40 px-2 py-1 text-[10px] font-black uppercase text-gold-soft'>
+                        Save row
+                      </SubmitStatusButton>
+                    </div>
+                  </ToastActionForm>
+                  <ToastActionForm action={deleteJobMileageLogActionState} className='mt-1'>
+                    <input type='hidden' name='id' value={String(r.id)} />
+                    <SubmitStatusButton pendingText='…' className='text-[10px] font-black uppercase text-red-300/80'>
+                      Delete row
+                    </SubmitStatusButton>
+                  </ToastActionForm>
                 </li>
               ))}
             </ul>

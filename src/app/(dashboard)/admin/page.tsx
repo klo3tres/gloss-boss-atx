@@ -20,6 +20,14 @@ export default async function AdminDashboardPage() {
     activeTechCount: 0,
     alerts: [] as string[],
     todayJobs: [] as import('@/lib/owner-dashboard-metrics').TodayJobRow[],
+    paymentMixMonth: {
+      stripeCents: 0,
+      cashCents: 0,
+      zelleCents: 0,
+      otherCents: 0,
+      grossCents: 0,
+      paymentCount: 0,
+    },
   };
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {

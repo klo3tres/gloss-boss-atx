@@ -15,7 +15,9 @@ export type GalleryAdminItem = {
   featured: boolean;
 };
 
-async function galleryMutate(body: object): Promise<{ ok: boolean; error?: string }> {
+async function galleryMutate(
+  body: { op: string; id?: string; caption?: string; published?: boolean; featured?: boolean; order?: string[] },
+): Promise<{ ok: boolean; error?: string }> {
   const res = await fetchWithTimeout('/api/admin/gallery/mutate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -99,6 +101,20 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
     setBusyId(null);
   };
 
+  const saveCaption = async (row: GalleryAdminItem, nextCaption: string) => {
+    setBusyId(row.id);
+    setFeedback(null);
+    const r = await galleryMutate({ op: 'updateCaption', id: row.id, caption: nextCaption });
+    if (r.ok) {
+      setItems((prev) => prev.map((x) => (x.id === row.id ? { ...x, caption: nextCaption } : x)));
+      setFeedback({ kind: 'ok', text: 'Title updated.' });
+      router.refresh();
+    } else {
+      setFeedback({ kind: 'err', text: r.error ?? 'Update failed.' });
+    }
+    setBusyId(null);
+  };
+
   const remove = async (row: GalleryAdminItem) => {
     if (!confirm('Remove this gallery image from the CMS?')) return;
     setBusyId(row.id);
@@ -145,11 +161,22 @@ export function GalleryAdminManager({ rows }: { rows: GalleryAdminItem[] }) {
             >
               <div className='relative aspect-[4/3] w-full bg-zinc-900'>
                 <Image src={src} alt={row.caption ?? 'Gallery'} fill className='object-cover' sizes='(max-width:768px) 50vw, 33vw' unoptimized />
-                <span className='absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white'>#{idx + 1}</span>
               </div>
               <div className='space-y-2 p-3'>
-                <p className='text-[10px] text-zinc-500'>order {row.sort_order}</p>
-                {row.caption ? <p className='truncate text-xs text-zinc-300'>{row.caption}</p> : null}
+                <label className='block text-[10px] text-zinc-500'>
+                  Public title
+                  <input
+                    key={row.id}
+                    defaultValue={row.caption ?? ''}
+                    disabled={pending}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (row.caption ?? '').trim()) void saveCaption(row, v);
+                    }}
+                    className='mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 text-xs text-white'
+                    placeholder='Before — SUV interior'
+                  />
+                </label>
                 <div className='flex flex-wrap gap-1'>
                   <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${row.published ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-700 text-zinc-400'}`}>
                     {row.published ? 'Published' : 'Draft'}

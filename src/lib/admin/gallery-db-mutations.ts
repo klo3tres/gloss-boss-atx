@@ -23,6 +23,25 @@ export async function dbToggleGalleryFeatured(
   return { ok: true };
 }
 
+export async function dbUpdateGalleryCaption(
+  supabase: SupabaseClient,
+  id: string,
+  caption: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!id) return { ok: false, error: 'Missing id' };
+  const cap = caption.trim() || null;
+  const title = cap;
+  try {
+    const { error } = await supabase.from('gallery_images').update({ caption: cap, title }).eq('id', id);
+    if (!error) return { ok: true };
+    const { error: e2 } = await supabase.from('gallery_images').update({ caption: cap }).eq('id', id);
+    if (e2) return { ok: false, error: e2.message };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Update failed' };
+  }
+  return { ok: true };
+}
+
 export async function dbToggleGalleryPublished(
   supabase: SupabaseClient,
   id: string,

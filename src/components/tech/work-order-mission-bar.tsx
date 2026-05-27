@@ -68,7 +68,7 @@ export function WorkOrderMissionBar({
   const tel = guestPhone ? `tel:${guestPhone.replace(/\s/g, '')}` : undefined;
 
   return (
-    <div className='gb-mission-top fixed left-0 right-0 top-0 z-50 border-b border-gold/25 bg-black/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl'>
+    <div className='gb-mission-top fixed left-0 right-0 top-16 z-40 border-b border-gold/25 bg-black/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl lg:top-14'>
       <div className='mx-auto flex max-w-7xl gap-2 overflow-x-auto px-3 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
         {tel ? <MissionBtn label='Call' icon={<Phone className='h-4 w-4' />} href={tel} /> : null}
         {mapsHref ? <MissionBtn label='Directions' icon={<MapPin className='h-4 w-4' />} href={mapsHref} /> : null}

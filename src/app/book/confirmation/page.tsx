@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { CustomerBookingLifecycle } from '@/components/booking/customer-booking-lifecycle';
 
 type VehicleView = {
   description: string;
@@ -96,6 +97,7 @@ function ConfirmationInner() {
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
 
   const calHref = googleCalendarHref(summary);
+  const icsHref = appointmentId ? `/api/calendar/appointment/${appointmentId}` : '';
 
   return (
     <div className='space-y-6'>
@@ -105,16 +107,26 @@ function ConfirmationInner() {
         <p className='mt-2 text-sm text-zinc-400'>Ref {summary.bookingNumber}</p>
         <p className='mt-4 text-xl font-bold text-white'>{chicago(summary.scheduledStart)}</p>
         <p className='mt-2 text-sm text-zinc-300'>{summary.serviceAddress || 'Mobile service at your address'}</p>
-        {calHref ? (
-          <a
-            href={calHref}
-            target='_blank'
-            rel='noreferrer'
-            className='mt-6 inline-flex rounded-2xl border border-gold/40 bg-gold/10 px-6 py-3 text-xs font-black uppercase text-gold-soft'
-          >
-            Add to Google Calendar
-          </a>
-        ) : null}
+        <div className='mt-6 flex flex-wrap justify-center gap-3'>
+          {calHref ? (
+            <a
+              href={calHref}
+              target='_blank'
+              rel='noreferrer'
+              className='inline-flex rounded-2xl border border-gold/40 bg-gold/10 px-6 py-3 text-xs font-black uppercase text-gold-soft'
+            >
+              Add to Google Calendar
+            </a>
+          ) : null}
+          {icsHref ? (
+            <a
+              href={icsHref}
+              className='inline-flex rounded-2xl border border-white/20 px-6 py-3 text-xs font-black uppercase text-zinc-200'
+            >
+              Download .ics
+            </a>
+          ) : null}
+        </div>
       </section>
 
       <section className='gb-glass rounded-3xl border border-gold/20 p-6'>
@@ -178,6 +190,8 @@ function ConfirmationInner() {
           </div>
         </dl>
       </section>
+
+      {appointmentId && token ? <CustomerBookingLifecycle appointmentId={appointmentId} token={token} /> : null}
 
       <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm text-zinc-300'>
         <p className='font-black uppercase tracking-wider text-gold-soft'>Next steps</p>

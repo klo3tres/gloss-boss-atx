@@ -1,6 +1,6 @@
 'use client';
 
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, ImagePlus, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { PHOTO_SLOT_OPTIONS } from '@/lib/photo-phase';
@@ -128,21 +128,37 @@ export function WorkOrderPhotoUpload({
           </button>
         ))}
       </div>
-      <label className='mt-3 flex min-h-[3.25rem] cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-gradient-to-r from-gold/25 to-transparent px-4 py-4 text-sm font-black uppercase tracking-wider text-gold-soft transition active:scale-[0.98] hover:border-gold'>
-        <Camera className='h-5 w-5' />
-        {busy ? 'Uploading…' : 'Tap to capture photo'}
-        <input
-          type='file'
-          accept='image/jpeg,image/png,image/webp,image/*'
-          capture='environment'
-          className='sr-only'
-          disabled={busy}
-          onChange={(e) => {
-            void upload(e.currentTarget.files?.[0]);
-            e.currentTarget.value = '';
-          }}
-        />
-      </label>
+      <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+        <label className='flex min-h-[3.25rem] cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gold/50 bg-gradient-to-r from-gold/25 to-transparent px-4 py-4 text-sm font-black uppercase tracking-wider text-gold-soft transition active:scale-[0.98] hover:border-gold'>
+          <Camera className='h-5 w-5 shrink-0' />
+          {busy ? 'Uploading…' : 'Take photo'}
+          <input
+            type='file'
+            accept='image/jpeg,image/png,image/webp,image/*'
+            capture='environment'
+            className='sr-only'
+            disabled={busy}
+            onChange={(e) => {
+              void upload(e.currentTarget.files?.[0]);
+              e.currentTarget.value = '';
+            }}
+          />
+        </label>
+        <label className='flex min-h-[3.25rem] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/20 bg-black/40 px-4 py-4 text-sm font-black uppercase tracking-wider text-zinc-300 transition hover:border-gold/40'>
+          <ImagePlus className='h-5 w-5 shrink-0 text-gold-soft' />
+          From library
+          <input
+            type='file'
+            accept='image/jpeg,image/png,image/webp,image/*'
+            className='sr-only'
+            disabled={busy}
+            onChange={(e) => {
+              void upload(e.currentTarget.files?.[0]);
+              e.currentTarget.value = '';
+            }}
+          />
+        </label>
+      </div>
       {preview ? (
         <img src={preview} alt='Upload preview' className='mt-4 h-40 w-full max-w-sm rounded-2xl border border-gold/30 object-cover shadow-[0_0_24px_rgba(212,175,55,0.25)] sm:h-48' />
       ) : null}

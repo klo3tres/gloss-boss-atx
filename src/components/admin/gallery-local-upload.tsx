@@ -15,6 +15,10 @@ export function GalleryLocalUpload() {
   const [drag, setDrag] = useState(false);
   const [staged, setStaged] = useState<Staged[]>([]);
   const [galleryReady, setGalleryReady] = useState<boolean | null>(null);
+  const [phase, setPhase] = useState<'before' | 'after' | ''>('');
+  const [vehicleLabel, setVehicleLabel] = useState('');
+  const [serviceLabel, setServiceLabel] = useState('');
+  const [caption, setCaption] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +83,10 @@ export function GalleryLocalUpload() {
         try {
           const fd = new FormData();
           fd.set('file', row.file);
+          if (caption.trim()) fd.set('caption', caption.trim());
+          if (phase) fd.set('phase', phase);
+          if (vehicleLabel.trim()) fd.set('vehicleLabel', vehicleLabel.trim());
+          if (serviceLabel.trim()) fd.set('serviceLabel', serviceLabel.trim());
           const res = await fetchWithTimeout('/api/admin/gallery-upload', {
             method: 'POST',
             body: fd,
@@ -130,6 +138,28 @@ export function GalleryLocalUpload() {
   return (
     <div className='mt-4 space-y-2'>
       <p className='text-xs font-bold uppercase tracking-wider text-gold-soft'>Local upload (drag & drop)</p>
+      <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
+        <label className='text-[10px] text-zinc-400'>
+          Custom title (no filenames on site)
+          <input value={caption} onChange={(e) => setCaption(e.target.value)} className='mt-1 w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-xs text-white' placeholder='BMW X5 — ceramic glow' />
+        </label>
+        <label className='text-[10px] text-zinc-400'>
+          Before / after
+          <select value={phase} onChange={(e) => setPhase(e.target.value as 'before' | 'after' | '')} className='mt-1 w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-xs text-white'>
+            <option value=''>Single photo</option>
+            <option value='before'>Before</option>
+            <option value='after'>After</option>
+          </select>
+        </label>
+        <label className='text-[10px] text-zinc-400'>
+          Vehicle
+          <input value={vehicleLabel} onChange={(e) => setVehicleLabel(e.target.value)} className='mt-1 w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-xs text-white' />
+        </label>
+        <label className='text-[10px] text-zinc-400'>
+          Service
+          <input value={serviceLabel} onChange={(e) => setServiceLabel(e.target.value)} className='mt-1 w-full rounded border border-white/15 bg-black/40 px-2 py-1 text-xs text-white' />
+        </label>
+      </div>
       {galleryReady === false ? (
         <p className='rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
           Storage bucket not configured yet. Uploads are temporarily disabled.

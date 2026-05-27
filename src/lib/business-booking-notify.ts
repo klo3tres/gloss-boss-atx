@@ -33,7 +33,9 @@ export type OwnerBookingEventKind =
   | 'quote_request'
   | 'ceramic_quote'
   | 'gift_card'
-  | 'payment_failed';
+  | 'payment_failed'
+  | 'cancelled'
+  | 'rescheduled';
 
 const EVENT_COPY: Record<
   OwnerBookingEventKind,
@@ -48,6 +50,8 @@ const EVENT_COPY: Record<
   ceramic_quote: { headline: 'Ceramic coating inquiry', subjectPrefix: 'Ceramic quote', smsLead: 'Ceramic quote' },
   gift_card: { headline: 'Gift card purchase', subjectPrefix: 'Gift card', smsLead: 'Gift card sold' },
   payment_failed: { headline: 'Payment failed', subjectPrefix: 'Payment failed', smsLead: 'Payment FAILED' },
+  cancelled: { headline: 'Booking cancelled', subjectPrefix: 'Booking cancelled', smsLead: 'Booking CANCELLED' },
+  rescheduled: { headline: 'Booking rescheduled', subjectPrefix: 'Booking rescheduled', smsLead: 'Booking RESCHEDULED' },
 };
 
 async function insertOutbox(

@@ -1181,8 +1181,8 @@ export function BookingWizard() {
         </p>
       ) : null}
 
-      <div className='grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,280px)]'>
-        <div className='min-w-0 space-y-8'>
+      <div className='grid min-w-0 max-w-full gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,280px)]'>
+        <div className='order-2 min-w-0 space-y-8 lg:order-1'>
           <section>
             <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>1. Package (vehicle 1)</p>
             <h2 className='mt-2 text-lg font-black uppercase text-white'>Select your detail</h2>
@@ -1589,7 +1589,7 @@ export function BookingWizard() {
           </button>
         </div>
 
-        <aside className='lg:sticky lg:top-28 h-fit space-y-4 rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-5 shadow-[0_0_36px_rgba(212,166,77,0.12)]'>
+        <aside className='order-1 h-fit space-y-4 rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-5 shadow-[0_0_36px_rgba(212,166,77,0.12)] lg:order-2 lg:sticky lg:top-28'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Summary</p>
           <div className='space-y-2.5 text-sm text-zinc-300'>
             {bookingLines.map((line, i) => {

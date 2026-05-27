@@ -84,6 +84,12 @@ export async function POST(request: Request) {
   }
 
   const caption = typeof form.get('caption') === 'string' ? String(form.get('caption')).trim() : '';
+  const phase = typeof form.get('phase') === 'string' ? String(form.get('phase')).trim() : '';
+  const vehicleLabel = typeof form.get('vehicleLabel') === 'string' ? String(form.get('vehicleLabel')).trim() : '';
+  const serviceLabel = typeof form.get('serviceLabel') === 'string' ? String(form.get('serviceLabel')).trim() : '';
+  const displayCaption =
+    caption ||
+    [phase === 'before' ? 'Before' : phase === 'after' ? 'After' : '', vehicleLabel, serviceLabel].filter(Boolean).join(' · ');
   const buf = Buffer.from(await file.arrayBuffer());
   const path = `cms/${user.id}/${randomUUID()}-${safeFileName(file.name)}`;
 
@@ -114,7 +120,11 @@ export async function POST(request: Request) {
   }
   const nextOrder = maxGallerySortFromRows(maxQ.data ?? []) + 1;
 
-  const variants = galleryInsertPayloadVariants(publicUrl, caption, nextOrder);
+  const variants = galleryInsertPayloadVariants(publicUrl, displayCaption, nextOrder, {
+    phase: phase || undefined,
+    vehicleLabel: vehicleLabel || undefined,
+    serviceLabel: serviceLabel || undefined,
+  });
   let row: { id: string; url?: string | null } | null = null;
   for (const payload of variants) {
     const { data, error: insErr } = await admin.from('gallery_images').insert(payload).select('id').maybeSingle();

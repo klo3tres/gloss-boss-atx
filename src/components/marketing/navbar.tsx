@@ -172,7 +172,7 @@ export function Navbar() {
   );
 
   return (
-    <header className='sticky top-0 z-50 border-b border-white/10 bg-black/90 backdrop-blur-xl'>
+    <header className='gb-no-print gb-luxury-nav sticky top-0 z-[60]'>
       <nav className='mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4'>
         <div className='flex items-center justify-between gap-3'>
           <Link href='/' className='group inline-flex min-w-0 items-center gap-3' onClick={() => setOpen(false)}>

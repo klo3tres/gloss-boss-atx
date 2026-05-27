@@ -52,7 +52,6 @@ const faqs = [
 
 export default function HomePage() {
   const [showPromoPopup, setShowPromoPopup] = useState(true);
-  const [dismissSchemaNotice, setDismissSchemaNotice] = useState(false);
   const [services, setServices] = useState<ServicePackage[]>([]);
   const [deals, setDeals] = useState<DealConfig>(emptyDeals);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
@@ -88,6 +87,9 @@ export default function HomePage() {
         setOffers(data.offers ?? []);
         setMultiCar(data.multiCar ?? null);
         setSchemaWarnings(data.schemaWarnings ?? []);
+        if (process.env.NODE_ENV === 'development' && (data.schemaWarnings?.length ?? 0) > 0) {
+          console.warn('[homepage] site-data schema warnings (not shown to visitors):', data.schemaWarnings);
+        }
         setGoogleReviewUrl(data.googleReviewUrl ?? '');
         setSiteLoaded(true);
       })
@@ -111,10 +113,8 @@ export default function HomePage() {
     return offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now));
   }, [offers]);
 
-  const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
-
-  return (
-    <main className='relative min-h-screen overflow-x-hidden bg-background text-foreground'>
+  const hasHomeOffers = useMemo(() => {
+    <main className='gb-page relative min-h-screen text-foreground'>
       {showPromoPopup && displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
         <div
           role='dialog'

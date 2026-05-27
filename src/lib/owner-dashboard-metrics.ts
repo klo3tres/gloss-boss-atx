@@ -30,6 +30,15 @@ export type OwnerDashboardSnapshot = {
   activeTechCount: number;
   alerts: string[];
   todayJobs: TodayJobRow[];
+  /** Month-to-date succeeded payment totals by channel (real query; zeros when none). */
+  paymentMixMonth: {
+    stripeCents: number;
+    cashCents: number;
+    zelleCents: number;
+    otherCents: number;
+    grossCents: number;
+    paymentCount: number;
+  };
 };
 
 function chicagoShort(iso: string) {
@@ -133,5 +142,13 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     activeTechCount,
     alerts,
     todayJobs,
+    paymentMixMonth: {
+      stripeCents: month.stripeCents,
+      cashCents: month.cashCents,
+      zelleCents: month.zelleCents,
+      otherCents: month.otherCents,
+      grossCents: month.grossCents,
+      paymentCount: month.paymentCount,
+    },
   };
 }

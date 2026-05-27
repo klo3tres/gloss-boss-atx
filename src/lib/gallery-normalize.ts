@@ -267,12 +267,25 @@ export function maxGallerySortFromRows(raw: unknown[] | null | undefined): numbe
 }
 
 /** Insert payloads to try against drifted `gallery_images` schemas (first non-error wins). */
-export function galleryInsertPayloadVariants(publicUrl: string, caption: string, nextOrder: number): Record<string, unknown>[] {
+export function galleryInsertPayloadVariants(
+  publicUrl: string,
+  caption: string,
+  nextOrder: number,
+  meta?: { phase?: string; vehicleLabel?: string; serviceLabel?: string },
+): Record<string, unknown>[] {
   const cap = caption.trim() || null;
   const title = caption.trim() || null;
+  const phase = meta?.phase?.trim() || null;
+  const vehicle = meta?.vehicleLabel?.trim() || null;
+  const service = meta?.serviceLabel?.trim() || null;
+  const metadata =
+    phase || vehicle || service
+      ? { transformation_phase: phase, vehicle_label: vehicle, service_label: service, before_url: phase === 'before' ? publicUrl : null, after_url: phase === 'after' ? publicUrl : publicUrl }
+      : null;
+  const withMeta = metadata ? { metadata } : {};
   return [
-    { image_url: publicUrl, url: publicUrl, caption: cap, sort_order: nextOrder, order_index: nextOrder, published: true },
-    { image_url: publicUrl, url: publicUrl, title, sort_order: nextOrder, order_index: nextOrder, published: true },
+    { image_url: publicUrl, url: publicUrl, caption: cap, sort_order: nextOrder, order_index: nextOrder, published: true, ...withMeta },
+    { image_url: publicUrl, url: publicUrl, title, sort_order: nextOrder, order_index: nextOrder, published: true, ...withMeta },
     { url: publicUrl, public_url: publicUrl, title, sort_order: nextOrder, order_index: nextOrder, published: true },
     { url: publicUrl, image_url: publicUrl, sort_order: nextOrder, order_index: nextOrder, published: true },
     { image_url: publicUrl, sort_order: nextOrder, published: true },

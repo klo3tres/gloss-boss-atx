@@ -20,6 +20,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Overview',
     links: [
       { href: '/admin', label: 'Dashboard' },
+      { href: '/admin/assistant', label: 'AI assistant' },
       { href: '/admin/booking-health', label: 'Booking health' },
       { href: '/admin/qa-checklist', label: 'QA checklist' },
     ],

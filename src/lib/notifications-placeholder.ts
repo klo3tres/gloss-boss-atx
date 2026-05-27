@@ -34,6 +34,8 @@ export async function notifyBookingConfirmationQueued(params: {
   const email = params.toEmail.trim().toLowerCase();
   try {
     if (email.includes('@') && resendConfigured()) {
+      const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://glossbossatx.com').replace(/\/$/, '');
+      const apptId = params.appointmentId ?? '';
       const html = bookingConfirmationEmailHtml({
         guestName: params.guestName,
         whenLabel,
@@ -42,6 +44,8 @@ export async function notifyBookingConfirmationQueued(params: {
         vehicles: params.vehicles,
         serviceAddress: '',
         remainingBalance: `$${(Math.max(0, params.totalCents - params.depositCents) / 100).toFixed(2)}`,
+        calendarUrl: apptId ? `${base}/api/calendar/appointment/${apptId}` : undefined,
+        confirmationUrl: apptId ? `${base}/book/confirmation?appointment_id=${encodeURIComponent(apptId)}` : undefined,
       });
       const sent = await sendResendHtml({ to: email, subject: 'Gloss Boss ATX — Booking confirmed', html });
       if (admin) {
