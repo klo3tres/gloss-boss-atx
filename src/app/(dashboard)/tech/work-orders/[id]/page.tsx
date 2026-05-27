@@ -10,6 +10,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
 import { syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
+import { resolveOrderLedger } from '@/lib/order-ledger';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
@@ -23,7 +24,6 @@ import { revalidatePath } from 'next/cache';
 import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
 import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
-import { WorkOrderStripeDebugPanel } from '@/components/tech/work-order-stripe-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { mergePricingBreakdownWithLineItems, readCustomLineItems } from '@/lib/work-order-line-items';
@@ -382,8 +382,46 @@ export default async function TechWorkOrderDetailPage({
     fallbackBookingId: isFallback ? queryId : undefined,
     sourceHint: isFallback ? 'fallback' : 'appointment',
   });
-  const pricing = orderSnapshot?.pricing ?? (await import('@/lib/job-pricing-display')).resolveJobPricing(row, paymentRows);
-  const receiptBreakdownLines = buildReceiptBreakdown(row, pricing);
+  const orderLedger = await resolveOrderLedger(admin, {
+    workOrderId: queryId,
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    sourceHint: isFallback ? 'fallback' : 'appointment',
+  });
+  const pricing = orderLedger?._pricing ?? orderSnapshot?.pricing ?? resolveJobPricing(row, paymentRows);
+  const receiptBreakdownLines =
+    orderSnapshot?.receiptLines ?? buildReceiptBreakdown(row, pricing);
+  const orderSourceMap: Record<string, string> = {
+    online_booking: 'Online booking',
+    admin_work_order: 'Admin work order',
+    walk_in: 'Walk-in / tech',
+  };
+  const orderSourceLabel = orderLedger
+    ? `${orderSourceMap[orderLedger.audit.orderSource] ?? orderLedger.audit.bookingSource}${orderLedger.audit.pricingLocked ? ' · Booked prices locked' : ''}`
+    : displayLabel(str(row.booking_source), 'Work order');
+  const ledgerDiscounts =
+    orderLedger?.discounts.map((d) => ({
+      id: d.id,
+      label: d.label,
+      amount: displayMoney(d.amountCents),
+      source: d.source,
+    })) ?? [];
+  const ledgerPayments =
+    orderLedger?.payments.map((p) => ({
+      id: p.id,
+      label: p.label,
+      amount: displayMoney(p.amountCents),
+      status: displayLabel(p.status),
+      bucket: p.bucket,
+      voided: p.voided,
+    })) ?? paymentRows.map((p) => ({
+      id: str(p.id),
+      label: displayLabel(p.payment_method || p.payment_kind, 'Payment'),
+      amount: displayMoney(p.amount_cents),
+      status: displayLabel(p.status),
+      bucket: 'other',
+      voided: Boolean(p.voided_at || p.voided === true),
+    }));
   const photoUploadDisabled = resolved.orphanSession || isTestLikeJob(row);
   const photoUploadDisableReason = resolved.orphanSession
     ? 'Orphan session — link a live appointment before uploading.'
@@ -491,6 +529,7 @@ export default async function TechWorkOrderDetailPage({
     canonicalId: queryId,
     customerId: str(row.customer_id) || undefined,
     customLineItems,
+    jobPricing: pricing,
     pricingSnapshot: {
       vehicleSubtotalCents: pricing.vehicleSubtotalCents,
       addOnSubtotalCents: pricing.addOnSubtotalCents,
@@ -507,6 +546,13 @@ export default async function TechWorkOrderDetailPage({
       remainingBalanceCents: pricing.remainingBalanceCents,
     },
     receiptBreakdownLines,
+    ledgerDiscounts,
+    ledgerPayments,
+    orderSourceLabel,
+    isTestOrder: isTestLikeJob(row),
+    stripeSessionId: str(row.stripe_checkout_session_id || row.final_payment_checkout_session_id),
+    stripePaymentIntent: str(row.stripe_payment_intent_id),
+    canAdvancedRepair: isAdminLevel(session.profile?.role ?? null),
     photoUploadDisabled,
     photoUploadDisableReason: photoUploadDisableReason ?? undefined,
     photoUploadResolvedContext: !photoUploadDisabled,
@@ -694,22 +740,6 @@ export default async function TechWorkOrderDetailPage({
             vehicleCount={vehicles.length}
             photoCount={photos.length}
             workflowSessionIds={workflowSessionIds}
-          />
-          <WorkOrderStripeDebugPanel
-            appointmentId={!isFallback ? queryId : undefined}
-            fallbackBookingId={isFallback ? queryId : undefined}
-            source={isFallback ? 'fallback' : 'appointment'}
-            stripeSessionId={str(row.stripe_checkout_session_id || row.final_payment_checkout_session_id)}
-            stripePaymentIntent={str(row.stripe_payment_intent_id)}
-            paymentRows={paymentRows.map((p) => ({
-              id: str(p.id),
-              amount: displayMoney(p.amount_cents),
-              method: displayLabel(p.payment_method || p.payment_kind),
-              kind: str(p.payment_kind),
-              status: displayLabel(p.status),
-              stripeSession: str(p.stripe_checkout_session_id),
-              stripeIntent: str(p.stripe_payment_intent_id),
-            }))}
           />
         </div>
       ) : null}

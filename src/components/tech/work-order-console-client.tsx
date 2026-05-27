@@ -6,8 +6,8 @@ import { Clock, CreditCard, FileSignature } from 'lucide-react';
 import { useMemo } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
-import { WorkOrderInvoiceBuilder, type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
-import { WorkOrderReceiptPanel } from '@/components/tech/work-order-receipt-panel';
+import { type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
+import { WorkOrderLedgerPanel, type LedgerDiscountRow, type LedgerPaymentRow } from '@/components/tech/work-order-ledger-panel';
 import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
@@ -123,6 +123,14 @@ export type WorkOrderConsoleData = {
   customerId?: string;
   customLineItems?: Array<{ id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string }>;
   pricingSnapshot?: InvoicePricingSnapshot;
+  jobPricing?: JobPricingDisplay;
+  ledgerDiscounts?: LedgerDiscountRow[];
+  ledgerPayments?: LedgerPaymentRow[];
+  orderSourceLabel?: string;
+  isTestOrder?: boolean;
+  stripeSessionId?: string;
+  stripePaymentIntent?: string;
+  canAdvancedRepair?: boolean;
   vehicles: Array<{
     year: string;
     make: string;
@@ -527,21 +535,28 @@ export function WorkOrderConsoleClient({
         ) : null}
 
         <div id='wo-payment' className='scroll-mt-28'>
-        <WorkOrderCollapsible title='Payment & invoice' defaultOpen>
-          <div id='wo-invoice'>
-          {data.pricingSnapshot ? (
-            <WorkOrderInvoiceBuilder
+        <WorkOrderCollapsible title='Order ledger — payment & receipt' defaultOpen>
+          {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments ? (
+            <WorkOrderLedgerPanel
               jobId={jobId}
-              customerName={data.guestName}
-              vehicleBreakdownLines={(data.receiptBreakdownLines ?? [])
-                .filter((l) => l.label !== 'Customer' && !['Final total', 'Balance due', 'Deposit paid', 'Total paid', 'Stripe paid', 'Zelle / Venmo paid', 'Manual / check paid', 'Cash paid'].includes(l.label) && !l.label.startsWith('Multi-car') && !l.label.startsWith('Online') && !l.label.startsWith('Promo') && l.label !== 'Manual discount')
-                .map((l) => ({ label: l.label, amount: l.amount }))}
+              isFallback={data.isFallback}
+              source={data.isFallback ? 'fallback' : 'appointment'}
               appointmentId={data.isFallback ? undefined : jobId}
               fallbackBookingId={data.isFallback ? jobId : undefined}
-              source={data.isFallback ? 'fallback' : 'appointment'}
-              isFallback={data.isFallback}
-              savedItems={data.customLineItems ?? []}
-              pricing={data.pricingSnapshot}
+              orderSourceLabel={data.orderSourceLabel ?? 'Work order'}
+              isTest={data.isTestOrder}
+              vehicles={data.vehicles.map((v, index) => ({
+                index,
+                label: v.label,
+                service: v.service,
+                priceCents: v.priceCents,
+                priceLabel: v.priceLabel,
+              }))}
+              discounts={data.ledgerDiscounts}
+              payments={data.ledgerPayments}
+              pricingSnapshot={data.pricingSnapshot}
+              pricing={data.jobPricing!}
+              breakdownLines={data.receiptBreakdownLines}
               balanceDue={data.balanceDue}
               balanceDueCents={data.balanceDueCents}
               finalTotal={data.finalTotal}
@@ -549,79 +564,36 @@ export function WorkOrderConsoleClient({
               totalPaid={data.totalPaid}
               paymentComplete={data.paymentComplete}
               receiptPdfHref={data.receiptPdfHref}
-              defaultVehicleClass={
-                (data.vehicles[0]?.vehicleClass === 'suv' || data.vehicles[0]?.vehicleClass === 'truck'
-                  ? data.vehicles[0].vehicleClass
-                  : 'sedan') as 'sedan' | 'suv' | 'truck'
-              }
+              customLineItems={data.customLineItems ?? []}
+              promoCode={data.promoCode}
+              pricingOverrideReason={data.pricingOverrideReason}
+              canEditPricing={canEditPricing}
+              canManagePayments={Boolean(data.canManagePayments)}
+              canAdvancedRepair={Boolean(data.canAdvancedRepair)}
+              workOrderPath={data.workOrderPath}
+              customerName={data.guestName}
+              recordCashAction={recordCashAction}
+              stripeSessionId={data.stripeSessionId}
+              stripePaymentIntent={data.stripePaymentIntent}
+              recentPaymentsForRepair={data.recentPayments.map((p) => ({
+                id: p.id ?? '',
+                amount: p.amount,
+                method: p.method,
+                status: p.status,
+                stripeSession: p.stripe,
+              }))}
             />
           ) : (
             <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
-              Pricing data unavailable — refresh the page.
+              Order ledger unavailable — refresh the page.
             </p>
           )}
-          </div>
-          <ul className='mt-4 space-y-2 text-sm'>
-            {data.recentPayments.length === 0 ? <li className='text-zinc-500'>No payments logged yet.</li> : null}
-            {data.recentPayments.map((p) => (
-              <li key={p.id || p.at} className='flex justify-between gap-2 rounded-xl border border-white/10 px-3 py-2'>
-                <span className='text-zinc-300'>
-                  {p.method} {p.stripe ? `· ${p.stripe}` : ''}
-                </span>
-                <span className='font-mono text-white'>
-                  {p.amount} · {p.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <WorkOrderCollapsible title='Cash payment' defaultOpen={false}>
-            <form action={recordCashAction} className='grid max-w-md gap-2'>
-              {!data.isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-              {data.isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-              <input name='amountReceived' placeholder='Cash received ($)' className='gb-input' />
-              <button type='submit' className='rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase text-black'>
-                Mark cash paid
-              </button>
-            </form>
-          </WorkOrderCollapsible>
           {!data.isFallback ? (
             <WorkOrderMileagePanel
               appointmentId={jobId}
               workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
             />
           ) : null}
-          <div id='wo-receipt'>
-          {data.canManagePayments && data.pricingSnapshot && data.receiptBreakdownLines ? (
-            <WorkOrderReceiptPanel
-              appointmentId={data.isFallback ? undefined : jobId}
-              fallbackBookingId={data.isFallback ? jobId : undefined}
-              receiptPdfHref={data.receiptPdfHref}
-              pricing={
-                {
-                  ...data.pricingSnapshot,
-                  promoCode: data.promoCode ?? '',
-                  rawTotalPaidCents: data.pricingSnapshot.rawTotalPaidCents ?? data.pricingSnapshot.totalPaidCents,
-                  allocatedTotalPaidCents: data.pricingSnapshot.totalPaidCents,
-                  overpaymentCents: data.pricingSnapshot.overpaymentCents ?? 0,
-                  hasOverpayment: (data.pricingSnapshot.overpaymentCents ?? 0) > 0,
-                } as JobPricingDisplay
-              }
-              breakdownLines={data.receiptBreakdownLines}
-              payments={data.recentPayments.map((p) => ({
-                id: p.id ?? '',
-                amount: p.amount,
-                amountCents: p.amountCents ?? 0,
-                status: p.status,
-                method: p.method,
-                at: p.at,
-                voided: p.voided,
-              }))}
-              promoCode={data.promoCode}
-              canManagePayments
-              workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
-            />
-          ) : null}
-          </div>
         </WorkOrderCollapsible>
         </div>
 

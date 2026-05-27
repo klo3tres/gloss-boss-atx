@@ -563,8 +563,19 @@ export async function processCheckoutSessionCompleted(params: {
   const technicianId = session.metadata?.technician_id ?? null;
 
   try {
+    const apptForPay = await admin
+      .from('appointments')
+      .select('customer_id, guest_email')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    const customerIdEarly =
+      apptForPay.data && typeof (apptForPay.data as { customer_id?: string }).customer_id === 'string'
+        ? (apptForPay.data as { customer_id: string }).customer_id
+        : null;
+
     const paymentRow: Record<string, unknown> = {
       appointment_id: appointmentId,
+      customer_id: customerIdEarly,
       stripe_checkout_session_id: session.id,
       stripe_payment_intent_id:
         typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
@@ -581,6 +592,28 @@ export async function processCheckoutSessionCompleted(params: {
     const payResult = await upsertPaymentRow(admin, paymentRow);
     if (!payResult.ok) {
       console.error('[checkout] payment row not saved', appointmentId, payResult.error);
+      const { logPaymentDebugEvent } = await import('@/lib/payment-debug');
+      await logPaymentDebugEvent(admin, {
+        appointmentId,
+        customerEmail: (apptForPay.data as { guest_email?: string } | null)?.guest_email,
+        eventType: 'checkout_payment_upsert_failed',
+        paymentMode: paymentRow.payment_kind as string,
+        errorMessage: payResult.error,
+        metadata: { session_id: session.id, amount_cents: amount },
+      });
+      try {
+        const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+        await notifyOwnerBookingEvent({
+          kind: 'payment_failed',
+          appointmentId,
+          guestEmail: String((apptForPay.data as { guest_email?: string } | null)?.guest_email ?? '').trim() || '—',
+          totalCents: amount,
+          paidCents: 0,
+          extraNote: `Stripe checkout ${session.id} succeeded but payment row failed: ${payResult.error}`,
+        });
+      } catch (notifyErr) {
+        console.warn('[checkout] owner notify payment upsert failed', notifyErr);
+      }
       throw new Error(payResult.error ?? 'payment row upsert failed');
     }
 
@@ -652,6 +685,26 @@ export async function processCheckoutSessionCompleted(params: {
     );
   } catch (e) {
     console.error('[checkout] processCheckoutSessionCompleted', e);
+    const { logPaymentDebugEvent } = await import('@/lib/payment-debug');
+    await logPaymentDebugEvent(admin, {
+      appointmentId,
+      eventType: 'checkout_session_processing_failed',
+      errorMessage: e instanceof Error ? e.message : String(e),
+      metadata: { session_id: session.id, amount_cents: amount },
+    });
+    try {
+      const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+      await notifyOwnerBookingEvent({
+        kind: 'payment_failed',
+        appointmentId,
+        guestEmail: session.customer_details?.email ?? session.customer_email ?? '—',
+        totalCents: amount,
+        paidCents: 0,
+        extraNote: `checkout.session.completed handler failed: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    } catch (notifyErr) {
+      console.warn('[checkout] owner notify processing failed', notifyErr);
+    }
     throw e;
   }
 }

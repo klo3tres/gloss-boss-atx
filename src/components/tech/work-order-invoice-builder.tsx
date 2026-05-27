@@ -90,6 +90,7 @@ export function WorkOrderInvoiceBuilder({
   customerName,
   vehicleBreakdownLines,
   defaultVehicleClass = 'sedan',
+  hideReceiptSection = false,
 }: {
   jobId: string;
   customerName?: string;
@@ -108,6 +109,7 @@ export function WorkOrderInvoiceBuilder({
   totalPaid?: string;
   paymentComplete: boolean;
   receiptPdfHref?: string;
+  hideReceiptSection?: boolean;
 }) {
   const router = useRouter();
   const [livePricing, setLivePricing] = useState(pricing);
@@ -569,13 +571,15 @@ export function WorkOrderInvoiceBuilder({
         ) : null}
       </div>
 
-      <WorkOrderReceiptSendFlow
-        appointmentId={appointmentId}
-        fallbackBookingId={fallbackBookingId}
-        isFallback={isFallback}
-        receiptPdfHref={receiptPdfHref}
-        compact
-      />
+      {!hideReceiptSection ? (
+        <WorkOrderReceiptSendFlow
+          appointmentId={appointmentId}
+          fallbackBookingId={fallbackBookingId}
+          isFallback={isFallback}
+          receiptPdfHref={receiptPdfHref}
+          compact
+        />
+      ) : null}
 
       {checkoutUrl ? (
         <a

@@ -91,7 +91,30 @@ export async function POST(request: Request) {
     }
   } catch (e) {
     console.error('[stripe/webhook] event processing failed', event.type, e);
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed' && admin) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const { logPaymentDebugEvent } = await import('@/lib/payment-debug');
+      await logPaymentDebugEvent(admin, {
+        appointmentId: session.metadata?.appointment_id as string | undefined,
+        fallbackBookingId: session.metadata?.fallback_booking_id as string | undefined,
+        customerEmail: session.customer_details?.email ?? session.customer_email,
+        eventType: 'webhook_checkout_failed',
+        errorMessage: e instanceof Error ? e.message : String(e),
+        metadata: { session_id: session.id },
+      });
+      try {
+        const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+        await notifyOwnerBookingEvent({
+          kind: 'payment_failed',
+          appointmentId: session.metadata?.appointment_id as string | undefined,
+          guestEmail: session.customer_details?.email ?? session.customer_email ?? '—',
+          totalCents: session.amount_total ?? 0,
+          paidCents: 0,
+          extraNote: `Webhook checkout.session.completed failed — use Advanced repair → Sync Stripe. ${e instanceof Error ? e.message : String(e)}`,
+        });
+      } catch (notifyErr) {
+        console.warn('[stripe/webhook] owner notify', notifyErr);
+      }
       return NextResponse.json({ error: 'checkout processing failed' }, { status: 500 });
     }
   }

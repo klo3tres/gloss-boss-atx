@@ -5,6 +5,8 @@ import { hasHistoricalPricingSnapshot } from '@/lib/historical-pricing';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 import { resolveWorkOrder, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { buildReceiptBreakdown, type ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import { resolveOrderLedger } from '@/lib/order-ledger';
+import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 
 function str(v: unknown) {
@@ -279,13 +281,15 @@ export async function loadOrderSnapshot(
   const appointmentId = isFallback ? '' : resolved.canonicalId;
   const fallbackBookingId = isFallback ? resolved.canonicalId : '';
 
+  const ledger = await resolveOrderLedger(admin, query);
+
   const paymentRows = await fetchPaymentsForJob(admin, job, {
     appointmentId: appointmentId || undefined,
     fallbackBookingId: fallbackBookingId || undefined,
     isFallback,
   });
 
-  const pricing = resolveJobPricing(job, paymentRows);
+  const pricing = ledger?._pricing ?? resolveJobPricing(job, paymentRows);
   const originalBookingBreakdown = obj(job.booking_pricing_breakdown);
   const currentBreakdown = { ...originalBookingBreakdown };
 
@@ -351,7 +355,7 @@ export async function loadOrderSnapshot(
     pricingLocked: hasHistoricalPricingSnapshot(job),
     payments: mapPayments(paymentRows),
     agreement: { signed: agreementSigned, agreementId, signedAt },
-    receiptLines: buildReceiptBreakdown(job, pricing),
+    receiptLines: ledger ? ledgerReceiptLines(ledger, { includeAdmin: true }) : buildReceiptBreakdown(job, pricing),
     promoCode: str(job.promo_code),
     notes: str(job.notes),
     jobStatus: str(job.status),
