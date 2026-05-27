@@ -86,10 +86,17 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
 
   lines.push({ label: 'Final total', amount: displayMoney(pricing.finalTotalCents), tone: 'total' });
   if (pricing.depositPaidCents > 0) {
-    lines.push({ label: 'Deposit paid', amount: displayMoney(pricing.depositPaidCents), tone: 'paid' });
+    const depositLabel =
+      pricing.stripePaidCents > 0 && pricing.depositPaidCents <= pricing.stripePaidCents
+        ? 'Stripe deposit paid'
+        : 'Deposit paid';
+    lines.push({ label: depositLabel, amount: displayMoney(pricing.depositPaidCents), tone: 'paid' });
+  } else if (pricing.stripePaidCents > 0) {
+    lines.push({ label: 'Stripe deposit paid', amount: displayMoney(pricing.stripePaidCents), tone: 'paid' });
   }
-  if (pricing.stripePaidCents > 0) {
-    lines.push({ label: 'Stripe paid', amount: displayMoney(pricing.stripePaidCents), tone: 'paid' });
+  const stripeRemainder = Math.max(0, pricing.stripePaidCents - pricing.depositPaidCents);
+  if (stripeRemainder > 0) {
+    lines.push({ label: 'Stripe paid (balance)', amount: displayMoney(stripeRemainder), tone: 'paid' });
   }
   if (pricing.zellePaidCents > 0) {
     lines.push({ label: 'Zelle / Venmo paid', amount: displayMoney(pricing.zellePaidCents), tone: 'paid' });

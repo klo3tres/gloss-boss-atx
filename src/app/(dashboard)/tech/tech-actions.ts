@@ -1389,17 +1389,19 @@ export async function techCompleteJobAction(
     }
   }
 
-  let completeUpdate = await gate.supabase
+  const completeDb = admin ?? gate.supabase;
+  let completeUpdate = await completeDb
     .from('appointments')
     .update({
       status: 'completed',
       job_completed_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
       no_damage_observed: noDamageObserved,
       updated_at: new Date().toISOString(),
     })
     .eq('id', appointmentId);
   if (completeUpdate.error && isSchemaDriftError(completeUpdate.error.message)) {
-    completeUpdate = await gate.supabase
+    completeUpdate = await completeDb
       .from('appointments')
       .update({
         status: 'completed',
@@ -1459,7 +1461,9 @@ export async function techCompleteJobAction(
 
   revalidatePath('/tech');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath('/tech');
   revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/dispatch');
   return { ok: true };
 }
 

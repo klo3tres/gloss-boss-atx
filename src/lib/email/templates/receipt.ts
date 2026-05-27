@@ -37,17 +37,20 @@ export function buildReceiptEmailHtml(input: {
   line: ReceiptEmailLine;
 }): string {
   const v = input.line;
-  const vehicleRows = v.vehicles
-    .map(
-      (car) => `
+  const useBreakdownOnly = v.breakdown && v.breakdown.length > 0;
+  const vehicleRows = useBreakdownOnly
+    ? ''
+    : v.vehicles
+        .map(
+          (car) => `
       <tr>
         <td style="padding:12px 0;border-bottom:1px solid #27272a;">
           <p style="margin:0;font-size:15px;font-weight:700;color:#fafafa;">${escapeEmailHtml(car.name)}</p>
           <p style="margin:4px 0 0;font-size:13px;color:#a1a1aa;">${escapeEmailHtml(car.service)}${car.color ? ` · ${escapeEmailHtml(car.color)}` : ''}${car.price ? ` · ${escapeEmailHtml(car.price)}` : ''}</p>
         </td>
       </tr>`,
-    )
-    .join('');
+        )
+        .join('');
 
   const cardInner = `
     <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#d4af37;">Receipt</p>
@@ -55,7 +58,7 @@ export function buildReceiptEmailHtml(input: {
     <p style="margin:12px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Customer:</strong> ${escapeEmailHtml(input.customerName)}</p>
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Service:</strong> ${escapeEmailHtml(input.serviceAt)}</p>
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Address:</strong> ${escapeEmailHtml(input.serviceAddress)}</p>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">${vehicleRows}</table>
+    ${vehicleRows ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">${vehicleRows}</table>` : ''}
     ${
       v.breakdown && v.breakdown.length > 0
         ? emailMoneyTable(

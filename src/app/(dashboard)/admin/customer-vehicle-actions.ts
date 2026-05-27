@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { insertCustomerVehicle, listCustomerVehicles, updateCustomerVehicle } from '@/lib/crm-vehicles-db';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { syncVehiclesForCustomerRecord } from '@/lib/crm-vehicle-sync';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
@@ -44,12 +45,18 @@ export async function addCustomerVehicleAction(formData: FormData) {
   const vehicleClass = str(formData.get('vehicleClass')) || 'sedan';
   const description = vehicleDescription(year, make, model, color);
 
-  const { error } = await g.admin.from('vehicles').insert({
-    customer_id: customerId,
-    description,
-    notes: notesJson(year, make, model, color, vehicleClass),
-  });
-  if (error) return { ok: false as const, error: error.message };
+  try {
+    const { id } = await insertCustomerVehicle(g.admin, {
+      customerId,
+      description,
+      notes: notesJson(year, make, model, color, vehicleClass),
+    });
+    const verified = await listCustomerVehicles(g.admin, customerId);
+    const found = verified.some((v) => v.id === id);
+    if (!found) return { ok: false as const, error: 'Vehicle saved but re-read failed.' };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : 'Could not add vehicle' };
+  }
 
   revalidatePath(`/admin/customers/${customerId}`);
   revalidatePath('/dashboard');
@@ -71,13 +78,16 @@ export async function updateCustomerVehicleAction(formData: FormData) {
   const vehicleClass = str(formData.get('vehicleClass')) || 'sedan';
   const archived = str(formData.get('archived')) === '1';
 
-  const patch: Record<string, unknown> = {
-    description: vehicleDescription(year, make, model, color),
-    notes: archived ? `[archived] ${notesJson(year, make, model, color, vehicleClass)}` : notesJson(year, make, model, color, vehicleClass),
-  };
-
-  const { error } = await g.admin.from('vehicles').update(patch).eq('id', vehicleId).eq('customer_id', customerId);
-  if (error) return { ok: false as const, error: error.message };
+  try {
+    await updateCustomerVehicle(g.admin, {
+      customerId,
+      vehicleId,
+      description: vehicleDescription(year, make, model, color),
+      notes: archived ? `[archived] ${notesJson(year, make, model, color, vehicleClass)}` : notesJson(year, make, model, color, vehicleClass),
+    });
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : 'Could not update vehicle' };
+  }
 
   revalidatePath(`/admin/customers/${customerId}`);
   return { ok: true as const };

@@ -4,6 +4,7 @@ import { Camera, ImagePlus, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { PHOTO_SLOT_OPTIONS } from '@/lib/photo-phase';
+import { compressImageForUpload, formatFileSize } from '@/lib/image-compress-client';
 
 type UploadJson = { ok?: boolean; url?: string; error?: string; photoId?: string; mediaId?: string };
 
@@ -34,6 +35,7 @@ export function WorkOrderPhotoUpload({
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fileHint, setFileHint] = useState<string | null>(null);
   const router = useRouter();
 
   const upload = async (file: File | undefined | null) => {
@@ -44,8 +46,23 @@ export function WorkOrderPhotoUpload({
       return;
     }
     setBusy(true);
+    setStatus({ tone: 'info', text: 'Preparing upload…' });
+    let uploadFile = file;
+    try {
+      const compressed = await compressImageForUpload(file);
+      uploadFile = compressed.file;
+      setFileHint(
+        compressed.compressed
+          ? `Compressed ${formatFileSize(compressed.beforeBytes)} → ${formatFileSize(compressed.afterBytes)}`
+          : `File size: ${formatFileSize(compressed.beforeBytes)}`,
+      );
+    } catch (e) {
+      setStatus({ tone: 'error', text: e instanceof Error ? e.message : 'Could not prepare image.' });
+      setBusy(false);
+      return;
+    }
     setStatus({ tone: 'info', text: 'Uploading…' });
-    const localPreview = URL.createObjectURL(file);
+    const localPreview = URL.createObjectURL(uploadFile);
     setPreview(localPreview);
     const fd = new FormData();
     fd.set('workOrderId', woId);
@@ -62,12 +79,16 @@ export function WorkOrderPhotoUpload({
     fd.set('photoCategory', category);
     fd.set('vehicleIndex', String(vehicleIndex));
     fd.set('vehicleLabel', vehicleLabel);
-    fd.set('file', file);
+    fd.set('file', uploadFile);
     try {
       const res = await fetch('/api/tech/job-media-upload', { method: 'POST', body: fd });
       const json = (await res.json().catch(() => ({}))) as UploadJson;
       if (!res.ok || json.ok === false) {
-        setStatus({ tone: 'error', text: json.error ?? `Upload failed (HTTP ${res.status}).` });
+        const errText =
+          res.status === 413
+            ? 'Photo too large for server — try again (we compress automatically) or use a smaller image.'
+            : json.error ?? `Upload failed (HTTP ${res.status}).`;
+        setStatus({ tone: 'error', text: errText });
         return;
       }
       if (json.url) setPreview(json.url);
@@ -162,6 +183,7 @@ export function WorkOrderPhotoUpload({
       {preview ? (
         <img src={preview} alt='Upload preview' className='mt-4 h-40 w-full max-w-sm rounded-2xl border border-gold/30 object-cover shadow-[0_0_24px_rgba(212,175,55,0.25)] sm:h-48' />
       ) : null}
+      {fileHint ? <p className='mt-2 text-[10px] text-zinc-500'>{fileHint}</p> : null}
       {status ? (
         <p className={`mt-3 rounded-xl border px-3 py-2 text-xs ${statusClass}`} role='status'>
           {status.text}

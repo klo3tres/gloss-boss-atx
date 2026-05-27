@@ -168,3 +168,95 @@ export async function syncStripePaymentsForWorkOrderAction(formData: FormData): 
     paymentRows,
   };
 }
+
+export async function recordManualStripePaymentAction(formData: FormData): Promise<StripeSyncResult> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) {
+    return { ok: false, error: 'Unauthorized', matchedBefore: 0, matchedAfter: 0, attachedIds: [], paymentRows: [] };
+  }
+  const admin = tryCreateAdminSupabase();
+  if (!admin) {
+    return {
+      ok: false,
+      error: 'SUPABASE_SERVICE_ROLE_KEY missing.',
+      matchedBefore: 0,
+      matchedAfter: 0,
+      attachedIds: [],
+      paymentRows: [],
+    };
+  }
+
+  const appointmentId = str(formData.get('appointmentId'));
+  const fallbackBookingId = str(formData.get('fallbackBookingId'));
+  const jobId = fallbackBookingId || appointmentId;
+  const amountDollars = Number(str(formData.get('amountDollars')));
+  const reason = str(formData.get('reason'));
+  const reference = str(formData.get('reference'));
+  if (!jobId || !Number.isFinite(amountDollars) || amountDollars <= 0) {
+    return { ok: false, error: 'Invalid amount', matchedBefore: 0, matchedAfter: 0, attachedIds: [], paymentRows: [] };
+  }
+  if (!reason) {
+    return { ok: false, error: 'Reason required for manual Stripe payment', matchedBefore: 0, matchedAfter: 0, attachedIds: [], paymentRows: [] };
+  }
+
+  const isFallback = Boolean(fallbackBookingId && !appointmentId);
+  const { data: jobRow } = await admin
+    .from(isFallback ? 'booking_fallbacks' : 'appointments')
+    .select('*')
+    .eq('id', jobId)
+    .maybeSingle();
+  if (!jobRow) {
+    return { ok: false, error: 'Work order not found', matchedBefore: 0, matchedAfter: 0, attachedIds: [], paymentRows: [] };
+  }
+
+  const job = jobRow as Row;
+  const before = await fetchPaymentsForJob(admin, job, {
+    appointmentId: isFallback ? undefined : jobId,
+    fallbackBookingId: isFallback ? jobId : undefined,
+    isFallback,
+  });
+
+  const cents = Math.round(amountDollars * 100);
+  const { error } = await admin.from('payments').insert({
+    appointment_id: isFallback ? null : jobId,
+    fallback_booking_id: isFallback ? jobId : null,
+    customer_id: str(job.customer_id) || null,
+    email: str(job.guest_email) || null,
+    amount_cents: cents,
+    status: 'succeeded',
+    payment_method: 'stripe',
+    payment_kind: 'deposit',
+    stripe_checkout_session_id: reference || str(job.stripe_checkout_session_id) || null,
+    stripe_payment_intent_id: str(job.stripe_payment_intent_id) || null,
+    paid_at: new Date().toISOString(),
+    metadata: { manual_record: true, reason, recorded_by: session.user.id },
+  });
+  if (error) {
+    return { ok: false, error: error.message, matchedBefore: before.length, matchedAfter: before.length, attachedIds: [], paymentRows: [] };
+  }
+
+  const after = await fetchPaymentsForJob(admin, job, {
+    appointmentId: isFallback ? undefined : jobId,
+    fallbackBookingId: isFallback ? jobId : undefined,
+    isFallback,
+  });
+
+  revalidatePath(`/tech/work-orders/${jobId}`);
+
+  return {
+    ok: true,
+    matchedBefore: before.length,
+    matchedAfter: after.length,
+    attachedIds: [],
+    paymentRows: after.map((p) => ({
+      id: str(p.id),
+      amount_cents: typeof p.amount_cents === 'number' ? p.amount_cents : 0,
+      payment_kind: str(p.payment_kind),
+      payment_method: str(p.payment_method),
+      status: str(p.status),
+      appointment_id: str(p.appointment_id),
+      stripe_checkout_session_id: str(p.stripe_checkout_session_id),
+      stripe_payment_intent_id: str(p.stripe_payment_intent_id),
+    })),
+  };
+}

@@ -5,20 +5,13 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
-import { buildReceiptEmailHtml } from '@/lib/email/templates/receipt';
-import { resolveJobPricing } from '@/lib/job-pricing-display';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
-import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
+import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
-import { displayChicago, displayLabel, displayMoney } from '@/lib/display-format';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
 
 function str(v: unknown) {
   return v == null ? '' : String(v);
-}
-
-function money(cents: unknown) {
-  return typeof cents === 'number' ? `$${(cents / 100).toFixed(2)}` : '$0.00';
 }
 
 async function requireReceiptSender() {
@@ -68,6 +61,13 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
       ? [payment]
       : [];
   const pricing = resolveJobPricing(job, allPayments);
+  const view = await buildUnifiedReceiptView(gate.admin, {
+    job,
+    appointmentId,
+    fallbackBookingId: fallbackId,
+    receiptNumber,
+    receiptId: receiptId || undefined,
+  });
 
   let status = 'skipped';
   let skippedReason: string | null = null;
@@ -77,50 +77,11 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   } else if (!resendConfigured()) {
     skippedReason = 'Skipped - configure Resend before emailing receipts.';
   } else {
-    const vehicleLines = [
-      ...pricing.vehicleLines.map((v) => ({
-        name: v.name,
-        service: displayLabel(v.service),
-        color: v.color || undefined,
-        price: displayMoney(v.priceCents),
-      })),
-      ...customLineItemsAsReceiptRows(job),
-    ];
-    const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://glossbossatx.com';
-    const receiptUrl = receiptId
-      ? `${appBase}/admin/receipts/${encodeURIComponent(receiptId)}`
-      : resolvedPaymentId
-        ? `${appBase}/admin/receipts/${encodeURIComponent(resolvedPaymentId)}`
-        : workOrderId
-          ? `${appBase}/api/receipts/${encodeURIComponent(workOrderId)}/pdf`
-          : undefined;
-    const html = buildReceiptEmailHtml({
-      customerName: str(job.guest_name || customer.full_name || 'Customer'),
-      receiptNumber,
-      serviceAddress: [job.service_address, job.service_city, job.service_state, job.service_zip].map(str).filter(Boolean).join(', '),
-      serviceAt: displayChicago(job.scheduled_start || job.job_completed_at || payment.created_at),
-      line: {
-        vehicles: vehicleLines.length
-          ? vehicleLines
-          : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug) }],
-        subtotal: displayMoney(pricing.vehicleSubtotalCents),
-        addOnSubtotal: pricing.addOnSubtotalCents > 0 ? displayMoney(pricing.addOnSubtotalCents) : undefined,
-        onlineDiscount: pricing.onlineDiscountCents > 0 ? `−${displayMoney(pricing.onlineDiscountCents)}` : undefined,
-        multiCarDiscount: pricing.multiCarDiscountCents > 0 ? `−${displayMoney(pricing.multiCarDiscountCents)}` : undefined,
-        promo: pricing.promoDiscountCents > 0 ? `−${displayMoney(pricing.promoDiscountCents)}` : undefined,
-        manualDiscount: pricing.manualDiscountCents > 0 ? `−${displayMoney(pricing.manualDiscountCents)}` : undefined,
-        breakdown: buildReceiptBreakdown(job, pricing),
-        depositPaid: pricing.depositPaidCents > 0 ? displayMoney(pricing.depositPaidCents) : undefined,
-        cashPaid: pricing.cashPaidCents > 0 ? displayMoney(pricing.cashPaidCents) : undefined,
-        totalPaid: displayMoney(pricing.totalPaidCents),
-        finalTotal: displayMoney(pricing.finalTotalCents),
-        stripePaid: pricing.stripePaidCents > 0 ? displayMoney(pricing.stripePaidCents) : undefined,
-        remainingBalance: displayMoney(pricing.remainingBalanceCents),
-        paymentMethod: displayLabel(payment.payment_method || payment.payment_kind || receipt.payment_method),
-        receiptUrl,
-      },
+    const sent = await sendResendHtml({
+      to: email,
+      subject: `Gloss Boss ATX receipt ${view.receiptNumber}`,
+      html: view.emailHtml,
     });
-    const sent = await sendResendHtml({ to: email, subject: `Gloss Boss ATX receipt ${receiptNumber}`, html });
     if (sent.ok) {
       status = 'sent';
       if (sent.emailId) {

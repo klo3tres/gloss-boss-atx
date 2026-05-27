@@ -26,7 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     );
   }
 
-  const pdf = buildReceiptPdfFromContext(ctx);
+  const pdf = await buildReceiptPdfFromContext(ctx, admin);
   const filename = `${ctx.receiptNumber.replace(/[^a-zA-Z0-9-_]/g, '_') || 'receipt'}.pdf`;
 
   return new NextResponse(Buffer.from(pdf), {

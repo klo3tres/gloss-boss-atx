@@ -12,6 +12,7 @@ import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-b
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import { filterReceiptBreakdownForCustomer } from '@/lib/unified-receipt';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { displayMoney } from '@/lib/display-format';
 
@@ -50,6 +51,7 @@ export function WorkOrderReceiptPanel({
   const [msg, setMsg] = useState<string | null>(null);
 
   const activePayments = payments.filter((p) => p.id && !p.voided && !p.status.toLowerCase().includes('void'));
+  const customerBreakdown = filterReceiptBreakdownForCustomer(breakdownLines);
 
   const afterAction = (text: string, ok: boolean) => {
     setMsg(text);
@@ -83,9 +85,9 @@ export function WorkOrderReceiptPanel({
       ) : null}
 
       <div className='mt-4 rounded-xl border border-white/10 bg-black/40 p-4'>
-        <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Live receipt preview</p>
+        <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Live receipt preview (customer view)</p>
         <ul className='mt-3 space-y-1.5 text-sm'>
-          {breakdownLines.map((line, i) => (
+          {customerBreakdown.map((line, i) => (
             <li key={`${line.label}-${i}`} className='flex justify-between gap-4'>
               <span className={line.tone === 'discount' ? 'text-emerald-300' : 'text-zinc-300'}>{line.label}</span>
               <span

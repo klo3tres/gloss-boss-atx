@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { insertCustomerVehicle, listCustomerVehicles } from '@/lib/crm-vehicles-db';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
 function str(v: unknown) {
@@ -31,10 +32,15 @@ function vehicleKey(year: string, make: string, model: string, color: string, de
 }
 
 async function existingVehicleKeys(admin: SupabaseClient, customerId: string) {
-  const { data } = await admin.from('vehicles').select('description, notes').eq('customer_id', customerId).limit(200);
+  let rows: Awaited<ReturnType<typeof listCustomerVehicles>> = [];
+  try {
+    rows = await listCustomerVehicles(admin, customerId);
+  } catch {
+    return new Set<string>();
+  }
   const set = new Set<string>();
-  for (const row of data ?? []) {
-    const r = row as { description?: string; notes?: string };
+  for (const row of rows) {
+    const r = row;
     if (r.description) set.add(r.description.trim().toLowerCase());
     try {
       const n = r.notes ? (JSON.parse(r.notes) as { make?: string; model?: string; year?: string; color?: string }) : null;
@@ -81,21 +87,16 @@ export async function syncVehiclesToCustomer(
     seen.add(key);
     seen.add(description.toLowerCase());
 
-    let ins = await admin.from('vehicles').insert({
-      customer_id: customerId,
-      description,
-      notes: notesJson(v),
-    });
-    if (ins.error && /description|column|schema cache/i.test(ins.error.message)) {
-      ins = await admin.from('vehicles').insert({
-        customer_id: customerId,
-        notes: `${description}\n${notesJson(v)}`,
+    try {
+      await insertCustomerVehicle(admin, {
+        customerId,
+        description,
+        notes: notesJson(v),
       });
+      inserted += 1;
+    } catch {
+      /* skip row on schema mismatch */
     }
-    if (ins.error && /notes|column/i.test(ins.error.message)) {
-      ins = await admin.from('vehicles').insert({ customer_id: customerId });
-    }
-    if (!ins.error) inserted += 1;
   }
 
   return { inserted };

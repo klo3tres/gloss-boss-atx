@@ -5,9 +5,8 @@ import { loadOrderSnapshot, type OrderSnapshot } from '@/lib/order-snapshot-engi
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
-import { buildReceiptPdfBytes, type ReceiptPdfInput } from '@/lib/receipt-pdf';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
-import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
+import { buildReceiptPdfBytes } from '@/lib/receipt-pdf';
+import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
 
 type Row = Record<string, unknown>;
 
@@ -195,73 +194,18 @@ function address(job: Row) {
   return [job.service_address, job.service_city, job.service_state, job.service_zip].map(str).filter(Boolean).join(', ');
 }
 
-export function buildReceiptPdfFromContext(ctx: ResolvedReceiptContext): Uint8Array {
-  const { job, payment, pricing, techName, receiptNumber, snapshot } = ctx;
-  const discountTotal =
-    pricing.multiCarDiscountCents + pricing.onlineDiscountCents + pricing.promoDiscountCents;
-
-  const vehicleRows = snapshot?.vehicles.length
-    ? snapshot.vehicles.flatMap((v) => {
-        const rows = [
-          {
-            name: v.description,
-            service: displayLabel(v.serviceSlug),
-            color: v.color || '—',
-            price: displayMoney(v.priceCents),
-          },
-        ];
-        for (const a of v.addOns) {
-          rows.push({
-            name: `  ↳ ${a.label}`,
-            service: 'Add-on',
-            color: '—',
-            price: displayMoney(a.priceCents),
-          });
-        }
-        return rows;
-      })
-    : [
-        ...pricing.vehicleLines.map((v) => ({
-          name: v.name,
-          service: displayLabel(v.service),
-          color: v.color || '—',
-          price: displayMoney(v.priceCents),
-        })),
-        ...customLineItemsAsReceiptRows(job),
-      ];
-
-  const input: ReceiptPdfInput = {
+export async function buildReceiptPdfFromContext(
+  ctx: ResolvedReceiptContext,
+  admin: import('@supabase/supabase-js').SupabaseClient,
+): Promise<Uint8Array> {
+  const { job, techName, receiptNumber, isFallback, workOrderId } = ctx;
+  const view = await buildUnifiedReceiptView(admin, {
+    job,
+    appointmentId: isFallback ? undefined : workOrderId,
+    fallbackBookingId: isFallback ? workOrderId : undefined,
     receiptNumber,
-    brandName: GLOSS_BOSS_BRAND_NAME,
-    customerName: displayText(job.guest_name, 'Customer'),
-    customerEmail: str(job.guest_email),
-    customerPhone: displayPhone(job.guest_phone),
-    serviceAddress: address(job),
-    paidAt: displayChicago(payment?.paid_at || payment?.created_at || ctx.receipt?.created_at),
-    serviceAt: displayChicago(job.scheduled_start),
-    completedAt: displayChicago(job.job_completed_at || job.completed_at),
-    jobStartedAt: displayChicago(job.job_started_at),
-    jobCompletedAt: displayChicago(job.job_completed_at || job.completed_at),
-    technicianName: techName,
-    method: displayLabel(payment?.payment_method || payment?.payment_kind || ctx.receipt?.payment_method),
-    status: displayLabel(payment?.status || ctx.receipt?.status),
-    vehicles: vehicleRows.length
-      ? vehicleRows
-      : [{ name: str(job.vehicle_description) || 'Service', service: displayLabel(job.service_slug), color: '—', price: displayMoney(pricing.finalTotalCents) }],
-    baseTotal: displayMoney(pricing.vehicleSubtotalCents),
-    addOnSubtotal: pricing.addOnSubtotalCents > 0 ? displayMoney(pricing.addOnSubtotalCents) : '',
-    breakdownLines: snapshot?.receiptLines ?? buildReceiptBreakdown(job, pricing),
-    discounts: discountTotal > 0 ? displayMoney(discountTotal) : '',
-    taxAmount: '',
-    finalTotal: displayMoney(pricing.finalTotalCents),
-    depositPaid: displayMoney(pricing.depositPaidCents || pricing.depositCents),
-    fullPaid: displayMoney(pricing.totalPaidCents),
-    cashPaid: displayMoney(pricing.cashPaidCents),
-    stripePaid: displayMoney(pricing.stripePaidCents),
-    zellePaid: pricing.zellePaidCents > 0 ? displayMoney(pricing.zellePaidCents) : '',
-    manualPaid: pricing.manualPaidCents > 0 ? displayMoney(pricing.manualPaidCents) : '',
-    remainingBalance: displayMoney(pricing.remainingBalanceCents),
-  };
-
-  return buildReceiptPdfBytes(input);
+    techName,
+    receiptId: str(ctx.receipt?.id) || undefined,
+  });
+  return buildReceiptPdfBytes(view.pdfInput);
 }

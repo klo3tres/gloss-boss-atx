@@ -665,6 +665,8 @@ export function WorkOrderConsoleClient({
           balanceDueCents={data.balanceDueCents}
           guestEmail={data.guestEmail}
           agreementCaptureHref={data.agreementCaptureHref}
+          receiptPdfHref={data.receiptPdfHref}
+          jobCompleted={data.statusLabel.toLowerCase().includes('complete') || Boolean(data.jobCompletedAt)}
         />
         </div>
       </section>

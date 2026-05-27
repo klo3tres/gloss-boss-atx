@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { listCustomerVehicles } from '@/lib/crm-vehicles-db';
 import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
 import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
@@ -33,7 +34,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const custEmailRaw = String(c.email ?? '').trim().toLowerCase();
   const custPhoneRaw = String(c.phone ?? '').replace(/\D/g, '');
 
-  const [apptsRes, vehiclesRes, notesRes, apptsByEmailRes, apptsByPhoneRes] = await Promise.all([
+  const [apptsRes, notesRes, apptsByEmailRes, apptsByPhoneRes] = await Promise.all([
     admin
       .from('appointments')
       .select(
@@ -42,7 +43,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       .eq('customer_id', id)
       .order('scheduled_start', { ascending: false })
       .limit(80),
-    admin.from('vehicles').select('id, description, notes, created_at').eq('customer_id', id).order('created_at', { ascending: false }),
     admin.from('customer_notes').select('id, body, created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(40),
     custEmailRaw
       ? admin
@@ -136,7 +136,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const pendingBookings = apptRows.filter((a) => !['completed', 'cancelled'].includes(a.status));
   const serviceSlugs = [...new Set(apptRows.filter((a) => a.status === 'completed').map((a) => a.service_slug).filter(Boolean))];
 
-  const vehicles = (vehiclesRes.data ?? []) as { id: string; description: string; notes: string | null; created_at: string }[];
+  let vehicles: { id: string; description: string; notes: string | null; created_at: string }[] = [];
+  try {
+    vehicles = await listCustomerVehicles(admin, id);
+  } catch {
+    vehicles = [];
+  }
   const notes = (notesRes.data ?? []) as { id: string; body: string; created_at: string }[];
   const apptVehicles = apptRows
     .flatMap((a) => {

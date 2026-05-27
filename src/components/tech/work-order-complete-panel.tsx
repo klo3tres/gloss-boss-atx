@@ -7,7 +7,7 @@ import { techCompleteJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
-import { sendWorkOrderReceiptEmailAction } from '@/app/(dashboard)/tech/work-order-payment-actions';
+import { WorkOrderReceiptSendFlow } from '@/components/tech/work-order-receipt-send-flow';
 
 export function WorkOrderCompletePanel({
   jobId,
@@ -18,6 +18,8 @@ export function WorkOrderCompletePanel({
   balanceDueCents,
   guestEmail,
   agreementCaptureHref,
+  receiptPdfHref,
+  jobCompleted,
 }: {
   jobId: string;
   isFallback: boolean;
@@ -27,12 +29,14 @@ export function WorkOrderCompletePanel({
   balanceDueCents: number;
   guestEmail: string;
   agreementCaptureHref: string;
+  receiptPdfHref?: string;
+  jobCompleted?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(techCompleteJobAction, null);
 
-  if (state?.ok) {
+  if (state?.ok || jobCompleted) {
     return (
-      <section className='gb-completion-celebrate space-y-4 rounded-3xl border border-emerald-500/35 bg-gradient-to-br from-emerald-500/15 via-black to-zinc-950 p-6 text-center shadow-[0_0_48px_rgba(16,185,129,0.2)]'>
+      <section id='wo-complete-done' className='gb-completion-celebrate space-y-4 rounded-3xl border border-emerald-500/35 bg-gradient-to-br from-emerald-500/15 via-black to-zinc-950 p-6 text-center shadow-[0_0_48px_rgba(16,185,129,0.2)]'>
         <div className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-emerald-400/50 bg-emerald-500/20'>
           <CheckCircle2 className='gb-check-pop h-12 w-12 text-emerald-300' />
         </div>
@@ -42,18 +46,15 @@ export function WorkOrderCompletePanel({
           Work order marked complete. Receipt, review request, and customer follow-ups are below.
         </p>
         <p className='text-xs text-emerald-200/90'>Receipt email uses Resend when configured — check notification outbox on the work order.</p>
+        <div className='text-left'>
+          <WorkOrderReceiptSendFlow
+            appointmentId={!isFallback ? jobId : undefined}
+            fallbackBookingId={isFallback ? jobId : undefined}
+            isFallback={isFallback}
+            receiptPdfHref={receiptPdfHref}
+          />
+        </div>
         <div className='flex flex-wrap justify-center gap-2 pt-2'>
-          {!isFallback ? (
-            <ToastActionForm action={sendWorkOrderReceiptEmailAction}>
-              <input type='hidden' name='appointmentId' value={jobId} />
-              <SubmitStatusButton
-                pendingText='Sending…'
-                className='inline-flex items-center gap-2 rounded-2xl bg-gold px-5 py-3 text-xs font-black uppercase text-black'
-              >
-                <Receipt className='h-4 w-4' /> Email receipt
-              </SubmitStatusButton>
-            </ToastActionForm>
-          ) : null}
           {balanceDueCents > 0 && !isFallback ? (
             <NotificationSendForm
               kind='payment_link'

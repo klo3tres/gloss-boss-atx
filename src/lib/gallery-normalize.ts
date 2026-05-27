@@ -69,6 +69,8 @@ export function resolveGalleryCaption(row: Record<string, unknown>): string | nu
 
 const RAW_FILENAME_RE = /\.(jpe?g|png|webp|gif|heic|avif)$/i;
 const FILENAME_LIKE_RE = /^(img|dsc|photo|image|snap|screenshot|wp|p\d|vid)[-_]?\d*/i;
+/** e.g. jeep_trackhawk_8k, IMG_1234 — underscore slug without spaces */
+const UNDERSCORE_FILENAME_RE = /^[a-z0-9]+(_[a-z0-9]+)+$/i;
 
 function looksLikeRawFilename(text: string): boolean {
   const t = text.trim();
@@ -76,6 +78,7 @@ function looksLikeRawFilename(text: string): boolean {
   if (t.includes('/') || t.includes('\\')) return true;
   if (RAW_FILENAME_RE.test(t)) return true;
   if (FILENAME_LIKE_RE.test(t)) return true;
+  if (UNDERSCORE_FILENAME_RE.test(t) && !t.includes(' ')) return true;
   if (/^[a-f0-9-]{20,}$/i.test(t)) return true;
   if (/\.[a-z0-9]{2,5}$/i.test(t) && !t.includes(' ')) return true;
   return false;
@@ -130,7 +133,7 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
     id,
     url,
     image_url: url,
-    caption: resolveGalleryCaption(row),
+    caption: null,
     sort_order,
     order_index: order_index ?? null,
     published: typeof published === 'boolean' ? published : true,
@@ -140,6 +143,7 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
     vehicleLabel: vehicleLabel || null,
     serviceLabel: serviceLabel || null,
   };
+  item.caption = publicGalleryDisplayTitle(item);
   return item;
 }
 

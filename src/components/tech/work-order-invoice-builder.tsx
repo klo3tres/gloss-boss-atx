@@ -2,19 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ExternalLink, FileText, Plus, Save } from 'lucide-react';
+import { ExternalLink, Plus, Save } from 'lucide-react';
 import { LINE_ITEM_KIND_LABELS, type WorkOrderLineItemKind } from '@/lib/work-order-line-items';
 import { suggestInvoiceLine } from '@/lib/invoice-line-suggestions';
 import type { UiVehicleClass } from '@/lib/vehicle-pricing';
 import { addWorkOrderLineItemAction } from '@/app/(dashboard)/tech/work-order-line-item-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
-import { ToastActionForm } from '@/components/ui/toast-action-form';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
-import {
-  generateWorkOrderReceiptActionState,
-  sendWorkOrderReceiptEmailAction,
-} from '@/app/(dashboard)/tech/work-order-payment-actions';
-import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
+import { WorkOrderReceiptSendFlow } from '@/components/tech/work-order-receipt-send-flow';
 
 const CATEGORIES = Object.keys(LINE_ITEM_KIND_LABELS) as WorkOrderLineItemKind[];
 
@@ -573,36 +567,15 @@ export function WorkOrderInvoiceBuilder({
             Send balance link
           </NotificationSendForm>
         ) : null}
-        <ToastActionForm action={sendWorkOrderReceiptEmailAction} className='w-full'>
-          {!isFallback && appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
-          {isFallback && fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
-          <SubmitStatusButton
-            pendingText='Sending…'
-            className='w-full rounded-2xl border border-gold/40 bg-gold/10 px-4 py-4 text-sm font-black uppercase text-gold-soft'
-          >
-            Send invoice
-          </SubmitStatusButton>
-        </ToastActionForm>
-        {receiptPdfHref ? (
-          <ReceiptPdfDownloadButton
-            href={receiptPdfHref}
-            label='Generate PDF'
-            className='w-full rounded-2xl border border-white/20 px-4 py-4 text-sm font-black uppercase text-white'
-          />
-        ) : (
-          <ToastActionForm action={generateWorkOrderReceiptActionState} className='w-full'>
-            {!isFallback && appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
-            {isFallback && fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
-            <SubmitStatusButton
-              pendingText='Generating…'
-              className='w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 px-4 py-4 text-sm font-black uppercase text-white'
-            >
-              <FileText className='h-4 w-4' />
-              Generate PDF
-            </SubmitStatusButton>
-          </ToastActionForm>
-        )}
       </div>
+
+      <WorkOrderReceiptSendFlow
+        appointmentId={appointmentId}
+        fallbackBookingId={fallbackBookingId}
+        isFallback={isFallback}
+        receiptPdfHref={receiptPdfHref}
+        compact
+      />
 
       {checkoutUrl ? (
         <a
