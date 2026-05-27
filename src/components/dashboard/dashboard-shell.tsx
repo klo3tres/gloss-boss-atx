@@ -224,7 +224,7 @@ export function DashboardShell({
         ) : null}
 
         <aside
-          className={`gb-no-print order-2 z-50 rounded-3xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 via-black/95 to-zinc-950/95 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
+          className={`gb-no-print gb-glass-card order-2 z-50 rounded-3xl border border-gold/25 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
             navOpen ? 'fixed left-4 right-4 top-20 max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:max-h-none' : 'hidden lg:block'
           }`}
         >
@@ -234,7 +234,7 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
-          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6'>
+          <header className='gb-no-print gb-premium-hero gb-invoice-card overflow-hidden rounded-3xl p-5 sm:p-6'>
             <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
             <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
             <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>

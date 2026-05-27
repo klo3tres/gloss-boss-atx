@@ -1,9 +1,8 @@
 ﻿'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Gauge, ShieldCheck, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowRight, Gauge, ShieldCheck, Sparkles, Truck, X, Zap } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
 import { HomeGalleryStrip } from '@/components/marketing/home-gallery-strip';
@@ -56,7 +55,6 @@ export default function HomePage() {
   const [deals, setDeals] = useState<DealConfig>(emptyDeals);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [multiCar, setMultiCar] = useState<SiteDataMultiCar | null>(null);
-  const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [siteLoaded, setSiteLoaded] = useState(false);
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
 
@@ -68,7 +66,6 @@ export default function HomePage() {
     let cancelled = false;
     const tid = window.setTimeout(() => {
       if (!cancelled) {
-        setSchemaWarnings((w) => (w.length ? w : ['Public site data request timed out — showing defaults.']));
         setSiteLoaded(true);
       }
     }, 10000);
@@ -86,16 +83,14 @@ export default function HomePage() {
         setDeals(data.deals ?? emptyDeals);
         setOffers(data.offers ?? []);
         setMultiCar(data.multiCar ?? null);
-        setSchemaWarnings(data.schemaWarnings ?? []);
+        setGoogleReviewUrl(data.googleReviewUrl ?? '');
         if (process.env.NODE_ENV === 'development' && (data.schemaWarnings?.length ?? 0) > 0) {
           console.warn('[homepage] site-data schema warnings (not shown to visitors):', data.schemaWarnings);
         }
-        setGoogleReviewUrl(data.googleReviewUrl ?? '');
         setSiteLoaded(true);
       })
       .catch(() => {
         if (!cancelled) {
-          setSchemaWarnings(['Could not load public site data.']);
           setSiteLoaded(true);
         }
       })
@@ -113,7 +108,7 @@ export default function HomePage() {
     return offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now));
   }, [offers]);
 
-  const hasHomeOffers = useMemo(() => {
+  return (
     <main className='gb-page relative min-h-screen text-foreground'>
       {showPromoPopup && displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
         <div
@@ -152,78 +147,49 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <section className='relative flex min-h-screen items-center border-b border-white/10 px-4 pb-16 pt-28 sm:px-6 lg:px-8'>
-        <div className='absolute inset-0'>
-          <div className='absolute inset-0 bg-[url("https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=1900&q=80")] bg-cover bg-center opacity-25' />
-          <div className='absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,166,77,0.28),transparent_38%),radial-gradient(circle_at_80%_60%,rgba(212,166,77,0.14),transparent_40%),linear-gradient(to_bottom,rgba(0,0,0,0.55),rgba(0,0,0,0.95))]' />
+      <section className='relative flex min-h-[min(100vh,920px)] items-center px-4 pb-20 pt-24 sm:px-6 lg:px-8'>
+        <div className='gb-hero absolute inset-4 overflow-hidden rounded-3xl sm:inset-6 lg:inset-8'>
+          <div
+            className='gb-hero-media'
+            style={{ backgroundImage: `url("https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=2000&q=80")` }}
+          />
+          <div className='gb-hero-scrim' />
         </div>
 
-        <div className='relative mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.1fr_0.9fr]'>
+        <div className='relative z-10 mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.05fr_0.95fr]'>
           <MotionFade>
-            <div>
-              <p className='inline-flex items-center gap-2 rounded-full border border-gold/40 bg-black/50 px-4 py-2 text-xs uppercase tracking-[0.22em] text-gold-soft'>
-                <Sparkles size={14} /> Ride Clean. Ride Like A Boss.
-              </p>
-              <div className='mt-5'>
-                <Image
-                  src='/brand/glossboss-official-atx.png'
-                  alt='Gloss Boss ATX official logo'
-                  width={560}
-                  height={280}
-                  className='h-auto w-full max-w-2xl'
-                  priority
-                />
-              </div>
-              <h1 className='mt-5 text-4xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl'>
-                Luxury
-                <br />
-                Automotive
-                <br />
-                Detailing
+            <div className='gb-hero-content gb-hero rounded-3xl border border-gold/25 p-6 sm:p-10'>
+              <p className='gb-eyebrow'>Austin, Texas</p>
+              <h1 className='gb-display-serif mt-4 text-4xl font-black uppercase leading-[1.02] tracking-tight text-white sm:text-5xl lg:text-6xl'>
+                Luxury Mobile Detailing in Austin, Texas
               </h1>
               <p className='mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base'>
-                Mobile detailing in Austin, Texas with premium process standards, visual inspection records, and modern booking.
+                Premium mobile detailing with inspection photos, secure deposits, and concierge communication — built like a modern automotive platform.
               </p>
-              <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
-                <Link href='/book' className='inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-6 py-4 text-sm font-bold uppercase tracking-[0.15em] text-black shadow-[0_0_30px_rgba(212,166,77,0.4)] transition hover:brightness-110'>
+              <div className='mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap'>
+                <Link href='/book' className='gb-button-primary inline-flex text-center'>
                   Book Now <ArrowRight size={16} />
                 </Link>
-                <Link href='/services' className='rounded-xl border border-gold/40 bg-black/40 px-6 py-4 text-center text-sm font-bold uppercase tracking-[0.15em] text-gold-soft transition hover:border-gold'>
+                <Link href='/services' className='gb-button-secondary text-center'>
                   View Services
                 </Link>
-                <Link href='/gift-cards' className='rounded-xl border border-white/30 bg-black/50 px-6 py-4 text-center text-sm font-bold uppercase tracking-[0.15em] text-white transition hover:border-gold/60'>
-                  Buy Gift Card
+                <Link href='/gift-cards' className='rounded-xl border border-white/25 bg-black/50 px-6 py-4 text-center text-xs font-black uppercase tracking-wider text-white transition hover:border-gold/50'>
+                  Gift Cards
                 </Link>
               </div>
-              <div className='mt-6 rounded-xl border border-gold/20 bg-black/40 p-5 text-base sm:p-6'>
-                <p className='text-sm font-semibold uppercase tracking-wider text-gold-soft sm:text-base'>Quick Contact</p>
-                <div className='mt-3 flex flex-col gap-3 sm:mt-4'>
-                  <a
-                    href='tel:+15124812319'
-                    className='inline-flex min-h-[48px] items-center rounded-lg border border-gold/30 bg-black/50 px-4 py-3 text-lg font-semibold text-white transition hover:border-gold/60 hover:bg-black/70 sm:text-xl'
-                  >
-                    (512) 481-2319
-                  </a>
-                  <a
-                    href='mailto:glossbossatx1@gmail.com'
-                    className='inline-flex min-h-[48px] items-center break-all rounded-lg border border-white/15 bg-black/50 px-4 py-3 text-base font-medium text-gold-soft underline decoration-gold/40 underline-offset-4 transition hover:border-gold/40 hover:text-white sm:text-lg'
-                  >
-                    glossbossatx1@gmail.com
-                  </a>
-                  {googleReviewUrl ? (
-                    <a
-                      href={googleReviewUrl}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='inline-flex min-h-[48px] items-center justify-center rounded-lg border border-gold/40 bg-black/50 px-4 py-3 text-base font-bold text-gold-soft transition hover:border-gold sm:text-lg'
-                    >
-                      Leave us a Google Review
-                    </a>
-                  ) : siteLoaded ? (
-                    <p className='text-xs text-zinc-500'>Add a Google review link in Admin → Website CMS to show the review button here.</p>
-                  ) : null}
-                </div>
-                <p className='mt-3 text-sm text-zinc-400 sm:mt-4'>Austin, Texas & surrounding areas</p>
+              <div className='gb-trust-strip mt-10 gap-3'>
+                {[
+                  { icon: Truck, t: 'Mobile service', d: 'We come to you' },
+                  { icon: ShieldCheck, t: 'Licensed & insured', d: 'Fully covered ops' },
+                  { icon: Sparkles, t: 'Premium products', d: 'Pro-grade chemistry' },
+                  { icon: Gauge, t: 'Satisfaction first', d: 'Documented results' },
+                ].map((x) => (
+                  <div key={x.t} className='gb-glass-card gb-glow-hover rounded-2xl p-4 text-left'>
+                    <x.icon className='h-5 w-5 text-gold-soft' aria-hidden />
+                    <p className='mt-2 text-[11px] font-black uppercase tracking-wider text-white'>{x.t}</p>
+                    <p className='mt-1 text-xs text-zinc-500'>{x.d}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </MotionFade>
@@ -233,35 +199,9 @@ export default function HomePage() {
               <SectionErrorBoundary label='Before / after'>
                 <BeforeAfterRotator />
               </SectionErrorBoundary>
-              <article className='rounded-2xl border border-gold/20 bg-black/60 p-5 backdrop-blur'>
-                {showSchemaNotice ? (
-                  <div
-                    role='alert'
-                    className='mb-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-left text-sm text-amber-100'
-                  >
-                    <div className='flex items-start justify-between gap-2'>
-                      <div className='min-w-0 flex-1'>
-                        <p className='font-semibold'>Site notice</p>
-                        <p className='mt-1 text-xs text-amber-100/90'>We are using safe defaults where needed. Dismiss anytime.</p>
-                        <ul className='mt-2 list-disc space-y-1 pl-4 text-xs break-words text-amber-100/95'>
-                          {schemaWarnings.map((w) => (
-                            <li key={w}>{w}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      <button
-                        type='button'
-                        onClick={() => setDismissSchemaNotice(true)}
-                        className='shrink-0 rounded border border-amber-400/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-50 hover:bg-amber-500/20'
-                        aria-label='Dismiss configuration notice'
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Current Offers</p>
-                <p className='mt-3 text-lg font-bold text-white'>Multi-Car Deal</p>
+              <article className='gb-glass-card gb-glow-hover rounded-2xl p-5'>
+                <p className='gb-eyebrow'>Current offers</p>
+                <p className='mt-3 text-lg font-bold text-white'>Multi-car & online promos</p>
                 {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
                   <p className='mt-1 text-sm text-zinc-300'>
                     {displayDeals.multiCarSecondVehicleDiscountPercent}% off the second vehicle when both are booked in one appointment window.
@@ -306,13 +246,14 @@ export default function HomePage() {
 
       <section id='services' className='mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8' aria-busy={!siteLoaded}>
         <MotionFade>
-          <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>Premium Service Packages</h2>
+          <p className='gb-eyebrow'>Detailing packages</p>
+          <h2 className='gb-section-title mt-2'>Built for excellence</h2>
           {!siteLoaded ? <p className='mt-2 text-xs text-zinc-500'>Loading latest packages…</p> : null}
         </MotionFade>
         <div className='mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
           {packagesForGrid.map((service, index) => (
               <MotionFade key={`${siteLoaded ? 'live' : 'seed'}-${service.id}`} delay={index * 0.06}>
-                <article className='rounded-2xl border border-gold/20 bg-zinc-950 p-5 transition hover:-translate-y-1 hover:border-gold/50'>
+                <article className='gb-card gb-glow-hover rounded-2xl p-5'>
                   <h3 className='text-lg font-bold text-gold-soft'>{service.title}</h3>
                   <p className='mt-2 text-sm text-zinc-300'>{service.subtitle}</p>
                   <p className='mt-4 text-3xl font-black'>
@@ -334,10 +275,59 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className='mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8'>
+        <MotionFade>
+          <p className='gb-eyebrow'>How it works</p>
+          <h2 className='gb-section-title mt-2'>From booking to showroom finish</h2>
+        </MotionFade>
+        <div className='relative mt-10 grid gap-6 md:grid-cols-4'>
+          <div className='gb-how-rail' aria-hidden />
+          {['Book online', 'We arrive prepared', 'Detail & document', 'You drive a boss car'].map((t, i) => (
+            <MotionFade key={t} delay={i * 0.06}>
+              <div className='gb-how-step gb-card gb-glow-hover rounded-2xl p-5 text-center'>
+                <div className='mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-gold/50 bg-gold/15 text-sm font-black text-gold-soft'>
+                  {i + 1}
+                </div>
+                <p className='mt-4 text-sm font-bold text-white'>{t}</p>
+              </div>
+            </MotionFade>
+          ))}
+        </div>
+      </section>
+
+      <section className='border-y border-gold/10 bg-black/40 px-4 py-16 sm:px-6 lg:px-8'>
+        <div className='mx-auto max-w-7xl'>
+          <MotionFade>
+            <p className='gb-eyebrow'>Memberships</p>
+            <h2 className='gb-section-title mt-2'>Recurring care for fleets & enthusiasts</h2>
+            <p className='mt-3 max-w-2xl text-sm text-zinc-400'>
+              Bi-weekly and monthly maintenance plans — custom pricing for volume, fleets, and loyalty.
+            </p>
+          </MotionFade>
+          <div className='mt-10 grid gap-4 md:grid-cols-3'>
+            {['Basic maintenance', 'Plus protection', 'Elite concierge'].map((title, i) => (
+              <MotionFade key={title} delay={i * 0.06}>
+                <article className='gb-gold-card gb-glow-hover rounded-2xl p-6'>
+                  <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>{title}</p>
+                  <ul className='mt-4 space-y-2 text-sm text-zinc-300'>
+                    <li>· Scheduled visits</li>
+                    <li>· Priority routing</li>
+                    <li>· Documented results</li>
+                  </ul>
+                  <Link href='/book' className='mt-6 inline-block text-xs font-black uppercase text-gold-soft underline'>
+                    Discuss at booking →
+                  </Link>
+                </article>
+              </MotionFade>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id='gallery' className='border-y border-white/10 bg-black/60 px-4 py-16 sm:px-6 lg:px-8'>
         <div className='mx-auto w-full max-w-7xl'>
           <MotionFade>
-            <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>Featured transformations</h2>
+            <h2 className='gb-section-title'>Featured transformations</h2>
             <p className='mt-2 max-w-2xl text-sm text-zinc-400'>Live gallery from your CMS — add photos in Admin → Website CMS.</p>
             <Link href='/gallery' className='mt-3 inline-block text-xs font-black uppercase tracking-wider text-gold-soft underline'>
               View full transformation portfolio →
