@@ -7,19 +7,6 @@ import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
-const GALLERY_TABS = ['All', 'Exterior', 'Interior', 'SUVs', 'Ceramic'] as const;
-type GalleryTab = (typeof GALLERY_TABS)[number];
-
-function galleryMatchesTab(img: PublicGalleryItem, tab: GalleryTab): boolean {
-  if (tab === 'All') return true;
-  const hay = `${publicGalleryDisplayTitle(img)} ${str(img.serviceLabel)} ${str(img.vehicleLabel)}`.toLowerCase();
-  if (tab === 'Exterior') return /exterior|wash|foam|paint|wheel/.test(hay);
-  if (tab === 'Interior') return /interior|cabin|seat|leather|odor|vacuum/.test(hay);
-  if (tab === 'SUVs') return /suv|truck|xl|large/.test(hay);
-  if (tab === 'Ceramic') return /ceramic|coating|graphene|ppf/.test(hay);
-  return true;
-}
-
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
@@ -28,7 +15,6 @@ export function PublicGalleryPortfolio() {
   const [items, setItems] = useState<PublicGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<{ index: number; zoom: boolean } | null>(null);
-  const [tab, setTab] = useState<GalleryTab>('All');
   const touchStart = useRef<number | null>(null);
 
   useEffect(() => {
@@ -51,11 +37,7 @@ export function PublicGalleryPortfolio() {
   }, []);
 
   const featured = useMemo(() => items.filter((i) => i.featured), [items]);
-  const filtered = useMemo(() => items.filter((i) => galleryMatchesTab(i, tab)), [items, tab]);
-  const gridItems = useMemo(() => {
-    const base = featured.length ? featured.filter((i) => galleryMatchesTab(i, tab)) : filtered;
-    return base.length ? base : filtered;
-  }, [featured, filtered, tab]);
+  const gridItems = useMemo(() => (featured.length ? featured : items), [featured, items]);
 
   const active = lightbox != null ? items[lightbox.index] : null;
 
@@ -102,20 +84,7 @@ export function PublicGalleryPortfolio() {
 
   return (
     <>
-      <div className='mb-8 flex flex-wrap gap-2'>
-        {GALLERY_TABS.map((t) => (
-          <button
-            key={t}
-            type='button'
-            onClick={() => setTab(t)}
-            className={`gb-tab-pill ${tab === t ? 'gb-tab-pill-active' : ''}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {featured.length > 0 && tab === 'All' ? (
+      {featured.length > 0 ? (
         <section className='mb-12'>
           <p className='text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>Featured transformations</p>
           <div className='mt-4 grid gap-6 lg:grid-cols-2'>
@@ -130,28 +99,17 @@ export function PublicGalleryPortfolio() {
         </section>
       ) : null}
 
-      {featured.length > 0 && tab !== 'All' ? (
-        <p className='mb-4 text-xs text-zinc-500'>Featured grid shows all highlights — browse &quot;{tab}&quot; below.</p>
-      ) : null}
-
-      <p className='mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>Portfolio · {tab}</p>
-      {gridItems.length === 0 ? (
-        <div className='gb-glass-card rounded-2xl border border-gold/25 px-8 py-14 text-center'>
-          <p className='font-bold text-white'>Nothing in this category yet</p>
-          <p className='mt-2 text-sm text-zinc-500'>Try &quot;All&quot; or another tab — new before/after sets appear here automatically.</p>
-        </div>
-      ) : (
-        <div className='gb-gallery-masonry'>
-          {gridItems.map((img, i) => (
-            <MasonryTile
-              key={img.id || i}
-              img={img}
-              tall={i % 3 === 0}
-              onOpen={() => setLightbox({ index: Math.max(0, items.findIndex((x) => x.id === img.id)), zoom: false })}
-            />
-          ))}
-        </div>
-      )}
+      <p className='mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>All work · swipe to explore</p>
+      <div className='gb-gallery-masonry'>
+        {gridItems.map((img, i) => (
+          <MasonryTile
+            key={img.id || i}
+            img={img}
+            tall={i % 3 === 0}
+            onOpen={() => setLightbox({ index: Math.max(0, items.findIndex((x) => x.id === img.id)), zoom: false })}
+          />
+        ))}
+      </div>
 
       <AnimatePresence>
         {active && lightbox ? (
@@ -239,7 +197,7 @@ function FeaturedCard({ img, onOpen }: { img: PublicGalleryItem; onOpen: () => v
     <button
       type='button'
       onClick={onOpen}
-      className='group overflow-hidden rounded-3xl border border-gold/30 bg-black text-left shadow-[0_0_48px_rgba(212,175,55,0.12)] transition hover:border-gold/60 gb-photo-card'
+      className='group overflow-hidden rounded-3xl border border-gold/30 bg-black text-left shadow-[0_0_48px_rgba(212,175,55,0.12)] transition hover:border-gold/60'
     >
       {before && after && before !== after ? (
         <div className='grid min-h-[280px] grid-cols-2 sm:min-h-[360px]'>
@@ -281,7 +239,7 @@ function MasonryTile({
     <button
       type='button'
       onClick={onOpen}
-      className='gb-gallery-masonry-item gb-photo-card mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-white/10 text-left'
+      className='gb-gallery-masonry-item mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-white/10 text-left transition hover:border-gold/45 hover:shadow-[0_0_32px_rgba(212,175,55,0.18)]'
     >
       {before && after && before !== after ? (
         <div className='grid grid-cols-2 gap-px bg-black'>

@@ -34,10 +34,12 @@ function fmtMoney(cents: number) {
 }
 
 export default function ServicesPage() {
+  const [dismissSchemaNotice, setDismissSchemaNotice] = useState(false);
   const [services, setServices] = useState<ServicePackage[]>([]);
   const [deals, setDeals] = useState<DealConfig>(emptyDeals);
   const [multiCar, setMultiCar] = useState<SiteDataMultiCar | null>(null);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
+  const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [fleetEnabled, setFleetEnabled] = useState(false);
   const [fleetBlurb, setFleetBlurb] = useState("");
@@ -45,12 +47,14 @@ export default function ServicesPage() {
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : emptyDeals;
+  const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
   const showCatalogFallbackNote = loaded && services.length === 0;
 
   useEffect(() => {
     let cancelled = false;
     const tid = window.setTimeout(() => {
       if (!cancelled) {
+        setSchemaWarnings((w) => (w.length ? w : ["Public site data request timed out — showing defaults."]));
         setLoaded(true);
       }
     }, 10000);
@@ -71,13 +75,12 @@ export default function ServicesPage() {
         setFleetEnabled(Boolean(data.fleetServicesEnabled));
         setFleetBlurb(String(data.fleetServicesBlurb ?? ""));
         setFleetPricing(data.fleetPricing ?? null);
-        if (process.env.NODE_ENV === 'development' && (data.schemaWarnings?.length ?? 0) > 0) {
-          console.warn('[services] site-data schema warnings (not shown publicly):', data.schemaWarnings);
-        }
+        setSchemaWarnings(data.schemaWarnings ?? []);
         setLoaded(true);
       })
       .catch(() => {
         if (!cancelled) {
+          setSchemaWarnings(["Could not load public site data."]);
           setLoaded(true);
         }
       })
@@ -103,10 +106,10 @@ export default function ServicesPage() {
     ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || hasServiceOffers);
 
   return (
-    <main className="gb-page min-h-screen px-4 pb-16 pt-24 text-foreground sm:px-6">
+    <main className="gb-luxury-page min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
       <div className="mx-auto w-full max-w-6xl">
-        <p className="gb-eyebrow">Mobile detailing · we come to you</p>
-        <h1 className="gb-section-title mt-3">Detailing packages built for excellence</h1>
+        <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Mobile Detailing - We Come To You</p>
+        <h1 className="mt-3 text-4xl font-black uppercase sm:text-5xl">Services & Pricing</h1>
         <p className="mt-3 max-w-3xl text-zinc-300">
           Transparent package pricing with clear deliverables so customers know exactly what they are buying. All prices are starting at.
         </p>
@@ -131,6 +134,30 @@ export default function ServicesPage() {
               <OffersMarketingBand embed offers={offers} placement='services' />
             </div>
           </section>
+        ) : null}
+
+        {showSchemaNotice ? (
+          <div role="alert" className="mt-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-left text-sm text-amber-100">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">Site notice</p>
+                <p className="mt-1 text-xs text-amber-100/90">We are using safe defaults where needed. Dismiss anytime.</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs break-words text-amber-100/95">
+                  {schemaWarnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDismissSchemaNotice(true)}
+                className="shrink-0 rounded border border-amber-400/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-50 hover:bg-amber-500/20"
+                aria-label="Dismiss configuration notice"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
         ) : null}
 
         <section className="mt-6 rounded-2xl border border-gold/30 bg-black/40 p-5">
@@ -169,7 +196,7 @@ export default function ServicesPage() {
           {packages.map((service) => (
                 <article
                   key={service.id}
-                  className="gb-card gb-glow-hover rounded-2xl p-5"
+                  className="rounded-2xl border border-gold/20 bg-zinc-950 p-5 shadow-[0_0_0_rgba(212,166,77,0)] transition duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_32px_rgba(212,166,77,0.18)]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <h2 className="text-2xl font-black uppercase text-gold-soft">{service.title}</h2>

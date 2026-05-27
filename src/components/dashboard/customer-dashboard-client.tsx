@@ -114,7 +114,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const reviewUrl = props.googleReviewUrl?.trim() || '';
 
   return (
-    <div className='gb-invoice-card min-w-0 space-y-8 rounded-3xl border border-gold/15 p-5 sm:p-8'>
+    <div className='gb-premium-hero space-y-8 rounded-3xl border border-gold/15 p-5 sm:p-8'>
       <section className='gb-glass rounded-3xl border border-gold/30 p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)]'>
         <SectionEyebrow>Thank you</SectionEyebrow>
         <p className='mt-2 text-lg font-black text-white'>Love your shine? Leave a Google review</p>
@@ -163,7 +163,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
         </motion.div>
       ) : null}
 
-      <section className='grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+      <section className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
         <IconTile icon={<Car className='h-5 w-5' />} label='Vehicle garage' value={`${props.vehicleTotal}`} />
         <IconTile icon={<Receipt className='h-5 w-5' />} label='Receipts' value={`${props.receiptTotal}`} />
         <IconTile icon={<FileText className='h-5 w-5' />} label='Agreements' value={`${props.agreementTotal} signed`} />

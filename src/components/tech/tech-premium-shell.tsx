@@ -205,7 +205,7 @@ export function TechPremiumShell({
     goalTargetCents != null && goalTargetCents > 0 ? Math.min(100, Math.round((revenueWeekCents / goalTargetCents) * 100)) : 0;
 
   return (
-    <div className='gb-field-device relative min-h-screen min-w-0 max-w-full overflow-x-hidden pb-24'>
+    <div className='relative min-h-screen overflow-hidden pb-24'>
       <div
         className='pointer-events-none absolute inset-0 flex items-start justify-center pt-10 opacity-[0.035]'
         aria-hidden

@@ -195,7 +195,7 @@ export function Navbar() {
                 {marketingLinks
                   .filter((l) => l.href !== '/' && l.href !== '/book')
                   .map((item) => (
-                    <a key={item.label} href={toSectionLink(item.href)} className='gb-glow-hover text-sm uppercase tracking-widest text-zinc-300 transition hover:text-gold-soft'>
+                    <a key={item.label} href={toSectionLink(item.href)} className='text-sm uppercase tracking-widest text-zinc-300 transition hover:text-gold-soft'>
                       {item.label}
                     </a>
                   ))}

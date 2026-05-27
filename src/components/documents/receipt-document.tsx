@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL, GLOSS_BOSS_SUPPORT_MAILTO } from '@/lib/branding';
+import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
 import { PremiumBadge } from '@/components/ui/premium';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 
@@ -217,13 +217,7 @@ export function ReceiptDocument(props: ReceiptDocumentProps) {
       </section>
 
       <footer className='border-t border-zinc-200 px-6 py-4 text-center text-xs text-zinc-500'>
-        <p>
-          <a href={GLOSS_BOSS_SUPPORT_MAILTO} className='font-semibold text-zinc-800 underline decoration-gold/50'>
-            {GLOSS_BOSS_SUPPORT_EMAIL}
-          </a>
-          {' · '}
-          Stripe {props.stripePaymentIntent !== 'Not provided' ? props.stripePaymentIntent.slice(0, 20) + '…' : '—'}
-        </p>
+        <p>{GLOSS_BOSS_SUPPORT_EMAIL} · Stripe {props.stripePaymentIntent !== 'Not provided' ? props.stripePaymentIntent.slice(0, 20) + '…' : '—'}</p>
         <p className='mt-1 font-mono'>Payment ref {props.paymentRowId}</p>
       </footer>
     </article>
