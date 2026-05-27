@@ -52,12 +52,12 @@ export function WorkOrderPricingPanel({
     return fd;
   };
 
-  const run = (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd?: FormData) => {
+  const run = (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>, fd?: FormData) => {
     startTransition(async () => {
       setMsg(null);
       const res = await fn(fd ?? baseFd());
       if (res.ok) {
-        setMsg({ tone: 'ok', text: 'Pricing updated.' });
+        setMsg({ tone: 'ok', text: res.message ?? 'Pricing updated — verified from database.' });
         router.refresh();
       } else {
         setMsg({ tone: 'err', text: res.error ?? 'Update failed' });

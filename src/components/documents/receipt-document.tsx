@@ -112,28 +112,30 @@ export function ReceiptDocument(props: ReceiptDocumentProps) {
         </section>
       </div>
 
-      <section className='p-6'>
-        <table className='gb-invoice-table w-full text-sm'>
-          <thead>
-            <tr className='border-b-2 border-zinc-800 text-left text-[10px] font-black uppercase tracking-wider'>
-              <th>Vehicle / service</th>
-              <th>Details</th>
-              <th className='text-right'>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.vehicles.map((v, i) => (
-              <tr key={i} className='border-b border-zinc-200'>
-                <td className='font-semibold'>{v.name}</td>
-                <td className='text-zinc-600'>
-                  {v.service} · {v.color}
-                </td>
-                <td className='text-right font-mono'>{v.price}</td>
+      {!(props.breakdownLines && props.breakdownLines.length > 0) ? (
+        <section className='p-6'>
+          <table className='gb-invoice-table w-full text-sm'>
+            <thead>
+              <tr className='border-b-2 border-zinc-800 text-left text-[10px] font-black uppercase tracking-wider'>
+                <th>Vehicle / service</th>
+                <th>Details</th>
+                <th className='text-right'>Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              {props.vehicles.map((v, i) => (
+                <tr key={i} className='border-b border-zinc-200'>
+                  <td className='font-semibold'>{v.name}</td>
+                  <td className='text-zinc-600'>
+                    {v.service} · {v.color}
+                  </td>
+                  <td className='text-right font-mono'>{v.price}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       <section className='border-t border-zinc-200 bg-zinc-50 p-6'>
         <div className='ml-auto max-w-sm space-y-2 text-sm'>

@@ -133,7 +133,7 @@ export function PublicGalleryPortfolio() {
           >
             <header className='flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6'>
               <div className='min-w-0'>
-                <p className='truncate text-base font-black text-white'>{str(active.caption) || 'Transformation'}</p>
+                <p className='truncate text-base font-black text-white'>{publicGalleryDisplayTitle(active)}</p>
                 <div className='mt-1 flex flex-wrap gap-2'>
                   {str(active.vehicleLabel) ? (
                     <span className='rounded-full border border-white/20 px-2 py-0.5 text-[10px] font-bold uppercase text-zinc-300'>

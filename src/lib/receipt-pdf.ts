@@ -32,6 +32,16 @@ export type ReceiptPdfInput = {
   remainingBalance: string;
 };
 
+const LABEL_X = 48;
+const AMOUNT_X = 520;
+const LABEL_MAX_W = 360;
+
+function drawWrappedLabel(doc: jsPDF, text: string, x: number, y: number, maxWidth: number) {
+  const lines = doc.splitTextToSize(text, maxWidth) as string[];
+  doc.text(lines, x, y);
+  return lines.length * 12;
+}
+
 export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const margin = 48;
@@ -62,8 +72,9 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
     y += 14;
   }
   if (input.serviceAddress) {
-    doc.text(input.serviceAddress, margin, y);
-    y += 18;
+    const addrLines = doc.splitTextToSize(input.serviceAddress, 480) as string[];
+    doc.text(addrLines, margin, y);
+    y += addrLines.length * 14;
   }
 
   doc.text(`Paid: ${input.paidAt}`, margin, y);
@@ -87,39 +98,21 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   doc.text(`Method: ${input.method} · ${input.status}`, margin, y);
   y += 24;
 
-  doc.setFontSize(9);
-  doc.text('Vehicle / Service', margin, y);
-  doc.text('Amount', 480, y);
-  y += 10;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, 564, y);
-  y += 14;
-
-  for (const v of input.vehicles) {
-    if (y > 700) {
-      doc.addPage();
-      y = margin;
-    }
-    doc.text(`${v.name} — ${v.service} (${v.color})`, margin, y);
-    doc.text(v.price, 480, y);
-    y += 16;
-  }
-
-  y += 12;
-  doc.line(margin, y, 564, y);
-  y += 18;
-  doc.setFontSize(9);
-
   const moneyLines: ReceiptBreakdownLine[] =
     input.breakdownLines && input.breakdownLines.length > 0
       ? input.breakdownLines
       : [
+          ...input.vehicles.map((v) => ({
+            label: `${v.name} — ${v.service}`,
+            amount: v.price,
+            tone: 'charge' as const,
+          })),
           { label: 'Base services subtotal', amount: input.baseTotal },
           ...(input.addOnSubtotal && input.addOnSubtotal !== '$0.00'
             ? [{ label: 'Add-ons subtotal', amount: input.addOnSubtotal }]
             : []),
           ...(input.discounts && input.discounts !== '$0.00'
-            ? [{ label: 'Discounts', amount: input.discounts }]
+            ? [{ label: 'Discounts', amount: input.discounts, tone: 'discount' as const }]
             : []),
           { label: 'Final total', amount: input.finalTotal, tone: 'total' as const },
           { label: 'Deposit paid', amount: input.depositPaid, tone: 'paid' as const },
@@ -133,20 +126,30 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
           { label: 'Balance due', amount: input.remainingBalance },
         ];
 
+  doc.setFontSize(9);
+  doc.text('Description', LABEL_X, y);
+  doc.text('Amount', AMOUNT_X, y, { align: 'right' });
+  y += 10;
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, y, 564, y);
+  y += 16;
+
   for (const line of moneyLines) {
     if (y > 700) {
       doc.addPage();
       y = margin;
     }
-    if (line.tone === 'total') doc.setFontSize(12);
-    doc.text(line.label, 320, y);
-    doc.text(line.amount, 480, y, { align: 'right' });
-    if (line.tone === 'total') doc.setFontSize(9);
-    y += line.tone === 'total' ? 18 : 14;
+    const isTotal = line.tone === 'total';
+    doc.setFontSize(isTotal ? 12 : 9);
+    const labelHeight = drawWrappedLabel(doc, line.label, LABEL_X, y, LABEL_MAX_W);
+    doc.text(line.amount, AMOUNT_X, y, { align: 'right' });
+    y += Math.max(labelHeight, isTotal ? 20 : 16);
+    doc.setFontSize(9);
   }
 
-  if (input.taxAmount) {
-    doc.text(`Tax: ${input.taxAmount}`, 400, y);
+  if (input.taxAmount && input.taxAmount !== '$0.00') {
+    y += 8;
+    doc.text(`Tax: ${input.taxAmount}`, LABEL_X, y);
     y += 14;
   }
 

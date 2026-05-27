@@ -3,9 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isStaffRole } from '@/lib/auth/roles';
 import {
   LINE_ITEM_KIND_LABELS,
   mergePricingBreakdownWithLineItems,
@@ -26,15 +28,27 @@ function parseAmountCents(raw: string): number | null {
   return Math.round(Math.abs(dollars) * 100) * (cleaned.startsWith('-') || dollars < 0 ? -1 : 1);
 }
 
-export type LineItemActionResult = { ok: boolean; error?: string };
+export type LineItemActionResult = {
+  ok: boolean;
+  error?: string;
+  data?: {
+    savedLabel: string;
+    lineItemCount: number;
+    receiptLineLabels: string[];
+    finalTotalCents: number;
+  };
+};
 
 export async function addWorkOrderLineItemAction(formData: FormData): Promise<LineItemActionResult> {
   const session = await getSessionWithProfile();
-  const supabaseAuth = await createSupabaseServerClient();
-  if (!session.user || !supabaseAuth) return { ok: false, error: 'Unauthorized' };
+  if (!session.user || !isStaffRole(session.profile?.role)) {
+    return { ok: false, error: 'Unauthorized' };
+  }
 
   const admin = tryCreateAdminSupabase();
-  if (!admin) return { ok: false, error: 'Database unavailable' };
+  if (!admin) {
+    return { ok: false, error: 'SUPABASE_SERVICE_ROLE_KEY missing. Cannot save invoice line items.' };
+  }
 
   const appointmentId = str(formData.get('appointmentId'));
   const fallbackBookingId = str(formData.get('fallbackBookingId'));
@@ -92,7 +106,7 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
     customLineItemsCents: pricing.customLineItemsCents,
   });
 
-  const { error: updateErr } = await admin
+  const { data: updated, error: updateErr } = await admin
     .from(table)
     .update({
       booking_pricing_breakdown: breakdown,
@@ -100,11 +114,28 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
       balance_due_cents: pricing.remainingBalanceCents,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', jobId);
+    .eq('id', jobId)
+    .select('*')
+    .maybeSingle();
 
   if (updateErr) return { ok: false, error: updateErr.message };
+  if (!updated) {
+    return { ok: false, error: `DB update matched 0 rows for work order ${jobId}.` };
+  }
 
-  await syncJobBalanceDue(admin, job, pricing, {
+  const { data: reread } = await admin.from(table).select('*').eq('id', jobId).maybeSingle();
+  if (!reread) return { ok: false, error: 'Line saved but re-read failed.' };
+
+  const savedItems = readCustomLineItems(reread as Row);
+  const found = savedItems.some((i) => i.label === label && i.amountCents === amountCents);
+  if (!found) {
+    return {
+      ok: false,
+      error: `Line "${label}" not found in database after save (${savedItems.length} items on file).`,
+    };
+  }
+
+  await syncJobBalanceDue(admin, reread as Row, pricing, {
     appointmentId: table === 'appointments' ? jobId : undefined,
     fallbackBookingId: table === 'booking_fallbacks' ? jobId : undefined,
     isFallback: table === 'booking_fallbacks',
@@ -114,11 +145,38 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
   const rebuildFd = new FormData();
   if (table === 'appointments') rebuildFd.set('appointmentId', jobId);
   else rebuildFd.set('fallbackBookingId', jobId);
-  await generateWorkOrderReceiptActionState(null, rebuildFd);
+  const receiptResult = await generateWorkOrderReceiptActionState(null, rebuildFd);
+  if (!receiptResult.ok) {
+    return { ok: false, error: `Line saved but receipt rebuild failed: ${receiptResult.error ?? 'unknown'}` };
+  }
+
+  const snapshot = await loadOrderSnapshot(admin, {
+    appointmentId: table === 'appointments' ? jobId : undefined,
+    fallbackBookingId: table === 'booking_fallbacks' ? jobId : undefined,
+  });
+  const receiptLines = snapshot?.receiptLines ?? buildReceiptBreakdown(reread as Row, pricing);
+  const receiptLineLabels = receiptLines.map((l) => l.label);
+  const onReceipt = receiptLineLabels.some((l) => l === label || l.includes(label));
+  if (!onReceipt) {
+    return {
+      ok: false,
+      error: `Receipt breakdown missing saved line "${label}". Labels: ${receiptLineLabels.join(' | ')}`,
+      data: { savedLabel: label, lineItemCount: savedItems.length, receiptLineLabels, finalTotalCents: pricing.finalTotalCents },
+    };
+  }
 
   revalidatePath(`/tech/work-orders/${jobId}`);
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/receipts');
   revalidatePath('/tech');
-  return { ok: true };
+
+  return {
+    ok: true,
+    data: {
+      savedLabel: label,
+      lineItemCount: savedItems.length,
+      receiptLineLabels,
+      finalTotalCents: pricing.finalTotalCents,
+    },
+  };
 }

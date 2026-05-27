@@ -221,6 +221,7 @@ export function WorkOrderInvoiceBuilder({
     if (line.taxable) fd.set('taxable', 'true');
     const res = await addWorkOrderLineItemAction(fd);
     if (!res.ok) throw new Error(res.error ?? 'Could not save line item');
+    return res;
   };
 
   const saveCurrentForm = async () => {
@@ -232,7 +233,7 @@ export function WorkOrderInvoiceBuilder({
     setSaving(true);
     setSaveMsg(null);
     try {
-      await persistLine({
+      const res = await persistLine({
         label: form.title.trim() || LINE_ITEM_KIND_LABELS[form.category],
         kind: form.category,
         amountDollars: form.amountDollars,
@@ -242,15 +243,14 @@ export function WorkOrderInvoiceBuilder({
         taxable: form.taxable,
       });
       setForm(emptyForm());
-      setSaveMsg({ tone: 'ok', text: 'Line item saved — receipt rebuilt from latest totals.' });
-      const rebuildFd = new FormData();
-      if (appointmentId) rebuildFd.set('appointmentId', appointmentId);
-      if (fallbackBookingId) rebuildFd.set('fallbackBookingId', fallbackBookingId);
-      await generateWorkOrderReceiptActionState(null, rebuildFd);
+      setSaveMsg({
+        tone: 'ok',
+        text: `Saved "${res.data?.savedLabel ?? 'line'}" — verified on receipt (${res.data?.receiptLineLabels?.length ?? 0} lines).`,
+      });
       await refreshPricing();
       router.refresh();
-    } catch {
-      setSaveMsg({ tone: 'err', text: 'Could not save line item.' });
+    } catch (e) {
+      setSaveMsg({ tone: 'err', text: e instanceof Error ? e.message : 'Could not save line item.' });
     } finally {
       setSaving(false);
     }
@@ -264,7 +264,7 @@ export function WorkOrderInvoiceBuilder({
       for (const d of draftLines) {
         const unitDollars = Math.abs(d.unitCents) / 100;
         const signed = d.unitCents < 0 ? `-${unitDollars}` : String(unitDollars);
-        await persistLine({
+        const res = await persistLine({
           label: d.label,
           kind: d.kind,
           amountDollars: signed,
@@ -273,17 +273,14 @@ export function WorkOrderInvoiceBuilder({
           customerVisible: d.customerVisible,
           taxable: d.taxable,
         });
+        if (!res.ok) throw new Error(res.error ?? `Failed to save ${d.label}`);
       }
       setDraftLines([]);
-      setSaveMsg({ tone: 'ok', text: `${draftLines.length} line item(s) saved — receipt rebuilt.` });
-      const rebuildFd = new FormData();
-      if (appointmentId) rebuildFd.set('appointmentId', appointmentId);
-      if (fallbackBookingId) rebuildFd.set('fallbackBookingId', fallbackBookingId);
-      await generateWorkOrderReceiptActionState(null, rebuildFd);
+      setSaveMsg({ tone: 'ok', text: `${draftLines.length} line item(s) saved and verified on receipt.` });
       await refreshPricing();
       router.refresh();
-    } catch {
-      setSaveMsg({ tone: 'err', text: 'Could not save all line items.' });
+    } catch (e) {
+      setSaveMsg({ tone: 'err', text: e instanceof Error ? e.message : 'Could not save all line items.' });
     } finally {
       setSaving(false);
     }

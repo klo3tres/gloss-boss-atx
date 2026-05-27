@@ -67,15 +67,27 @@ export function resolveGalleryCaption(row: Record<string, unknown>): string | nu
   return c || null;
 }
 
-const RAW_FILENAME_RE = /\.(jpe?g|png|webp|gif|heic)$/i;
+const RAW_FILENAME_RE = /\.(jpe?g|png|webp|gif|heic|avif)$/i;
+const FILENAME_LIKE_RE = /^(img|dsc|photo|image|snap|screenshot|wp|p\d|vid)[-_]?\d*/i;
+
+function looksLikeRawFilename(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.includes('/') || t.includes('\\')) return true;
+  if (RAW_FILENAME_RE.test(t)) return true;
+  if (FILENAME_LIKE_RE.test(t)) return true;
+  if (/^[a-f0-9-]{20,}$/i.test(t)) return true;
+  if (/\.[a-z0-9]{2,5}$/i.test(t) && !t.includes(' ')) return true;
+  return false;
+}
 
 /** Never show storage paths or filenames to customers. */
 export function publicGalleryDisplayTitle(row: PublicGalleryItem | Record<string, unknown>): string {
   const r = row as Record<string, unknown>;
-  const caption = str(r.caption);
+  const caption = str(r.caption) || str(r.title) || str(r.label);
   const vehicle = str(r.vehicleLabel) || str(r.vehicle_label);
   const service = str(r.serviceLabel) || str(r.service_label);
-  if (caption && !RAW_FILENAME_RE.test(caption) && !caption.includes('/') && caption.length < 80) return caption;
+  if (caption && !looksLikeRawFilename(caption)) return caption;
   if (vehicle && service) return `${vehicle} · ${service.replace(/-/g, ' ')}`;
   if (vehicle) return vehicle;
   if (service) return service.replace(/-/g, ' ');

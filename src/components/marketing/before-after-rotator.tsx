@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import type { PublicSiteDataPayload, SiteDataFeaturedSlide } from '@/lib/public-site-data';
+import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
 
 export function BeforeAfterRotator() {
   const [slides, setSlides] = useState<SiteDataFeaturedSlide[]>([]);
@@ -32,7 +33,7 @@ export function BeforeAfterRotator() {
           setSlides(
             featured.map((img, i) => ({
               id: `gal-${i}`,
-              label: img.caption?.trim() || 'Featured work',
+              label: publicGalleryDisplayTitle(img as Record<string, unknown>),
               image: String(img.url || img.image_url),
             })),
           );

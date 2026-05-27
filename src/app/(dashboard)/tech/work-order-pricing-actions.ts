@@ -15,6 +15,8 @@ import { readCustomLineItems, mergePricingBreakdownWithLineItems } from '@/lib/w
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import type { DealConfig } from '@/lib/site-config';
 import { computeBookingPricing } from '@/lib/booking-pricing';
+import { actionFailure, actionSuccess, type ActionResponse } from '@/lib/action-response';
+import { reloadWorkOrderPricingSnapshot, type WorkOrderPricingSnapshot } from '@/lib/work-order-pricing-snapshot';
 
 function str(v: FormDataEntryValue | unknown | null) {
   return v == null ? '' : String(v).trim();
@@ -36,11 +38,17 @@ function parseCents(raw: string): number | null {
   return Math.round(Math.abs(n) * 100);
 }
 
-async function requireAdmin() {
+const SERVICE_ROLE_MSG = 'SUPABASE_SERVICE_ROLE_KEY missing. Cannot persist work order pricing.';
+
+async function requireAdmin(): Promise<{ admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>; userId: string } | { error: string }> {
   const session = await getSessionWithProfile();
-  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) return null;
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) {
+    return { error: 'Unauthorized' };
+  }
   const admin = tryCreateAdminSupabase();
-  if (!admin) return null;
+  if (!admin) {
+    return { error: SERVICE_ROLE_MSG };
+  }
   return { admin, userId: session.user.id };
 }
 
@@ -57,12 +65,43 @@ async function loadJob(admin: Awaited<ReturnType<typeof tryCreateAdminSupabase>>
   return { table, jobId, job: data as Row, isFallback: table === 'booking_fallbacks' };
 }
 
+export type PersistPricingResult = {
+  before: WorkOrderPricingSnapshot;
+  after: WorkOrderPricingSnapshot;
+  receiptMessage: string;
+};
+
+export type WorkOrderPricingActionResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  snapshot?: WorkOrderPricingSnapshot;
+  debug?: Record<string, unknown>;
+};
+
+function formatSnapshotMsg(s: WorkOrderPricingSnapshot) {
+  return `Final $${(s.finalTotalCents / 100).toFixed(2)} · Paid $${(s.totalPaidCents / 100).toFixed(2)} · Balance $${(s.remainingBalanceCents / 100).toFixed(2)} · Online -$${(s.onlineDiscountCents / 100).toFixed(2)} · Multi -$${(s.multiCarDiscountCents / 100).toFixed(2)}`;
+}
+
+function fromPersist(res: ActionResponse<PersistPricingResult>): WorkOrderPricingActionResult {
+  if (!res.ok) return { ok: false, error: res.error, debug: res.debug };
+  return {
+    ok: true,
+    message: `${formatSnapshotMsg(res.data.after)}. ${res.data.receiptMessage}`,
+    snapshot: res.data.after,
+    debug: { before: res.data.before, after: res.data.after },
+  };
+}
+
 async function persistPricing(
   ctx: NonNullable<Awaited<ReturnType<typeof loadJob>>>,
   admin: NonNullable<Awaited<ReturnType<typeof tryCreateAdminSupabase>>>,
   breakdown: Record<string, unknown>,
   vehicles?: Array<Record<string, unknown>>,
-) {
+): Promise<ActionResponse<PersistPricingResult>> {
+  const beforeReload = await reloadWorkOrderPricingSnapshot(admin, ctx.table, ctx.jobId, ctx.isFallback);
+  const before = beforeReload?.snapshot;
+
   const customItems = readCustomLineItems({ ...ctx.job, booking_pricing_breakdown: breakdown });
   const breakdownWithLines = {
     ...breakdown,
@@ -99,28 +138,52 @@ async function persistPricing(
       .join(' · ');
   }
 
-  await admin.from(ctx.table).update(patch).eq('id', ctx.jobId);
-  await syncJobBalanceDue(admin, ctx.job, pricing, {
+  const { data: updated, error: upErr } = await admin.from(ctx.table).update(patch).eq('id', ctx.jobId).select('*').maybeSingle();
+  if (upErr) return actionFailure(upErr.message, { jobId: ctx.jobId, table: ctx.table });
+  if (!updated) {
+    return actionFailure(`DB update matched 0 rows for work order ${ctx.jobId}.`, { table: ctx.table });
+  }
+
+  await syncJobBalanceDue(admin, updated as Row, pricing, {
     appointmentId: ctx.isFallback ? undefined : ctx.jobId,
     fallbackBookingId: ctx.isFallback ? ctx.jobId : undefined,
     isFallback: ctx.isFallback,
   });
+
+  const afterReload = await reloadWorkOrderPricingSnapshot(admin, ctx.table, ctx.jobId, ctx.isFallback);
+  if (!afterReload) {
+    return actionFailure('Pricing wrote but re-read failed.', { jobId: ctx.jobId });
+  }
+
+  const { generateWorkOrderReceiptActionState } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
+  const rebuildFd = new FormData();
+  if (ctx.isFallback) rebuildFd.set('fallbackBookingId', ctx.jobId);
+  else rebuildFd.set('appointmentId', ctx.jobId);
+  const receiptResult = await generateWorkOrderReceiptActionState(null, rebuildFd);
+  if (!receiptResult.ok) {
+    return actionFailure(`Pricing saved but receipt rebuild failed: ${receiptResult.error ?? 'unknown'}`, {
+      after: afterReload.snapshot,
+    });
+  }
 
   revalidatePath(`/tech/work-orders/${ctx.jobId}`);
   revalidatePath('/admin/work-orders');
   revalidatePath('/dashboard');
   revalidatePath(`/admin/receipts`);
 
-  const { generateWorkOrderReceiptActionState } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
-  const rebuildFd = new FormData();
-  if (ctx.isFallback) rebuildFd.set('fallbackBookingId', ctx.jobId);
-  else rebuildFd.set('appointmentId', ctx.jobId);
-  await generateWorkOrderReceiptActionState(null, rebuildFd);
+  return actionSuccess(
+    {
+      before: before ?? afterReload.snapshot,
+      after: afterReload.snapshot,
+      receiptMessage: receiptResult.message ?? 'Receipt rebuilt',
+    },
+    { jobId: ctx.jobId, finalTotal: afterReload.snapshot.finalTotalCents },
+  );
 }
 
 export async function updateWorkOrderVehiclePriceAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -140,13 +203,12 @@ export async function updateWorkOrderVehiclePriceAction(formData: FormData) {
   b.adminPriceEditAt = new Date().toISOString();
   b.adminPriceEditBy = gate.userId;
 
-  await persistPricing(ctx, gate.admin, b, vehicles);
-  return { ok: true };
+  return fromPersist(await persistPricing(ctx, gate.admin, b, vehicles));
 }
 
 export async function setWorkOrderPromoAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -158,8 +220,7 @@ export async function setWorkOrderPromoAction(formData: FormData) {
     b.promoDiscountCents = 0;
     b.offerDiscountCents = 0;
     await gate.admin.from(ctx.table).update({ promo_code: null, updated_at: new Date().toISOString() }).eq('id', ctx.jobId);
-    await persistPricing(ctx, gate.admin, b);
-    return { ok: true };
+    return fromPersist(await persistPricing(ctx, gate.admin, b));
   }
 
   const vehicles = vehiclesFromRow(ctx.job);
@@ -194,13 +255,12 @@ export async function setWorkOrderPromoAction(formData: FormData) {
     vehicleSubtotalCents: quote.breakdown.vehicleSubtotalCents,
     addOnSubtotalCents: quote.breakdown.addOnSubtotalCents,
   };
-  await persistPricing(ctx, gate.admin, b, vehicles as Row[]);
-  return { ok: true };
+  return fromPersist(await persistPricing(ctx, gate.admin, b, vehicles as Row[]));
 }
 
 export async function toggleWorkOrderDiscountAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -281,14 +341,13 @@ export async function toggleWorkOrderDiscountAction(formData: FormData) {
   delete b.adminOverrideFinalTotalCents;
   delete b.adminOverrideReason;
 
-  await persistPricing(ctx, gate.admin, b, pricedVehicles as Row[]);
-  return { ok: true };
+  return fromPersist(await persistPricing(ctx, gate.admin, b, pricedVehicles as Row[]));
 }
 
 /** Super admin: align final total to paid amount and clear balance (Eugene-style fixes). */
 export async function markWorkOrderBalancedAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -312,7 +371,9 @@ export async function markWorkOrderBalancedAction(formData: FormData) {
   b.balanceClearedBy = gate.userId;
   b.balanceClearedReason = reason;
 
-  await persistPricing(ctx, gate.admin, b);
+  const persistRes = await persistPricing(ctx, gate.admin, b);
+  if (!persistRes.ok) return fromPersist(persistRes);
+
   await gate.admin
     .from(ctx.table)
     .update({
@@ -322,12 +383,12 @@ export async function markWorkOrderBalancedAction(formData: FormData) {
     })
     .eq('id', ctx.jobId);
 
-  return { ok: true };
+  return fromPersist(persistRes);
 }
 
 export async function overrideWorkOrderFinalTotalAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -343,13 +404,12 @@ export async function overrideWorkOrderFinalTotalAction(formData: FormData) {
   b.adminOverrideBy = gate.userId;
   b.finalTotalCents = cents;
 
-  await persistPricing(ctx, gate.admin, b);
-  return { ok: true };
+  return fromPersist(await persistPricing(ctx, gate.admin, b));
 }
 
 export async function recalculateWorkOrderPricingAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx) return { ok: false, error: 'Job not found' };
 
@@ -386,13 +446,12 @@ export async function recalculateWorkOrderPricingAction(formData: FormData) {
   delete b.adminOverrideFinalTotalCents;
   delete b.adminOverrideReason;
 
-  await persistPricing(ctx, gate.admin, b, pricedVehicles as Row[]);
-  return { ok: true };
+  return fromPersist(await persistPricing(ctx, gate.admin, b, pricedVehicles as Row[]));
 }
 
 export async function updateWorkOrderScheduleAction(formData: FormData) {
   const gate = await requireAdmin();
-  if (!gate) return { ok: false, error: 'Unauthorized' };
+  if ('error' in gate) return { ok: false, error: gate.error };
   const ctx = await loadJob(gate.admin, formData);
   if (!ctx || ctx.isFallback) return { ok: false, error: 'Appointments only' };
 

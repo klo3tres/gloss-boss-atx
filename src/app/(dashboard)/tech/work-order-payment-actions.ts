@@ -15,6 +15,7 @@ import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 import { sendReceiptAction } from '@/app/(dashboard)/admin/receipts/receipt-actions';
 
@@ -66,7 +67,10 @@ async function upsertWorkOrderReceipt(
 
   const receiptNumber = `WO-${jobId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
 
-
+  const snapshot = await loadOrderSnapshot(admin, {
+    appointmentId: appointmentId || undefined,
+    fallbackBookingId: fallbackBookingId || undefined,
+  });
 
   const payload = {
 
@@ -95,6 +99,14 @@ async function upsertWorkOrderReceipt(
       total_paid_cents: pricing.totalPaidCents,
 
       remaining_balance_cents: pricing.remainingBalanceCents,
+
+      deposit_paid_cents: pricing.depositPaidCents,
+
+      stripe_paid_cents: pricing.stripePaidCents,
+
+      receiptLineLabels: snapshot?.receiptLines?.map((l) => l.label) ?? [],
+
+      orderSnapshot: snapshot,
 
     },
 

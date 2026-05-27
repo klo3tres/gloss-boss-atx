@@ -92,11 +92,16 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   const pick = (key: string) => num(b[key] ?? payloadPricing[key]);
 
+  const onlineDisabled = b.onlineDiscountDisabled === true;
+  const multiDisabled = b.multiCarDisabled === true;
+
   const vehicleSubtotalCents = pick('vehicleSubtotalCents') || sumVehicleCents;
   const addOnSubtotalCents = pick('addOnSubtotalCents');
-  const multiCarDiscountCents = pick('multiCarDiscountCents');
-  const onlineDiscountCents =
+  let multiCarDiscountCents = pick('multiCarDiscountCents');
+  let onlineDiscountCents =
     pick('websitePromoDiscountCents') || pick('onlineDiscountCents') || pick('sitewideDiscountCents');
+  if (multiDisabled) multiCarDiscountCents = 0;
+  if (onlineDisabled) onlineDiscountCents = 0;
   const offerDiscountCents = pick('offerDiscountCents');
   const promoCodeDiscountCents = pick('promoDiscountCents');
   const promoDiscountCents = offerDiscountCents + promoCodeDiscountCents;

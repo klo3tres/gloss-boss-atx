@@ -23,6 +23,7 @@ import { revalidatePath } from 'next/cache';
 import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
 import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
+import { WorkOrderStripeDebugPanel } from '@/components/tech/work-order-stripe-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { mergePricingBreakdownWithLineItems, readCustomLineItems } from '@/lib/work-order-line-items';
@@ -680,19 +681,37 @@ export default async function TechWorkOrderDetailPage({
   return (
     <DashboardShell title='Work order' subtitle='Job overview, vehicles, agreement, photos, and payment.' role={shellRole}>
       {showDebug ? (
-        <WorkOrderDebugPanel
-          workOrderId={id}
-          canonicalId={queryId}
-          source={isFallback ? 'fallback' : 'appointment'}
-          appointmentId={!isFallback ? queryId : ''}
-          fallbackId={isFallback ? queryId : ''}
-          customerId={str(row.customer_id)}
-          paymentIds={paymentRows.map((p) => str(p.id)).filter(Boolean)}
-          agreementId={str(agreementRow?.id)}
-          vehicleCount={vehicles.length}
-          photoCount={photos.length}
-          workflowSessionIds={workflowSessionIds}
-        />
+        <div className='mb-6 space-y-4'>
+          <WorkOrderDebugPanel
+            workOrderId={id}
+            canonicalId={queryId}
+            source={isFallback ? 'fallback' : 'appointment'}
+            appointmentId={!isFallback ? queryId : ''}
+            fallbackId={isFallback ? queryId : ''}
+            customerId={str(row.customer_id)}
+            paymentIds={paymentRows.map((p) => str(p.id)).filter(Boolean)}
+            agreementId={str(agreementRow?.id)}
+            vehicleCount={vehicles.length}
+            photoCount={photos.length}
+            workflowSessionIds={workflowSessionIds}
+          />
+          <WorkOrderStripeDebugPanel
+            appointmentId={!isFallback ? queryId : undefined}
+            fallbackBookingId={isFallback ? queryId : undefined}
+            source={isFallback ? 'fallback' : 'appointment'}
+            stripeSessionId={str(row.stripe_checkout_session_id || row.final_payment_checkout_session_id)}
+            stripePaymentIntent={str(row.stripe_payment_intent_id)}
+            paymentRows={paymentRows.map((p) => ({
+              id: str(p.id),
+              amount: displayMoney(p.amount_cents),
+              method: displayLabel(p.payment_method || p.payment_kind),
+              kind: str(p.payment_kind),
+              status: displayLabel(p.status),
+              stripeSession: str(p.stripe_checkout_session_id),
+              stripeIntent: str(p.stripe_payment_intent_id),
+            }))}
+          />
+        </div>
       ) : null}
       <WorkOrderConsoleClient
         data={consoleData}
