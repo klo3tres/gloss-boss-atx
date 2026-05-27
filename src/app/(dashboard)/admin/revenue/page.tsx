@@ -37,10 +37,25 @@ function StatBlock({ label, value, hint, href }: { label: string; value: string;
   );
 }
 
-export default async function AdminRevenuePage() {
+export default async function AdminRevenuePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
+
+  const sp = searchParams ? await searchParams : {};
+  const includeTest = sp.includeTest === '1';
+
+  const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
+  const apptById = new Map(
+    (apptMeta ?? []).map((a) => {
+      const row = a as { id: string; guest_email: string | null; guest_name: string | null; guest_phone: string | null };
+      return [row.id, row] as const;
+    }),
+  );
 
   const now = new Date().toISOString();
   const [todayRows, weekRows, monthRows, yearRows] = await Promise.all([
@@ -50,10 +65,11 @@ export default async function AdminRevenuePage() {
     fetchPaymentsSince(admin, startOfYearIso(), now),
   ]);
 
-  const today = summarizePayments(todayRows);
-  const week = summarizePayments(weekRows);
-  const month = summarizePayments(monthRows);
-  const year = summarizePayments(yearRows);
+  const sumOpts = includeTest ? undefined : { excludeTest: true as const, apptById };
+  const today = summarizePayments(todayRows, sumOpts);
+  const week = summarizePayments(weekRows, sumOpts);
+  const month = summarizePayments(monthRows, sumOpts);
+  const year = summarizePayments(yearRows, sumOpts);
 
   const { data: appts } = await admin
     .from('appointments')
@@ -86,6 +102,15 @@ export default async function AdminRevenuePage() {
           <Link href='/admin/receipts' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
             Receipts
           </Link>
+          {includeTest ? (
+            <Link href='/admin/revenue' className='rounded-xl border border-amber-500/40 px-4 py-2 text-xs font-black uppercase text-amber-200'>
+              Hide test payments
+            </Link>
+          ) : (
+            <Link href='/admin/revenue?includeTest=1' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-400'>
+              Include test payments
+            </Link>
+          )}
         </div>
       </section>
 
@@ -112,7 +137,8 @@ export default async function AdminRevenuePage() {
       </section>
 
       <p className='mt-8 text-xs text-zinc-500'>
-        Gross revenue sums succeeded payment rows only. Void test/duplicate payments on the work order receipt builder so totals match job pricing.
+        Gross revenue sums succeeded, non-voided payments{includeTest ? ' (including test bookings)' : ' — test bookings excluded by default'}.
+        Void duplicate rows on the work order receipt builder when needed.
       </p>
     </DashboardShell>
   );

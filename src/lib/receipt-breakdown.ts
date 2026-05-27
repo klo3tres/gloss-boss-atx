@@ -57,7 +57,7 @@ export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): Rec
   }
 
   const customItems = readCustomLineItems(job);
-  let manualDiscountCents = 0;
+  let manualDiscountCents = pricing.manualDiscountCents;
   if (manualDiscountCents <= 0) {
     for (const item of customItems) {
       if (item.kind === 'discount_adjustment' || item.amountCents < 0) {

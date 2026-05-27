@@ -37,7 +37,7 @@ export function OwnerAssistantPanel() {
   };
 
   return (
-    <section className='gb-glass rounded-3xl border border-gold/25 p-6'>
+    <section className='mx-auto w-full max-w-2xl rounded-3xl border border-gold/25 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(212,175,55,0.08)]'>
       <div className='flex flex-wrap gap-2'>
         {SUGGESTIONS.map((s) => (
           <button

@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { NormalizedGalleryImage } from '@/lib/gallery-normalize';
+import { publicGalleryDisplayTitle, type NormalizedGalleryImage } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { PublicSiteDataPayload, SiteDataFeaturedSlide } from '@/lib/public-site-data';
 
@@ -252,11 +252,12 @@ export function HomeGalleryStrip() {
                 >
                   {rows.slice(pi * pageSize, pi * pageSize + pageSize).map((row) => {
                     const imageUrl = row.url || row.image_url;
+                    const title = publicGalleryDisplayTitle(row);
                     return (
                       <div key={row.id} className='transition hover:-translate-y-0.5'>
                         <button
                           type='button'
-                          onClick={() => setLightbox({ src: imageUrl, caption: row.caption })}
+                          onClick={() => setLightbox({ src: imageUrl, caption: title })}
                           className='group block w-full text-left'
                         >
                           <article className='overflow-hidden rounded-2xl border border-gold/25 shadow-[0_0_24px_rgba(212,166,77,0.08)] transition hover:border-gold/50 hover:shadow-[0_0_36px_rgba(212,166,77,0.2)]'>
@@ -269,9 +270,7 @@ export function HomeGalleryStrip() {
                                 Featured
                               </p>
                             ) : null}
-                            {row.caption ? (
-                              <p className='truncate border-t border-white/5 bg-black/40 px-3 py-2 text-xs text-zinc-400'>{row.caption}</p>
-                            ) : null}
+                            <p className='truncate border-t border-white/5 bg-black/40 px-3 py-2 text-xs text-zinc-400'>{title}</p>
                           </article>
                         </button>
                       </div>
@@ -281,11 +280,12 @@ export function HomeGalleryStrip() {
               ))
             : visibleSlice.map((row) => {
                 const imageUrl = row.url || row.image_url;
+                const title = publicGalleryDisplayTitle(row);
                 return (
                   <div key={row.id} className='transition hover:-translate-y-0.5'>
                     <button
                       type='button'
-                      onClick={() => setLightbox({ src: imageUrl, caption: row.caption })}
+                      onClick={() => setLightbox({ src: imageUrl, caption: title })}
                       className='group block w-full text-left'
                     >
                       <article className='overflow-hidden rounded-2xl border border-gold/25 shadow-[0_0_24px_rgba(212,166,77,0.08)] transition hover:border-gold/50 hover:shadow-[0_0_36px_rgba(212,166,77,0.2)]'>
@@ -298,9 +298,7 @@ export function HomeGalleryStrip() {
                             Featured
                           </p>
                         ) : null}
-                        {row.caption ? (
-                          <p className='truncate border-t border-white/10 bg-black/40 px-3 py-2 text-xs text-zinc-400'>{row.caption}</p>
-                        ) : null}
+                        <p className='truncate border-t border-white/10 bg-black/40 px-3 py-2 text-xs text-zinc-400'>{title}</p>
                       </article>
                     </button>
                   </div>

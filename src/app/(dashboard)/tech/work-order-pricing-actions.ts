@@ -3,13 +3,18 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
-import { computeQuoteFromInputs } from '@/lib/booking-server-shared';
+import {
+  computeQuoteFromInputs,
+  loadDealConfigForBooking,
+  resolveVehicleLinesPricing,
+} from '@/lib/booking-server-shared';
 import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { readCustomLineItems, mergePricingBreakdownWithLineItems } from '@/lib/work-order-line-items';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
-import { loadDealConfigForBooking } from '@/lib/booking-server-shared';
+import type { DealConfig } from '@/lib/site-config';
+import { computeBookingPricing } from '@/lib/booking-pricing';
 
 function str(v: FormDataEntryValue | unknown | null) {
   return v == null ? '' : String(v).trim();
@@ -17,6 +22,10 @@ function str(v: FormDataEntryValue | unknown | null) {
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+function obj(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
 function parseCents(raw: string): number | null {
@@ -54,17 +63,26 @@ async function persistPricing(
   breakdown: Record<string, unknown>,
   vehicles?: Array<Record<string, unknown>>,
 ) {
+  const customItems = readCustomLineItems({ ...ctx.job, booking_pricing_breakdown: breakdown });
+  const breakdownWithLines = {
+    ...breakdown,
+    customLineItems: customItems,
+  };
   const payments = await fetchPaymentsForJob(admin, ctx.job, {
     appointmentId: ctx.isFallback ? undefined : ctx.jobId,
     fallbackBookingId: ctx.isFallback ? ctx.jobId : undefined,
     isFallback: ctx.isFallback,
   });
-  const items = readCustomLineItems({ ...ctx.job, booking_pricing_breakdown: breakdown });
-  const jobWithLines = { ...ctx.job, booking_pricing_breakdown: breakdown, booking_vehicles: vehicles ?? ctx.job.booking_vehicles };
+  const jobWithLines = {
+    ...ctx.job,
+    booking_pricing_breakdown: breakdownWithLines,
+    booking_vehicles: vehicles ?? ctx.job.booking_vehicles,
+  };
   const pricing = resolveJobPricing(jobWithLines, payments);
-  const merged = mergePricingBreakdownWithLineItems(jobWithLines, items, {
+  const merged = mergePricingBreakdownWithLineItems(jobWithLines, customItems, {
     finalTotalCents: pricing.finalTotalCents,
     vehicleSubtotalCents: pricing.vehicleSubtotalCents,
+    customLineItemsCents: pricing.customLineItemsCents,
   });
 
   const patch: Record<string, unknown> = {
@@ -92,6 +110,12 @@ async function persistPricing(
   revalidatePath('/admin/work-orders');
   revalidatePath('/dashboard');
   revalidatePath(`/admin/receipts`);
+
+  const { generateWorkOrderReceiptActionState } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
+  const rebuildFd = new FormData();
+  if (ctx.isFallback) rebuildFd.set('fallbackBookingId', ctx.jobId);
+  else rebuildFd.set('appointmentId', ctx.jobId);
+  await generateWorkOrderReceiptActionState(null, rebuildFd);
 }
 
 export async function updateWorkOrderVehiclePriceAction(formData: FormData) {
@@ -156,9 +180,11 @@ export async function setWorkOrderPromoAction(formData: FormData) {
   if (!quote.ok) return { ok: false, error: quote.error };
 
   await gate.admin.from(ctx.table).update({ promo_code: promoCode || null }).eq('id', ctx.jobId);
+  const customItems = readCustomLineItems(ctx.job);
   const b = {
     ...(ctx.job.booking_pricing_breakdown as Record<string, unknown>),
     ...quote.breakdown,
+    customLineItems: customItems,
     promoDiscountCents: quote.breakdown.promoDiscountCents,
     offerDiscountCents: quote.breakdown.offerDiscountCents,
     websitePromoDiscountCents: quote.breakdown.websitePromoDiscountCents,
@@ -180,37 +206,82 @@ export async function toggleWorkOrderDiscountAction(formData: FormData) {
 
   const kind = str(formData.get('discountKind'));
   const enable = str(formData.get('enable')) === 'true';
-  const b = { ...(ctx.job.booking_pricing_breakdown as Record<string, unknown>) };
-  const vehicleSub = typeof b.vehicleSubtotalCents === 'number' ? b.vehicleSubtotalCents : 0;
-  const addOn = typeof b.addOnSubtotalCents === 'number' ? b.addOnSubtotalCents : 0;
+  const vehicles = vehiclesFromRow(ctx.job);
+  if (kind === 'multi_car' && enable && vehicles.length < 2) {
+    return { ok: false, error: 'Multi-car discount requires at least two vehicles on this work order.' };
+  }
+
+  const lines = vehicles.map((v) => ({
+    serviceSlug: str(v.service_slug) || str(ctx.job.service_slug),
+    vehicleClass: str(v.vehicle_class) || 'sedan',
+    vehicleDescription: str(v.vehicle_description) || 'Vehicle',
+    addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
+  }));
   const deals = await loadDealConfigForBooking(gate.admin);
+  let dealsOverride: DealConfig = { ...deals };
 
   if (kind === 'online') {
-    b.websitePromoDiscountCents = enable ? Math.round(vehicleSub * (deals.websitePromoPercent / 100)) : 0;
-    b.onlineDiscountDisabled = !enable;
-  } else if (kind === 'multi_car') {
-    const vehicles = vehiclesFromRow(ctx.job);
-    let mc = 0;
-    if (enable && vehicles.length >= 2) {
-      for (let i = 1; i < vehicles.length; i++) {
-        mc += Math.round(num(vehicles[i]?.price_cents) * (deals.multiCarSecondVehicleDiscountPercent / 100));
-      }
+    if (!enable && deals.websitePromoPercent <= 0) {
+      return { ok: false, error: 'No active website promo in deal settings.' };
     }
-    b.multiCarDiscountCents = mc;
-    b.multiCarDisabled = !enable;
+    dealsOverride = { ...deals, websitePromoActive: enable };
+  } else if (kind === 'multi_car') {
+    if (!enable) {
+      dealsOverride = { ...deals, multiCarSecondVehicleDiscountPercent: 0 };
+    } else if (deals.multiCarSecondVehicleDiscountPercent <= 0) {
+      return { ok: false, error: 'Multi-car discount is not configured in deal settings.' };
+    }
   } else {
     return { ok: false, error: 'Unknown discount type' };
   }
 
-  const afterMc = Math.max(0, vehicleSub - (typeof b.multiCarDiscountCents === 'number' ? b.multiCarDiscountCents : 0));
-  const prePromo = afterMc + addOn;
-  const online = typeof b.websitePromoDiscountCents === 'number' ? b.websitePromoDiscountCents : 0;
-  const promo = (typeof b.promoDiscountCents === 'number' ? b.promoDiscountCents : 0) + (typeof b.offerDiscountCents === 'number' ? b.offerDiscountCents : 0);
-  b.prePromoCents = prePromo;
-  b.finalTotalCents = Math.max(0, prePromo - online - promo);
-  delete b.adminOverrideFinalTotalCents;
+  const pricedLines = await resolveVehicleLinesPricing(gate.admin, lines);
+  if (!pricedLines.ok) return { ok: false, error: pricedLines.error };
 
-  await persistPricing(ctx, gate.admin, b);
+  const prevB = obj(ctx.job.booking_pricing_breakdown);
+  const addOnSum = num(prevB.addOnSubtotalCents);
+  const quoteBreakdown = computeBookingPricing({
+    vehicleLineCents: pricedLines.vehicleLineCents,
+    addOnCentsSum: addOnSum,
+    deals: dealsOverride,
+    claimedOffer: null,
+  });
+  if ('kind' in quoteBreakdown) {
+    return { ok: false, error: 'Could not compute pricing for this work order.' };
+  }
+
+  if (kind === 'online' && enable && quoteBreakdown.websitePromoDiscountCents <= 0) {
+    return {
+      ok: false,
+      error: 'Online discount did not apply — check website promo is active or stacking rules in deal settings.',
+    };
+  }
+  if (kind === 'multi_car' && enable && quoteBreakdown.multiCarDiscountCents <= 0) {
+    return { ok: false, error: 'Multi-car discount did not apply — confirm two+ vehicles and deal settings.' };
+  }
+
+  const pricedVehicles = vehicles.map((v, i) => ({
+    ...(v as Row),
+    price_cents: pricedLines.resolved[i]?.priceCents ?? v.price_cents,
+  }));
+
+  const b: Record<string, unknown> = {
+    ...prevB,
+    ...quoteBreakdown,
+    promoDiscountCents: num(prevB.promoDiscountCents),
+    offerDiscountCents: num(prevB.offerDiscountCents),
+    onlineDiscountDisabled: kind === 'online' ? !enable : prevB.onlineDiscountDisabled,
+    multiCarDisabled: kind === 'multi_car' ? !enable : prevB.multiCarDisabled,
+    repricedAt: new Date().toISOString(),
+  };
+  const promoTotal = num(prevB.promoDiscountCents) + num(prevB.offerDiscountCents);
+  if (promoTotal > 0) {
+    b.finalTotalCents = Math.max(0, num(b.prePromoCents) - num(b.websitePromoDiscountCents) - promoTotal);
+  }
+  delete b.adminOverrideFinalTotalCents;
+  delete b.adminOverrideReason;
+
+  await persistPricing(ctx, gate.admin, b, pricedVehicles as Row[]);
   return { ok: true };
 }
 
@@ -305,9 +376,11 @@ export async function recalculateWorkOrderPricingAction(formData: FormData) {
     price_cents: quote.resolved[i]?.priceCents ?? v.price_cents,
   }));
 
+  const customItems = readCustomLineItems(ctx.job);
   const b: Record<string, unknown> = {
     ...(ctx.job.booking_pricing_breakdown as Record<string, unknown>),
     ...quote.breakdown,
+    customLineItems: customItems,
     repricedAt: new Date().toISOString(),
   };
   delete b.adminOverrideFinalTotalCents;

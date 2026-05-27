@@ -65,14 +65,23 @@ function isTodayChicago(iso: string) {
 
 export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise<OwnerDashboardSnapshot> {
   const now = new Date().toISOString();
+  const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
+  const apptById = new Map(
+    (apptMeta ?? []).map((a) => {
+      const row = a as { id: string; guest_email: string | null; guest_name: string | null; guest_phone: string | null };
+      return [row.id, row] as const;
+    }),
+  );
+  const sumOpts = { excludeTest: true as const, apptById };
+
   const [todayPay, weekPay, monthPay] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
   ]);
-  const today = summarizePayments(todayPay);
-  const week = summarizePayments(weekPay);
-  const month = summarizePayments(monthPay);
+  const today = summarizePayments(todayPay, sumOpts);
+  const week = summarizePayments(weekPay, sumOpts);
+  const month = summarizePayments(monthPay, sumOpts);
 
   const { data: appts } = await admin
     .from('appointments')

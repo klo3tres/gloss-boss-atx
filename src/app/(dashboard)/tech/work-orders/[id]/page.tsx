@@ -25,7 +25,8 @@ import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
-import { readCustomLineItems } from '@/lib/work-order-line-items';
+import { mergePricingBreakdownWithLineItems, readCustomLineItems } from '@/lib/work-order-line-items';
+import { resolveJobPricing } from '@/lib/job-pricing-display';
 import {
   assessBeforePhotoSlots,
   buildPreInspectionRequirements,
@@ -181,16 +182,34 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
   }
 
   const { mergeVehiclePricingOnSave } = await import('@/lib/historical-pricing');
+  const { loadCatalogPriceMap } = await import('@/lib/catalog-price-map');
+  const catalogPrices = recalculateFromCatalog ? await loadCatalogPriceMap(admin) : undefined;
   const merged = mergeVehiclePricingOnSave({
     vehicles,
     prevBreakdown,
     prevVehicles,
     recalculateFromCatalog,
+    catalogPrices,
   });
 
   const customItems = readCustomLineItems(existing ?? {});
-  const customCents = customItems.reduce((s, i) => s + i.amountCents, 0);
-  const finalTotalCents = Math.max(0, num(merged.breakdownPatch.finalTotalCents) + customCents);
+  const breakdownWithLines = mergePricingBreakdownWithLineItems(
+    { booking_pricing_breakdown: merged.breakdownPatch } as Row,
+    customItems,
+    { ...merged.breakdownPatch },
+  );
+
+  const jobDraft = {
+    ...(existing ?? {}),
+    booking_vehicles: merged.vehicles,
+    booking_pricing_breakdown: breakdownWithLines,
+  } as Row;
+  const payments = await fetchPaymentsForJob(admin, jobDraft, {
+    appointmentId: source === 'fallback' ? undefined : id,
+    fallbackBookingId: source === 'fallback' ? id : undefined,
+    isFallback: source === 'fallback',
+  });
+  const pricing = resolveJobPricing(jobDraft, payments);
 
   const patch: Row = {
     booking_vehicles: merged.vehicles,
@@ -198,15 +217,15 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
     service_slug: merged.vehicles[0]?.service_slug,
     vehicle_class: merged.vehicles[0]?.vehicle_class,
     updated_at: new Date().toISOString(),
-    base_price_cents: finalTotalCents,
-    booking_pricing_breakdown: merged.breakdownPatch,
+    base_price_cents: pricing.finalTotalCents,
+    balance_due_cents: pricing.remainingBalanceCents,
+    booking_pricing_breakdown: mergePricingBreakdownWithLineItems(jobDraft, customItems, {
+      ...breakdownWithLines,
+      finalTotalCents: pricing.finalTotalCents,
+      vehicleSubtotalCents: pricing.vehicleSubtotalCents,
+      customLineItemsCents: pricing.customLineItemsCents,
+    }),
   };
-
-  const deposit = num((existing as Row | null)?.deposit_amount_cents);
-  const paid = ['paid', 'paid_cash', 'full_paid', 'comped', 'test_comped'].includes(
-    str((existing as Row | null)?.payment_status).toLowerCase(),
-  );
-  if (!paid) patch.balance_due_cents = Math.max(0, finalTotalCents - deposit);
 
   const scheduleLines = merged.vehicles.map((v) => ({
     serviceSlug: str(v.service_slug) || 'exterior-wash',
@@ -216,6 +235,18 @@ async function updateWorkOrderVehiclesAction(formData: FormData) {
   patch.estimated_duration_minutes = totalBookingDurationMinutes(scheduleLines);
 
   await admin.from(table).update(patch).eq('id', id);
+  await syncJobBalanceDue(admin, { ...(existing ?? {}), ...patch } as Row, pricing, {
+    appointmentId: source === 'fallback' ? undefined : id,
+    fallbackBookingId: source === 'fallback' ? id : undefined,
+    isFallback: source === 'fallback',
+  });
+
+  const { generateWorkOrderReceiptActionState } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
+  const rebuildFd = new FormData();
+  rebuildFd.set('source', source);
+  if (source === 'fallback') rebuildFd.set('fallbackBookingId', id);
+  else rebuildFd.set('appointmentId', id);
+  await generateWorkOrderReceiptActionState(null, rebuildFd);
 
   const woSource = source === 'fallback' ? 'fallback' : 'appointment';
   const sync = await syncVehiclesForWorkOrder(admin, { workOrderId: id, source: woSource });
@@ -670,7 +701,7 @@ export default async function TechWorkOrderDetailPage({
         recordCashAction={techRecordCashPaymentAction}
         completeJobAction={completeWorkOrderFormAction}
         canAdminOverride={isAdminLevel(session.profile?.role ?? null)}
-        canEditPricing={session.profile?.role === 'super_admin'}
+        canEditPricing={isAdminLevel(session.profile?.role ?? null)}
       />
     </DashboardShell>
   );

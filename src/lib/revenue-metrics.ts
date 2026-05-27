@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 type PayRow = {
   amount_cents: number | null;
@@ -8,6 +9,8 @@ type PayRow = {
   voided_at?: string | null;
   voided?: boolean | null;
   created_at?: string | null;
+  appointment_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 function str(v: unknown) {
@@ -40,7 +43,21 @@ export type RevenueSummary = {
   otherCents: number;
 };
 
-export function summarizePayments(rows: PayRow[]): RevenueSummary {
+export function isTestPaymentRow(p: PayRow, apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }>): boolean {
+  const meta = p.metadata;
+  if (meta && (meta.is_test === true || meta.test === true)) return true;
+  const aid = str(p.appointment_id);
+  if (aid && apptById) {
+    const appt = apptById.get(aid);
+    if (appt && isTestLikeJob(appt)) return true;
+  }
+  return false;
+}
+
+export function summarizePayments(
+  rows: PayRow[],
+  opts?: { excludeTest?: boolean; apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }> },
+): RevenueSummary {
   let grossCents = 0;
   let stripeCents = 0;
   let cashCents = 0;
@@ -49,6 +66,7 @@ export function summarizePayments(rows: PayRow[]): RevenueSummary {
   let paymentCount = 0;
   for (const p of rows) {
     if (!isSucceeded(p) || isVoided(p)) continue;
+    if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const amt = typeof p.amount_cents === 'number' ? p.amount_cents : 0;
     grossCents += amt;
     paymentCount += 1;
@@ -62,7 +80,10 @@ export function summarizePayments(rows: PayRow[]): RevenueSummary {
 }
 
 export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string, toIso?: string) {
-  let q = admin.from('payments').select('amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at').gte('created_at', fromIso);
+  let q = admin
+    .from('payments')
+    .select('amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, appointment_id, metadata')
+    .gte('created_at', fromIso);
   if (toIso) q = q.lte('created_at', toIso);
   const { data, error } = await q.limit(5000);
   if (error) return [];

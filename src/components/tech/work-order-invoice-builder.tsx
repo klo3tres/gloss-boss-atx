@@ -219,7 +219,8 @@ export function WorkOrderInvoiceBuilder({
     fd.set('notes', line.notes);
     if (line.customerVisible) fd.set('customerVisible', 'true');
     if (line.taxable) fd.set('taxable', 'true');
-    await addWorkOrderLineItemAction(fd);
+    const res = await addWorkOrderLineItemAction(fd);
+    if (!res.ok) throw new Error(res.error ?? 'Could not save line item');
   };
 
   const saveCurrentForm = async () => {

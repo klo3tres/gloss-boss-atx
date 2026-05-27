@@ -37,8 +37,10 @@ export async function updateServicePriceCentsAction(formData: FormData) {
 
   const cents = Math.round(raw * 100);
   const admin = tryCreateAdminSupabase();
-  const client = admin ?? supabase;
-  const { error } = await client.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
+  if (!admin) {
+    redirect('/admin/services?priceErr=Database%20unavailable%20—%20set%20SUPABASE_SERVICE_ROLE_KEY');
+  }
+  const { error } = await admin.from('service_prices').update({ price_cents: cents }).eq('id', priceId);
   if (error) {
     console.error('[admin/services] price update failed', { priceId, cents, message: error.message });
     redirect(`/admin/services?priceErr=${encodeURIComponent(error.message)}`);

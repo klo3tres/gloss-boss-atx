@@ -55,13 +55,18 @@ export async function POST(request: Request) {
         }
       }
       const sid = typeof pi.metadata?.checkout_session_id === 'string' ? pi.metadata.checkout_session_id : null;
+      const appointmentId =
+        typeof pi.metadata?.appointment_id === 'string' ? pi.metadata.appointment_id : null;
       if (admin) {
-        const row = {
+        const row: Record<string, unknown> = {
+          appointment_id: appointmentId,
           stripe_payment_intent_id: pi.id,
           stripe_checkout_session_id: sid,
           amount_cents: pi.amount_received || pi.amount,
           status,
+          payment_method: 'stripe',
           payment_kind: pi.metadata?.stripe_checkout_kind ?? 'stripe_payment_intent',
+          paid_at: new Date().toISOString(),
         };
         let up = await admin.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
         if (up.error && isSchemaDriftError(up.error.message)) {
@@ -85,7 +90,10 @@ export async function POST(request: Request) {
       }
     }
   } catch (e) {
-    console.error('[stripe/webhook] event processing failed — logged only, returning 200', event.type, e);
+    console.error('[stripe/webhook] event processing failed', event.type, e);
+    if (event.type === 'checkout.session.completed') {
+      return NextResponse.json({ error: 'checkout processing failed' }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ received: true });

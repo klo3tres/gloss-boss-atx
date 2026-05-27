@@ -122,6 +122,8 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
 
 /** Force-apply canonical price sheet — overwrites standard package cents (not ceramic). */
 export async function applyCanonicalPriceSheet(admin: SupabaseClient): Promise<{ ok: boolean; error?: string }> {
+  const seed = await ensureCanonicalServiceCatalog(admin);
+  if (!seed.ok) return seed;
   try {
     for (const row of ROWS) {
       if (row.slug === 'ceramic-coating') continue;

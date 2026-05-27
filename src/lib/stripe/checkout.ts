@@ -570,7 +570,9 @@ export async function processCheckoutSessionCompleted(params: {
         typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
       amount_cents: amount,
       status: 'succeeded',
+      payment_method: 'stripe',
       payment_kind: isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : isBookingFull ? 'booking_full' : 'deposit',
+      paid_at: new Date().toISOString(),
     };
     if (technicianId && typeof technicianId === 'string') {
       paymentRow.technician_id = technicianId;
@@ -578,7 +580,8 @@ export async function processCheckoutSessionCompleted(params: {
 
     const payResult = await upsertPaymentRow(admin, paymentRow);
     if (!payResult.ok) {
-      console.warn('[checkout] payment row not saved', appointmentId, payResult.error);
+      console.error('[checkout] payment row not saved', appointmentId, payResult.error);
+      throw new Error(payResult.error ?? 'payment row upsert failed');
     }
 
     const extras: Record<string, unknown> = {};
@@ -648,6 +651,7 @@ export async function processCheckoutSessionCompleted(params: {
       isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : 'deposit',
     );
   } catch (e) {
-    console.warn('[checkout] processCheckoutSessionCompleted', e);
+    console.error('[checkout] processCheckoutSessionCompleted', e);
+    throw e;
   }
 }
