@@ -112,8 +112,10 @@ export default function HomePage() {
     const now = new Date();
     return offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, now));
   }, [offers]);
+  const [dismissSchemaNotice, setDismissSchemaNotice] = useState(false);
+  const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
 
-  const hasHomeOffers = useMemo(() => {
+  return (
     <main className='gb-page relative min-h-screen text-foreground'>
       {showPromoPopup && displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
         <div
