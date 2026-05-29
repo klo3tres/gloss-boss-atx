@@ -228,6 +228,27 @@ export function WorkOrderConsoleClient({
 
   const vehicleLine = data.vehicles.map((v) => v.label).join(' · ') || data.serviceLabel;
 
+  // Calculate actual vs expected duration
+  const dur = useMemo(() => {
+    if (!data.jobStartedAt) return null;
+    const start = new Date(data.jobStartedAt).getTime();
+    const end = data.jobCompletedAt ? new Date(data.jobCompletedAt).getTime() : Date.now();
+    if (Number.isNaN(start) || Number.isNaN(end)) return null;
+    const diffMins = Math.round((end - start) / 60000);
+    return {
+      minutes: diffMins,
+      label: data.jobCompletedAt ? 'Actual duration' : 'Elapsed time',
+    };
+  }, [data.jobStartedAt, data.jobCompletedAt]);
+
+  const expectedMins = useMemo(() => {
+    if (!data.scheduledStartIso || !data.scheduledEnd) return null;
+    const start = new Date(data.scheduledStartIso).getTime();
+    const end = new Date(data.scheduledEnd).getTime();
+    if (Number.isNaN(start) || Number.isNaN(end)) return null;
+    return Math.round((end - start) / 60000);
+  }, [data.scheduledStartIso, data.scheduledEnd]);
+
   return (
     <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-24 md:space-y-6'>
       <WorkOrderMissionBar
@@ -236,6 +257,54 @@ export function WorkOrderConsoleClient({
         hasPreInspection={Boolean(data.preInspection)}
         timerRunning={Boolean(data.openTimerId)}
       />
+
+      {/* Luxury Process Stepper */}
+      <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40">
+        <SectionEyebrow>Operations pipeline</SectionEyebrow>
+        <div className="mt-6 relative flex items-center justify-between">
+          {/* Connector Line */}
+          <div className="absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-white/5" />
+          <div 
+            className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-gold transition-all duration-500" 
+            style={{
+              width: `${
+                data.paymentComplete ? '100%' :
+                data.jobCompletedAt || data.statusLabel.toLowerCase().includes('complete') ? '75%' :
+                data.job.status === 'in_progress' || data.openTimerId ? '50%' :
+                data.agreementSigned ? '25%' : '0%'
+              }`
+            }}
+          />
+          
+          {/* Stepper Nodes */}
+          {[
+            { label: 'Agreement', ok: data.agreementSigned },
+            { label: 'Pre-Inspect', ok: data.preInspection?.damageAck.damageAckComplete || (data.agreementSigned && data.job.status !== 'confirmed' && data.job.status !== 'pending') },
+            { label: 'In Progress', ok: data.job.status === 'in_progress' || Boolean(data.openTimerId) || data.statusLabel.toLowerCase().includes('complete') },
+            { label: 'Completed', ok: data.statusLabel.toLowerCase().includes('complete') || Boolean(data.jobCompletedAt) },
+            { label: 'Paid', ok: data.paymentComplete },
+          ].map((step, idx) => {
+            const isOk = step.ok;
+            return (
+              <div key={idx} className="relative z-10 flex flex-col items-center">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-300 ${
+                    isOk
+                      ? 'border-gold bg-black text-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]'
+                      : 'border-white/10 bg-zinc-950 text-zinc-500'
+                  }`}
+                >
+                  {isOk ? '✓' : idx + 1}
+                </div>
+                <span className={`mt-2 text-[9px] font-black uppercase tracking-wider ${isOk ? 'text-gold-soft' : 'text-zinc-500'}`}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <motion.section
         id='wo-overview'
         initial={{ opacity: 0, y: 12 }}
@@ -268,38 +337,38 @@ export function WorkOrderConsoleClient({
           {data.technicianName ? ` · ${data.technicianName}` : ''}
         </p>
         <div className='gb-mission-metrics mt-6'>
-          <div className='gb-glass rounded-2xl border border-gold/25 px-4 py-3'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Final total</p>
-            <p className='mt-1 font-mono text-lg font-bold text-gold-soft'>{data.finalTotal ?? data.baseSubtotal}</p>
+          <div className='gb-premium-card rounded-2xl border border-gold/30 px-4 py-3.5 shadow-[0_0_15px_rgba(212,175,55,0.08)] backdrop-blur-sm'>
+            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Final total</p>
+            <p className='mt-1 font-mono text-lg font-black text-gold-soft'>{data.finalTotal ?? data.baseSubtotal}</p>
           </div>
-          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Balance</p>
-            <p className='mt-1 font-mono text-lg font-bold text-white'>{data.balanceDue}</p>
+          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Balance</p>
+            <p className='mt-1 font-mono text-lg font-black text-white'>{data.balanceDue}</p>
           </div>
-          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Paid</p>
-            <p className='mt-1 font-mono text-lg font-bold text-emerald-300'>{data.totalPaid ?? '—'}</p>
+          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Paid</p>
+            <p className='mt-1 font-mono text-lg font-black text-emerald-300'>{data.totalPaid ?? '—'}</p>
           </div>
-          <div className='gb-glass rounded-2xl border border-white/10 px-4 py-3'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Progress</p>
-            <p className='mt-1 font-mono text-lg font-bold text-white'>{progressPct}%</p>
+          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Progress</p>
+            <p className='mt-1 font-mono text-lg font-black text-white'>{progressPct}%</p>
           </div>
         </div>
         <div className='mt-4 flex flex-wrap gap-2'>
-          <Link href={data.shellBackHref} className='rounded-xl border border-white/15 px-4 py-2.5 text-[10px] font-black uppercase text-zinc-300'>
+          <Link href={data.shellBackHref} className='rounded-xl border border-white/20 bg-black/40 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:bg-white/5 transition duration-200'>
             ← Back
           </Link>
           <button
             type='button'
             onClick={() => scrollToSection('wo-timer')}
-            className='gb-premium-btn rounded-xl border border-emerald-500/45 bg-emerald-500/15 px-4 py-2.5 text-[10px] font-black uppercase text-emerald-100'
+            className='gb-premium-btn rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.1)] transition duration-200'
           >
             Timer
           </button>
           <button
             type='button'
             onClick={() => scrollToSection('wo-complete')}
-            className='gb-premium-btn rounded-xl border border-gold/50 bg-gold/15 px-4 py-2.5 text-[10px] font-black uppercase text-gold-soft'
+            className='gb-premium-btn rounded-xl border border-gold/45 bg-gold/10 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/15 shadow-[0_0_15px_rgba(212,175,55,0.1)] transition duration-200'
           >
             Mark complete
           </button>
@@ -478,25 +547,40 @@ export function WorkOrderConsoleClient({
               </p>
             ) : null}
             {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
-              <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-4'>
-                <p className='text-base font-black text-white'>
-                  Vehicle {vg.vehicleIndex + 1}: {vg.label}
-                </p>
-                {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
-                <WorkOrderGallery title='Before' photos={vg.before} canDelete={data.canDeletePhotos} />
-                <WorkOrderGallery title='After' photos={vg.after} canDelete={data.canDeletePhotos} />
+              <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-5 space-y-4'>
+                <div>
+                  <p className='text-base font-black text-white'>
+                    Vehicle {vg.vehicleIndex + 1}: {vg.label}
+                  </p>
+                  {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
+                </div>
+                
+                {/* Comparative Photos Timeline */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="gb-glass bg-zinc-950/40 rounded-xl p-3 border border-white/5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-200 mb-2">Before Restoration</p>
+                    <WorkOrderGallery title="" photos={vg.before} canDelete={data.canDeletePhotos} />
+                  </div>
+                  <div className="gb-glass bg-zinc-950/40 rounded-xl p-3 border border-white/5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300 mb-2">After Restoration</p>
+                    <WorkOrderGallery title="" photos={vg.after} canDelete={data.canDeletePhotos} />
+                  </div>
+                </div>
+
                 {!data.photoUploadDisabled ? (
-                  <WorkOrderPhotoUpload
-                    appointmentId={data.isFallback ? null : jobId}
-                    fallbackBookingId={data.isFallback ? jobId : null}
-                    workOrderId={data.canonicalId}
-                    customerId={data.customerId}
-                    workflowSessionId={data.workflowSessionId}
-                    source={data.isFallback ? 'fallback' : 'appointment'}
-                    resolvedContextTrust={data.photoUploadResolvedContext}
-                    vehicleIndex={vg.vehicleIndex}
-                    vehicleLabel={vg.label}
-                  />
+                  <div className="pt-2">
+                    <WorkOrderPhotoUpload
+                      appointmentId={data.isFallback ? null : jobId}
+                      fallbackBookingId={data.isFallback ? jobId : null}
+                      workOrderId={data.canonicalId}
+                      customerId={data.customerId}
+                      workflowSessionId={data.workflowSessionId}
+                      source={data.isFallback ? 'fallback' : 'appointment'}
+                      resolvedContextTrust={data.photoUploadResolvedContext}
+                      vehicleIndex={vg.vehicleIndex}
+                      vehicleLabel={vg.label}
+                    />
+                  </div>
                 ) : null}
               </div>
             ))}
@@ -504,9 +588,22 @@ export function WorkOrderConsoleClient({
         </div>
 
         <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 px-4 py-3'>
-          <div className='flex items-center gap-2'>
-            <Clock className='h-4 w-4 text-gold-soft' />
-            <SectionEyebrow>Timer</SectionEyebrow>
+          <div className='flex items-center justify-between border-b border-white/5 pb-2 mb-3'>
+            <div className='flex items-center gap-2'>
+              <Clock className='h-4 w-4 text-gold-soft' />
+              <SectionEyebrow>Timer & duration</SectionEyebrow>
+            </div>
+            {dur && (
+              <div className='flex items-center gap-2 text-[10px] font-mono'>
+                <span className='text-zinc-400'>{dur.label}: <strong className='text-white'>{dur.minutes}m</strong></span>
+                {expectedMins && (
+                  <>
+                    <span className='text-zinc-600'>|</span>
+                    <span className='text-zinc-400'>Expected: <strong className='text-white'>{expectedMins}m</strong></span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <TechTimerControls
             appointmentId={data.isFallback ? null : jobId}
@@ -597,14 +694,47 @@ export function WorkOrderConsoleClient({
         <WorkOrderCollapsible title='Timeline & notifications' defaultOpen={false} badge={String(data.timeline.length)}>
           <TimelineRail events={data.timeline} />
           {data.outbox.length > 0 ? (
-            <ul className='mt-4 space-y-2 text-xs text-zinc-400'>
-              {data.outbox.map((o) => (
-                <li key={o.id} className='rounded-lg border border-white/10 px-3 py-2'>
-                  {o.kind} · {o.status} · {o.time}
-                  {o.skipped ? ` · ${o.skipped}` : ''}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Outbox History</p>
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {data.outbox.map((o) => {
+                  const isEmail = String(o.kind).toLowerCase().includes('email');
+                  const isSent = String(o.status).toLowerCase().includes('sent') || String(o.status).toLowerCase().includes('delivered');
+                  return (
+                    <div
+                      key={o.id}
+                      className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 px-3.5 py-2.5"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-base text-zinc-400 shrink-0">
+                          {isEmail ? '✉' : '🗪'}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white uppercase tracking-wide">
+                            {o.kind}
+                          </p>
+                          <p className="text-[9px] text-zinc-500 mt-0.5">{o.time}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
+                            isSent
+                              ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                              : 'border border-amber-500/25 bg-amber-500/10 text-amber-200'
+                          }`}
+                        >
+                          {o.status}
+                        </span>
+                        {o.skipped ? (
+                          <p className="text-[9px] text-zinc-500 mt-0.5 italic">{o.skipped}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ) : null}
         </WorkOrderCollapsible>
         </div>

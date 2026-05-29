@@ -279,69 +279,68 @@ export function TechPremiumShell({
           <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            className='rounded-xl border border-white/10 bg-black/40 px-4 py-3'
+            className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'
           >
-            <p className='flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
               <CalendarDays className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
               Jobs today
             </p>
-            <p className='mt-2 text-2xl font-black text-white'>{todayJobs.length}</p>
+            <p className='mt-2.5 text-3xl font-black text-white'>{todayJobs.length}</p>
           </motion.div>
-          <div className='rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-            <p className='flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+          <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
+            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
               <TrendingUp className='h-3.5 w-3.5 text-emerald-400' aria-hidden />
               Revenue (jobs)
             </p>
-            <p className='mt-2 text-lg font-black text-white'>
+            <p className='mt-2.5 text-lg font-black text-white'>
               ${(revenueTodayCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>today</span>
             </p>
-            <p className='text-sm text-gold-soft'>
+            <p className='text-sm font-bold text-gold-soft mt-0.5'>
               ${(revenueWeekCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>7d booked</span>
             </p>
           </div>
-          <div className='rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3'>
-            <p className='text-[10px] font-bold uppercase tracking-wider text-emerald-400/90'>Stripe (completed)</p>
-            <p className='mt-2 text-lg font-black text-white'>
+          <div className='rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-emerald-500/40 transition duration-300'>
+            <p className='text-[10px] font-black uppercase tracking-wider text-emerald-400/90'>Stripe (completed)</p>
+            <p className='mt-2.5 text-lg font-black text-white'>
               ${(performance.revenueTodayFromPayments / 100).toFixed(0)}{' '}
               <span className='text-xs font-normal text-zinc-500'>today</span>
             </p>
-            <p className='text-sm text-emerald-200/90'>
+            <p className='text-sm font-bold text-emerald-200/95 mt-0.5'>
               ${(performance.revenueWeekFromPayments / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>week</span>
             </p>
           </div>
-          <div className='rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-            <p className='flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+          <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
+            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
               <Timer className='h-3.5 w-3.5 text-zinc-400' aria-hidden />
               Avg completion
             </p>
-            <p className='mt-2 text-lg font-black text-white'>
+            <p className='mt-2.5 text-lg font-black text-white'>
               {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'}
             </p>
-            <p className='mt-1 text-[10px] text-zinc-600'>
-              Timers (30d sample) · {analytics.completedCount} jobs w/ revenue in last 30d · all-time completed rows:{' '}
-              {performance.jobsCompleted}
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>
+              Timers (30d) · {analytics.completedCount} active jobs · {performance.jobsCompleted} total
             </p>
           </div>
-          <div className='rounded-xl border border-gold/30 bg-black/50 px-4 py-3'>
-            <p className='flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+          <div className='rounded-xl border border-gold/30 bg-black/70 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/45 transition duration-300'>
+            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
               <Target className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
               {goalLabel ?? 'Weekly goal'}
             </p>
-            <div className='mt-2 h-2.5 overflow-hidden rounded-full bg-zinc-800'>
+            <div className='mt-2 h-2 overflow-hidden rounded-full bg-zinc-900'>
               <motion.div
-                className='h-full rounded-full bg-gradient-to-r from-gold/80 to-amber-400'
+                className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400'
                 initial={{ width: 0 }}
                 animate={{ width: `${goalPct}%` }}
                 transition={{ duration: 0.8, ease: 'easeOut' }}
               />
             </div>
-            <p className='mt-2 text-xs text-zinc-400'>
+            <p className='mt-2 text-[10px] text-zinc-400 leading-tight'>
               {goalTargetCents != null ? (
                 <>
-                  {goalPct}% of ${(goalTargetCents / 100).toFixed(0)} target (7d job revenue vs goal)
+                  {goalPct}% of ${(goalTargetCents / 100).toFixed(0)} target (7d vs goal)
                 </>
               ) : (
-                'No goal row in business_goals — admin can seed tech_revenue_week.'
+                'Goal row is pending in database'
               )}
             </p>
           </div>

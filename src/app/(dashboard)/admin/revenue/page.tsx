@@ -13,6 +13,8 @@ import {
 } from '@/lib/revenue-metrics';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notFound } from 'next/navigation';
+import { RevenueChartsClient } from '@/components/admin/revenue-charts';
+import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,16 +22,23 @@ function money(cents: number) {
   return displayMoney(cents);
 }
 
+function startOfSixMonthsAgoIso(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 5, 1);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
 function StatBlock({ label, value, hint, href }: { label: string; value: string; hint?: string; href?: string }) {
   const inner = (
-    <div className='gb-premium-card rounded-2xl border border-gold/20 bg-black/50 p-5 transition hover:border-gold/45'>
-      <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>{label}</p>
-      <p className='mt-2 font-mono text-2xl font-black text-gold-soft'>{value}</p>
-      {hint ? <p className='mt-1 text-xs text-zinc-500'>{hint}</p> : null}
+    <div className='gb-premium-card rounded-2xl border border-gold/15 bg-black/50 p-5 shadow-md backdrop-blur-sm hover:border-gold/45 hover:shadow-[0_0_20px_rgba(212,175,55,0.12)] transition duration-300'>
+      <p className='text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400'>{label}</p>
+      <p className='mt-3 font-mono text-2.5xl font-black text-gold-soft tracking-tight'>{value}</p>
+      {hint ? <p className='mt-1 text-[10px] text-zinc-500 italic leading-tight'>{hint}</p> : null}
     </div>
   );
   return href ? (
-    <Link href={href} className='block'>
+    <Link href={href} className='block transition duration-200 hover:opacity-95'>
       {inner}
     </Link>
   ) : (
@@ -58,11 +67,13 @@ export default async function AdminRevenuePage({
   );
 
   const now = new Date().toISOString();
-  const [todayRows, weekRows, monthRows, yearRows] = await Promise.all([
+  const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
     fetchPaymentsSince(admin, startOfYearIso(), now),
+    fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
+    admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start').order('scheduled_start', { ascending: false }).limit(800),
   ]);
 
   const sumOpts = includeTest ? undefined : { excludeTest: true as const, apptById };
@@ -71,15 +82,11 @@ export default async function AdminRevenuePage({
   const month = summarizePayments(monthRows, sumOpts);
   const year = summarizePayments(yearRows, sumOpts);
 
-  const { data: appts } = await admin
-    .from('appointments')
-    .select('balance_due_cents, payment_status')
-    .in('payment_status', ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'])
-    .limit(500);
-  const balanceDueCents = (appts ?? []).reduce(
-    (s, r) => s + (typeof (r as { balance_due_cents?: number }).balance_due_cents === 'number' ? (r as { balance_due_cents: number }).balance_due_cents : 0),
-    0,
-  );
+  const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
+
+  const balanceDueCents = allAppts
+    .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
+    .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
 
   const { count: completedMonth } = await admin
     .from('appointments')
@@ -87,7 +94,70 @@ export default async function AdminRevenuePage({
     .eq('status', 'completed')
     .gte('job_completed_at', startOfMonthIso());
 
-  const avgTicketCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0;
+  // Deposit collection rate
+  const apptsWithDeposits = allAppts.filter((a) => (a.deposit_amount_cents ?? 0) > 0);
+  const paidDeposits = apptsWithDeposits.filter((a) => a.payment_status !== 'awaiting_deposit' && a.status !== 'pending');
+  const depositCollectionRate = apptsWithDeposits.length > 0
+    ? Math.round((paidDeposits.length / apptsWithDeposits.length) * 100)
+    : 100;
+
+  // Average completed ticket
+  const completedAppts = allAppts.filter((a) => a.status === 'completed');
+  const totalCompletedRevenue = completedAppts.reduce((sum, a) => sum + (a.base_price_cents ?? 0), 0);
+  const avgCompletedTicketCents = completedAppts.length > 0 ? Math.round(totalCompletedRevenue / completedAppts.length) : 0;
+  const avgTicketSize = displayMoney(avgCompletedTicketCents);
+
+  // Group top customers
+  const customerSpent: Record<string, { name: string; email: string; totalCents: number; jobCount: number }> = {};
+  for (const a of allAppts) {
+    if (a.status === 'completed') {
+      const email = a.guest_email || 'unknown';
+      const name = a.guest_name || 'Guest';
+      const cents = a.base_price_cents ?? 0;
+      if (!customerSpent[email]) {
+        customerSpent[email] = { name, email, totalCents: 0, jobCount: 0 };
+      }
+      customerSpent[email].totalCents += cents;
+      customerSpent[email].jobCount += 1;
+    }
+  }
+  const topCustomers = Object.values(customerSpent)
+    .sort((a, b) => b.totalCents - a.totalCents)
+    .slice(0, 4);
+
+  // Group monthly revenue last 6 months
+  const monthsData: Array<{ label: string; year: number; month: number; value: number }> = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i, 1);
+    const label = d.toLocaleDateString('en-US', { month: 'short' });
+    monthsData.push({ label, year: d.getFullYear(), month: d.getMonth(), value: 0 });
+  }
+
+  for (const p of sixMonthRows) {
+    const pRow = p as any;
+    const st = String(pRow.status ?? '').toLowerCase();
+    const isSucceeded = st === 'succeeded' || st === 'paid' || st === 'comped' || st === 'manual_comped';
+    const isVoided = Boolean(pRow.voided_at || pRow.voided === true) || st === 'voided';
+    if (!isSucceeded || isVoided) continue;
+    
+    // Check if test payment
+    const meta = pRow.metadata;
+    const isTest = (meta && (meta.is_test === true || meta.test === true)) || 
+      (pRow.appointment_id && apptById.get(String(pRow.appointment_id)) && isTestLikeJob(apptById.get(String(pRow.appointment_id)) as any));
+    if (!includeTest && isTest) continue;
+
+    const amt = typeof pRow.amount_cents === 'number' ? pRow.amount_cents : 0;
+    const pDate = new Date(pRow.created_at || '');
+    if (!Number.isNaN(pDate.getTime())) {
+      const mIdx = monthsData.findIndex(
+        (m) => m.year === pDate.getFullYear() && m.month === pDate.getMonth()
+      );
+      if (mIdx !== -1) {
+        monthsData[mIdx].value += amt;
+      }
+    }
+  }
 
   const { data: debugEvents } = await admin
     .from('payment_debug_events')
@@ -129,6 +199,24 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
+      {/* Insert Interactive Charts Section */}
+      <div className='mb-8'>
+        <RevenueChartsClient
+          monthsData={monthsData}
+          paymentMixMonth={{
+            stripeCents: month.stripeCents,
+            cashCents: month.cashCents,
+            zelleCents: month.zelleCents,
+            otherCents: month.otherCents,
+            grossCents: month.grossCents,
+            paymentCount: month.paymentCount,
+          }}
+          depositCollectionRate={depositCollectionRate}
+          avgTicketSize={avgTicketSize}
+          topCustomers={topCustomers}
+        />
+      </div>
+
       <section className='space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
@@ -153,7 +241,7 @@ export default async function AdminRevenuePage({
           <StatBlock label='Zelle / Venmo' value={money(month.zelleCents)} />
           <StatBlock label='Other manual' value={money(month.otherCents)} />
           <StatBlock label='Open balances (appointments)' value={money(balanceDueCents)} href='/admin/work-orders' />
-          <StatBlock label='Avg payment (month)' value={money(avgTicketCents)} hint={`${completedMonth ?? 0} jobs completed this month`} />
+          <StatBlock label='Avg payment (month)' value={money(month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0)} hint={`${completedMonth ?? 0} jobs completed this month`} />
         </div>
       </section>
 

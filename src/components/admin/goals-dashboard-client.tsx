@@ -56,7 +56,7 @@ function GoalForm({
 
   return (
     <form
-      className='gb-glass rounded-3xl border border-gold/20 p-5'
+      className='gb-premium-card rounded-3xl border border-gold/20 p-6 shadow-xl backdrop-blur-sm'
       onSubmit={(e) => {
         e.preventDefault();
         setErr(null);
@@ -103,7 +103,7 @@ function GoalForm({
         </select>
       </div>
       {err ? <p className='mt-3 text-sm text-red-300'>{err}</p> : null}
-      <button type='submit' disabled={pending} className='mt-4 rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black disabled:opacity-50'>
+      <button type='submit' disabled={pending} className='mt-4 rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3.5 text-xs font-black uppercase tracking-widest text-black shadow-md hover:brightness-110 disabled:opacity-50 transition duration-200'>
         {pending ? 'Saving…' : initial ? 'Update goal' : 'Create goal'}
       </button>
     </form>
@@ -138,29 +138,29 @@ export function GoalsDashboardClient({
       ) : null}
       <div className='space-y-4'>
         {goals.length === 0 ? (
-          <p className='text-sm text-zinc-500'>No goals yet. Create one above or apply migration 000057_goals_dashboard.sql.</p>
+          <p className='text-sm text-zinc-500 italic'>No goals yet. Create one above or apply migration 000057_goals_dashboard.sql.</p>
         ) : (
           goals.map((g) => {
             const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
             const auto = ['revenue_weekly', 'revenue_monthly', 'jobs_monthly', 'avg_ticket', 'profit_monthly'].includes(g.goal_type);
             return (
-              <article key={g.id} className='gb-premium-card rounded-2xl border border-gold/20 p-5'>
+              <article key={g.id} className='gb-premium-card rounded-2xl border border-gold/15 p-6 hover:border-gold/35 transition duration-300'>
                 <div className='flex flex-wrap items-start justify-between gap-3'>
                   <div>
-                    <p className='text-lg font-black text-white'>{g.title}</p>
-                    <p className='text-xs uppercase tracking-widest text-zinc-500'>
+                    <p className='text-lg font-black text-white uppercase tracking-tight'>{g.title}</p>
+                    <p className='text-xs uppercase tracking-widest text-zinc-500 font-bold mt-0.5'>
                       {g.goal_type.replace(/_/g, ' ')} · {auto ? 'Auto-tracked' : 'Manual'}
                     </p>
                   </div>
-                  <span className='rounded-full border border-gold/30 px-3 py-1 text-xs font-bold uppercase text-gold-soft'>{g.status}</span>
+                  <span className='rounded-full bg-gold/10 border border-gold/30 px-3 py-1 text-xs font-black uppercase text-gold-soft'>{g.status}</span>
                 </div>
-                <div className='mt-4 h-2.5 overflow-hidden rounded-full bg-zinc-800'>
-                  <div className='h-full rounded-full bg-gradient-to-r from-gold/80 to-gold' style={{ width: `${pct}%` }} />
+                <div className='mt-4 h-2.5 overflow-hidden rounded-full bg-zinc-900 border border-white/5'>
+                  <div className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400 shadow-[0_0_8px_rgba(212,175,55,0.4)]' style={{ width: `${pct}%` }} />
                 </div>
-                <p className='mt-2 text-sm text-zinc-300'>
+                <p className='mt-2.5 text-sm text-zinc-300 font-bold'>
                   {displayValue(g.unit, g.current_value)} / {displayValue(g.unit, g.target_value)} ({pct}%)
                 </p>
-                {g.period_end ? <p className='text-xs text-zinc-500'>Due {g.period_end.slice(0, 10)}</p> : null}
+                {g.period_end ? <p className='text-xs text-zinc-500 mt-0.5'>Due {g.period_end.slice(0, 10)}</p> : null}
                 <div className='mt-4 flex flex-wrap gap-2'>
                   <button type='button' onClick={() => setEditId(g.id)} className='text-xs font-bold uppercase text-gold-soft underline'>
                     Edit

@@ -39,6 +39,48 @@ export type OwnerDashboardSnapshot = {
     grossCents: number;
     paymentCount: number;
   };
+  pendingDeposits: string;
+  activeJobsCount: number;
+  bookingHealth: number;
+  recentPayments: Array<{
+    id: string;
+    customer: string;
+    amount: string;
+    method: string;
+    status: string;
+    time: string;
+  }>;
+  upcomingAppts: Array<{
+    id: string;
+    guestName: string;
+    service: string;
+    time: string;
+    status: string;
+    price: string;
+  }>;
+  liveFeed: Array<{
+    id: string;
+    title: string;
+    time: string;
+    apptId: string;
+  }>;
+  techActivity: Array<{
+    id: string;
+    name: string;
+    status: 'active' | 'idle';
+    activeJobName?: string;
+  }>;
+  leadPipeline: {
+    newCount: number;
+    contactedCount: number;
+    convertedCount: number;
+    totalActive: number;
+  };
+  techPerformance: Array<{
+    techName: string;
+    jobCount: number;
+    revenueCents: number;
+  }>;
 };
 
 function chicagoShort(iso: string) {
@@ -74,10 +116,13 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   );
   const sumOpts = { excludeTest: true as const, apptById };
 
-  const [todayPay, weekPay, monthPay] = await Promise.all([
+  const [todayPay, weekPay, monthPay, leadRowsRes, paymentRowsRes, eventRowsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
+    admin.from('leads').select('status, archived, archived_at'),
+    admin.from('payments').select('amount_cents, status, payment_method, payment_kind, created_at, appointment_id').order('created_at', { ascending: false }).limit(6),
+    admin.from('job_timeline_events').select('appointment_id, event_type, created_at').order('created_at', { ascending: false }).limit(10),
   ]);
   const today = summarizePayments(todayPay, sumOpts);
   const week = summarizePayments(weekPay, sumOpts);
@@ -86,10 +131,10 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const { data: appts } = await admin
     .from('appointments')
     .select(
-      'id, status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, balance_due_cents, payment_status, assigned_technician_id',
+      'id, status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, base_price_cents, balance_due_cents, payment_status, assigned_technician_id, deposit_amount_cents',
     )
     .order('scheduled_start', { ascending: true })
-    .limit(200);
+    .limit(300);
 
   const { data: techs } = await admin
     .from('profiles')
@@ -136,6 +181,98 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       };
     });
 
+  // Calculate Phase 2 Metrics
+  const activeJobsCount = rows.filter((a) => a.status === 'in_progress').length;
+  
+  const pendingDepositsCents = rows
+    .filter((a) => a.payment_status === 'awaiting_deposit' || a.status === 'pending')
+    .reduce((sum, a) => sum + (a.deposit_amount_cents ?? 0), 0);
+  const pendingDeposits = displayMoney(pendingDepositsCents);
+
+  const totalApptsCount = rows.length;
+  const healthyApptsCount = rows.filter((a) => ['confirmed', 'assigned', 'deposit_paid', 'completed'].includes(a.status)).length;
+  const bookingHealth = totalApptsCount > 0 ? Math.round((healthyApptsCount / totalApptsCount) * 100) : 100;
+
+  // Recent Payments
+  const recentPayments = (paymentRowsRes.data ?? []).map((p) => {
+    const appt = apptById.get(String(p.appointment_id));
+    return {
+      id: String(p.created_at) + String(p.appointment_id),
+      customer: appt?.guest_name || 'Guest',
+      amount: displayMoney(p.amount_cents ?? 0),
+      method: String(p.payment_method || p.payment_kind || 'Stripe'),
+      status: String(p.status || 'succeeded'),
+      time: chicagoShort(p.created_at ?? ''),
+    };
+  });
+
+  // Upcoming Appointments
+  const upcomingAppts = rows
+    .filter((a) => new Date(a.scheduled_start).getTime() > new Date(now).getTime() && a.status !== 'cancelled')
+    .slice(0, 5)
+    .map((a) => ({
+      id: a.id,
+      guestName: a.guest_name || 'Guest',
+      service: a.service_slug.replace(/-/g, ' '),
+      time: chicagoShort(a.scheduled_start),
+      status: a.status,
+      price: displayMoney(a.base_price_cents ?? 0),
+    }));
+
+  // Live Dispatch Feed
+  const liveFeed = (eventRowsRes.data ?? []).map((e, idx) => {
+    const appt = apptById.get(String(e.appointment_id));
+    const name = appt?.guest_name || 'Guest';
+    return {
+      id: `${e.event_type}-${idx}-${e.created_at}`,
+      title: `${name}: ${String(e.event_type).replace(/_/g, ' ')}`,
+      time: chicagoShort(e.created_at),
+      apptId: String(e.appointment_id),
+    };
+  });
+
+  // Tech Activity
+  const techActivity = Object.keys(techNames).map((tid) => {
+    const activeAppt = rows.find((a) => a.assigned_technician_id === tid && a.status === 'in_progress');
+    return {
+      id: tid,
+      name: techNames[tid],
+      status: activeAppt ? 'active' as const : 'idle' as const,
+      activeJobName: activeAppt ? `${activeAppt.guest_name || 'Guest'} (${activeAppt.service_slug.replace(/-/g, ' ')})` : undefined,
+    };
+  });
+
+  // Lead Pipeline Stats
+  const activeLeads = (leadRowsRes.data ?? []).filter((r) => r.archived !== true && !r.archived_at);
+  const newCount = activeLeads.filter((r) => r.status === 'new').length;
+  const contactedCount = activeLeads.filter((r) => ['contacted', 'quoted'].includes(r.status)).length;
+  const convertedCount = activeLeads.filter((r) => r.status === 'booked').length;
+  const leadPipeline = {
+    newCount,
+    contactedCount,
+    convertedCount,
+    totalActive: activeLeads.length,
+  };
+
+  // Team Performance
+  const techPerfMap = new Map<string, { jobCount: number; revenueCents: number }>();
+  for (const appt of rows) {
+    if (appt.assigned_technician_id && appt.status === 'completed') {
+      const current = techPerfMap.get(appt.assigned_technician_id) ?? { jobCount: 0, revenueCents: 0 };
+      current.jobCount += 1;
+      current.revenueCents += appt.balance_due_cents ?? appt.base_price_cents ?? 0;
+      techPerfMap.set(appt.assigned_technician_id, current);
+    }
+  }
+  const techPerformance = Object.keys(techNames).map((tid) => {
+    const perf = techPerfMap.get(tid) ?? { jobCount: 0, revenueCents: 0 };
+    return {
+      techName: techNames[tid],
+      jobCount: perf.jobCount,
+      revenueCents: perf.revenueCents,
+    };
+  }).filter(t => t.jobCount > 0);
+
   const alerts: string[] = [];
   if (balanceDueCents > 0) alerts.push(`${displayMoney(balanceDueCents)} open balances across live jobs`);
   const unassigned = todayJobs.filter((j) => j.techName === 'Unassigned').length;
@@ -159,5 +296,14 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       grossCents: month.grossCents,
       paymentCount: month.paymentCount,
     },
+    pendingDeposits,
+    activeJobsCount,
+    bookingHealth,
+    recentPayments,
+    upcomingAppts,
+    liveFeed,
+    techActivity,
+    leadPipeline,
+    techPerformance,
   };
 }

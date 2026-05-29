@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function AdminDashboardPage() {
   const session = await getSessionWithProfile();
   let loadErr: string | null = null;
-  let metrics = {
+  let metrics: import('@/lib/owner-dashboard-metrics').OwnerDashboardSnapshot = {
     revenueToday: '$0.00',
     revenueWeek: '$0.00',
     revenueMonth: '$0.00',
@@ -28,6 +28,20 @@ export default async function AdminDashboardPage() {
       grossCents: 0,
       paymentCount: 0,
     },
+    pendingDeposits: '$0.00',
+    activeJobsCount: 0,
+    bookingHealth: 100,
+    recentPayments: [],
+    upcomingAppts: [],
+    liveFeed: [],
+    techActivity: [],
+    leadPipeline: {
+      newCount: 0,
+      contactedCount: 0,
+      convertedCount: 0,
+      totalActive: 0,
+    },
+    techPerformance: [],
   };
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {

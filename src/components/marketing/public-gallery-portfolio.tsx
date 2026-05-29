@@ -36,8 +36,30 @@ export function PublicGalleryPortfolio() {
     };
   }, []);
 
+  const CATEGORIES = [
+    { id: 'all', label: 'All Projects' },
+    { id: 'ceramic', label: 'Ceramic Coatings' },
+    { id: 'details', label: 'Full Details' },
+    { id: 'interior', label: 'Interior Restoration' },
+    { id: 'paint', label: 'Paint Correction' },
+  ];
+
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
   const featured = useMemo(() => items.filter((i) => i.featured), [items]);
-  const gridItems = useMemo(() => (featured.length ? featured : items), [featured, items]);
+  const baseItems = useMemo(() => (featured.length ? featured : items), [featured, items]);
+
+  const filteredGridItems = useMemo(() => {
+    if (selectedCategory === 'all') return baseItems;
+    return baseItems.filter((item) => {
+      const lbl = str(item.serviceLabel || item.caption || '').toLowerCase();
+      if (selectedCategory === 'ceramic') return lbl.includes('ceramic') || lbl.includes('coating');
+      if (selectedCategory === 'details') return lbl.includes('detail') || lbl.includes('full');
+      if (selectedCategory === 'interior') return lbl.includes('interior') || lbl.includes('leather') || lbl.includes('seat') || lbl.includes('carpet');
+      if (selectedCategory === 'paint') return lbl.includes('paint') || lbl.includes('correction') || lbl.includes('polish');
+      return true;
+    });
+  }, [selectedCategory, baseItems]);
 
   const active = lightbox != null ? items[lightbox.index] : null;
 
@@ -99,9 +121,27 @@ export function PublicGalleryPortfolio() {
         </section>
       ) : null}
 
-      <p className='mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>All work · swipe to explore</p>
+      {/* Category Filter Tabs */}
+      <div className="mb-8 flex flex-wrap gap-2 justify-center border-b border-white/5 pb-6">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => setSelectedCategory(cat.id)}
+            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+              selectedCategory === cat.id
+                ? 'bg-gold text-black shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+                : 'border border-white/10 text-zinc-400 hover:border-gold/30'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      <p className='mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft'>All work · click to enlarge</p>
       <div className='gb-gallery-masonry'>
-        {gridItems.map((img, i) => (
+        {filteredGridItems.map((img, i) => (
           <MasonryTile
             key={img.id || i}
             img={img}
@@ -188,34 +228,51 @@ export function PublicGalleryPortfolio() {
   );
 }
 
+function cleanCaption(text: string): string {
+  const t = text.trim();
+  if (
+    !t ||
+    /\.(jpe?g|png|webp|gif|heic|avif|heif)$/i.test(t) ||
+    /^(img|dsc|photo|image|snap|screenshot|wp|p\d|vid)[-_]?\d*/i.test(t) ||
+    /^[a-f0-9-]{20,}$/i.test(t) ||
+    t.includes('/') ||
+    t.includes('\\') ||
+    (t.includes('_') && !t.includes(' '))
+  ) {
+    return 'Gloss Boss Premium Detail';
+  }
+  return t;
+}
+
 function FeaturedCard({ img, onOpen }: { img: PublicGalleryItem; onOpen: () => void }) {
   const before = str(img.beforeUrl);
   const after = str(img.afterUrl || img.url);
-  const caption = publicGalleryDisplayTitle(img);
+  const rawCaption = publicGalleryDisplayTitle(img);
+  const caption = cleanCaption(rawCaption);
 
   return (
     <button
       type='button'
       onClick={onOpen}
-      className='group overflow-hidden rounded-3xl border border-gold/30 bg-black text-left shadow-[0_0_48px_rgba(212,175,55,0.12)] transition hover:border-gold/60'
+      className='group overflow-hidden gb-premium-card rounded-3xl border border-gold/20 bg-black text-left shadow-[0_0_48px_rgba(212,175,55,0.12)] transition-all duration-300 hover:border-gold/60 hover:shadow-[0_0_35px_rgba(212,175,55,0.22)] hover:-translate-y-0.5'
     >
       {before && after && before !== after ? (
         <div className='grid min-h-[280px] grid-cols-2 sm:min-h-[360px]'>
           <div className='relative'>
-            <span className='absolute left-3 top-3 z-10 rounded-lg bg-black/85 px-3 py-1 text-[10px] font-black uppercase text-zinc-200'>Before</span>
-            <img src={before} alt='Before' className='h-full min-h-[280px] w-full object-cover sm:min-h-[360px]' />
+            <span className='absolute left-3 top-3 z-10 rounded-full bg-black/85 border border-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-200 backdrop-blur-sm'>Before</span>
+            <img src={before} alt='Before' className='h-full min-h-[280px] w-full object-cover sm:min-h-[360px] transition duration-500 group-hover:scale-[1.01]' />
           </div>
           <div className='relative'>
-            <span className='absolute left-3 top-3 z-10 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black'>After</span>
-            <img src={after} alt='After' className='h-full min-h-[280px] w-full object-cover sm:min-h-[360px]' />
+            <span className='absolute left-3 top-3 z-10 rounded-full bg-gold/90 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-md'>After</span>
+            <img src={after} alt='After' className='h-full min-h-[280px] w-full object-cover sm:min-h-[360px] transition duration-500 group-hover:scale-[1.01]' />
           </div>
         </div>
       ) : (
         <img src={after} alt={caption} className='h-[360px] w-full object-cover transition duration-500 group-hover:scale-[1.02]' />
       )}
-      <div className='border-t border-gold/20 bg-gradient-to-t from-black to-zinc-950 p-5'>
-        <p className='text-lg font-black text-white'>{caption}</p>
-        {str(img.serviceLabel) ? <p className='mt-1 text-sm text-gold-soft'>{str(img.serviceLabel)}</p> : null}
+      <div className='border-t border-gold/10 bg-gradient-to-t from-black to-zinc-950/80 p-5'>
+        <p className='text-lg font-black text-white tracking-tight'>{caption}</p>
+        {str(img.serviceLabel) ? <p className='mt-1 text-sm text-gold-soft font-bold uppercase tracking-wider'>{str(img.serviceLabel)}</p> : null}
       </div>
     </button>
   );
@@ -233,36 +290,37 @@ function MasonryTile({
   const before = str(img.beforeUrl);
   const after = str(img.afterUrl || img.url);
   const url = str(img.url || img.image_url);
-  const caption = publicGalleryDisplayTitle(img);
+  const rawCaption = publicGalleryDisplayTitle(img);
+  const caption = cleanCaption(rawCaption);
 
   return (
     <button
       type='button'
       onClick={onOpen}
-      className='gb-gallery-masonry-item mb-4 break-inside-avoid overflow-hidden rounded-2xl border border-white/10 text-left transition hover:border-gold/45 hover:shadow-[0_0_32px_rgba(212,175,55,0.18)]'
+      className='gb-gallery-masonry-item mb-5 break-inside-avoid overflow-hidden gb-premium-card rounded-2xl border border-gold/15 text-left transition-all duration-300 hover:border-gold/50 hover:shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:-translate-y-0.5'
     >
       {before && after && before !== after ? (
         <div className='grid grid-cols-2 gap-px bg-black'>
           <div className='relative'>
-            <span className='absolute left-2 top-2 z-10 rounded bg-black/80 px-2 py-0.5 text-[8px] font-black uppercase text-zinc-300'>Before</span>
+            <span className='absolute left-2 top-2 z-10 rounded bg-black/80 border border-white/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-300'>Before</span>
             <img src={before} alt='' className={tall ? 'h-56 w-full object-cover' : 'h-44 w-full object-cover'} />
           </div>
           <div className='relative'>
-            <span className='absolute left-2 top-2 z-10 rounded bg-gold/90 px-2 py-0.5 text-[8px] font-black uppercase text-black'>After</span>
+            <span className='absolute left-2 top-2 z-10 rounded bg-gold/90 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black'>After</span>
             <img src={after} alt='' className={tall ? 'h-56 w-full object-cover' : 'h-44 w-full object-cover'} />
           </div>
         </div>
       ) : (
         <img src={url} alt={caption} className={tall ? 'h-72 w-full object-cover' : 'h-52 w-full object-cover'} />
       )}
-      <div className='p-3'>
-        <p className='text-sm font-bold text-white'>{caption}</p>
-        <div className='mt-1 flex flex-wrap gap-1'>
+      <div className='p-4 border-t border-white/5'>
+        <p className='text-sm font-bold text-white tracking-tight'>{caption}</p>
+        <div className='mt-2 flex flex-wrap gap-1.5'>
           {str(img.vehicleLabel) ? (
-            <span className='text-[10px] uppercase text-zinc-500'>{str(img.vehicleLabel)}</span>
+            <span className='rounded bg-white/5 border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-400'>{str(img.vehicleLabel)}</span>
           ) : null}
           {str(img.serviceLabel) ? (
-            <span className='text-[10px] uppercase text-gold-soft'>{str(img.serviceLabel)}</span>
+            <span className='rounded bg-gold/5 border border-gold/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-gold-soft'>{str(img.serviceLabel)}</span>
           ) : null}
         </div>
       </div>

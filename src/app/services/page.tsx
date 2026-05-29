@@ -160,9 +160,9 @@ export default function ServicesPage() {
           </div>
         ) : null}
 
-        <section className="mt-6 rounded-2xl border border-gold/30 bg-black/40 p-5">
-          <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Two Car Deal</p>
-          <h3 className="mt-2 text-3xl font-black uppercase">Multi-Car Bundle</h3>
+        <section className="mt-6 gb-premium-card rounded-2xl border border-gold/20 p-6 backdrop-blur">
+          <p className="text-xs uppercase tracking-[0.2em] text-gold-soft font-black">Two Car Deal</p>
+          <h3 className="mt-2 text-3xl font-black uppercase tracking-tight text-white">Multi-Car Bundle</h3>
           {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
             <p className="mt-2 text-zinc-200">
               Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
@@ -174,7 +174,7 @@ export default function ServicesPage() {
               Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
             </p>
           )}
-          {multiCarLine ? <p className="mt-2 text-sm text-zinc-400">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
+          {multiCarLine ? <p className="mt-2 text-sm text-zinc-400 font-mono bg-black/40 p-2 rounded-lg border border-white/5">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
         </section>
 
         {!loaded ? (
@@ -192,24 +192,27 @@ export default function ServicesPage() {
         ) : null}
 
         {loaded ? (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 space-y-6">
           {packages.map((service) => (
                 <article
                   key={service.id}
-                  className="rounded-2xl border border-gold/20 bg-zinc-950 p-5 shadow-[0_0_0_rgba(212,166,77,0)] transition duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_32px_rgba(212,166,77,0.18)]"
+                  className="gb-premium-card rounded-2xl border border-gold/15 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_35px_rgba(212,175,55,0.18)]"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <h2 className="text-2xl font-black uppercase text-gold-soft">{service.title}</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
+                    <h2 className="text-2xl font-black uppercase tracking-tight text-white">{service.title}</h2>
                     <div className="flex flex-wrap gap-2 text-sm font-bold">
-                      <span className="rounded-lg border border-gold/30 px-3 py-2">Sedan {formatVehiclePrice(service.sedanPrice)}</span>
-                      <span className="rounded-lg border border-gold/30 px-3 py-2">SUV {formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
-                      <span className="rounded-lg border border-gold/30 px-3 py-2">Truck {formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
+                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">Sedan {formatVehiclePrice(service.sedanPrice)}</span>
+                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">SUV {formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
+                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">Truck {formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
                     </div>
                   </div>
-                  {service.subtitle?.trim() ? <p className="mt-2 text-sm text-zinc-400">{service.subtitle}</p> : null}
-                  <ul className="mt-4 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2">
+                  {service.subtitle?.trim() ? <p className="mt-4 text-sm text-zinc-300 italic">{service.subtitle}</p> : null}
+                  <ul className="mt-4 grid gap-3 text-sm text-zinc-200 sm:grid-cols-2">
                     {service.includes.map((line) => (
-                      <li key={line}>✦ {line}</li>
+                      <li key={line} className="flex items-start gap-2">
+                        <span className="text-gold shrink-0">✦</span>
+                        <span>{line}</span>
+                      </li>
                     ))}
                   </ul>
                 </article>
@@ -218,55 +221,59 @@ export default function ServicesPage() {
         ) : null}
 
         {fleetEnabled ? (
-          <section className="gb-luxury-card-hover mt-10 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.1)]">
-            <p className="gb-luxury-eyebrow">Fleet & business accounts</p>
-            <h2 className="gb-display-serif mt-2 text-2xl font-black uppercase text-white sm:text-3xl">Fleet & Business Detailing</h2>
+          <section className="mt-10 gb-premium-card rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.1)]">
+            <p className="text-xs uppercase tracking-[0.25em] text-gold-soft font-black">Fleet & business accounts</p>
+            <h2 className="mt-2 text-2xl font-black uppercase text-white sm:text-3xl tracking-tight">Fleet & Business Detailing</h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
-            <ul className="mt-4 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2">
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
-                {fleetPricing?.smallLabel ?? "Small fleet (1–5 vehicles)"} — {fleetPricing?.smallDetail ?? "from $65/vehicle exterior wash"}
+            <ul className="mt-4 grid gap-3 text-sm text-zinc-200 sm:grid-cols-2">
+              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
+                <span className="font-bold text-gold-soft">{fleetPricing?.smallLabel ?? "Small fleet (1–5 vehicles)"}</span>
+                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.smallDetail ?? "from $65/vehicle exterior wash"}</span>
               </li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
-                {fleetPricing?.mediumLabel ?? "Medium fleet (6–15 vehicles)"} — {fleetPricing?.mediumDetail ?? "from $55/vehicle exterior wash"}
+              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
+                <span className="font-bold text-gold-soft">{fleetPricing?.mediumLabel ?? "Medium fleet (6–15 vehicles)"}</span>
+                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.mediumDetail ?? "from $55/vehicle exterior wash"}</span>
               </li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
-                {fleetPricing?.largeLabel ?? "Large fleet (15+ vehicles)"} — {fleetPricing?.largeDetail ?? "custom quote"}
+              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
+                <span className="font-bold text-gold-soft">{fleetPricing?.largeLabel ?? "Large fleet (15+ vehicles)"}</span>
+                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.largeDetail ?? "custom quote"}</span>
               </li>
-              <li className="rounded-xl border border-white/10 bg-black/40 px-4 py-3">
-                Recurring: {fleetPricing?.weeklyDiscount ?? "5% weekly"} · {fleetPricing?.biweeklyDiscount ?? "3% biweekly"} · {fleetPricing?.monthlyDiscount ?? "10% monthly"}
+              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
+                <span className="font-bold text-gold-soft">Recurring Frequencies</span>
+                <span className="block mt-1 text-xs text-zinc-400">Weekly ({fleetPricing?.weeklyDiscount ?? "5%"}) · Biweekly ({fleetPricing?.biweeklyDiscount ?? "3%"}) · Monthly ({fleetPricing?.monthlyDiscount ?? "10%"})</span>
               </li>
             </ul>
-            <p className="mt-3 text-xs text-zinc-500">{fleetPricing?.commercialNotes ?? "Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site."}</p>
+            <p className="mt-3 text-xs text-zinc-500 italic">{fleetPricing?.commercialNotes ?? "Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site."}</p>
             <FleetInquiryForm />
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/contact" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
+              <Link href="/contact" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white hover:bg-white/5 transition duration-200">
                 General contact
               </Link>
-              <a href="tel:+15124812319" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
+              <a href="tel:+15124812319" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white hover:bg-white/5 transition duration-200">
                 Call (512) 481-2319
               </a>
             </div>
           </section>
         ) : null}
 
-        <section className="mt-10 rounded-2xl border border-gold/20 bg-zinc-950 p-5">
-          <h2 className="text-xl font-black uppercase text-gold-soft">Add-ons</h2>
+        <section className="mt-10 gb-premium-card rounded-2xl border border-gold/20 p-6">
+          <h2 className="text-xl font-black uppercase tracking-tight text-white">Add-ons & Upgrades</h2>
           <p className="mt-2 text-sm text-zinc-400">Optional upgrades — final price depends on vehicle and condition.</p>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {PUBLIC_ADDON_PRICING.map((addon) => (
-              <li key={addon.label} className="rounded-xl border border-white/10 px-4 py-3">
-                <p className="font-bold text-white">{addon.label}</p>
-                <p className="mt-1 text-sm text-zinc-400">{addon.detail}</p>
+              <li key={addon.label} className="rounded-xl border border-white/5 bg-black/40 px-4 py-3">
+                <p className="font-bold text-gold-soft">{addon.label}</p>
+                <p className="mt-1 text-sm text-zinc-300">{addon.detail}</p>
               </li>
             ))}
           </ul>
         </section>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/book" className="rounded-lg bg-gold px-5 py-3 text-sm font-bold uppercase tracking-wider text-black">
+        <div className="mt-8 flex flex-wrap gap-4">
+          <Link href="/book" className="rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_0_35px_rgba(212,175,55,0.3)] hover:brightness-110 transition duration-300">
             Book Service
           </Link>
-          <Link href="/gift-cards" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white">
+          <Link href="/gift-cards" className="rounded-xl border border-white/20 bg-black/40 px-8 py-4 text-sm font-black uppercase tracking-widest text-white hover:border-gold/40 hover:text-gold-soft transition duration-300">
             Buy Gift Card
           </Link>
         </div>

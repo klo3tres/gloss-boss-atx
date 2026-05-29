@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -156,59 +156,77 @@ export default function HomePage() {
 
       <section className='relative flex min-h-screen items-center border-b border-white/10 px-4 pb-16 pt-28 sm:px-6 lg:px-8'>
         <div className='absolute inset-0'>
-          <div className='absolute inset-0 bg-[url("https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=1900&q=80")] bg-cover bg-center opacity-25' />
-          <div className='absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,166,77,0.28),transparent_38%),radial-gradient(circle_at_80%_60%,rgba(212,166,77,0.14),transparent_40%),linear-gradient(to_bottom,rgba(0,0,0,0.55),rgba(0,0,0,0.95))]' />
+          <div className='absolute inset-0 bg-[url("https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=1900&q=80")] bg-cover bg-center opacity-20' />
+          <div className='absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,175,55,0.22),transparent_38%),radial-gradient(circle_at_80%_60%,rgba(212,175,55,0.1),transparent_40%),linear-gradient(to_bottom,rgba(0,0,0,0.7),rgba(0,0,0,0.98))]' />
         </div>
 
-        <div className='relative mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.1fr_0.9fr]'>
+        <div className='relative mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.25fr_0.75fr]'>
           <MotionFade>
             <div>
-              <p className='inline-flex items-center gap-2 rounded-full border border-gold/40 bg-black/50 px-4 py-2 text-xs uppercase tracking-[0.22em] text-gold-soft'>
-                <Sparkles size={14} /> Ride Clean. Ride Like A Boss.
+              <p className='inline-flex items-center gap-2 rounded-full border border-gold/30 bg-black/60 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.1)]'>
+                <Sparkles size={12} className="text-gold" /> Ride Clean. Ride Like A Boss.
               </p>
               <div className='mt-5'>
                 <Image
                   src='/brand/glossboss-official-atx.png'
                   alt='Gloss Boss ATX official logo'
-                  width={560}
-                  height={280}
-                  className='h-auto w-full max-w-2xl'
+                  width={420}
+                  height={210}
+                  className='h-auto w-full max-w-md'
                   priority
                 />
               </div>
-              <h1 className='mt-5 text-4xl font-black uppercase leading-[0.95] tracking-tight text-white sm:text-6xl lg:text-7xl'>
-                Luxury
+              <h1 className='mt-6 text-4.5xl font-black uppercase leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-7.5xl'>
+                Luxury Mobile
                 <br />
-                Automotive
+                <span className='gb-text-gold-gradient'>Detailing</span>
                 <br />
-                Detailing
+                In Austin, Texas
               </h1>
               <p className='mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base'>
-                Mobile detailing in Austin, Texas with premium process standards, visual inspection records, and modern booking.
+                Premium mobile auto care delivered to your driveway with online booking, professional service records, and showroom-level results.
               </p>
+              
               <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
-                <Link href='/book' className='inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-6 py-4 text-sm font-bold uppercase tracking-[0.15em] text-black shadow-[0_0_30px_rgba(212,166,77,0.4)] transition hover:brightness-110'>
-                  Book Now <ArrowRight size={16} />
+                <Link href='/book' className='inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-black shadow-[0_0_35px_rgba(212,175,55,0.35)] hover:brightness-110 transition duration-300'>
+                  Book Now <ArrowRight size={14} />
                 </Link>
-                <Link href='/services' className='rounded-xl border border-gold/40 bg-black/40 px-6 py-4 text-center text-sm font-bold uppercase tracking-[0.15em] text-gold-soft transition hover:border-gold'>
+                <Link href='/services' className='rounded-xl border border-white/20 bg-black/40 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-white hover:border-gold/50 hover:text-gold-soft transition duration-300'>
                   View Services
                 </Link>
-                <Link href='/gift-cards' className='rounded-xl border border-white/30 bg-black/50 px-6 py-4 text-center text-sm font-bold uppercase tracking-[0.15em] text-white transition hover:border-gold/60'>
+                <Link href='/gift-cards' className='rounded-xl border border-white/10 bg-black/50 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-zinc-400 hover:border-gold/30 hover:text-white transition duration-300'>
                   Buy Gift Card
                 </Link>
               </div>
-              <div className='mt-6 rounded-xl border border-gold/20 bg-black/40 p-5 text-base sm:p-6'>
-                <p className='text-sm font-semibold uppercase tracking-wider text-gold-soft sm:text-base'>Quick Contact</p>
-                <div className='mt-3 flex flex-col gap-3 sm:mt-4'>
+
+              {/* Mockup Indicators Strip */}
+              <div className='mt-10 grid grid-cols-2 gap-4 border-t border-white/5 pt-8 sm:grid-cols-5'>
+                {[
+                  { label: 'Mobile Service', desc: 'We come to you' },
+                  { label: 'Licensed & Insured', desc: 'Fully covered' },
+                  { label: 'Premium Products', desc: 'Top tier brands' },
+                  { label: '5 Star Rated', desc: 'On Google' },
+                  { label: 'Satisfaction', desc: 'Guaranteed' },
+                ].map((item) => (
+                  <div key={item.label} className='min-w-0'>
+                    <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>{item.label}</p>
+                    <p className='mt-1 text-[11px] text-zinc-400'>{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className='gb-premium-card mt-8 rounded-2xl border border-gold/15 p-5 text-base sm:p-6'>
+                <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick Contact</p>
+                <div className='mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4'>
                   <a
                     href='tel:+15124812319'
-                    className='inline-flex min-h-[48px] items-center rounded-lg border border-gold/30 bg-black/50 px-4 py-3 text-lg font-semibold text-white transition hover:border-gold/60 hover:bg-black/70 sm:text-xl'
+                    className='inline-flex min-h-[48px] items-center justify-center rounded-xl border border-gold/30 bg-black/50 px-5 py-3 text-lg font-bold text-white transition hover:border-gold hover:bg-black/70 sm:text-xl'
                   >
                     (512) 481-2319
                   </a>
                   <a
                     href='mailto:glossbossatx1@gmail.com'
-                    className='inline-flex min-h-[48px] items-center break-all rounded-lg border border-white/15 bg-black/50 px-4 py-3 text-base font-medium text-gold-soft underline decoration-gold/40 underline-offset-4 transition hover:border-gold/40 hover:text-white sm:text-lg'
+                    className='inline-flex min-h-[48px] items-center justify-center break-all rounded-xl border border-white/10 bg-black/50 px-5 py-3 text-sm font-medium text-gold-soft underline decoration-gold/40 underline-offset-4 transition hover:border-gold/40 hover:text-white'
                   >
                     glossbossatx1@gmail.com
                   </a>
@@ -217,15 +235,15 @@ export default function HomePage() {
                       href={googleReviewUrl}
                       target='_blank'
                       rel='noopener noreferrer'
-                      className='inline-flex min-h-[48px] items-center justify-center rounded-lg border border-gold/40 bg-black/50 px-4 py-3 text-base font-bold text-gold-soft transition hover:border-gold sm:text-lg'
+                      className='inline-flex min-h-[48px] items-center justify-center rounded-xl border border-gold/40 bg-gold/10 px-5 py-3 text-xs font-black uppercase tracking-widest text-gold-soft transition hover:bg-gold/20'
                     >
                       Leave us a Google Review
                     </a>
                   ) : siteLoaded ? (
-                    <p className='text-xs text-zinc-500'>Add a Google review link in Admin → Website CMS to show the review button here.</p>
+                    <p className='text-[11px] text-zinc-500'>Add a Google review link in Admin → Website CMS to show the review button here.</p>
                   ) : null}
                 </div>
-                <p className='mt-3 text-sm text-zinc-400 sm:mt-4'>Austin, Texas & surrounding areas</p>
+                <p className='mt-3 text-xs text-zinc-500'>Austin, Texas & surrounding areas</p>
               </div>
             </div>
           </MotionFade>

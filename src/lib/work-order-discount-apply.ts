@@ -92,6 +92,7 @@ export async function applyWorkOrderDiscountViaPricingEngine(
 
   const pricedVehicles: Row[] = vehicles.map((v, i) => ({
     ...(v as Row),
+    vehicle_description: str(v.vehicle_description),
     price_cents: pricedLines.resolved[i]?.priceCents ?? v.price_cents,
   }));
 
