@@ -90,7 +90,7 @@ export async function applyWorkOrderDiscountViaPricingEngine(
     return { ok: false, error: 'Multi-car discount did not apply.' };
   }
 
-  const pricedVehicles = vehicles.map((v, i) => ({
+  const pricedVehicles: Row[] = vehicles.map((v, i) => ({
     ...(v as Row),
     price_cents: pricedLines.resolved[i]?.priceCents ?? v.price_cents,
   }));
@@ -129,7 +129,7 @@ export async function applyWorkOrderDiscountViaPricingEngine(
       booking_vehicles: pricedVehicles,
       base_price_cents: pricing.finalTotalCents,
       balance_due_cents: pricing.remainingBalanceCents,
-      vehicle_description: pricedVehicles
+      vehicle_description: vehicles
         .map((v) => str(v.vehicle_description))
         .filter(Boolean)
         .join(' · '),
