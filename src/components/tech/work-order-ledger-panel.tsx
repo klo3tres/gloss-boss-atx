@@ -22,7 +22,37 @@ export type LedgerPaymentRow = {
   status: string;
   bucket: string;
   voided?: boolean;
+  amountCents?: number;
 };
+
+function RecordPaymentForm({
+  jobId,
+  isFallback,
+  method,
+  label,
+  recordCashAction,
+}: {
+  jobId: string;
+  isFallback: boolean;
+  method: string;
+  label: string;
+  recordCashAction: (formData: FormData) => void | Promise<void>;
+}) {
+  return (
+    <form action={recordCashAction} className='flex flex-wrap items-end gap-2 rounded-xl border border-white/10 bg-black/30 p-3'>
+      {!isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
+      {isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
+      <input type='hidden' name='paymentMethod' value={method} />
+      <label className='text-xs text-zinc-400'>
+        Amount ($)
+        <input name='amountReceived' placeholder='0.00' className='gb-input mt-1 w-28' required />
+      </label>
+      <button type='submit' className='rounded-xl bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase text-black'>
+        {label}
+      </button>
+    </form>
+  );
+}
 
 function RebuildLedgerButton({
   appointmentId,
@@ -95,6 +125,8 @@ export function WorkOrderLedgerPanel({
   stripeSessionId,
   stripePaymentIntent,
   recentPaymentsForRepair,
+  ledgerWarnings,
+  ledgerTotals,
 }: {
   jobId: string;
   isFallback: boolean;
@@ -107,6 +139,7 @@ export function WorkOrderLedgerPanel({
     index: number;
     label: string;
     service: string;
+    vehicleClass?: string;
     priceCents: number | null;
     priceLabel: string;
   }>;
@@ -133,6 +166,16 @@ export function WorkOrderLedgerPanel({
   recordCashAction: (formData: FormData) => void | Promise<void>;
   stripeSessionId?: string;
   stripePaymentIntent?: string;
+  ledgerWarnings?: string[];
+  ledgerTotals?: {
+    serviceSubtotal: string;
+    addOnSubtotal: string;
+    grossSubtotal: string;
+    totalDiscounts: string;
+    finalTotal: string;
+    totalPaid: string;
+    balanceDue: string;
+  };
   recentPaymentsForRepair: Array<{
     id: string;
     amount: string;
@@ -147,11 +190,25 @@ export function WorkOrderLedgerPanel({
     (l) =>
       l.label !== 'Customer' &&
       !['Final total', 'Balance due', 'Payments', 'Discounts & Offers'].includes(l.label) &&
-      !l.label.startsWith('Stripe ') &&
       l.tone !== 'paid' &&
       l.tone !== 'discount' &&
       l.tone !== 'total',
   );
+
+  const totals = ledgerTotals ?? {
+    serviceSubtotal: displayMoney(pricingSnapshot.vehicleSubtotalCents),
+    addOnSubtotal: displayMoney(pricingSnapshot.addOnSubtotalCents),
+    grossSubtotal: displayMoney(pricingSnapshot.vehicleSubtotalCents + pricingSnapshot.addOnSubtotalCents),
+    totalDiscounts: displayMoney(
+      pricingSnapshot.onlineDiscountCents +
+        pricingSnapshot.multiCarDiscountCents +
+        pricingSnapshot.promoDiscountCents +
+        pricingSnapshot.manualDiscountCents,
+    ),
+    finalTotal: finalTotal ?? displayMoney(pricingSnapshot.finalTotalCents),
+    totalPaid: totalPaid ?? displayMoney(pricingSnapshot.totalPaidCents),
+    balanceDue,
+  };
 
   return (
     <div className='space-y-4'>
@@ -161,52 +218,42 @@ export function WorkOrderLedgerPanel({
         </div>
       ) : null}
 
-      <WorkOrderCollapsible title='A. Order summary' defaultOpen>
+      {ledgerWarnings && ledgerWarnings.length > 0 ? (
+        <div className='rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3'>
+          <p className='text-[10px] font-black uppercase tracking-wider text-amber-200'>Ledger warnings</p>
+          <ul className='mt-2 list-inside list-disc text-sm text-amber-100'>
+            {ledgerWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <WorkOrderCollapsible title='A. Order lines' defaultOpen>
         <p className='text-xs text-zinc-500'>
           Source: <span className='text-zinc-300'>{orderSourceLabel}</span>
-          {orderSourceLabel.includes('locked') ? '' : ' · Live catalog'}
         </p>
         <ul className='mt-3 space-y-2 text-sm'>
           {vehicles.map((v) => (
-            <li key={v.index} className='flex justify-between gap-2 rounded-xl border border-white/10 px-3 py-2'>
-              <span className='text-zinc-300'>
-                {v.label} — {v.service.replace(/-/g, ' ')}
-              </span>
-              <span className='font-mono text-white'>{v.priceLabel}</span>
+            <li key={v.index} className='rounded-xl border border-white/10 px-3 py-2'>
+              <div className='flex justify-between gap-2'>
+                <span className='font-semibold text-white'>{v.label}</span>
+                <span className='font-mono text-gold-soft'>{v.priceLabel}</span>
+              </div>
+              <p className='mt-1 text-xs text-zinc-500'>
+                {v.vehicleClass ? `${v.vehicleClass.toUpperCase()} · ` : ''}
+                {v.service.replace(/-/g, ' ')}
+              </p>
             </li>
           ))}
         </ul>
-        {canEditPricing ? (
-          <div className='mt-4'>
-            <WorkOrderPricingPanel
-              appointmentId={isFallback ? undefined : jobId}
-              fallbackBookingId={isFallback ? jobId : undefined}
-              source={source}
-              vehicles={vehicles.map((v) => ({
-                index: v.index,
-                label: v.label,
-                service: v.service.replace(/-/g, ' '),
-                priceCents: v.priceCents,
-                priceLabel: v.priceLabel,
-              }))}
-              promoCode={promoCode ?? ''}
-              pricing={{
-                finalTotalCents: pricingSnapshot.finalTotalCents,
-                onlineDiscountCents: pricingSnapshot.onlineDiscountCents,
-                multiCarDiscountCents: pricingSnapshot.multiCarDiscountCents,
-                promoDiscountCents: pricingSnapshot.promoDiscountCents,
-                overrideReason: pricingOverrideReason,
-              }}
-            />
-          </div>
-        ) : null}
       </WorkOrderCollapsible>
 
       <WorkOrderCollapsible title='B. Discounts & offers' defaultOpen>
         {discounts.length === 0 ? (
-          <p className='text-sm text-zinc-500'>No discounts applied. Eligible online / multi-car / promo discounts apply automatically at booking.</p>
+          <p className='text-sm text-zinc-500'>No discounts on this order yet.</p>
         ) : (
-          <ul className='space-y-2 text-sm'>
+          <ul className='mb-4 space-y-2 text-sm'>
             {discounts.map((d) => (
               <li key={d.id} className='flex justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2'>
                 <span className='text-emerald-100'>
@@ -218,25 +265,36 @@ export function WorkOrderLedgerPanel({
             ))}
           </ul>
         )}
+        {canEditPricing ? (
+          <WorkOrderPricingPanel
+            appointmentId={isFallback ? undefined : jobId}
+            fallbackBookingId={isFallback ? jobId : undefined}
+            source={source}
+            vehicles={vehicles.map((v) => ({
+              index: v.index,
+              label: v.label,
+              service: v.service.replace(/-/g, ' '),
+              priceCents: v.priceCents,
+              priceLabel: v.priceLabel,
+            }))}
+            promoCode={promoCode ?? ''}
+            pricing={{
+              finalTotalCents: pricingSnapshot.finalTotalCents,
+              onlineDiscountCents: pricingSnapshot.onlineDiscountCents,
+              multiCarDiscountCents: pricingSnapshot.multiCarDiscountCents,
+              promoDiscountCents: pricingSnapshot.promoDiscountCents,
+              overrideReason: pricingOverrideReason,
+            }}
+          />
+        ) : (
+          <p className='text-xs text-zinc-500'>Discount controls require admin access.</p>
+        )}
       </WorkOrderCollapsible>
 
       <WorkOrderCollapsible title='C. Payments' defaultOpen>
-        <div className='mb-3 grid gap-2 sm:grid-cols-3'>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Total paid</p>
-            <p className='font-mono text-lg text-emerald-300'>{totalPaid ?? displayMoney(pricing.totalPaidCents)}</p>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Balance</p>
-            <p className='font-mono text-lg text-white'>{balanceDue}</p>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <p className='text-[9px] font-black uppercase text-zinc-500'>Final</p>
-            <p className='font-mono text-lg text-gold-soft'>{finalTotal ?? displayMoney(pricing.finalTotalCents)}</p>
-          </div>
-        </div>
+        <p className='mb-3 text-xs text-zinc-500'>Stripe deposits appear automatically for new online bookings. Deposits are payments, not discounts.</p>
         <ul className='space-y-2 text-sm'>
-          {payments.length === 0 ? <li className='text-zinc-500'>No payments yet — Stripe checkout creates rows automatically.</li> : null}
+          {payments.length === 0 ? <li className='text-zinc-500'>No payments recorded yet.</li> : null}
           {payments.map((p) => (
             <li
               key={p.id}
@@ -249,22 +307,20 @@ export function WorkOrderLedgerPanel({
             </li>
           ))}
         </ul>
-        <WorkOrderCollapsible title='Record cash / Zelle / check' defaultOpen={false}>
-          <form action={recordCashAction} className='grid max-w-md gap-2'>
-            {!isFallback ? <input type='hidden' name='appointmentId' value={jobId} /> : null}
-            {isFallback ? <input type='hidden' name='fallbackBookingId' value={jobId} /> : null}
-            <input name='amountReceived' placeholder='Amount received ($)' className='gb-input' />
-            <input name='paymentMethod' placeholder='cash / zelle / venmo / check' className='gb-input' defaultValue='cash' />
-            <button type='submit' className='rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase text-black'>
-              Record payment
-            </button>
-          </form>
-        </WorkOrderCollapsible>
+        {canManagePayments ? (
+          <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+            <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='cash' label='Record cash' recordCashAction={recordCashAction} />
+            <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='zelle' label='Record Zelle' recordCashAction={recordCashAction} />
+            <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='venmo' label='Record Venmo' recordCashAction={recordCashAction} />
+            <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='check' label='Record check' recordCashAction={recordCashAction} />
+          </div>
+        ) : null}
         <div id='wo-invoice' className='mt-4'>
           <WorkOrderInvoiceBuilder
             jobId={jobId}
             customerName={customerName}
             vehicleBreakdownLines={vehicleBreakdownLines.map((l) => ({ label: l.label, amount: l.amount }))}
+            receiptPreviewLines={breakdownLines.map((l) => ({ label: l.label, amount: l.amount, tone: l.tone }))}
             appointmentId={isFallback ? undefined : jobId}
             fallbackBookingId={isFallback ? jobId : undefined}
             source={source}
@@ -283,47 +339,81 @@ export function WorkOrderLedgerPanel({
         </div>
       </WorkOrderCollapsible>
 
+      <WorkOrderCollapsible title='D. Totals (ledger)' defaultOpen>
+        <dl className='grid gap-2 text-sm sm:grid-cols-2'>
+          {[
+            ['Service subtotal', totals.serviceSubtotal],
+            ['Add-ons subtotal', totals.addOnSubtotal],
+            ['Gross subtotal', totals.grossSubtotal],
+            ['Total discounts', `−${totals.totalDiscounts.replace(/^−/, '')}`],
+            ['Final total', totals.finalTotal],
+            ['Total paid', totals.totalPaid],
+            ['Balance due', totals.balanceDue],
+          ].map(([label, value]) => (
+            <div key={label} className='flex justify-between rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>{label}</dt>
+              <dd className='font-mono font-bold text-white'>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </WorkOrderCollapsible>
+
       {canManagePayments ? (
-        <WorkOrderCollapsible title='D. Receipt' defaultOpen>
+        <WorkOrderCollapsible title='E. Receipt' defaultOpen>
+          <p className='mb-3 text-sm text-amber-100/90'>
+            This is exactly what the customer will receive. Preview and approve before sending.
+          </p>
           <WorkOrderReceiptSendFlow
             appointmentId={isFallback ? undefined : jobId}
             fallbackBookingId={isFallback ? jobId : undefined}
             isFallback={isFallback}
             receiptPdfHref={receiptPdfHref}
           />
-          <div className='mt-4'>
-            <WorkOrderReceiptPanel
-              appointmentId={isFallback ? undefined : jobId}
-              fallbackBookingId={isFallback ? jobId : undefined}
-              receiptPdfHref={receiptPdfHref}
-              pricing={pricing}
-              breakdownLines={breakdownLines}
-              payments={payments.map((p) => ({
-                id: p.id,
-                amount: p.amount,
-                amountCents: 0,
-                status: p.status,
-                method: p.label,
-                at: '',
-                voided: p.voided,
-              }))}
-              promoCode={promoCode}
-              canManagePayments
-              workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
-            />
-          </div>
+          <WorkOrderReceiptPanel
+            appointmentId={isFallback ? undefined : jobId}
+            fallbackBookingId={isFallback ? jobId : undefined}
+            receiptPdfHref={receiptPdfHref}
+            pricing={pricing}
+            breakdownLines={breakdownLines}
+            payments={payments.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              amountCents: p.amountCents ?? 0,
+              status: p.status,
+              method: p.label,
+              at: '',
+              voided: p.voided,
+            }))}
+            promoCode={promoCode}
+            canManagePayments={false}
+            workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
+          />
         </WorkOrderCollapsible>
       ) : null}
 
       {canAdvancedRepair ? (
-        <WorkOrderCollapsible title='E. Advanced repair' defaultOpen={false}>
-          <p className='mb-3 text-xs text-zinc-500'>
-            Only for legacy broken jobs. Normal Stripe bookings do not need sync.
-          </p>
-          <RebuildLedgerButton
-            appointmentId={appointmentId}
-            fallbackBookingId={fallbackBookingId}
-            source={source}
+        <WorkOrderCollapsible title='F. Advanced repair' defaultOpen={false}>
+          <p className='mb-3 text-xs text-zinc-500'>Legacy broken jobs only — sync Stripe, void duplicates, manual Stripe deposit.</p>
+          <RebuildLedgerButton appointmentId={appointmentId} fallbackBookingId={fallbackBookingId} source={source} />
+          <WorkOrderReceiptPanel
+            appointmentId={isFallback ? undefined : jobId}
+            fallbackBookingId={isFallback ? jobId : undefined}
+            receiptPdfHref={receiptPdfHref}
+            pricing={pricing}
+            breakdownLines={breakdownLines}
+            payments={payments.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              amountCents: p.amountCents ?? 0,
+              status: p.status,
+              method: p.label,
+              at: '',
+              voided: p.voided,
+            }))}
+            promoCode={promoCode}
+            canManagePayments
+            workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
+            repairOnly
           />
           <WorkOrderStripeDebugPanel
             appointmentId={appointmentId}

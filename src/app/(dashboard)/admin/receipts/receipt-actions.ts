@@ -8,7 +8,7 @@ import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
-import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { resolveOrderLedger } from '@/lib/order-ledger';
 
 function str(v: unknown) {
   return v == null ? '' : String(v);
@@ -28,12 +28,24 @@ export async function sendReceiptActionState(_prev: ActionResult | null, formDat
 export async function sendReceiptAction(formData: FormData): Promise<ActionResult> {
   const gate = await requireReceiptSender();
   if (!gate) return actionErr('Not authorized.');
+
+  if (str(formData.get('sendConfirmed')) !== 'true') {
+    return actionErr(
+      'Customer receipt send requires preview approval. Open the work order → Preview customer receipt → approve → then send. Direct send is disabled.',
+    );
+  }
+
   const receiptId = str(formData.get('receiptId')).trim();
   const paymentId = str(formData.get('paymentId')).trim();
   if (!receiptId && !paymentId) return actionErr('No receipt or payment linked.');
 
   const receiptRes = receiptId ? await gate.admin.from('receipts').select('*').eq('id', receiptId).maybeSingle() : { data: null };
   const receipt = (receiptRes.data ?? {}) as Record<string, unknown>;
+  const receiptMeta = receipt.metadata && typeof receipt.metadata === 'object' ? (receipt.metadata as Record<string, unknown>) : {};
+  if (receiptMeta.receipt_draft_approved !== true && str(receipt.status) !== 'approved' && str(receipt.status) !== 'issued') {
+    return actionErr('Receipt is not approved for customer send. Preview and approve from the work order first.');
+  }
+
   const resolvedPaymentId = paymentId || str(receipt.payment_id);
   const paymentRes = resolvedPaymentId ? await gate.admin.from('payments').select('*').eq('id', resolvedPaymentId).maybeSingle() : { data: null };
   const payment = (paymentRes.data ?? {}) as Record<string, unknown>;
@@ -49,18 +61,16 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   const customer = (customerRes.data ?? {}) as Record<string, unknown>;
   const email = str(job.guest_email || customer.email || payment.email);
   const receiptNumber = str(receipt.receipt_number) || `RCPT-${(resolvedPaymentId || appointmentId || fallbackId || 'manual').slice(0, 8).toUpperCase()}`;
-
   const workOrderId = appointmentId || fallbackId;
-  const allPayments = workOrderId
-    ? await fetchPaymentsForJob(gate.admin, job, {
-        appointmentId,
-        fallbackBookingId: fallbackId,
-        isFallback: Boolean(fallbackId && !appointmentId),
+
+  const ledger = workOrderId
+    ? await resolveOrderLedger(gate.admin, {
+        workOrderId,
+        appointmentId: appointmentId || undefined,
+        fallbackBookingId: fallbackId || undefined,
       })
-    : payment
-      ? [payment]
-      : [];
-  const pricing = resolveJobPricing(job, allPayments);
+    : null;
+
   const view = await buildUnifiedReceiptView(gate.admin, {
     job,
     appointmentId,
@@ -109,7 +119,7 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
       payment_id: resolvedPaymentId,
       customer_id: str(customer.id || payment.customer_id) || null,
       receipt_number: receiptNumber,
-      amount_cents: pricing.finalTotalCents,
+      amount_cents: ledger?.totals.finalTotalCents ?? 0,
       payment_method: str(payment.payment_method || payment.payment_kind || 'stripe') || 'stripe',
       status: 'issued',
       emailed_to: email || null,

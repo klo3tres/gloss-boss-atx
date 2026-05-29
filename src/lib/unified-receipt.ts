@@ -5,6 +5,8 @@ import { resolveOrderLedger } from '@/lib/order-ledger';
 import { buildReceiptFromLedger, ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import type { ReceiptPdfInput } from '@/lib/receipt-pdf';
+import type { OrderLedger } from '@/lib/order-ledger';
+import { buildReceiptParityDebug, type ReceiptParityDebug } from '@/lib/receipt-totals';
 import type { Row } from '@/lib/work-order-resolve';
 
 const ADMIN_ONLY_LABELS =
@@ -28,6 +30,8 @@ export type UnifiedReceiptView = {
   customerBreakdownLines: ReceiptBreakdownLine[];
   emailHtml: string;
   pdfInput: ReceiptPdfInput;
+  ledger: OrderLedger;
+  parity: ReceiptParityDebug;
 };
 
 export async function buildUnifiedReceiptView(
@@ -70,7 +74,7 @@ export async function buildUnifiedReceiptView(
   const fullBreakdown = ledgerReceiptLines(ledger, { includeAdmin: true });
   const customerBreakdown = filterReceiptBreakdownForCustomer(fullBreakdown);
 
-  return {
+  const viewWithoutParity = {
     receiptNumber: built.receiptNumber,
     receiptPdfHref,
     receiptAdminHref,
@@ -79,5 +83,7 @@ export async function buildUnifiedReceiptView(
     customerBreakdownLines: customerBreakdown,
     emailHtml: built.emailHtml,
     pdfInput: built.pdfInput,
+    ledger,
   };
+  return { ...viewWithoutParity, parity: buildReceiptParityDebug(ledger, viewWithoutParity as UnifiedReceiptView) };
 }

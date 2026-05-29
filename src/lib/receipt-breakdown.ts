@@ -6,7 +6,10 @@ import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
 export type ReceiptBreakdownLine = { label: string; amount: string; tone?: 'discount' | 'charge' | 'total' | 'paid' };
 
-/** Single breakdown for receipt page, PDF, and email — matches work order pricing engine. */
+/**
+ * @deprecated Customer-facing surfaces use `ledgerReceiptLines` + `buildUnifiedReceiptView` only.
+ * Do not call from WO preview, admin receipt, PDF, or email. Kept for type export and rare admin repair scripts.
+ */
 export function buildReceiptBreakdown(job: Row, pricing: JobPricingDisplay): ReceiptBreakdownLine[] {
   const lines: ReceiptBreakdownLine[] = [];
   const customerName = String(job.guest_name ?? '').trim();

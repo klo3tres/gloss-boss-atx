@@ -132,7 +132,7 @@ async function loadAppointmentPartial(admin: SupabaseClient, id: string): Promis
   const { data } = await admin
     .from('appointments')
     .select(
-      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, scheduled_start, service_address, service_city, service_state, service_zip',
+      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, payment_choice, booking_source, booking_pricing_breakdown, deposit_amount_cents, stripe_checkout_session_id, scheduled_start, service_address, service_city, service_state, service_zip',
     )
     .eq('id', id)
     .maybeSingle();
@@ -143,7 +143,7 @@ async function loadFallbackPartial(admin: SupabaseClient, id: string): Promise<R
   const { data } = await admin
     .from('booking_fallbacks')
     .select(
-      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, payload, scheduled_start, service_address, service_city, service_state, service_zip',
+      'id, status, access_token, customer_id, assigned_technician_id, guest_name, guest_phone, guest_email, service_slug, vehicle_description, booking_vehicles, vehicle_class, base_price_cents, balance_due_cents, payment_status, payment_choice, booking_source, booking_pricing_breakdown, deposit_amount_cents, payload, scheduled_start, service_address, service_city, service_state, service_zip',
     )
     .eq('id', id)
     .maybeSingle();

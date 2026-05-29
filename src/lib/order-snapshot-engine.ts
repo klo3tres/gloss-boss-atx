@@ -4,7 +4,7 @@ import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { hasHistoricalPricingSnapshot } from '@/lib/historical-pricing';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 import { resolveWorkOrder, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
-import { buildReceiptBreakdown, type ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import { resolveOrderLedger } from '@/lib/order-ledger';
 import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
@@ -355,7 +355,7 @@ export async function loadOrderSnapshot(
     pricingLocked: hasHistoricalPricingSnapshot(job),
     payments: mapPayments(paymentRows),
     agreement: { signed: agreementSigned, agreementId, signedAt },
-    receiptLines: ledger ? ledgerReceiptLines(ledger, { includeAdmin: true }) : buildReceiptBreakdown(job, pricing),
+    receiptLines: ledger ? ledgerReceiptLines(ledger, { includeAdmin: true }) : [],
     promoCode: str(job.promo_code),
     notes: str(job.notes),
     jobStatus: str(job.status),

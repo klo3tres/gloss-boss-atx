@@ -1049,6 +1049,17 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
   const amountReceivedRaw = Number(String(formData.get('amountReceived') ?? '').replace(/[^0-9.]/g, ''));
   const changeGivenRaw = Number(String(formData.get('changeGiven') ?? '').replace(/[^0-9.]/g, ''));
   const cashNote = String(formData.get('cashNote') ?? '').trim();
+  const paymentMethodRaw = String(formData.get('paymentMethod') ?? 'cash').trim().toLowerCase();
+  const paymentMethod =
+    paymentMethodRaw.includes('zelle')
+      ? 'zelle'
+      : paymentMethodRaw.includes('venmo')
+        ? 'venmo'
+        : paymentMethodRaw.includes('check')
+          ? 'check'
+          : paymentMethodRaw.includes('card')
+            ? 'manual_card'
+            : 'cash';
 
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
@@ -1093,12 +1104,13 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       amount_cents: amountCents,
       currency: 'usd',
       status: 'succeeded',
-      payment_method: 'cash',
-      payment_choice: 'cash',
+      payment_method: paymentMethod,
+      payment_choice: paymentMethod,
+      payment_kind: paymentMethod,
       paid_at: nowIso,
       technician_id: gate.userId,
       metadata: {
-        source: 'technician_cash_payment',
+        source: 'technician_manual_payment',
         recorded_by: gate.userId,
         cash_received_cents: amountCents,
         change_given_cents: changeGivenCents,
@@ -1114,9 +1126,9 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       customer_id: row.customer_id ?? null,
       amount_cents: amountCents,
       status: 'succeeded',
-      payment_method: 'cash',
-      payment_choice: 'cash',
-      metadata: { source: 'technician_cash_payment', recorded_by: gate.userId, cash_received_cents: amountCents, change_given_cents: changeGivenCents, note: cashNote || null },
+      payment_method: paymentMethod,
+      payment_choice: paymentMethod,
+      metadata: { source: 'technician_manual_payment', recorded_by: gate.userId, cash_received_cents: amountCents, change_given_cents: changeGivenCents, note: cashNote || null },
     },
     {
       appointment_id: appointmentId || null,
@@ -1147,9 +1159,9 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       customer_id: row.customer_id ?? null,
       receipt_number: receiptNumber,
       amount_cents: amountCents,
-      payment_method: 'cash',
+      payment_method: paymentMethod,
       status: 'issued',
-      metadata: { source: 'technician_cash_payment', note: cashNote || null, change_given_cents: changeGivenCents },
+      metadata: { source: 'technician_manual_payment', note: cashNote || null, change_given_cents: changeGivenCents },
     });
   }
   await db.from('notification_outbox').insert({

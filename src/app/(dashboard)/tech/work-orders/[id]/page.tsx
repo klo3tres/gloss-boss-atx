@@ -2,7 +2,8 @@ import { notFound } from 'next/navigation';
 import { DashboardShell, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
+import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
+import type { ReceiptParityDebug } from '@/lib/receipt-totals';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
@@ -11,6 +12,7 @@ import { syncVehiclesForWorkOrder } from '@/lib/crm-vehicle-sync';
 import { syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { resolveOrderLedger } from '@/lib/order-ledger';
+import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
@@ -389,8 +391,36 @@ export default async function TechWorkOrderDetailPage({
     sourceHint: isFallback ? 'fallback' : 'appointment',
   });
   const pricing = orderLedger?._pricing ?? orderSnapshot?.pricing ?? resolveJobPricing(row, paymentRows);
-  const receiptBreakdownLines =
-    orderSnapshot?.receiptLines ?? buildReceiptBreakdown(row, pricing);
+  const ledgerResolveError = orderLedger
+    ? null
+    : 'Order ledger could not be resolved. Receipt preview, PDF, and customer email are blocked until this is fixed.';
+  const receiptBreakdownLines = orderLedger ? ledgerReceiptLines(orderLedger, { includeAdmin: true }) : [];
+
+  let receiptParityDebug: ReceiptParityDebug | undefined;
+  if (orderLedger && isAdminLevel(session.profile?.role ?? null)) {
+    try {
+      const unified = await buildUnifiedReceiptView(admin, {
+        job: row,
+        appointmentId: !isFallback ? queryId : undefined,
+        fallbackBookingId: isFallback ? queryId : undefined,
+      });
+      receiptParityDebug = unified.parity;
+    } catch {
+      receiptParityDebug = undefined;
+    }
+  }
+  const ledgerWarnings = orderLedger?.warnings ?? [];
+  const ledgerTotals = orderLedger
+    ? {
+        serviceSubtotal: displayMoney(orderLedger.totals.serviceSubtotalCents),
+        addOnSubtotal: displayMoney(orderLedger.totals.addOnSubtotalCents),
+        grossSubtotal: displayMoney(orderLedger.totals.grossSubtotalCents),
+        totalDiscounts: displayMoney(orderLedger.totals.totalDiscountCents),
+        finalTotal: displayMoney(orderLedger.totals.finalTotalCents),
+        totalPaid: displayMoney(orderLedger.totals.totalPaidCents),
+        balanceDue: displayMoney(orderLedger.totals.balanceDueCents),
+      }
+    : undefined;
   const orderSourceMap: Record<string, string> = {
     online_booking: 'Online booking',
     admin_work_order: 'Admin work order',
@@ -411,6 +441,7 @@ export default async function TechWorkOrderDetailPage({
       id: p.id,
       label: p.label,
       amount: displayMoney(p.amountCents),
+      amountCents: p.amountCents,
       status: displayLabel(p.status),
       bucket: p.bucket,
       voided: p.voided,
@@ -546,8 +577,12 @@ export default async function TechWorkOrderDetailPage({
       remainingBalanceCents: pricing.remainingBalanceCents,
     },
     receiptBreakdownLines,
+    ledgerResolveError,
+    receiptParityDebug,
     ledgerDiscounts,
     ledgerPayments,
+    ledgerWarnings,
+    ledgerTotals,
     orderSourceLabel,
     isTestOrder: isTestLikeJob(row),
     stripeSessionId: str(row.stripe_checkout_session_id || row.final_payment_checkout_session_id),
@@ -667,7 +702,7 @@ export default async function TechWorkOrderDetailPage({
         description: str(v.vehicle_description || v.description),
         color: str(v.vehicle_color || v.color),
         service: str(v.service_slug || row.service_slug),
-        vehicleClass: str(v.vehicle_class || row.vehicle_class),
+        vehicleClass: str(v.vehicle_class || row.vehicle_class) || 'sedan',
         label: vehicleLabel,
         partsLine: [p.year, p.make, p.model].filter(Boolean).join(' · '),
         priceCents,

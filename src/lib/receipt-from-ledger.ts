@@ -7,7 +7,8 @@ import { displayMoney } from '@/lib/display-format';
 import { buildReceiptEmailHtml, type ReceiptEmailLine } from '@/lib/email/templates/receipt';
 import type { ReceiptPdfInput } from '@/lib/receipt-pdf';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
-import type { OrderLedger } from '@/lib/order-ledger';
+import type { LedgerDiscount, OrderLedger } from '@/lib/order-ledger';
+import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 const ADMIN_LINE =
   /payments recorded|applied to this invoice|overpayment|void test|^customer$/i;
@@ -29,35 +30,58 @@ export function ledgerReceiptLines(ledger: OrderLedger, opts?: { includeAdmin?: 
     }
   }
 
-  if (ledger.discounts.length > 0) {
-    lines.push({ label: 'Discounts & Offers', amount: '', tone: 'charge' });
-    for (const d of ledger.discounts) {
-      if (d.amountCents > 0) {
-        lines.push({
-          label: d.label,
-          amount: `−${displayMoney(d.amountCents)}`,
-          tone: 'discount',
-        });
-      }
+  if (ledger.totals.grossSubtotalCents > 0) {
+    lines.push({
+      label: 'Services subtotal',
+      amount: displayMoney(ledger.totals.grossSubtotalCents),
+      tone: 'charge',
+    });
+  }
+
+  const pricedDiscounts = ledger.discounts.filter((d) => d.amountCents > 0);
+  if (pricedDiscounts.length > 0) {
+    for (const d of pricedDiscounts) {
+      lines.push({
+        label: d.label,
+        amount: `−${displayMoney(d.amountCents)}`,
+        tone: 'discount',
+      });
     }
   }
 
   lines.push({ label: 'Final total', amount: displayMoney(ledger.totals.finalTotalCents), tone: 'total' });
 
-  const succeeded = ledger.payments.filter((p) => !p.voided && ['succeeded', 'paid', 'comped'].some((s) => p.status.toLowerCase().includes(s)));
-  if (succeeded.length > 0) {
-    lines.push({ label: 'Payments', amount: '', tone: 'charge' });
-    const shown = new Set<string>();
-    for (const p of succeeded) {
-      if (shown.has(p.id)) continue;
-      shown.add(p.id);
-      lines.push({ label: p.label, amount: displayMoney(p.amountCents), tone: 'paid' });
-    }
-  } else if (ledger.totals.depositPaidCents > 0 && ledger.totals.stripePaidCents > 0) {
-    lines.push({ label: 'Stripe deposit paid', amount: displayMoney(ledger.totals.depositPaidCents), tone: 'paid' });
+  const paySource = ledger.customerPayments.length > 0 ? ledger.customerPayments : ledger.payments;
+  const succeeded = paySource.filter(
+    (p) => !p.voided && ['succeeded', 'paid', 'comped'].some((s) => p.status.toLowerCase().includes(s)),
+  );
+
+  const depositCents = ledger.totals.depositPaidCents;
+  const zelleCents = ledger.totals.zellePaidCents;
+  const hasDepositRow = succeeded.some((p) => /deposit/i.test(p.label));
+  const paymentLines: ReceiptBreakdownLine[] = [];
+
+  if (depositCents > 0 && !hasDepositRow) {
+    paymentLines.push({
+      label: 'Deposit paid (online booking)',
+      amount: displayMoney(depositCents),
+      tone: 'paid',
+    });
   }
 
-  if (ledger.totals.totalPaidCents > 0 && !succeeded.length) {
+  const shown = new Set<string>();
+  for (const p of succeeded) {
+    if (shown.has(p.id)) continue;
+    shown.add(p.id);
+    paymentLines.push({ label: p.label, amount: displayMoney(p.amountCents), tone: 'paid' });
+  }
+
+  if (paymentLines.length > 0) {
+    lines.push({ label: 'Payments', amount: '', tone: 'charge' });
+    lines.push(...paymentLines);
+  }
+
+  if (ledger.totals.totalPaidCents > 0) {
     lines.push({ label: 'Total paid', amount: displayMoney(ledger.totals.totalPaidCents), tone: 'paid' });
   }
 
@@ -89,6 +113,8 @@ export function buildReceiptFromLedger(
 
   const customerLines = ledgerReceiptLines(ledger, { includeAdmin: false });
 
+  const disc = (kind: LedgerDiscount['kind']) => ledger.discounts.find((d) => d.kind === kind)?.amountCents ?? 0;
+
   const documentProps: ReceiptDocumentProps = {
     receiptNumber,
     paidAt: ledger.schedule.completedAt
@@ -109,11 +135,11 @@ export function buildReceiptFromLedger(
     baseTotal: displayMoney(ledger.totals.serviceSubtotalCents),
     addOnSubtotal:
       ledger.totals.addOnSubtotalCents > 0 ? displayMoney(ledger.totals.addOnSubtotalCents) : undefined,
-    onlineDiscount:
-      ledger.totals.totalDiscountCents > 0 ? `−${displayMoney(ledger.discounts.find((d) => d.kind === 'online')?.amountCents ?? 0)}` : '$0.00',
-    multiCarDiscount: '$0.00',
-    promoLabel: ledger.audit.promoCode ? `Promo (${ledger.audit.promoCode})` : 'Promo',
-    promoDiscount: '$0.00',
+    onlineDiscount: disc('online') > 0 ? `−${displayMoney(disc('online'))}` : '$0.00',
+    multiCarDiscount: disc('multi_car') > 0 ? `−${displayMoney(disc('multi_car'))}` : '$0.00',
+    promoLabel: ledger.audit.promoCode ? `Promo (${ledger.audit.promoCode})` : 'Promo discount',
+    promoDiscount: disc('promo') > 0 ? `−${displayMoney(disc('promo'))}` : '$0.00',
+    manualDiscount: disc('manual') > 0 ? `−${displayMoney(disc('manual'))}` : undefined,
     depositPaid: displayMoney(ledger.totals.depositPaidCents),
     cashPaid: displayMoney(ledger.totals.cashPaidCents),
     stripePaid: ledger.totals.stripePaidCents > 0 ? displayMoney(ledger.totals.stripePaidCents) : undefined,
@@ -133,6 +159,15 @@ export function buildReceiptFromLedger(
       price: displayMoney(v.bookedPriceCents),
     })),
     breakdown: customerLines,
+    subtotal: displayMoney(ledger.totals.grossSubtotalCents),
+    onlineDiscount: disc('online') > 0 ? `−${displayMoney(disc('online'))}` : undefined,
+    multiCarDiscount: disc('multi_car') > 0 ? `−${displayMoney(disc('multi_car'))}` : undefined,
+    promo: disc('promo') > 0 ? `−${displayMoney(disc('promo'))}` : undefined,
+    manualDiscount: disc('manual') > 0 ? `−${displayMoney(disc('manual'))}` : undefined,
+    totalPaid: displayMoney(ledger.totals.totalPaidCents),
+    finalTotal: displayMoney(ledger.totals.finalTotalCents),
+    remainingBalance: displayMoney(ledger.totals.balanceDueCents),
+    paymentMethod: documentProps.method,
     receiptUrl: opts?.receiptAdminHref,
   };
 
@@ -163,7 +198,7 @@ export function buildReceiptFromLedger(
     breakdownLines: customerLines,
     baseTotal: documentProps.baseTotal,
     addOnSubtotal: documentProps.addOnSubtotal,
-    discounts: '',
+    discounts: ledger.totals.totalDiscountCents > 0 ? `−${displayMoney(ledger.totals.totalDiscountCents)}` : '$0.00',
     taxAmount: '',
     finalTotal: documentProps.finalTotal,
     depositPaid: documentProps.depositPaid,

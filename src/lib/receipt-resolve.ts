@@ -143,8 +143,15 @@ export async function resolveReceiptContext(
 
   if (!receipt && (payment || Object.keys(job).length)) {
     const receiptNumber = `RCPT-${workOrderId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
-    const pricingSnap = resolveJobPricing(job, payments);
-    const amount = pricingSnap.finalTotalCents > 0 ? pricingSnap.finalTotalCents : payment ? num(payment.amount_cents) : 0;
+    const { resolveOrderLedger } = await import('@/lib/order-ledger');
+    const ledger = await resolveOrderLedger(admin, {
+      workOrderId,
+      appointmentId: isFallback ? undefined : workOrderId,
+      fallbackBookingId: isFallback ? workOrderId : undefined,
+    });
+    if (!ledger) throw new Error('Could not resolve order ledger for receipt PDF.');
+    const amount =
+      ledger.totals.finalTotalCents > 0 ? ledger.totals.finalTotalCents : payment ? num(payment.amount_cents) : 0;
     const { data: inserted } = await admin
       .from('receipts')
       .insert({

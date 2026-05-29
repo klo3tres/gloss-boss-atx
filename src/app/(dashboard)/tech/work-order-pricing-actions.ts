@@ -197,11 +197,38 @@ export async function updateWorkOrderVehiclePriceAction(formData: FormData) {
     return row;
   });
 
-  const b = { ...(ctx.job.booking_pricing_breakdown as Record<string, unknown>) };
-  const vehicleSubtotalCents = vehicles.reduce((s, v) => s + (typeof v.price_cents === 'number' ? v.price_cents : 0), 0);
-  b.vehicleSubtotalCents = vehicleSubtotalCents;
-  b.adminPriceEditAt = new Date().toISOString();
-  b.adminPriceEditBy = gate.userId;
+  const lines = vehicles.map((v) => ({
+    serviceSlug: str(v.service_slug) || str(ctx.job.service_slug),
+    vehicleClass: str(v.vehicle_class) || 'sedan',
+    vehicleDescription: str(v.vehicle_description) || 'Vehicle',
+    addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
+  }));
+  const pricedLines = await resolveVehicleLinesPricing(gate.admin, lines);
+  if (!pricedLines.ok) return { ok: false, error: pricedLines.error };
+
+  const prevB = obj(ctx.job.booking_pricing_breakdown);
+  const deals = await loadDealConfigForBooking(gate.admin);
+  if (prevB.onlineDiscountDisabled === true) deals.websitePromoActive = false;
+  if (prevB.multiCarDisabled === true) deals.multiCarSecondVehicleDiscountPercent = 0;
+
+  const quote = computeBookingPricing({
+    vehicleLineCents: vehicles.map((v, i) =>
+      typeof v.price_cents === 'number' ? v.price_cents : pricedLines.resolved[i]?.priceCents ?? 0,
+    ),
+    addOnCentsSum: num(prevB.addOnSubtotalCents),
+    deals,
+    claimedOffer: null,
+  });
+  if ('kind' in quote) return { ok: false, error: 'Could not compute pricing' };
+
+  const b: Record<string, unknown> = {
+    ...prevB,
+    ...quote,
+    promoDiscountCents: num(prevB.promoDiscountCents),
+    offerDiscountCents: num(prevB.offerDiscountCents),
+    adminPriceEditAt: new Date().toISOString(),
+    adminPriceEditBy: gate.userId,
+  };
 
   return fromPersist(await persistPricing(ctx, gate.admin, b, vehicles));
 }

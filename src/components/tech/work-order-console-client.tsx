@@ -10,6 +10,8 @@ import { type InvoicePricingSnapshot } from '@/components/tech/work-order-invoic
 import { WorkOrderLedgerPanel, type LedgerDiscountRow, type LedgerPaymentRow } from '@/components/tech/work-order-ledger-panel';
 import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import type { ReceiptParityDebug } from '@/lib/receipt-totals';
+import { ReceiptLedgerDebugPanel } from '@/components/admin/receipt-ledger-debug-panel';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
@@ -18,7 +20,6 @@ import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/
 import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
 import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
-import { WorkOrderPricingPanel } from '@/components/tech/work-order-pricing-panel';
 import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-panel';
 import { AppointmentScheduleControls } from '@/components/admin/appointment-schedule-controls';
 import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs';
@@ -103,6 +104,8 @@ export type WorkOrderConsoleData = {
   }>;
   receiptPdfHref?: string;
   receiptBreakdownLines?: ReceiptBreakdownLine[];
+  ledgerResolveError?: string | null;
+  receiptParityDebug?: ReceiptParityDebug;
   photoUploadDisabled?: boolean;
   photoUploadDisableReason?: string;
   photoUploadResolvedContext?: boolean;
@@ -126,6 +129,16 @@ export type WorkOrderConsoleData = {
   jobPricing?: JobPricingDisplay;
   ledgerDiscounts?: LedgerDiscountRow[];
   ledgerPayments?: LedgerPaymentRow[];
+  ledgerWarnings?: string[];
+  ledgerTotals?: {
+    serviceSubtotal: string;
+    addOnSubtotal: string;
+    grossSubtotal: string;
+    totalDiscounts: string;
+    finalTotal: string;
+    totalPaid: string;
+    balanceDue: string;
+  };
   orderSourceLabel?: string;
   isTestOrder?: boolean;
   stripeSessionId?: string;
@@ -504,29 +517,6 @@ export function WorkOrderConsoleClient({
           />
         </div>
 
-        {canEditPricing && data.pricingSnapshot ? (
-          <WorkOrderPricingPanel
-            appointmentId={data.isFallback ? undefined : jobId}
-            fallbackBookingId={data.isFallback ? jobId : undefined}
-            source={data.isFallback ? 'fallback' : 'appointment'}
-            vehicles={data.vehicles.map((v, index) => ({
-              index,
-              label: v.label,
-              service: v.service.replace(/-/g, ' '),
-              priceCents: v.priceCents,
-              priceLabel: v.priceLabel,
-            }))}
-            promoCode={data.promoCode ?? ''}
-            pricing={{
-              finalTotalCents: data.pricingSnapshot.finalTotalCents,
-              onlineDiscountCents: data.pricingSnapshot.onlineDiscountCents,
-              multiCarDiscountCents: data.pricingSnapshot.multiCarDiscountCents,
-              promoDiscountCents: data.pricingSnapshot.promoDiscountCents,
-              overrideReason: data.pricingOverrideReason,
-            }}
-          />
-        ) : null}
-
         {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
           <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
         ) : null}
@@ -536,7 +526,11 @@ export function WorkOrderConsoleClient({
 
         <div id='wo-payment' className='scroll-mt-28'>
         <WorkOrderCollapsible title='Order ledger — payment & receipt' defaultOpen>
-          {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments ? (
+          {data.ledgerResolveError ? (
+            <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
+          ) : null}
+          {data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
+          {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
             <WorkOrderLedgerPanel
               jobId={jobId}
               isFallback={data.isFallback}
@@ -575,6 +569,8 @@ export function WorkOrderConsoleClient({
               recordCashAction={recordCashAction}
               stripeSessionId={data.stripeSessionId}
               stripePaymentIntent={data.stripePaymentIntent}
+              ledgerWarnings={data.ledgerWarnings}
+              ledgerTotals={data.ledgerTotals}
               recentPaymentsForRepair={data.recentPayments.map((p) => ({
                 id: p.id ?? '',
                 amount: p.amount,
@@ -583,11 +579,11 @@ export function WorkOrderConsoleClient({
                 stripeSession: p.stripe,
               }))}
             />
-          ) : (
+          ) : !data.ledgerResolveError ? (
             <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
               Order ledger unavailable — refresh the page.
             </p>
-          )}
+          ) : null}
           {!data.isFallback ? (
             <WorkOrderMileagePanel
               appointmentId={jobId}

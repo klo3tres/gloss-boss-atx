@@ -5,10 +5,9 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { resolveJobPricing } from '@/lib/job-pricing-display';
-import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
+import { resolveOrderLedger } from '@/lib/order-ledger';
 import { sendReceiptAction } from '@/app/(dashboard)/admin/receipts/receipt-actions';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 
@@ -41,36 +40,39 @@ async function upsertWorkOrderReceipt(
   fallbackBookingId: string,
   jobRow: Record<string, unknown>,
 ) {
+  const ledger = await resolveOrderLedger(admin, {
+    workOrderId: jobId,
+    appointmentId: appointmentId || undefined,
+    fallbackBookingId: fallbackBookingId || undefined,
+  });
+  if (!ledger) throw new Error('Could not resolve order ledger for receipt.');
+
   const view = await buildUnifiedReceiptView(admin, {
     job: jobRow,
     appointmentId: appointmentId || undefined,
     fallbackBookingId: fallbackBookingId || undefined,
   });
 
-  const payments = await fetchPaymentsForJob(admin, jobRow, {
-    appointmentId,
-    fallbackBookingId,
-    isFallback: Boolean(fallbackBookingId),
-  });
-  const pricing = resolveJobPricing(jobRow, payments);
-  const lastPay = payments[0] as Record<string, unknown> | undefined;
+  const lastPay = ledger.customerPayments[0] ?? ledger.payments.find((p) => !p.voided);
 
   const payload = {
     appointment_id: appointmentId || null,
     fallback_booking_id: fallbackBookingId || null,
     customer_id: str(jobRow.customer_id) || null,
-    payment_id: str(lastPay?.id) || null,
+    payment_id: lastPay?.id || null,
     receipt_number: view.receiptNumber,
-    amount_cents: pricing.finalTotalCents,
-    payment_method: str(lastPay?.payment_method || lastPay?.payment_kind || jobRow.payment_choice || 'cash'),
+    amount_cents: ledger.totals.finalTotalCents,
+    payment_method: lastPay?.method || str(jobRow.payment_choice || 'cash'),
     status: 'draft',
     metadata: {
       source: 'work_order_generate',
-      final_total_cents: pricing.finalTotalCents,
-      total_paid_cents: pricing.totalPaidCents,
-      remaining_balance_cents: pricing.remainingBalanceCents,
-      deposit_paid_cents: pricing.depositPaidCents,
-      stripe_paid_cents: pricing.stripePaidCents,
+      rebuiltAt: new Date().toISOString(),
+      final_total_cents: ledger.totals.finalTotalCents,
+      total_paid_cents: ledger.totals.totalPaidCents,
+      remaining_balance_cents: ledger.totals.balanceDueCents,
+      deposit_paid_cents: ledger.totals.depositPaidCents,
+      stripe_paid_cents: ledger.totals.stripePaidCents,
+      receipt_draft_approved: false,
       receiptLineLabels: view.customerBreakdownLines.map((l) => l.label),
       unifiedReceipt: {
         documentProps: view.documentProps,
@@ -200,7 +202,27 @@ export async function sendWorkOrderReceiptConfirmedAction(formData: FormData): P
   const workOrderId = appointmentId || fallbackBookingId;
   if (!workOrderId) return actionErr('Missing work order.');
 
-  await generateWorkOrderReceiptActionState(null, formData);
+  const ctx = await loadWorkOrderJob(gate, formData);
+  if (!ctx) return actionErr('Work order not found.');
+
+  const receiptIdDraft = await upsertWorkOrderReceipt(gate.admin, ctx.jobId, ctx.appointmentId, ctx.fallbackBookingId, ctx.job);
+  if (receiptIdDraft) {
+    const { data: existing } = await gate.admin.from('receipts').select('metadata').eq('id', receiptIdDraft).maybeSingle();
+    const meta = (existing?.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}) as Record<string, unknown>;
+    await gate.admin
+      .from('receipts')
+      .update({
+        metadata: {
+          ...meta,
+          receipt_draft_approved: true,
+          draft_approved_at: new Date().toISOString(),
+          draft_approved_by: gate.userId,
+        },
+        status: 'approved',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', receiptIdDraft);
+  }
 
   const fd = new FormData();
   const byAppt = appointmentId

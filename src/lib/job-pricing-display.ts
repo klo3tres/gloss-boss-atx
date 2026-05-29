@@ -2,7 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Row } from '@/lib/work-order-resolve';
 import { vehiclesFromRow } from '@/lib/work-order-resolve';
 import { findDepositPayment } from '@/lib/payments-resolve';
-import { customLineItemsTotalCents, readCustomLineItems } from '@/lib/work-order-line-items';
+import {
+  customLineAdjustmentCents,
+  manualOnlyDiscountCents,
+} from '@/lib/pricing-custom-lines';
+import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -89,8 +93,9 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   const b = obj(job.booking_pricing_breakdown);
   const payload = obj(job.payload);
   const payloadPricing = obj(payload.booking_pricing_breakdown ?? payload.pricing);
+  const snapshotPricing = obj(obj(b.orderSnapshot).pricing);
 
-  const pick = (key: string) => num(b[key] ?? payloadPricing[key]);
+  const pick = (key: string) => num(b[key] ?? payloadPricing[key] ?? snapshotPricing[key]);
 
   const onlineDisabled = b.onlineDiscountDisabled === true;
   const multiDisabled = b.multiCarDisabled === true;
@@ -102,6 +107,19 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     pick('websitePromoDiscountCents') || pick('onlineDiscountCents') || pick('sitewideDiscountCents');
   if (multiDisabled) multiCarDiscountCents = 0;
   if (onlineDisabled) onlineDiscountCents = 0;
+
+  if (!multiDisabled && multiCarDiscountCents <= 0 && vehicleLines.length >= 2) {
+    const mcPct = num(b.multiCarSecondVehicleDiscountPercent) || num(snapshotPricing.multiCarSecondVehicleDiscountPercent) || 10;
+    for (let i = 1; i < vehicleLines.length; i++) {
+      multiCarDiscountCents += Math.round(vehicleLines[i]!.priceCents * (mcPct / 100));
+    }
+  }
+  if (!onlineDisabled && onlineDiscountCents <= 0 && str(job.booking_source).toLowerCase() === 'online') {
+    const sitePct = num(b.websitePromoPercent) || 15;
+    const afterMc = Math.max(0, vehicleSubtotalCents - multiCarDiscountCents);
+    onlineDiscountCents = Math.round(afterMc * (sitePct / 100));
+  }
+
   const offerDiscountCents = pick('offerDiscountCents');
   const promoCodeDiscountCents = pick('promoDiscountCents');
   const promoDiscountCents = offerDiscountCents + promoCodeDiscountCents;
@@ -114,21 +132,37 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   if (prePromoCents <= 0 && sumVehicleCents > 0) prePromoCents = sumVehicleCents + addOnSubtotalCents;
 
   const customLineItems = readCustomLineItems(job);
-  const customLineItemsCents = customLineItemsTotalCents(customLineItems);
-  const manualDiscountCents = customLineItems
-    .filter((i) => i.kind === 'discount_adjustment' || i.amountCents < 0)
-    .reduce((s, i) => s + Math.abs(i.amountCents), 0);
+  const customLineItemsCents = customLineAdjustmentCents(customLineItems);
+  const manualDiscountCents = manualOnlyDiscountCents(customLineItems);
+
+  const engineServiceFinalCents = Math.max(
+    0,
+    prePromoCents - onlineDiscountCents - offerDiscountCents - promoCodeDiscountCents,
+  );
 
   const adminOverrideFinal = pick('adminOverrideFinalTotalCents');
-  let serviceFinalCents = adminOverrideFinal > 0 ? adminOverrideFinal : pick('finalTotalCents');
-  if (serviceFinalCents <= 0 && prePromoCents > 0) {
-    serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - offerDiscountCents - promoCodeDiscountCents);
-  }
+  let serviceFinalCents = adminOverrideFinal > 0 ? adminOverrideFinal : 0;
+  if (serviceFinalCents <= 0 && engineServiceFinalCents > 0) serviceFinalCents = engineServiceFinalCents;
+  if (serviceFinalCents <= 0) serviceFinalCents = pick('finalTotalCents');
+  if (serviceFinalCents <= 0 && prePromoCents > 0) serviceFinalCents = engineServiceFinalCents;
   if (serviceFinalCents <= 0) {
     const baseStored = num(job.base_price_cents);
-    serviceFinalCents = baseStored > customLineItemsCents ? baseStored - customLineItemsCents : baseStored;
+    if (baseStored > 0 && Math.abs(baseStored - customLineItemsCents) > 100) {
+      serviceFinalCents = baseStored - customLineItemsCents;
+    } else if (baseStored > 0) {
+      serviceFinalCents = baseStored;
+    }
   }
-  const finalTotalCents = Math.max(0, serviceFinalCents + customLineItemsCents);
+
+  let finalTotalCents = Math.max(0, serviceFinalCents + customLineItemsCents);
+  if (finalTotalCents < engineServiceFinalCents * 0.25 && engineServiceFinalCents > 0) {
+    finalTotalCents = Math.max(0, engineServiceFinalCents + customLineItemsCents);
+  }
+  if (finalTotalCents <= 0 && engineServiceFinalCents > 0) finalTotalCents = engineServiceFinalCents;
+  if (finalTotalCents <= 0 && num(job.deposit_amount_cents) > 0) {
+    const dep = num(job.deposit_amount_cents);
+    finalTotalCents = Math.round(dep / 0.3);
+  }
 
   const depositOnFile = num(job.deposit_amount_cents) || pick('depositCents');
 
@@ -174,14 +208,27 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   let depositPaidCents = 0;
   if (depositPayment) {
     depositPaidCents = num(depositPayment.amount_cents);
-  } else if (depositOnFile > 0 && stripePaidCents >= depositOnFile) {
-    depositPaidCents = depositOnFile;
-  } else if (depositOnFile > 0 && totalPaidCents > 0) {
-    depositPaidCents = Math.min(depositOnFile, totalPaidCents);
+    if (!isZelle(depositPayment) && !isCash(depositPayment)) {
+      stripePaidCents = Math.max(stripePaidCents, depositPaidCents);
+    }
+  } else if (depositOnFile > 0) {
+    const payStatus = str(job.payment_status).toLowerCase();
+    const hasStripeSession = Boolean(str(job.stripe_checkout_session_id));
+    const depositLikelyPaid =
+      hasStripeSession ||
+      payStatus.includes('deposit') ||
+      payStatus === 'confirmed' ||
+      payStatus === 'deposit_paid' ||
+      payStatus === 'paid';
+    if (depositLikelyPaid) {
+      depositPaidCents = depositOnFile;
+      if (stripePaidCents < depositOnFile) stripePaidCents = depositOnFile;
+    }
   }
 
-  const rawTotalPaidCents = totalPaidCents;
-  const allocatedTotalPaidCents = Math.min(totalPaidCents, finalTotalCents);
+  const rawTotalPaidCents = Math.max(totalPaidCents, depositPaidCents + zellePaidCents + cashPaidCents);
+  const allocatedTotalPaidCents =
+    finalTotalCents > 0 ? Math.min(rawTotalPaidCents, finalTotalCents) : rawTotalPaidCents;
   const overpaymentCents = Math.max(0, rawTotalPaidCents - finalTotalCents);
   const remainingBalanceCents = Math.max(0, finalTotalCents - rawTotalPaidCents);
 
@@ -209,7 +256,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     cashPaidCents,
     zellePaidCents,
     manualPaidCents,
-    totalPaidCents: allocatedTotalPaidCents,
+    totalPaidCents: rawTotalPaidCents > 0 ? rawTotalPaidCents : allocatedTotalPaidCents,
     rawTotalPaidCents,
     allocatedTotalPaidCents,
     overpaymentCents,

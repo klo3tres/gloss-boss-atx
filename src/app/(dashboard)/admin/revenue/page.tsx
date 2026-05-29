@@ -89,6 +89,21 @@ export default async function AdminRevenuePage({
 
   const avgTicketCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0;
 
+  const { data: debugEvents } = await admin
+    .from('payment_debug_events')
+    .select('id, event_type, error_message, created_at, appointment_id')
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  const { data: upcoming } = await admin
+    .from('appointments')
+    .select('id, guest_name, scheduled_start, payment_status, balance_due_cents')
+    .gte('scheduled_start', now)
+    .neq('status', 'cancelled')
+    .neq('status', 'completed')
+    .order('scheduled_start', { ascending: true })
+    .limit(6);
+
   return (
     <DashboardShell title='Revenue' subtitle='Cash collected — voided payments excluded.' role='admin'>
       <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
@@ -117,6 +132,12 @@ export default async function AdminRevenuePage({
       <section className='space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+          <StatBlock label='Stripe (month)' value={money(month.stripeCents)} hint='Succeeded Stripe rows' />
+          <StatBlock label='Cash (month)' value={money(month.cashCents)} />
+          <StatBlock label='Zelle/Venmo (month)' value={money(month.zelleCents)} />
+          <StatBlock label='Other (month)' value={money(month.otherCents)} />
+        </div>
+        <div className='mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
           <StatBlock label='This week' value={money(week.grossCents)} hint={`${week.paymentCount} payment(s)`} href='/admin/payments?range=week' />
           <StatBlock label='This month' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
@@ -136,9 +157,53 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
+      {(debugEvents ?? []).length > 0 ? (
+        <section className='mt-8 space-y-3'>
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-red-300'>Payment alerts</p>
+          <ul className='space-y-2 text-sm'>
+            {(debugEvents ?? []).map((e) => {
+              const row = e as { id: string; event_type: string; error_message: string | null; created_at: string; appointment_id: string | null };
+              return (
+                <li key={row.id} className='rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-100'>
+                  <span className='font-mono text-[10px] uppercase'>{row.event_type}</span>
+                  <p className='mt-1'>{row.error_message ?? 'Webhook/processing issue'}</p>
+                  {row.appointment_id ? (
+                    <Link href={`/admin/work-orders/${row.appointment_id}?shell=admin`} className='mt-2 inline-block text-xs text-gold-soft underline'>
+                      Open work order
+                    </Link>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      {(upcoming ?? []).length > 0 ? (
+        <section className='mt-8 space-y-3'>
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Upcoming jobs</p>
+          <ul className='space-y-2 text-sm'>
+            {(upcoming ?? []).map((a) => {
+              const row = a as { id: string; guest_name: string | null; scheduled_start: string; payment_status: string | null; balance_due_cents: number | null };
+              return (
+                <li key={row.id} className='flex flex-wrap justify-between gap-2 rounded-xl border border-white/10 px-4 py-3'>
+                  <Link href={`/tech/work-orders/${row.id}?shell=admin`} className='font-semibold text-white hover:text-gold-soft'>
+                    {row.guest_name ?? 'Customer'}
+                  </Link>
+                  <span className='text-zinc-400'>
+                    {new Date(row.scheduled_start).toLocaleString()} · {row.payment_status ?? 'pending'} · balance{' '}
+                    {money(row.balance_due_cents ?? 0)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       <p className='mt-8 text-xs text-zinc-500'>
         Gross revenue sums succeeded, non-voided payments{includeTest ? ' (including test bookings)' : ' — test bookings excluded by default'}.
-        Void duplicate rows on the work order receipt builder when needed.
+        Work order totals use the canonical order ledger; revenue here matches payment rows.
       </p>
     </DashboardShell>
   );

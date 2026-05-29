@@ -3,15 +3,18 @@
 import { revalidatePath } from 'next/cache';
 import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
+import { resolveOrderLedger } from '@/lib/order-ledger';
+import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
+import { isPricingDuplicateOrPaymentLine } from '@/lib/pricing-custom-lines';
 import {
   LINE_ITEM_KIND_LABELS,
   mergePricingBreakdownWithLineItems,
   readCustomLineItems,
+  type WorkOrderLineItem,
   type WorkOrderLineItemKind,
 } from '@/lib/work-order-line-items';
 import type { Row } from '@/lib/work-order-resolve';
@@ -63,6 +66,15 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
 
   if (kind === 'discount_adjustment' && amountCents > 0) {
     amountCents = -amountCents;
+  }
+
+  const draftLine: WorkOrderLineItem = { id: 'draft', kind, label, amountCents };
+  if (isPricingDuplicateOrPaymentLine(draftLine)) {
+    return {
+      ok: false,
+      error:
+        'This line duplicates an automatic discount or deposit. Use Pricing → Apply online / multi-car discount, or record payments under Payments — not invoice discount lines.',
+    };
   }
 
   const table = source === 'fallback' || fallbackBookingId ? 'booking_fallbacks' : 'appointments';
@@ -150,11 +162,18 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
     return { ok: false, error: `Line saved but receipt rebuild failed: ${receiptResult.error ?? 'unknown'}` };
   }
 
-  const snapshot = await loadOrderSnapshot(admin, {
+  const ledger = await resolveOrderLedger(admin, {
+    workOrderId: jobId,
     appointmentId: table === 'appointments' ? jobId : undefined,
     fallbackBookingId: table === 'booking_fallbacks' ? jobId : undefined,
   });
-  const receiptLines = snapshot?.receiptLines ?? buildReceiptBreakdown(reread as Row, pricing);
+  if (!ledger) {
+    return {
+      ok: false,
+      error: 'Line saved but order ledger failed — receipt cannot be verified. Fix ledger before sending to customer.',
+    };
+  }
+  const receiptLines = ledgerReceiptLines(ledger, { includeAdmin: true });
   const receiptLineLabels = receiptLines.map((l) => l.label);
   const onReceipt = receiptLineLabels.some((l) => l === label || l.includes(label));
   if (!onReceipt) {

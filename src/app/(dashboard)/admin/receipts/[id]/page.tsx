@@ -6,13 +6,10 @@ import { PrintDocumentActions } from '@/components/ui/print-document-actions';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
-import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { resolveJobPricing } from '@/lib/job-pricing-display';
-import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { ReceiptAdminControls } from '@/components/admin/receipt-admin-controls';
-import { buildReceiptBreakdown } from '@/lib/receipt-breakdown';
-import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
-import { customLineItemsAsReceiptRows } from '@/lib/work-order-line-items';
+import { ReceiptLedgerDebugPanel } from '@/components/admin/receipt-ledger-debug-panel';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
 import { sendReceiptActionState } from '../receipt-actions';
 
 export const dynamic = 'force-dynamic';
@@ -23,67 +20,22 @@ function str(v: unknown) {
   return v == null ? '' : String(v);
 }
 
-function obj(v: unknown): Row {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {};
-}
-
-function money(v: unknown) {
-  return typeof v === 'number' ? `$${(v / 100).toFixed(2)}` : '$0.00';
-}
-
-function chicago(v: unknown) {
-  if (!v) return 'Not provided';
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(str(v)));
-}
-
-function label(v: unknown) {
-  return str(v).replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) || 'Not provided';
-}
-
-function address(r: Row, meta: Row) {
-  return [r.service_address, r.service_city, r.service_state, r.service_zip].map(str).filter(Boolean).join(', ') || str(meta.service_address);
-}
-
-function vehicles(job: Row, meta: Row) {
-  const raw = Array.isArray(job.booking_vehicles) && job.booking_vehicles.length ? job.booking_vehicles : Array.isArray(meta.vehicles) ? meta.vehicles : [];
-  if (raw.length) {
-    return raw.map((v, i) => {
-      const row = obj(v);
-      return {
-        name: str(row.vehicle_description || row.description) || `Vehicle ${i + 1}`,
-        service: label(row.service_slug || job.service_slug),
-        color: str(row.vehicle_color || row.color) || 'Color not provided',
-        price: typeof row.price_cents === 'number' ? money(row.price_cents) : 'Price included',
-      };
-    });
-  }
-  return [
-    {
-      name: str(job.vehicle_description) || 'Vehicle on file',
-      service: label(job.service_slug),
-      color: 'Color not provided',
-      price: typeof job.base_price_cents === 'number' ? money(job.base_price_cents) : 'Price included',
-    },
-  ];
-}
-
 export default async function AdminReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const admin = tryCreateAdminSupabase();
   if (!admin) notFound();
 
   try {
-  return await renderReceiptPage(admin, id);
+    return await renderReceiptPage(admin, id);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[admin/receipts] render failed', { id, msg });
     return (
-      <DashboardShell title='Receipt error' subtitle='Server render failed — see message below.' role='admin'>
+      <DashboardShell title='Receipt error' subtitle='Order ledger or unified receipt could not be built.' role='admin'>
         <p className='rounded-xl border border-red-500/40 bg-red-950/50 p-4 text-sm text-red-100'>{msg}</p>
+        <p className='mt-2 text-xs text-zinc-400'>
+          Receipt preview, PDF, and email are blocked until the order ledger resolves. Use Advanced repair on the work order or contact support.
+        </p>
         <Link href='/admin/receipts' className='mt-4 inline-block text-xs font-bold uppercase text-gold-soft underline'>
           Back to receipts
         </Link>
@@ -93,36 +45,27 @@ export default async function AdminReceiptDetailPage({ params }: { params: Promi
 }
 
 async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, id: string) {
-
   let receipt = (await admin.from('receipts').select('*').eq('id', id).maybeSingle()).data as Row | null;
   if (!receipt) receipt = (await admin.from('receipts').select('*').eq('payment_id', id).maybeSingle()).data as Row | null;
   let paymentId = str(receipt?.payment_id || id);
   let payment = (await admin.from('payments').select('*').eq('id', paymentId).maybeSingle()).data as Row | null;
-  if (!payment && receipt?.payment_id) payment = (await admin.from('payments').select('*').eq('id', str(receipt.payment_id)).maybeSingle()).data as Row | null;
+  if (!payment && receipt?.payment_id) {
+    payment = (await admin.from('payments').select('*').eq('id', str(receipt.payment_id)).maybeSingle()).data as Row | null;
+  }
   if (!receipt && !payment) notFound();
   paymentId = str(payment?.id || receipt?.payment_id);
 
   const appointmentId = str(receipt?.appointment_id || payment?.appointment_id);
   const fallbackId = str(receipt?.fallback_booking_id || payment?.fallback_booking_id);
-  const [apptRes, fallbackRes, customerRes] = await Promise.all([
+  const [apptRes, fallbackRes] = await Promise.all([
     appointmentId ? admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle() : Promise.resolve({ data: null }),
     fallbackId ? admin.from('booking_fallbacks').select('*').eq('id', fallbackId).maybeSingle() : Promise.resolve({ data: null }),
-    str(receipt?.customer_id || payment?.customer_id)
-      ? admin.from('customers').select('*').eq('id', str(receipt?.customer_id || payment?.customer_id)).maybeSingle()
-      : Promise.resolve({ data: null }),
   ]);
   const job = (apptRes.data ?? fallbackRes.data ?? {}) as Row;
-  const customer = (customerRes.data ?? {}) as Row;
-  const paymentMeta = obj(payment?.metadata);
-  const paidRows = await fetchPaymentsForJob(admin, job, {
-    appointmentId,
-    fallbackBookingId: fallbackId,
-    isFallback: Boolean(fallbackId && !appointmentId),
-  });
-  const jobPricing = resolveJobPricing(job, paidRows);
-  const method = label(payment?.payment_method || payment?.payment_kind || receipt?.payment_method || (payment?.stripe_checkout_session_id ? 'stripe' : 'manual'));
-  const receiptNumber = str(receipt?.receipt_number) || `RCPT-${(paymentId || appointmentId || fallbackId || id).slice(0, 8).toUpperCase()}`;
-  const vehicleRows = [...vehicles(job, paymentMeta), ...customLineItemsAsReceiptRows(job)];
+  if (!Object.keys(job).length) notFound();
+
+  const workOrderId = appointmentId || fallbackId || str(job.id);
+  const isFallback = Boolean(fallbackId && !appointmentId);
 
   const techId = str(job.assigned_technician_id);
   let technicianName: string | undefined;
@@ -131,69 +74,22 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
     technicianName = str((techProfile as Row | null)?.full_name) || str((techProfile as Row | null)?.email) || undefined;
   }
 
-  function formatDuration(start: unknown, end: unknown) {
-    if (!start || !end) return undefined;
-    const ms = new Date(str(end)).getTime() - new Date(str(start)).getTime();
-    if (ms <= 0) return undefined;
-    const mins = Math.round(ms / 60000);
-    if (mins < 60) return `${mins} min`;
-    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
-  }
+  const receiptNumber =
+    str(receipt?.receipt_number) || `RCPT-${(paymentId || workOrderId).slice(0, 8).toUpperCase()}`;
 
-  const serviceDuration = formatDuration(job.job_started_at, job.job_completed_at || job.completed_at);
-  const pricingMeta = obj(job.booking_pricing_breakdown);
-  const taxCents =
-    typeof pricingMeta.taxCents === 'number'
-      ? pricingMeta.taxCents
-      : typeof pricingMeta.tax_cents === 'number'
-        ? pricingMeta.tax_cents
-        : undefined;
-
-  const orderSnapshot = await loadOrderSnapshot(admin, {
-    appointmentId: appointmentId || undefined,
-    fallbackBookingId: fallbackId || undefined,
-    receiptId: str(receipt?.id) || undefined,
-    paymentId: paymentId || undefined,
-  });
-  const snapshotPricing = orderSnapshot?.pricing ?? jobPricing;
-  const breakdownLines = orderSnapshot?.receiptLines ?? buildReceiptBreakdown(job, snapshotPricing);
-
-  const docProps = {
+  const view = await buildUnifiedReceiptView(admin, {
+    job,
+    appointmentId: isFallback ? undefined : workOrderId,
+    fallbackBookingId: isFallback ? workOrderId : undefined,
     receiptNumber,
-    breakdownLines,
-    paidAt: chicago(payment?.paid_at || payment?.created_at || receipt?.created_at),
-    serviceAt: chicago(job.scheduled_start),
-    completedAt: chicago(job.job_completed_at || job.completed_at),
-    method,
-    status: label(payment?.status || receipt?.status || job.payment_status),
-    customerName: str(job.guest_name || customer.full_name || payment?.customer_name) || 'Customer',
-    customerEmail: str(job.guest_email || customer.email || payment?.email) || 'Not provided',
-    customerPhone: str(job.guest_phone || customer.phone || payment?.phone) || 'Not provided',
-    serviceAddress: address(job, paymentMeta) || 'Service address not provided',
-    vehicles: vehicleRows,
-    baseTotal: money(snapshotPricing.vehicleSubtotalCents),
-    addOnSubtotal: snapshotPricing.addOnSubtotalCents > 0 ? money(snapshotPricing.addOnSubtotalCents) : undefined,
-    onlineDiscount: snapshotPricing.onlineDiscountCents > 0 ? `−${money(snapshotPricing.onlineDiscountCents)}` : money(0),
-    multiCarDiscount: snapshotPricing.multiCarDiscountCents > 0 ? `−${money(snapshotPricing.multiCarDiscountCents)}` : money(0),
-    promoLabel: str(orderSnapshot?.promoCode || job.promo_code || paymentMeta.promo_code) || 'Promo discount',
-    promoDiscount: snapshotPricing.promoDiscountCents > 0 ? `−${money(snapshotPricing.promoDiscountCents)}` : money(0),
-    manualDiscount: snapshotPricing.manualDiscountCents > 0 ? `−${money(snapshotPricing.manualDiscountCents)}` : undefined,
-    depositPaid: money(snapshotPricing.depositPaidCents || snapshotPricing.depositCents),
-    cashPaid: money(snapshotPricing.cashPaidCents),
-    stripePaid: money(snapshotPricing.stripePaidCents),
-    fullPaid: money(snapshotPricing.totalPaidCents),
-    remainingBalance: money(snapshotPricing.remainingBalanceCents),
-    finalTotal: money(snapshotPricing.finalTotalCents),
-    stripeSession: str(payment?.stripe_checkout_session_id || job.stripe_checkout_session_id) || 'Not provided',
-    stripePaymentIntent: str(payment?.stripe_payment_intent_id) || 'Not provided',
-    paymentRowId: paymentId || 'Not provided',
-    technicianName,
-    serviceDuration,
-    taxAmount: taxCents != null ? money(taxCents) : undefined,
-  };
+    techName: technicianName,
+    receiptId: str(receipt?.id) || undefined,
+  });
+
+  const pdfHref = `/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId || workOrderId))}/pdf`;
 
   return (
-    <DashboardShell title='Receipt detail' subtitle='Print or download a customer-ready receipt document (not the admin chrome).' role='admin'>
+    <DashboardShell title='Receipt detail' subtitle='Unified ledger receipt — matches PDF and email.' role='admin'>
       <div className='gb-no-print mb-4 flex flex-wrap gap-2'>
         <Link href='/admin/receipts' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
           Back to Receipts
@@ -203,9 +99,9 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
             Payment Detail
           </Link>
         ) : null}
-        {appointmentId || fallbackId ? (
+        {workOrderId ? (
           <Link
-            href={`/admin/work-orders/${encodeURIComponent(appointmentId || fallbackId)}${fallbackId && !appointmentId ? '?source=fallback&shell=admin' : '?shell=admin'}`}
+            href={`/admin/work-orders/${encodeURIComponent(workOrderId)}${isFallback ? '?source=fallback&shell=admin' : '?shell=admin'}`}
             className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'
           >
             Edit work order
@@ -214,12 +110,10 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
       </div>
 
       <div className='gb-no-print mb-4 max-w-xs'>
-        <ReceiptPdfDownloadButton
-          href={`/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId || appointmentId || fallbackId))}/pdf`}
-          className=''
-          label='Download invoice PDF'
-        />
+        <ReceiptPdfDownloadButton href={pdfHref} className='' label='Download invoice PDF' />
       </div>
+
+      <ReceiptLedgerDebugPanel parity={view.parity} />
 
       <ReceiptAdminControls
         appointmentId={appointmentId}
@@ -241,7 +135,7 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
         }
       />
 
-      <ReceiptDocument {...docProps} />
+      <ReceiptDocument {...view.documentProps} />
     </DashboardShell>
   );
 }

@@ -80,14 +80,25 @@ export function mergeVehiclePricingOnSave(params: {
 
   const vehicleSubtotalCents = merged.reduce((s, v) => s + (typeof v.price_cents === 'number' ? v.price_cents : 0), 0);
 
-  const multiCarDiscountCents = num(prevBreakdown.multiCarDiscountCents);
-  const onlineDiscountCents =
+  let multiCarDiscountCents = num(prevBreakdown.multiCarDiscountCents);
+  let onlineDiscountCents =
     num(prevBreakdown.websitePromoDiscountCents) || num(prevBreakdown.onlineDiscountCents);
   const promoDiscountCents = num(prevBreakdown.offerDiscountCents) || num(prevBreakdown.promoDiscountCents);
   const addOnSubtotalCents = num(prevBreakdown.addOnSubtotalCents);
 
+  if (vehicleSubtotalCents > 0 && multiCarDiscountCents <= 0 && vehicles.length >= 2) {
+    const mcPct = num(prevBreakdown.multiCarSecondVehicleDiscountPercent) || 10;
+    for (let i = 1; i < vehicles.length; i++) {
+      const pc = typeof vehicles[i]?.price_cents === 'number' ? vehicles[i]!.price_cents! : 0;
+      multiCarDiscountCents += Math.round(pc * (mcPct / 100));
+    }
+  }
   const afterMc = Math.max(0, vehicleSubtotalCents - multiCarDiscountCents);
-  const prePromoCents = afterMc + addOnSubtotalCents;
+  let prePromoCents = afterMc + addOnSubtotalCents;
+  if (onlineDiscountCents <= 0 && prePromoCents > 0) {
+    const sitePct = num(prevBreakdown.websitePromoPercent) || 15;
+    onlineDiscountCents = Math.round(afterMc * (sitePct / 100));
+  }
   const serviceFinalCents = Math.max(0, prePromoCents - onlineDiscountCents - promoDiscountCents);
 
   return {

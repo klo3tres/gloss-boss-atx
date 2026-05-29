@@ -7,6 +7,7 @@ import { displayChicago, displayLabel, displayMoney } from '@/lib/display-format
 import { hasHistoricalPricingSnapshot } from '@/lib/historical-pricing';
 import { resolveJobPricing, type JobPricingDisplay } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { isPricingDuplicateOrPaymentLine } from '@/lib/pricing-custom-lines';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 import { resolveWorkOrder, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
@@ -24,11 +25,13 @@ function obj(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+export type LedgerTotals = OrderLedger['totals'];
+
 export type OrderLedgerQuery = {
   orderId?: string;
+  workOrderId?: string;
   appointmentId?: string;
   fallbackBookingId?: string;
-  workOrderId?: string;
   paymentId?: string;
   receiptId?: string;
   stripeCheckoutSessionId?: string;
@@ -132,12 +135,16 @@ export type OrderLedger = {
     zellePaidCents: number;
     manualPaidCents: number;
   };
+  /** Payments counted toward customer-facing totals (excludes voided; test flagged separately). */
+  customerPayments: LedgerPayment[];
+  warnings: string[];
   audit: {
     orderSource: 'online_booking' | 'admin_work_order' | 'walk_in';
     bookingSource: string;
     pricingLocked: boolean;
     pricingVersion: string;
     lastRecalculatedAt: string;
+    lastReceiptRebuiltAt: string;
     promoCode: string;
     stripeCheckoutSessionId: string;
     stripePaymentIntentId: string;
@@ -296,26 +303,25 @@ function buildDiscounts(job: Row, pricing: JobPricingDisplay): LedgerDiscount[] 
       stackable: true,
     });
   }
-  let manualFromLines = pricing.manualDiscountCents;
+  const manualFromLines = pricing.manualDiscountCents;
   const items = readCustomLineItems(job);
   for (const item of items) {
+    if (isPricingDuplicateOrPaymentLine(item)) continue;
     if (item.kind === 'discount_adjustment' || item.amountCents < 0) {
       const cents = Math.abs(item.amountCents);
-      if (manualFromLines <= 0 || cents > 0) {
-        out.push({
-          id: `disc-manual-${item.id}`,
-          kind: 'manual',
-          label: item.label || 'Manual adjustment',
-          amountCents: cents,
-          source: 'manual',
-          reason: item.notes,
-          appliedBy: item.createdBy,
-          stackable: false,
-        });
-      }
+      out.push({
+        id: `disc-manual-${item.id}`,
+        kind: 'manual',
+        label: item.label || 'Manual adjustment',
+        amountCents: cents,
+        source: 'manual',
+        reason: item.notes,
+        appliedBy: item.createdBy,
+        stackable: false,
+      });
     }
   }
-  if (manualFromLines > 0 && !out.some((d) => d.kind === 'manual' && d.amountCents === manualFromLines)) {
+  if (manualFromLines > 0 && !out.some((d) => d.kind === 'manual')) {
     out.push({
       id: 'disc-manual-total',
       kind: 'manual',
@@ -345,18 +351,51 @@ export async function resolveOrderLedgerRefs(
 }
 
 /** Canonical order ledger — the only pricing/payment truth for an order. */
+function buildLedgerWarnings(
+  job: Row,
+  payments: LedgerPayment[],
+  pricing: JobPricingDisplay,
+  isTest: boolean,
+): string[] {
+  const warnings: string[] = [];
+  const sessionId = str(job.stripe_checkout_session_id || job.final_payment_checkout_session_id);
+  const hasStripeSession = Boolean(sessionId);
+  const hasStripePayment = payments.some(
+    (p) => !p.voided && (p.bucket.startsWith('stripe_') || p.stripeSessionId || p.stripePaymentIntentId),
+  );
+  if (hasStripeSession && !hasStripePayment && str(job.payment_status).includes('deposit')) {
+    warnings.push('Stripe checkout session on file but no Stripe payment row — use Advanced repair → Sync Stripe if this is a legacy job.');
+  }
+  if (pricing.hasOverpayment) {
+    warnings.push(`Overpayment: ${displayMoney(pricing.rawTotalPaidCents)} recorded vs ${displayMoney(pricing.finalTotalCents)} job total. Void duplicate payments under Advanced repair.`);
+  }
+  if (isTest) warnings.push('Test/sandbox job — excluded from default revenue unless include-test is enabled.');
+  if (vehiclesFromRow(job).length === 0) warnings.push('No vehicles on this order — add vehicles before sending a customer receipt.');
+  return warnings;
+}
+
+/** Resolve ledger or null — callers must show a hard error if null. */
 export async function resolveOrderLedger(
   admin: SupabaseClient,
   query: OrderLedgerQuery,
 ): Promise<OrderLedger | null> {
-  const refs = await resolveOrderLedgerRefs(admin, query);
+  const normalized: OrderLedgerQuery = {
+    ...query,
+    workOrderId: query.workOrderId || query.orderId,
+  };
+  const refs = await resolveOrderLedgerRefs(admin, normalized);
   if (!refs) return null;
 
   const resolved = await resolveWorkOrder(admin, refs.workOrderId, query.sourceHint ?? refs.source);
   if (!resolved) return null;
 
-  const job = resolved.row;
   const isFallback = resolved.isFallback;
+  let job = resolved.row;
+  if (resolved.partial) {
+    const table = isFallback ? 'booking_fallbacks' : 'appointments';
+    const { data: full } = await admin.from(table).select('*').eq('id', resolved.canonicalId).maybeSingle();
+    if (full) job = full as Row;
+  }
   const appointmentId = isFallback ? '' : resolved.canonicalId;
   const fallbackBookingId = isFallback ? resolved.canonicalId : '';
   const isTest = isTestLikeJob(job);
@@ -367,7 +406,34 @@ export async function resolveOrderLedger(
     isFallback,
   });
 
-  const pricing = resolveJobPricing(job, paymentRows);
+  let pricing = resolveJobPricing(job, paymentRows);
+  const bLedger = obj(job.booking_pricing_breakdown);
+  const storedFinal = num(bLedger.finalTotalCents);
+  const storedOnline = num(bLedger.websitePromoDiscountCents) || num(bLedger.onlineDiscountCents);
+  const storedMulti = num(bLedger.multiCarDiscountCents);
+  if (storedFinal > 0) {
+    const online = storedOnline > 0 ? storedOnline : pricing.onlineDiscountCents;
+    const multi = storedMulti > 0 ? storedMulti : pricing.multiCarDiscountCents;
+    const needsHeal =
+      pricing.finalTotalCents !== storedFinal ||
+      pricing.onlineDiscountCents !== online ||
+      pricing.multiCarDiscountCents !== multi;
+    if (needsHeal) {
+      pricing = {
+        ...pricing,
+        onlineDiscountCents: online,
+        multiCarDiscountCents: multi,
+        serviceFinalCents: storedFinal,
+        finalTotalCents: storedFinal,
+        remainingBalanceCents: Math.max(0, storedFinal - pricing.rawTotalPaidCents),
+        overpaymentCents: Math.max(0, pricing.rawTotalPaidCents - storedFinal),
+        hasOverpayment: pricing.rawTotalPaidCents > storedFinal,
+        allocatedTotalPaidCents: Math.min(pricing.rawTotalPaidCents, storedFinal),
+        totalPaidCents: pricing.rawTotalPaidCents,
+      };
+    }
+  }
+
   const vehicles = mapVehicles(job);
   const discounts = buildDiscounts(job, pricing);
   const payments = mapPayments(paymentRows, isTest);
@@ -387,6 +453,22 @@ export async function resolveOrderLedger(
     .join(', ');
 
   const b = obj(job.booking_pricing_breakdown);
+  const customerPayments = payments.filter((p) => !p.voided && (!isTest || !p.isTest));
+  const warnings = buildLedgerWarnings(job, payments, pricing, isTest);
+
+  let lastReceiptRebuiltAt = '';
+  if (appointmentId || fallbackBookingId) {
+    const rQ = appointmentId
+      ? admin.from('receipts').select('updated_at, metadata').eq('appointment_id', appointmentId).order('updated_at', { ascending: false }).limit(1)
+      : admin.from('receipts').select('updated_at, metadata').eq('fallback_booking_id', fallbackBookingId).order('updated_at', { ascending: false }).limit(1);
+    const { data: rRows } = await rQ;
+    const rRow = (rRows as Row[] | null)?.[0];
+    if (rRow) {
+      lastReceiptRebuiltAt = str(rRow.updated_at);
+      const meta = obj(rRow.metadata);
+      if (meta.rebuiltAt) lastReceiptRebuiltAt = str(meta.rebuiltAt);
+    }
+  }
 
   return {
     refs: {
@@ -414,6 +496,8 @@ export async function resolveOrderLedger(
     vehicles,
     discounts,
     payments,
+    customerPayments,
+    warnings,
     totals: {
       serviceSubtotalCents,
       addOnSubtotalCents,
@@ -436,6 +520,7 @@ export async function resolveOrderLedger(
       pricingLocked: hasHistoricalPricingSnapshot(job),
       pricingVersion: str(b.repricedAt || b.pricingVersion || job.updated_at || ''),
       lastRecalculatedAt: str(b.repricedAt || ''),
+      lastReceiptRebuiltAt,
       promoCode: str(job.promo_code) || pricing.promoCode,
       stripeCheckoutSessionId: str(job.stripe_checkout_session_id || job.final_payment_checkout_session_id),
       stripePaymentIntentId: str(job.stripe_payment_intent_id),

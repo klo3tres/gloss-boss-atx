@@ -89,12 +89,15 @@ export function WorkOrderInvoiceBuilder({
   receiptPdfHref,
   customerName,
   vehicleBreakdownLines,
+  receiptPreviewLines: initialReceiptPreviewLines,
   defaultVehicleClass = 'sedan',
   hideReceiptSection = false,
 }: {
   jobId: string;
   customerName?: string;
   vehicleBreakdownLines?: Array<{ label: string; amount: string }>;
+  /** Ledger-backed receipt lines — sole source for live preview totals (no local math). */
+  receiptPreviewLines?: Array<{ label: string; amount: string; tone?: string }>;
   defaultVehicleClass?: UiVehicleClass;
   appointmentId?: string;
   fallbackBookingId?: string;
@@ -114,6 +117,7 @@ export function WorkOrderInvoiceBuilder({
   const router = useRouter();
   const [livePricing, setLivePricing] = useState(pricing);
   const [liveBalanceCents, setLiveBalanceCents] = useState(balanceDueCents);
+  const [receiptPreviewLines, setReceiptPreviewLines] = useState(initialReceiptPreviewLines ?? []);
   const [form, setForm] = useState(emptyForm);
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
@@ -123,6 +127,10 @@ export function WorkOrderInvoiceBuilder({
     setLivePricing(pricing);
     setLiveBalanceCents(balanceDueCents);
   }, [pricing, balanceDueCents]);
+
+  useEffect(() => {
+    if (initialReceiptPreviewLines) setReceiptPreviewLines(initialReceiptPreviewLines);
+  }, [initialReceiptPreviewLines]);
 
   const refreshPricing = useCallback(async () => {
     const q = appointmentId
@@ -136,10 +144,13 @@ export function WorkOrderInvoiceBuilder({
       ok?: boolean;
       pricing?: InvoicePricingSnapshot;
       balanceDueCents?: number;
+      receiptPreviewLines?: Array<{ label: string; amount: string; tone?: string }>;
+      error?: string;
     };
     if (data.ok && data.pricing) {
       setLivePricing(data.pricing);
       if (typeof data.balanceDueCents === 'number') setLiveBalanceCents(data.balanceDueCents);
+      if (data.receiptPreviewLines) setReceiptPreviewLines(data.receiptPreviewLines);
     }
   }, [appointmentId, fallbackBookingId]);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
@@ -152,20 +163,6 @@ export function WorkOrderInvoiceBuilder({
     () => draftLines.reduce((s, d) => s + d.unitCents * d.quantity, 0),
     [draftLines],
   );
-
-  const draftFromFormCents = useMemo(() => {
-    const unit = parseDollars(form.amountDollars);
-    if (unit == null) return 0;
-    const qty = Math.max(1, parseInt(form.quantity, 10) || 1);
-    return unit * qty;
-  }, [form.amountDollars, form.quantity]);
-
-  const preview = useMemo(() => {
-    const customTotal = livePricing.customLineItemsCents + draftTotalCents + draftFromFormCents;
-    const finalTotalCents = livePricing.finalTotalCents + draftTotalCents + draftFromFormCents;
-    const remainingBalanceCents = Math.max(0, finalTotalCents - livePricing.totalPaidCents);
-    return { customTotal, finalTotalCents, remainingBalanceCents, draftFromFormCents };
-  }, [livePricing, draftTotalCents, draftFromFormCents]);
 
   const addDraftFromForm = () => {
     const unitCents = parseDollars(form.amountDollars);
@@ -491,56 +488,42 @@ export function WorkOrderInvoiceBuilder({
       ) : null}
 
       <div className='mt-5 rounded-xl border border-gold/30 bg-black/60 p-4'>
-        <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Live invoice preview</p>
+        <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Live invoice preview (ledger)</p>
         <ul className='mt-3 space-y-2 text-sm'>
-          {customerName ? <PreviewRow label='Customer' value={customerName} /> : null}
-          {vehicleBreakdownLines?.map((line) => (
-            <PreviewRow key={`${line.label}-${line.amount}`} label={line.label} value={line.amount} muted={line.label.startsWith('  ')} />
-          ))}
-          {vehicleBreakdownLines && vehicleBreakdownLines.length > 0 ? null : livePricing.vehicleSubtotalCents > 0 ? (
-            <PreviewRow label='Base services subtotal' value={money(livePricing.vehicleSubtotalCents)} />
-          ) : null}
-          {vehicleBreakdownLines && vehicleBreakdownLines.length > 0 ? null : livePricing.addOnSubtotalCents > 0 ? (
-            <PreviewRow label='Add-ons subtotal' value={money(livePricing.addOnSubtotalCents)} />
-          ) : null}
-          {livePricing.multiCarDiscountCents > 0 ? (
-            <PreviewRow label='Multi-car discount' value={`−${money(livePricing.multiCarDiscountCents)}`} discount />
-          ) : null}
-          {livePricing.onlineDiscountCents > 0 ? (
-            <PreviewRow label='Online booking discount' value={`−${money(livePricing.onlineDiscountCents)}`} discount />
-          ) : null}
-          {livePricing.promoDiscountCents > 0 ? (
-            <PreviewRow label='Promo discount' value={`−${money(livePricing.promoDiscountCents)}`} discount />
-          ) : null}
-          {livePricing.manualDiscountCents > 0 ? (
-            <PreviewRow label='Manual discount' value={`−${money(livePricing.manualDiscountCents)}`} discount />
-          ) : null}
-          {preview.customTotal !== 0 ? (
-            <PreviewRow
-              label={draftTotalCents > 0 ? 'Manual charges (saved + draft)' : 'Manual charges'}
-              value={money(preview.customTotal)}
-            />
-          ) : null}
+          {receiptPreviewLines.length > 0 ? (
+            receiptPreviewLines.map((line) => (
+              <PreviewRow
+                key={`${line.label}-${line.amount}`}
+                label={line.label}
+                value={line.amount}
+                discount={line.tone === 'discount'}
+                strong={line.tone === 'total' || line.label === 'Balance due'}
+                gold={line.label === 'Balance due'}
+                muted={line.label.startsWith('  ')}
+              />
+            ))
+          ) : (
+            <>
+              {customerName ? <PreviewRow label='Customer' value={customerName} /> : null}
+              <PreviewRow label='Final total' value={money(livePricing.finalTotalCents)} strong />
+              <PreviewRow label='Balance due' value={money(liveBalanceCents)} strong gold />
+            </>
+          )}
           {draftLines.map((d) => (
             <PreviewRow
               key={d.id}
-              label={`${d.label} (draft)`}
+              label={`${d.label} (draft — not in totals)`}
               value={money(d.unitCents * d.quantity)}
               muted
             />
           ))}
-          <PreviewRow label='Final total' value={money(preview.finalTotalCents)} strong />
-          {livePricing.depositPaidCents > 0 ? (
-            <PreviewRow label='Deposit paid' value={money(livePricing.depositPaidCents)} />
-          ) : null}
-          {livePricing.totalPaidCents > 0 ? (
-            <PreviewRow label='Total paid' value={money(livePricing.totalPaidCents)} />
-          ) : null}
-          <PreviewRow label='Balance due' value={money(preview.remainingBalanceCents)} strong gold />
         </ul>
         {draftTotalCents > 0 ? (
-          <p className='mt-2 text-[10px] text-amber-200/90'>Draft lines are not in checkout until you save.</p>
+          <p className='mt-2 text-[10px] text-amber-200/90'>
+            Draft lines are excluded from totals until you save — then ledger refreshes automatically.
+          </p>
         ) : null}
+        <p className='mt-2 text-[10px] text-zinc-500'>Totals come from order ledger only (matches PDF and email).</p>
       </div>
 
       <div className='mt-5 grid gap-2 sm:grid-cols-2'>
@@ -597,7 +580,7 @@ export function WorkOrderInvoiceBuilder({
 
       <div className='mt-4 grid gap-2 rounded-xl border border-white/10 bg-black/30 p-3 text-xs sm:grid-cols-3'>
         <span>
-          Final <strong className='font-mono text-white'>{finalTotal ?? money(preview.finalTotalCents)}</strong>
+          Final <strong className='font-mono text-white'>{finalTotal ?? money(livePricing.finalTotalCents)}</strong>
         </span>
         <span>
           Deposit <strong className='font-mono text-white'>{depositPaid ?? '—'}</strong>

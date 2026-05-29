@@ -1,4 +1,6 @@
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
+
+export const RECEIPT_LOGO_URL = 'https://www.glossbossatx.com/branding/gloss-boss-atx-logo.png';
 import {
   emailCard,
   emailCtaButton,
@@ -53,12 +55,29 @@ export function buildReceiptEmailHtml(input: {
         .join('');
 
   const cardInner = `
+    <div style="text-align:center;margin-bottom:20px;">
+      <img src="${RECEIPT_LOGO_URL}" alt="${escapeEmailHtml(GLOSS_BOSS_BRAND_NAME)}" width="180" style="max-width:180px;height:auto;display:inline-block;" />
+      <p style="margin:12px 0 0;font-size:18px;font-weight:800;color:#fafafa;">Gloss Boss ATX</p>
+      <p style="margin:4px 0 0;font-size:12px;color:#d4af37;letter-spacing:0.15em;text-transform:uppercase;">Premium Auto Care</p>
+    </div>
     <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#d4af37;">Receipt</p>
     <p style="margin:8px 0 0;font-size:22px;font-weight:800;color:#fafafa;">${escapeEmailHtml(input.receiptNumber)}</p>
     <p style="margin:12px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Customer:</strong> ${escapeEmailHtml(input.customerName)}</p>
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Service:</strong> ${escapeEmailHtml(input.serviceAt)}</p>
     <p style="margin:6px 0 0;font-size:13px;color:#a1a1aa;"><strong style="color:#e4e4e7;">Address:</strong> ${escapeEmailHtml(input.serviceAddress)}</p>
     ${vehicleRows ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">${vehicleRows}</table>` : ''}
+    ${
+      v.finalTotal || v.totalPaid || v.remainingBalance
+        ? `<div style="margin:16px 0;padding:14px 16px;border-radius:12px;border:1px solid rgba(212,175,55,0.35);background:rgba(212,175,55,0.08);">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#d4af37;">Payment summary</p>
+      ${emailMoneyTable([
+        { label: 'Final total', value: v.finalTotal ?? '—' },
+        { label: 'Total paid', value: v.totalPaid ?? '—' },
+        { label: 'Balance due', value: v.remainingBalance ?? '—' },
+      ])}
+    </div>`
+        : ''
+    }
     ${
       v.breakdown && v.breakdown.length > 0
         ? emailMoneyTable(

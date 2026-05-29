@@ -36,6 +36,7 @@ export function WorkOrderReceiptPanel({
   promoCode,
   canManagePayments,
   workOrderPath,
+  repairOnly = false,
 }: {
   appointmentId?: string;
   fallbackBookingId?: string;
@@ -46,6 +47,8 @@ export function WorkOrderReceiptPanel({
   promoCode?: string;
   canManagePayments: boolean;
   workOrderPath: string;
+  /** When true, only void/rebuild/manual pay tools — no customer preview block. */
+  repairOnly?: boolean;
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
@@ -58,12 +61,92 @@ export function WorkOrderReceiptPanel({
     if (ok) router.refresh();
   };
 
+  if (repairOnly) {
+    return (
+      <section className='mt-4 space-y-4 rounded-2xl border border-dashed border-amber-500/30 bg-black/40 p-4'>
+        <p className='text-xs font-black uppercase tracking-wider text-amber-200'>Receipt repair tools</p>
+        {canManagePayments ? (
+          <>
+            {pricing.hasOverpayment ? (
+              <ToastActionForm
+                action={async (prev, fd) => {
+                  fd.set('workOrderPath', workOrderPath);
+                  const r = await voidExtrasAndRebuildActionState(prev, fd);
+                  afterAction(r.ok ? r.message ?? 'Extras voided' : r.error ?? 'Failed', r.ok);
+                  return r;
+                }}
+              >
+                {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
+                {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
+                <input type='hidden' name='workOrderPath' value={workOrderPath} />
+                <SubmitStatusButton
+                  pendingText='Fixing…'
+                  className='rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-black uppercase text-red-200'
+                >
+                  Void extras & rebuild receipt
+                </SubmitStatusButton>
+              </ToastActionForm>
+            ) : null}
+            <ToastActionForm
+              action={async (prev, fd) => {
+                fd.set('workOrderPath', workOrderPath);
+                const r = await rebuildReceiptFromWorkOrderActionState(prev, fd);
+                afterAction(r.ok ? r.message ?? 'Receipt rebuilt' : r.error ?? 'Failed', r.ok);
+                return r;
+              }}
+            >
+              {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
+              {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
+              <input type='hidden' name='workOrderPath' value={workOrderPath} />
+              <SubmitStatusButton
+                pendingText='Rebuilding…'
+                className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'
+              >
+                Rebuild receipt from ledger
+              </SubmitStatusButton>
+            </ToastActionForm>
+            <ToastActionForm
+              className='grid gap-2 sm:grid-cols-4'
+              action={async (prev, fd) => {
+                fd.set('workOrderPath', workOrderPath);
+                const r = await recordManualPaymentActionState(prev, fd);
+                afterAction(r.ok ? r.message ?? 'Recorded' : r.error ?? 'Failed', r.ok);
+                return r;
+              }}
+            >
+              {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
+              {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
+              <input type='hidden' name='workOrderPath' value={workOrderPath} />
+              <label className='text-xs text-zinc-400 sm:col-span-1'>
+                Amount ($)
+                <input name='amountDollars' type='number' step='0.01' min='0.01' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' required />
+              </label>
+              <label className='text-xs text-zinc-400 sm:col-span-1'>
+                Method
+                <select name='method' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' defaultValue='cash'>
+                  <option value='cash'>Cash</option>
+                  <option value='zelle'>Zelle</option>
+                  <option value='venmo'>Venmo</option>
+                  <option value='check'>Check</option>
+                </select>
+              </label>
+              <div className='flex items-end sm:col-span-2'>
+                <SubmitStatusButton pendingText='Saving…' className='rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase text-emerald-200'>
+                  Record manual payment
+                </SubmitStatusButton>
+              </div>
+            </ToastActionForm>
+          </>
+        ) : null}
+        {msg ? <p className='text-xs text-zinc-400'>{msg}</p> : null}
+      </section>
+    );
+  }
+
   return (
     <section className='gb-premium-card mt-6 rounded-2xl border border-gold/25 bg-zinc-950/90 p-5'>
-      <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Receipt builder</p>
-      <p className='mt-1 text-sm text-zinc-400'>
-        Void test/duplicate payments, rebuild from work order pricing, then print PDF or send checkout.
-      </p>
+      <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Receipt summary</p>
+      <p className='mt-1 text-sm text-zinc-400'>Customer-facing lines from the order ledger.</p>
 
       {pricing.hasOverpayment ? (
         <p className='mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
