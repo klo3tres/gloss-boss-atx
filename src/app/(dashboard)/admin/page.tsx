@@ -58,7 +58,7 @@ export default async function AdminDashboardPage() {
   }
 
   return (
-    <DashboardShell title='Command center' subtitle='Revenue, pipeline, and today’s jobs.' role='admin'>
+    <DashboardShell title='Owner command center' subtitle='Live revenue, jobs, leads, and booking health — tap any metric for details.' role='admin'>
       {loadErr ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
           {loadErr}

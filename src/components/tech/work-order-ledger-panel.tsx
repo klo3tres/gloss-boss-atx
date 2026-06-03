@@ -13,6 +13,18 @@ import { PremiumBadge } from '@/components/ui/premium';
 import { recalculateWorkOrderPricingAction } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 import { useRouter } from 'next/navigation';
 import { useTransition, useState } from 'react';
+import { ReceiptLedgerDebugPanel } from '@/components/admin/receipt-ledger-debug-panel';
+import type { ReceiptParityDebug } from '@/lib/receipt-totals';
+
+const MONEY_TABS = [
+  { id: 'lines', label: 'Order lines' },
+  { id: 'discounts', label: 'Discounts' },
+  { id: 'payments', label: 'Payments' },
+  { id: 'receipt', label: 'Receipt preview' },
+  { id: 'repair', label: 'Admin repair' },
+] as const;
+
+type MoneyTab = (typeof MONEY_TABS)[number]['id'];
 
 export type LedgerDiscountRow = { id: string; label: string; amount: string; source: string };
 export type LedgerPaymentRow = {
@@ -127,6 +139,7 @@ export function WorkOrderLedgerPanel({
   recentPaymentsForRepair,
   ledgerWarnings,
   ledgerTotals,
+  receiptParityDebug,
 }: {
   jobId: string;
   isFallback: boolean;
@@ -176,6 +189,7 @@ export function WorkOrderLedgerPanel({
     totalPaid: string;
     balanceDue: string;
   };
+  receiptParityDebug?: ReceiptParityDebug;
   recentPaymentsForRepair: Array<{
     id: string;
     amount: string;
@@ -186,6 +200,7 @@ export function WorkOrderLedgerPanel({
     stripeIntent?: string;
   }>;
 }) {
+  const [tab, setTab] = useState<MoneyTab>('lines');
   const vehicleBreakdownLines = (breakdownLines ?? []).filter(
     (l) =>
       l.label !== 'Customer' &&
@@ -212,6 +227,37 @@ export function WorkOrderLedgerPanel({
 
   return (
     <div className='space-y-4'>
+      <div className='rounded-2xl border border-gold/25 bg-black/40 p-4'>
+        <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>Money & receipt totals</p>
+        <dl className='mt-3 grid gap-2 text-sm sm:grid-cols-3 lg:grid-cols-4'>
+          {[
+            ['Final', totals.finalTotal],
+            ['Paid', totals.totalPaid],
+            ['Balance', totals.balanceDue],
+          ].map(([label, value]) => (
+            <div key={label} className='flex justify-between rounded-lg border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>{label}</dt>
+              <dd className='font-mono font-bold text-white'>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className='flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+        {MONEY_TABS.map((t) => (
+          <button
+            key={t.id}
+            type='button'
+            onClick={() => setTab(t.id)}
+            className={`shrink-0 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
+              tab === t.id ? 'border-gold/50 bg-gold/15 text-gold-soft' : 'border-white/10 text-zinc-400'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {isTest ? (
         <div className='flex flex-wrap gap-2'>
           <PremiumBadge tone='amber'>Test / sandbox</PremiumBadge>
@@ -229,7 +275,8 @@ export function WorkOrderLedgerPanel({
         </div>
       ) : null}
 
-      <WorkOrderCollapsible title='A. Order lines' defaultOpen>
+      {tab === 'lines' ? (
+      <WorkOrderCollapsible title='Order lines' defaultOpen>
         <p className='text-xs text-zinc-500'>
           Source: <span className='text-zinc-300'>{orderSourceLabel}</span>
         </p>
@@ -247,9 +294,33 @@ export function WorkOrderLedgerPanel({
             </li>
           ))}
         </ul>
+        <div id='wo-invoice' className='mt-4 border-t border-white/10 pt-4'>
+          <WorkOrderInvoiceBuilder
+              jobId={jobId}
+              customerName={customerName}
+              vehicleBreakdownLines={vehicleBreakdownLines.map((l) => ({ label: l.label, amount: l.amount }))}
+              receiptPreviewLines={breakdownLines.map((l) => ({ label: l.label, amount: l.amount, tone: l.tone }))}
+              appointmentId={isFallback ? undefined : jobId}
+              fallbackBookingId={isFallback ? jobId : undefined}
+              source={source}
+              isFallback={isFallback}
+              savedItems={customLineItems}
+              pricing={pricingSnapshot}
+              balanceDue={balanceDue}
+              balanceDueCents={balanceDueCents}
+              finalTotal={finalTotal}
+              depositPaid={depositPaid}
+              totalPaid={totalPaid}
+              paymentComplete={paymentComplete}
+              receiptPdfHref={receiptPdfHref}
+            hideReceiptSection
+          />
+        </div>
       </WorkOrderCollapsible>
+      ) : null}
 
-      <WorkOrderCollapsible title='B. Discounts & offers' defaultOpen>
+      {tab === 'discounts' ? (
+      <WorkOrderCollapsible title='Discounts & offers' defaultOpen>
         {discounts.length === 0 ? (
           <p className='text-sm text-zinc-500'>No discounts on this order yet.</p>
         ) : (
@@ -290,8 +361,10 @@ export function WorkOrderLedgerPanel({
           <p className='text-xs text-zinc-500'>Discount controls require admin access.</p>
         )}
       </WorkOrderCollapsible>
+      ) : null}
 
-      <WorkOrderCollapsible title='C. Payments' defaultOpen>
+      {tab === 'payments' ? (
+      <WorkOrderCollapsible title='Payments' defaultOpen>
         <p className='mb-3 text-xs text-zinc-500'>Stripe deposits appear automatically for new online bookings. Deposits are payments, not discounts.</p>
         <ul className='space-y-2 text-sm'>
           {payments.length === 0 ? <li className='text-zinc-500'>No payments recorded yet.</li> : null}
@@ -315,51 +388,11 @@ export function WorkOrderLedgerPanel({
             <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='check' label='Record check' recordCashAction={recordCashAction} />
           </div>
         ) : null}
-        <div id='wo-invoice' className='mt-4'>
-          <WorkOrderInvoiceBuilder
-            jobId={jobId}
-            customerName={customerName}
-            vehicleBreakdownLines={vehicleBreakdownLines.map((l) => ({ label: l.label, amount: l.amount }))}
-            receiptPreviewLines={breakdownLines.map((l) => ({ label: l.label, amount: l.amount, tone: l.tone }))}
-            appointmentId={isFallback ? undefined : jobId}
-            fallbackBookingId={isFallback ? jobId : undefined}
-            source={source}
-            isFallback={isFallback}
-            savedItems={customLineItems}
-            pricing={pricingSnapshot}
-            balanceDue={balanceDue}
-            balanceDueCents={balanceDueCents}
-            finalTotal={finalTotal}
-            depositPaid={depositPaid}
-            totalPaid={totalPaid}
-            paymentComplete={paymentComplete}
-            receiptPdfHref={receiptPdfHref}
-            hideReceiptSection
-          />
-        </div>
       </WorkOrderCollapsible>
+      ) : null}
 
-      <WorkOrderCollapsible title='D. Totals (ledger)' defaultOpen>
-        <dl className='grid gap-2 text-sm sm:grid-cols-2'>
-          {[
-            ['Service subtotal', totals.serviceSubtotal],
-            ['Add-ons subtotal', totals.addOnSubtotal],
-            ['Gross subtotal', totals.grossSubtotal],
-            ['Total discounts', `−${totals.totalDiscounts.replace(/^−/, '')}`],
-            ['Final total', totals.finalTotal],
-            ['Total paid', totals.totalPaid],
-            ['Balance due', totals.balanceDue],
-          ].map(([label, value]) => (
-            <div key={label} className='flex justify-between rounded-xl border border-white/10 px-3 py-2'>
-              <dt className='text-zinc-500'>{label}</dt>
-              <dd className='font-mono font-bold text-white'>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </WorkOrderCollapsible>
-
-      {canManagePayments ? (
-        <WorkOrderCollapsible title='E. Receipt' defaultOpen>
+      {canManagePayments && tab === 'receipt' ? (
+        <WorkOrderCollapsible title='Receipt preview' defaultOpen>
           <p className='mb-3 text-sm text-amber-100/90'>
             This is exactly what the customer will receive. Preview and approve before sending.
           </p>
@@ -391,9 +424,10 @@ export function WorkOrderLedgerPanel({
         </WorkOrderCollapsible>
       ) : null}
 
-      {canAdvancedRepair ? (
-        <WorkOrderCollapsible title='F. Advanced repair' defaultOpen={false}>
-          <p className='mb-3 text-xs text-zinc-500'>Legacy broken jobs only — sync Stripe, void duplicates, manual Stripe deposit.</p>
+      {canAdvancedRepair && tab === 'repair' ? (
+        <WorkOrderCollapsible title='E. Admin repair' defaultOpen>
+          <p className='mb-3 text-xs text-zinc-500'>Legacy corrections — void duplicates, sync Stripe, mark balanced. Requires reason.</p>
+          {receiptParityDebug ? <ReceiptLedgerDebugPanel parity={receiptParityDebug} /> : null}
           <RebuildLedgerButton appointmentId={appointmentId} fallbackBookingId={fallbackBookingId} source={source} />
           <WorkOrderReceiptPanel
             appointmentId={isFallback ? undefined : jobId}

@@ -194,9 +194,10 @@ export default function ServicesPage() {
         {loaded ? (
         <div className="mt-6 space-y-6">
           {packages.map((service) => (
-                <article
+                <Link
                   key={service.id}
-                  className="gb-premium-card rounded-2xl border border-gold/15 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_35px_rgba(212,175,55,0.18)]"
+                  href={`/book?service=${encodeURIComponent(service.id)}`}
+                  className="gb-premium-card block rounded-2xl border border-gold/15 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_35px_rgba(212,175,55,0.18)]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
                     <h2 className="text-2xl font-black uppercase tracking-tight text-white">{service.title}</h2>
@@ -215,10 +216,22 @@ export default function ServicesPage() {
                       </li>
                     ))}
                   </ul>
-                </article>
+                  <p className="mt-5 inline-flex rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black">Book this service →</p>
+                </Link>
               ))}
         </div>
         ) : null}
+
+        <section className="mt-10 rounded-2xl border border-dashed border-white/15 bg-zinc-950/60 p-6">
+          <p className="text-xs uppercase tracking-[0.25em] text-zinc-400 font-black">Coming soon</p>
+          <h2 className="mt-2 text-xl font-black uppercase text-white">Exterior cleaning & driveway pressure washing</h2>
+          <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+            Ask about driveway and exterior pressure washing — full online booking for this category is the next phase.
+          </p>
+          <Link href="/intake" className="mt-4 inline-flex rounded-xl border border-gold/40 px-5 py-3 text-xs font-black uppercase text-gold-soft">
+            Request a quote
+          </Link>
+        </section>
 
         {fleetEnabled ? (
           <section className="mt-10 gb-premium-card rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.1)]">

@@ -4,6 +4,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { displayMoney } from '@/lib/display-format';
 import {
+  buildRevenuePaymentDetails,
   fetchPaymentsSince,
   startOfMonthIso,
   startOfTodayIso,
@@ -11,6 +12,7 @@ import {
   startOfYearIso,
   summarizePayments,
 } from '@/lib/revenue-metrics';
+import { RevenueDashboardClient } from '@/components/admin/revenue-dashboard-client';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notFound } from 'next/navigation';
 import { RevenueChartsClient } from '@/components/admin/revenue-charts';
@@ -77,22 +79,50 @@ export default async function AdminRevenuePage({
   ]);
 
   const sumOpts = includeTest ? undefined : { excludeTest: true as const, apptById };
-  const today = summarizePayments(todayRows, sumOpts);
-  const week = summarizePayments(weekRows, sumOpts);
-  const month = summarizePayments(monthRows, sumOpts);
-  const year = summarizePayments(yearRows, sumOpts);
+  const today = summarizePayments(todayRows, { ...sumOpts, fromIso: startOfTodayIso(), toIso: now });
+  const week = summarizePayments(weekRows, { ...sumOpts, fromIso: startOfWeekIso(), toIso: now });
+  const month = summarizePayments(monthRows, { ...sumOpts, fromIso: startOfMonthIso(), toIso: now });
+  const year = summarizePayments(yearRows, { ...sumOpts, fromIso: startOfYearIso(), toIso: now });
 
-  const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
+  const paymentDetails = buildRevenuePaymentDetails(yearRows, apptById, {
+    excludeTest: !includeTest,
+    fromIso: startOfYearIso(),
+    toIso: now,
+  });
 
-  const balanceDueCents = allAppts
-    .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
-    .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
+  const { data: activeGoals } = await admin
+    .from('admin_goals')
+    .select('id, title, goal_type, target_value, current_value, status')
+    .eq('status', 'active')
+    .limit(6);
 
   const { count: completedMonth } = await admin
     .from('appointments')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'completed')
     .gte('job_completed_at', startOfMonthIso());
+
+  const goalsForUi = (activeGoals ?? []).map((g) => {
+    const row = g as { id: string; title: string; goal_type: string; target_value: number; current_value: number; status: string };
+    const goalType = String(row.goal_type ?? '');
+    let currentCents = Number(row.current_value ?? 0);
+    if (goalType.includes('revenue')) currentCents = month.grossCents;
+    else if (goalType.includes('jobs')) currentCents = completedMonth ?? 0;
+    return {
+      id: row.id,
+      title: row.title || goalType.replace(/_/g, ' '),
+      goalType,
+      targetCents: Number(row.target_value ?? 0),
+      currentCents,
+      status: row.status,
+    };
+  });
+
+  const allAppts = (allApptsRes.data ?? []).filter((a) => (includeTest ? true : !isTestLikeJob(a as any)));
+
+  const balanceDueCents = allAppts
+    .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
+    .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
 
   // Deposit collection rate
   const apptsWithDeposits = allAppts.filter((a) => (a.deposit_amount_cents ?? 0) > 0);
@@ -200,7 +230,20 @@ export default async function AdminRevenuePage({
       </section>
 
       {/* Insert Interactive Charts Section */}
-      <div className='mb-8'>
+      <RevenueDashboardClient
+        today={today}
+        week={week}
+        month={month}
+        year={year}
+        balanceDueCents={balanceDueCents}
+        paymentDetails={paymentDetails}
+        goals={goalsForUi}
+        includeTest={includeTest}
+        avgTicketCents={avgCompletedTicketCents}
+        completedJobsCount={completedMonth ?? 0}
+      />
+
+      <div className='mb-8 mt-8'>
         <RevenueChartsClient
           monthsData={monthsData}
           paymentMixMonth={{
@@ -216,34 +259,6 @@ export default async function AdminRevenuePage({
           topCustomers={topCustomers}
         />
       </div>
-
-      <section className='space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected</p>
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Stripe (month)' value={money(month.stripeCents)} hint='Succeeded Stripe rows' />
-          <StatBlock label='Cash (month)' value={money(month.cashCents)} />
-          <StatBlock label='Zelle/Venmo (month)' value={money(month.zelleCents)} />
-          <StatBlock label='Other (month)' value={money(month.otherCents)} />
-        </div>
-        <div className='mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
-          <StatBlock label='This week' value={money(week.grossCents)} hint={`${week.paymentCount} payment(s)`} href='/admin/payments?range=week' />
-          <StatBlock label='This month' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
-          <StatBlock label='Year to date' value={money(year.grossCents)} hint={`${year.paymentCount} payment(s)`} />
-        </div>
-      </section>
-
-      <section className='mt-8 space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Month breakdown</p>
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-          <StatBlock label='Stripe / card' value={money(month.stripeCents)} />
-          <StatBlock label='Cash' value={money(month.cashCents)} />
-          <StatBlock label='Zelle / Venmo' value={money(month.zelleCents)} />
-          <StatBlock label='Other manual' value={money(month.otherCents)} />
-          <StatBlock label='Open balances (appointments)' value={money(balanceDueCents)} href='/admin/work-orders' />
-          <StatBlock label='Avg payment (month)' value={money(month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0)} hint={`${completedMonth ?? 0} jobs completed this month`} />
-        </div>
-      </section>
 
       {(debugEvents ?? []).length > 0 ? (
         <section className='mt-8 space-y-3'>

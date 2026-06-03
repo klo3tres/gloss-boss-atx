@@ -67,6 +67,7 @@ function classLabel(c: VehicleClass) {
 export function BookingWizard() {
   const searchParams = useSearchParams();
   const offerFromUrl = String(searchParams?.get('offer') ?? '').trim();
+  const serviceFromUrl = String(searchParams?.get('service') ?? '').trim();
   const liveCatalogAppliedRef = useRef(false);
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
   const [prices, setPrices] = useState<PriceRow[]>(() => consolidatePriceRowsForUi([...BOOKING_SEED.prices]));
@@ -77,6 +78,12 @@ export function BookingWizard() {
 
   const [serviceSlug, setServiceSlug] = useState(() => BOOKING_SEED.services[0]?.slug ?? '');
   const [vehicleClass, setVehicleClass] = useState<VehicleClass>('sedan');
+
+  useEffect(() => {
+    if (!serviceFromUrl) return;
+    const hit = services.find((s) => s.slug === serviceFromUrl || s.id === serviceFromUrl);
+    if (hit) setServiceSlug(hit.slug);
+  }, [serviceFromUrl, services]);
   const [bookingDateKey, setBookingDateKey] = useState('');
   const [bookingTimeValue, setBookingTimeValue] = useState('');
   const [bookingRules, setBookingRules] = useState<BookingAvailabilityConfig>(() => ({
@@ -1404,6 +1411,20 @@ export function BookingWizard() {
                 ))}
               </select>
             </label>
+            <p className='mb-3 rounded-xl border border-gold/25 bg-gold/5 px-4 py-3 text-sm text-zinc-200 md:col-span-2'>
+              Estimated job time:{' '}
+              <strong className='text-gold-soft'>
+                {bookingDurationMinutes >= 60
+                  ? `${Math.floor(bookingDurationMinutes / 60)}h ${bookingDurationMinutes % 60 ? `${bookingDurationMinutes % 60}m` : ''}`.trim()
+                  : `${bookingDurationMinutes} min`}
+              </strong>
+              {bookingLines.length > 1 ? ` · ${bookingLines.length} vehicles` : ''}. Only start times that fit before close are shown.
+              {filteredSlotOpts.length === 0 && bookingDateKey ? (
+                <span className='mt-2 block text-amber-200'>
+                  No slots fit this service on the selected day — try an earlier date or choose an earlier start time.
+                </span>
+              ) : null}
+            </p>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Start time (15-minute slots)</span>
               <select

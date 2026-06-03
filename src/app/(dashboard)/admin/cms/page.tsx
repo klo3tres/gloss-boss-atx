@@ -20,6 +20,7 @@ import { defaultFeaturedShowcaseSlides } from '@/lib/public-site-data';
 import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normalize';
 import { submitHomepageLogoForm, submitNavbarLogoForm } from '@/lib/admin/site-branding-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { CmsSectionNav } from '@/components/admin/cms-section-nav';
 
 export const dynamic = 'force-dynamic';
 
@@ -202,112 +203,115 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         </Link>
       </p>
 
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+      <CmsSectionNav />
+
+      <section id='cms-booking' className='scroll-mt-24 mb-8 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
         <h2 className='text-lg font-black uppercase tracking-tight text-white'>Online booking hours</h2>
-        <p className='mt-2 text-sm text-zinc-400'>Friday 5:00–9:00 PM, Saturday & Sunday 7:30 AM–7:00 PM (defaults). Add blackout dates below.</p>
-        <CmsBookingAvailabilityClient initial={bookingAvail} />
+        <p className='mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400'>Friday 5:00–9:00 PM, Saturday & Sunday 7:30 AM–7:00 PM (defaults). Add blackout dates below.</p>
+        <div className='mt-4'>
+          <CmsBookingAvailabilityClient initial={bookingAvail} />
+        </div>
       </section>
 
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Google review link</h2>
-        <p className='mt-2 text-sm text-zinc-400'>Powers the “Leave us a Google Review” button on the homepage. Paste your public review URL.</p>
-        {!googleReviewUrl ? (
-          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='alert'>
-            No Google review URL saved — customers will not see the gold “Leave Google Review” button until you add a link here.
+      <section id='cms-brand' className='scroll-mt-24 mb-8 space-y-6'>
+        <div className='gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>Brand assets</h2>
+          <p className='mt-2 text-sm text-zinc-400'>Navbar and homepage logos — upload or paste a public HTTPS URL.</p>
+        </div>
+
+        <div className='gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h3 className='text-sm font-black uppercase tracking-wider text-gold-soft'>Navbar logo</h3>
+          <p className='mt-2 break-words text-sm text-zinc-400'>
+            Falls back to <code className='text-gold-soft'>/brand/glossboss-official-atx.png</code> when empty.
           </p>
-        ) : null}
-        <CmsGoogleReviewClient initialUrl={googleReviewUrl} />
+          <form action={submitNavbarLogoForm} className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
+            <label className='block min-w-0 flex-1 text-xs text-zinc-400'>
+              Logo URL
+              <input
+                name='navbar_logo_url'
+                type='url'
+                defaultValue={navbarLogoUrl}
+                placeholder='https://…'
+                className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+              />
+            </label>
+            <button type='submit' className='rounded-lg bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black hover:brightness-110 transition duration-150'>
+              Save navbar logo
+            </button>
+          </form>
+          <div className='mt-4'>
+            <BrandingUploadDropzone settingKey='navbar_logo' label='Or upload navbar logo' />
+          </div>
+        </div>
+
+        <div className='gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h3 className='text-sm font-black uppercase tracking-wider text-gold-soft'>Homepage hero logo</h3>
+          <form action={submitHomepageLogoForm} className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
+            <label className='block min-w-0 flex-1 text-xs text-zinc-400'>
+              Homepage hero logo URL
+              <input
+                name='homepage_logo_url'
+                type='url'
+                defaultValue={homepageLogoUrl}
+                placeholder='https://…'
+                className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+              />
+            </label>
+            <button type='submit' className='rounded-lg border border-gold/40 bg-gold/5 px-4 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition duration-150'>
+              Save homepage logo
+            </button>
+          </form>
+          <div className='mt-4'>
+            <BrandingUploadDropzone settingKey='homepage_logo' label='Or upload homepage logo' />
+          </div>
+        </div>
+
+        <div className='gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h3 className='text-sm font-black uppercase tracking-wider text-gold-soft'>Google review link</h3>
+          <p className='mt-2 text-sm text-zinc-400'>Powers the “Leave us a Google Review” button on the homepage.</p>
+          {!googleReviewUrl ? (
+            <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100' role='alert'>
+              No Google review URL saved — customers will not see the review button until you add a link here.
+            </p>
+          ) : null}
+          <div className='mt-4'>
+            <CmsGoogleReviewClient initialUrl={googleReviewUrl} />
+          </div>
+        </div>
       </section>
 
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Navbar logo</h2>
-        <p className='mt-2 text-sm text-zinc-400'>
-          Paste a public HTTPS URL (for example from Supabase Storage after upload). Falls back to <code className='text-gold-soft'>/brand/glossboss-official-atx.png</code> when empty.
+      <section id='cms-homepage' className='scroll-mt-24 mb-8 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Homepage content keys</h2>
+        <p className='mt-2 text-sm text-zinc-400'>Raw CMS keys stored in Supabase — read-only reference for advanced content.</p>
+        {hErr ? <p className='mt-3 text-sm text-red-300'>{hErr.message}</p> : null}
+        {homeRows.length === 0 ? (
+          <p className='mt-4 rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500'>No homepage keys yet.</p>
+        ) : (
+          <ul className='mt-4 space-y-2 font-mono text-xs text-zinc-300'>
+            {homeRows.map((row) => (
+              <li key={row.id} className='break-all rounded border border-white/10 bg-black/40 p-3'>
+                <span className='text-gold-soft'>{row.key}</span>
+                <pre className='mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-zinc-500'>{JSON.stringify(row.value, null, 2)}</pre>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section id='cms-featured' className='scroll-mt-24 mb-8 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Featured transformations</h2>
+        <p className='mt-2 break-words text-sm text-zinc-400'>
+          Controls the Before/After preview on the homepage. JSON format:{' '}
+          <code className='text-gold-soft'>{`{ "slides": [ { "id": "1", "label": "…", "image": "https://…" } ] }`}</code>
         </p>
-        <form action={submitNavbarLogoForm} className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
-          <label className='block min-w-0 flex-1 text-xs text-zinc-400'>
-            Logo URL
-            <input
-              name='navbar_logo_url'
-              type='url'
-              defaultValue={navbarLogoUrl}
-              placeholder='https://…'
-              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-            />
-          </label>
-          <button type='submit' className='rounded-lg bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black hover:brightness-110 transition duration-150'>
-            Save navbar logo
-          </button>
-        </form>
         <div className='mt-4'>
-          <BrandingUploadDropzone settingKey='navbar_logo' label='Or upload navbar logo' />
+          <FeaturedShowcaseManager initialJson={featuredJson} />
         </div>
       </section>
 
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Homepage logo</h2>
-        <form action={submitHomepageLogoForm} className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-end'>
-          <label className='block min-w-0 flex-1 text-xs text-zinc-400'>
-            Homepage hero logo URL
-            <input
-              name='homepage_logo_url'
-              type='url'
-              defaultValue={homepageLogoUrl}
-              placeholder='https://…'
-              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-            />
-          </label>
-          <button type='submit' className='rounded-lg border border-gold/40 bg-gold/5 px-4 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition duration-150'>
-            Save homepage logo
-          </button>
-        </form>
-        <div className='mt-4'>
-          <BrandingUploadDropzone settingKey='homepage_logo' label='Or upload homepage logo' />
-        </div>
-      </section>
-
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>CMS documents</h2>
-        <p className='mt-2 text-sm text-zinc-400'>
-          Drag & drop uploads save automatically to Supabase Storage and the document list (PDF, images, HTML, JSX/TSX as a non-executed template reference). Word (.doc/.docx): convert to PDF first.
-        </p>
-        <div className='mt-4 grid gap-4 sm:grid-cols-2'>
-          <CmsDocumentDropzone category='liability' label='Liability & waivers' />
-          <CmsDocumentDropzone category='sop' label='SOPs' />
-          <CmsDocumentDropzone category='intake' label='Intake form (HTML)' />
-          <CmsDocumentDropzone category='other' label='Training & other' />
-        </div>
-        <CmsDocumentManualForm />
-        <ul className='mt-4 space-y-2 text-sm'>
-          {cmsDocs.length === 0 ? <li className='text-zinc-500 italic'>No documents yet (run migration 000014).</li> : null}
-          {cmsDocs.map((d) => (
-            <li key={d.id} className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-              <span>
-                <span className='text-gold-soft font-bold'>{d.category}</span> — {d.title}
-                {d.jsxTemplate ? (
-                  <span className='mt-1 block text-[11px] font-medium text-amber-200/95'>
-                    JSX uploaded as template reference. Use the generated intake form for live signing — we never execute uploaded JSX in the browser.
-                  </span>
-                ) : null}
-                <span className='ml-2 block truncate text-xs text-zinc-500 font-mono'>{d.file_url}</span>
-              </span>
-              <CmsDocumentDeleteButton id={d.id} />
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Homepage featured transformations</h2>
-        <p className='mt-2 text-sm text-zinc-400'>
-          Controls the Before/After preview on the homepage. Use JSON: <code className='text-gold-soft'>{`{ "slides": [ { "id": "1", "label": "…", "image": "https://…" } ] }`}</code>
-        </p>
-        <FeaturedShowcaseManager initialJson={featuredJson} />
-      </section>
-
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+      <section id='cms-gallery' className='scroll-mt-24 mb-8 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
         <h2 className='text-lg font-black uppercase tracking-tight text-white'>Gallery images</h2>
-        <p className='mt-2 text-sm text-zinc-400'>Add public image URLs (Cloudinary, Supabase Storage, etc.). Homepage pulls published images automatically.</p>
+        <p className='mt-2 text-sm text-zinc-400'>Published images appear on the public gallery and homepage strip automatically.</p>
 
         <GalleryLocalUpload />
 
@@ -325,19 +329,46 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           </button>
         </form>
 
-        <GalleryAdminManager rows={galleryAdminItems} />
+        <div className='mt-6'>
+          <GalleryAdminManager rows={galleryAdminItems} />
+        </div>
       </section>
 
-      {oErr ? <p className='mb-4 text-sm text-red-300'>{oErr.message}</p> : null}
-      <PromotionsAdminClient initialRows={promotionRows} />
+      <section id='cms-promotions' className='scroll-mt-24 mb-8'>
+        {oErr ? <p className='mb-4 text-sm text-red-300'>{oErr.message}</p> : null}
+        <PromotionsAdminClient initialRows={promotionRows} />
+      </section>
 
-      <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Homepage content keys</h2>
-        {hErr ? <p className='text-sm text-red-300'>{hErr.message}</p> : null}
-        <ul className='mt-4 space-y-2 font-mono text-xs text-zinc-300'>
-          {homeRows.map((row) => (
-            <li key={row.id} className='rounded border border-white/10 bg-black/40 p-2'>
-              {row.key} <span className='text-zinc-600'>·</span> {JSON.stringify(row.value)}
+      <section id='cms-documents' className='scroll-mt-24 mb-8 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+        <h2 className='text-lg font-black uppercase tracking-tight text-white'>Documents / SOPs</h2>
+        <p className='mt-2 text-sm text-zinc-400'>
+          Drag & drop uploads save to Supabase Storage and the document list (PDF, images, HTML, JSX/TSX as template reference).
+        </p>
+        <div className='mt-4 grid gap-4 sm:grid-cols-2'>
+          <CmsDocumentDropzone category='liability' label='Liability & waivers' />
+          <CmsDocumentDropzone category='sop' label='SOPs' />
+          <CmsDocumentDropzone category='intake' label='Intake form (HTML)' />
+          <CmsDocumentDropzone category='other' label='Training & other' />
+        </div>
+        <CmsDocumentManualForm />
+        <ul className='mt-4 space-y-2 text-sm'>
+          {cmsDocs.length === 0 ? (
+            <li className='rounded-xl border border-dashed border-white/10 p-6 text-center text-zinc-500 italic'>No documents yet (run migration 000014).</li>
+          ) : null}
+          {cmsDocs.map((d) => (
+            <li key={d.id} className='flex flex-col gap-2 rounded-xl border border-white/10 bg-black/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
+              <div className='min-w-0 flex-1'>
+                <p className='font-bold text-white'>
+                  <span className='text-gold-soft'>{d.category}</span> — {d.title}
+                </p>
+                {d.jsxTemplate ? (
+                  <p className='mt-1 text-[11px] font-medium text-amber-200/95'>
+                    JSX uploaded as template reference only — never executed in the browser.
+                  </p>
+                ) : null}
+                <p className='mt-1 truncate font-mono text-xs text-zinc-500'>{d.file_url}</p>
+              </div>
+              <CmsDocumentDeleteButton id={d.id} />
             </li>
           ))}
         </ul>

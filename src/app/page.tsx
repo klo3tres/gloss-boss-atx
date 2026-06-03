@@ -170,9 +170,9 @@ export default function HomePage() {
                 <Image
                   src='/brand/glossboss-official-atx.png'
                   alt='Gloss Boss ATX official logo'
-                  width={420}
-                  height={210}
-                  className='h-auto w-full max-w-md'
+                  width={520}
+                  height={260}
+                  className='h-auto w-full max-w-lg sm:max-w-xl'
                   priority
                 />
               </div>
@@ -187,12 +187,15 @@ export default function HomePage() {
                 Premium mobile auto care delivered to your driveway with online booking, professional service records, and showroom-level results.
               </p>
               
-              <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
+              <div className='mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap'>
                 <Link href='/book' className='inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-black shadow-[0_0_35px_rgba(212,175,55,0.35)] hover:brightness-110 transition duration-300'>
                   Book Now <ArrowRight size={14} />
                 </Link>
                 <Link href='/services' className='rounded-xl border border-white/20 bg-black/40 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-white hover:border-gold/50 hover:text-gold-soft transition duration-300'>
                   View Services
+                </Link>
+                <Link href='/gallery' className='rounded-xl border border-gold/30 bg-gold/5 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-gold-soft hover:bg-gold/15 transition duration-300'>
+                  See Results
                 </Link>
                 <Link href='/gift-cards' className='rounded-xl border border-white/10 bg-black/50 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-zinc-400 hover:border-gold/30 hover:text-white transition duration-300'>
                   Buy Gift Card
@@ -332,13 +335,14 @@ export default function HomePage() {
         <div className='mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
           {packagesForGrid.map((service, index) => (
               <MotionFade key={`${siteLoaded ? 'live' : 'seed'}-${service.id}`} delay={index * 0.06}>
-                <article className='rounded-2xl border border-gold/20 bg-zinc-950 p-5 transition hover:-translate-y-1 hover:border-gold/50'>
+                <Link href={`/book?service=${encodeURIComponent(service.id)}`} className='block rounded-2xl border border-gold/20 bg-zinc-950 p-5 transition hover:-translate-y-1 hover:border-gold/50 hover:shadow-[0_0_24px_rgba(212,175,55,0.12)]'>
                   <h3 className='text-lg font-bold text-gold-soft'>{service.title}</h3>
                   <p className='mt-2 text-sm text-zinc-300'>{service.subtitle}</p>
                   <p className='mt-4 text-3xl font-black'>
                     {formatStartingPrice(service.sedanPrice)}
                   </p>
-                </article>
+                  <p className='mt-3 text-[10px] font-black uppercase tracking-wider text-gold-soft/80'>Book this service →</p>
+                </Link>
               </MotionFade>
           ))}
         </div>
