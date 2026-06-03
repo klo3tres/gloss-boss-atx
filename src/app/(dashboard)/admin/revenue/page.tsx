@@ -4,6 +4,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { displayMoney } from '@/lib/display-format';
 import {
+  buildRevenueDiagnostics,
   fetchPaymentsSince,
   startOfMonthIso,
   startOfTodayIso,
@@ -76,11 +77,14 @@ export default async function AdminRevenuePage({
     admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start').order('scheduled_start', { ascending: false }).limit(800),
   ]);
 
-  const sumOpts = includeTest ? undefined : { excludeTest: true as const, apptById };
-  const today = summarizePayments(todayRows, sumOpts);
-  const week = summarizePayments(weekRows, sumOpts);
+  const sumOpts = includeTest
+    ? { fromIso: startOfMonthIso(), toIso: now }
+    : { excludeTest: true as const, apptById, fromIso: startOfMonthIso(), toIso: now };
+  const today = summarizePayments(todayRows, includeTest ? { fromIso: startOfTodayIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfTodayIso(), toIso: now });
+  const week = summarizePayments(weekRows, includeTest ? { fromIso: startOfWeekIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfWeekIso(), toIso: now });
   const month = summarizePayments(monthRows, sumOpts);
-  const year = summarizePayments(yearRows, sumOpts);
+  const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
+  const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
@@ -288,6 +292,64 @@ export default async function AdminRevenuePage({
           </ul>
         </section>
       ) : null}
+
+      <section className='mt-8 rounded-2xl border border-white/10 bg-black/40 p-5'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · this month</p>
+        <dl className='mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Payment rows loaded</dt>
+            <dd className='font-mono font-bold text-white'>{monthDiagnostics.rowsLoaded}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Rows counted</dt>
+            <dd className='font-mono font-bold text-emerald-400'>{monthDiagnostics.rowsCounted}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Rows excluded</dt>
+            <dd className='font-mono font-bold text-amber-300'>{monthDiagnostics.rowsExcluded}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Gross collected</dt>
+            <dd className='font-mono font-bold text-gold-soft'>{money(monthDiagnostics.grossCents)}</dd>
+          </div>
+        </dl>
+        {Object.keys(monthDiagnostics.byMethod).length > 0 ? (
+          <div className='mt-4'>
+            <p className='text-[10px] font-black uppercase text-zinc-500'>Total by method</p>
+            <ul className='mt-2 flex flex-wrap gap-2 text-xs'>
+              {Object.entries(monthDiagnostics.byMethod).map(([ch, cents]) => (
+                <li key={ch} className='rounded-full border border-white/10 px-3 py-1 font-mono text-zinc-200'>
+                  {ch}: {money(cents)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {monthDiagnostics.exclusions.length > 0 ? (
+          <div className='mt-4 max-h-48 overflow-y-auto'>
+            <p className='text-[10px] font-black uppercase text-zinc-500'>Exclusion reasons (sample)</p>
+            <ul className='mt-2 space-y-1 text-xs text-zinc-400'>
+              {monthDiagnostics.exclusions.map((ex) => (
+                <li key={`${ex.id}-${ex.reason}`}>
+                  {ex.id.slice(0, 8)}… · {money(ex.amountCents)} · {ex.method} — {ex.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className='mt-3 text-xs text-zinc-500'>No excluded rows in this period (or all rows counted).</p>
+        )}
+        {month.grossCents === 0 && monthDiagnostics.rowsCounted > 0 ? (
+          <p className='mt-3 text-xs text-amber-200'>
+            Warning: summarize mismatch — diagnostics counted {monthDiagnostics.rowsCounted} rows but summary shows $0. Report this.
+          </p>
+        ) : null}
+        {month.grossCents === 0 && monthDiagnostics.rowsLoaded === 0 ? (
+          <p className='mt-3 text-xs text-zinc-500'>
+            No payment rows in range. Receipts with payments should appear here unless voided, test-hidden, or missing paid_at/created_at.
+          </p>
+        ) : null}
+      </section>
 
       <p className='mt-8 text-xs text-zinc-500'>
         Gross revenue sums succeeded, non-voided payments{includeTest ? ' (including test bookings)' : ' — test bookings excluded by default'}.

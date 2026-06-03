@@ -199,3 +199,73 @@ export async function addWorkOrderLineItemAction(formData: FormData): Promise<Li
     },
   };
 }
+
+export async function removeWorkOrderLineItemAction(formData: FormData): Promise<LineItemActionResult> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isStaffRole(session.profile?.role)) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { ok: false, error: 'Service role missing.' };
+
+  const appointmentId = str(formData.get('appointmentId'));
+  const fallbackBookingId = str(formData.get('fallbackBookingId'));
+  const source = str(formData.get('source'));
+  const lineId = str(formData.get('lineId'));
+  const reason = str(formData.get('reason')) || 'Removed by admin';
+  if (!lineId) return { ok: false, error: 'Missing line id' };
+
+  const table = source === 'fallback' || fallbackBookingId ? 'booking_fallbacks' : 'appointments';
+  const jobId = fallbackBookingId || appointmentId;
+  if (!jobId) return { ok: false, error: 'Missing work order id' };
+
+  const { data: jobRow } = await admin.from(table).select('*').eq('id', jobId).maybeSingle();
+  if (!jobRow) return { ok: false, error: 'Work order not found' };
+
+  const job = jobRow as Row;
+  const items = readCustomLineItems(job).filter((i) => i.id !== lineId);
+  if (items.length === readCustomLineItems(job).length) {
+    return { ok: false, error: 'Line not found on work order.' };
+  }
+
+  const jobWithLines = { ...job, booking_pricing_breakdown: mergePricingBreakdownWithLineItems(job, items) };
+  const payments = await fetchPaymentsForJob(admin, jobWithLines, {
+    appointmentId: table === 'appointments' ? jobId : undefined,
+    fallbackBookingId: table === 'booking_fallbacks' ? jobId : undefined,
+    isFallback: table === 'booking_fallbacks',
+  });
+  const pricing = resolveJobPricing(jobWithLines, payments);
+  const breakdown = mergePricingBreakdownWithLineItems(job, items, {
+    finalTotalCents: pricing.finalTotalCents,
+    vehicleSubtotalCents: pricing.vehicleSubtotalCents,
+    customLineItemsCents: pricing.customLineItemsCents,
+    lineRemovedAt: new Date().toISOString(),
+    lineRemovedReason: reason,
+  });
+
+  const { error: updateErr } = await admin
+    .from(table)
+    .update({
+      booking_pricing_breakdown: breakdown,
+      base_price_cents: pricing.finalTotalCents,
+      balance_due_cents: pricing.remainingBalanceCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', jobId);
+  if (updateErr) return { ok: false, error: updateErr.message };
+
+  const rebuildFd = new FormData();
+  if (table === 'appointments') rebuildFd.set('appointmentId', jobId);
+  else rebuildFd.set('fallbackBookingId', jobId);
+  const receiptResult = await import('@/app/(dashboard)/tech/work-order-payment-actions').then((m) =>
+    m.generateWorkOrderReceiptActionState(null, rebuildFd),
+  );
+  if (!receiptResult.ok) {
+    return { ok: false, error: `Line removed but receipt rebuild failed: ${receiptResult.error ?? 'unknown'}` };
+  }
+
+  revalidatePath(`/tech/work-orders/${jobId}`);
+  revalidatePath('/admin/receipts');
+  return { ok: true, data: { savedLabel: lineId, lineItemCount: items.length, receiptLineLabels: [], finalTotalCents: pricing.finalTotalCents } };
+}

@@ -6,7 +6,8 @@ import { ExternalLink, Plus, Save } from 'lucide-react';
 import { LINE_ITEM_KIND_LABELS, type WorkOrderLineItemKind } from '@/lib/work-order-line-items';
 import { suggestInvoiceLine } from '@/lib/invoice-line-suggestions';
 import type { UiVehicleClass } from '@/lib/vehicle-pricing';
-import { addWorkOrderLineItemAction } from '@/app/(dashboard)/tech/work-order-line-item-actions';
+import { addWorkOrderLineItemAction, removeWorkOrderLineItemAction } from '@/app/(dashboard)/tech/work-order-line-item-actions';
+import { isPricingDuplicateOrPaymentLine } from '@/lib/pricing-custom-lines';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { WorkOrderReceiptSendFlow } from '@/components/tech/work-order-receipt-send-flow';
 
@@ -71,6 +72,77 @@ const emptyForm = () => ({
   customerVisible: true,
   taxable: false,
 });
+
+function SavedLineRow({
+  item,
+  appointmentId,
+  fallbackBookingId,
+  source,
+  onRemoved,
+}: {
+  item: { id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string; customerVisible?: boolean };
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  source: 'appointment' | 'fallback';
+  onRemoved: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const notInLedger = isPricingDuplicateOrPaymentLine({
+    id: item.id,
+    kind: item.kind ?? 'custom_addon',
+    label: item.label,
+    amountCents: item.amountCents,
+  });
+
+  return (
+    <li className='rounded-xl border border-white/10 bg-black/40 px-3 py-3 text-sm'>
+      <div className='flex flex-wrap justify-between gap-2'>
+        <div className='min-w-0'>
+          <p className='font-bold text-zinc-200'>{item.label}</p>
+          <p className='text-[10px] uppercase text-zinc-500'>
+            {(item.kind && LINE_ITEM_KIND_LABELS[item.kind as WorkOrderLineItemKind]) || item.kind || 'line'} ·{' '}
+            {item.customerVisible === false ? 'hidden from customer' : 'customer visible'}
+          </p>
+          {notInLedger ? (
+            <p className='mt-1 text-[10px] font-bold text-amber-300'>Not included in ledger — remove or fix duplicate discount</p>
+          ) : null}
+        </div>
+        <span className={`font-mono ${item.amountCents < 0 ? 'text-emerald-300' : 'text-white'}`}>{money(item.amountCents)}</span>
+      </div>
+      <div className='mt-2 flex flex-wrap gap-2'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={() => {
+            const reason = window.prompt('Reason for removing this line?');
+            if (!reason?.trim()) return;
+            setPending(true);
+            setErr(null);
+            const fd = new FormData();
+            if (appointmentId) fd.set('appointmentId', appointmentId);
+            if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+            fd.set('source', source);
+            fd.set('lineId', item.id);
+            fd.set('reason', reason);
+            void removeWorkOrderLineItemAction(fd).then((res) => {
+              setPending(false);
+              if (!res.ok) {
+                setErr(res.error ?? 'Remove failed');
+                return;
+              }
+              onRemoved();
+            });
+          }}
+          className='text-[10px] font-black uppercase text-red-300 underline disabled:opacity-50'
+        >
+          {pending ? 'Removing…' : 'Void / remove'}
+        </button>
+      </div>
+      {err ? <p className='mt-1 text-xs text-red-300'>{err}</p> : null}
+    </li>
+  );
+}
 
 export function WorkOrderInvoiceBuilder({
   jobId,
@@ -345,18 +417,17 @@ export function WorkOrderInvoiceBuilder({
           <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Saved & pending lines</p>
           <ul className='mt-2 space-y-2'>
             {savedItems.map((item) => (
-              <li
+              <SavedLineRow
                 key={item.id}
-                className='flex justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm'
-              >
-                <span className='text-zinc-200'>
-                  {item.label}
-                  {item.quantity && item.quantity > 1 ? ` × ${item.quantity}` : ''}
-                </span>
-                <span className={`font-mono ${item.amountCents < 0 ? 'text-emerald-300' : 'text-white'}`}>
-                  {money(item.amountCents)}
-                </span>
-              </li>
+                item={item}
+                appointmentId={appointmentId}
+                fallbackBookingId={fallbackBookingId}
+                source={source}
+                onRemoved={() => {
+                  void refreshPricing();
+                  router.refresh();
+                }}
+              />
             ))}
             {draftLines.map((d) => (
               <li

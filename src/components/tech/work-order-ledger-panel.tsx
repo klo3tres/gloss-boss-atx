@@ -9,6 +9,7 @@ import { WorkOrderPricingPanel } from '@/components/tech/work-order-pricing-pane
 import { WorkOrderReceiptSendFlow } from '@/components/tech/work-order-receipt-send-flow';
 import { WorkOrderStripeDebugPanel } from '@/components/tech/work-order-stripe-debug-panel';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
+import { CorrectPaymentTruthPanel } from '@/components/tech/correct-payment-truth-panel';
 import { PremiumBadge } from '@/components/ui/premium';
 import { recalculateWorkOrderPricingAction } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 import { useRouter } from 'next/navigation';
@@ -314,6 +315,13 @@ export function WorkOrderLedgerPanel({
             <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='venmo' label='Record Venmo' recordCashAction={recordCashAction} />
             <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='check' label='Record check' recordCashAction={recordCashAction} />
           </div>
+        ) : null}
+        {canAdvancedRepair ? (
+          <CorrectPaymentTruthPanel
+            appointmentId={isFallback ? undefined : jobId}
+            fallbackBookingId={isFallback ? jobId : undefined}
+            workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
+          />
         ) : null}
         <div id='wo-invoice' className='mt-4'>
           <WorkOrderInvoiceBuilder

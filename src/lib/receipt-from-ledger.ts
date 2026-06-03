@@ -56,19 +56,7 @@ export function ledgerReceiptLines(ledger: OrderLedger, opts?: { includeAdmin?: 
     (p) => !p.voided && ['succeeded', 'paid', 'comped'].some((s) => p.status.toLowerCase().includes(s)),
   );
 
-  const depositCents = ledger.totals.depositPaidCents;
-  const zelleCents = ledger.totals.zellePaidCents;
-  const hasDepositRow = succeeded.some((p) => /deposit/i.test(p.label));
   const paymentLines: ReceiptBreakdownLine[] = [];
-
-  if (depositCents > 0 && !hasDepositRow) {
-    paymentLines.push({
-      label: 'Deposit paid (online booking)',
-      amount: displayMoney(depositCents),
-      tone: 'paid',
-    });
-  }
-
   const shown = new Set<string>();
   for (const p of succeeded) {
     if (shown.has(p.id)) continue;
@@ -115,6 +103,9 @@ export function buildReceiptFromLedger(
 
   const disc = (kind: LedgerDiscount['kind']) => ledger.discounts.find((d) => d.kind === kind)?.amountCents ?? 0;
 
+  const primaryPay = ledger.customerPayments.find((p) => !p.voided && p.amountCents > 0) ?? ledger.payments.find((p) => !p.voided);
+  const methodLabel = primaryPay?.method?.replace(/_/g, ' ') || primaryPay?.paymentKind?.replace(/_/g, ' ') || '—';
+
   const documentProps: ReceiptDocumentProps = {
     receiptNumber,
     paidAt: ledger.schedule.completedAt
@@ -124,7 +115,7 @@ export function buildReceiptFromLedger(
     completedAt: ledger.schedule.completedAt ? new Date(ledger.schedule.completedAt).toLocaleString() : '',
     serviceDuration: '',
     technicianName: opts?.technicianName ?? '',
-    method: ledger.payments[0]?.method ?? '—',
+    method: methodLabel,
     status: ledger.schedule.paymentStatus,
     customerName: ledger.customer.name,
     customerEmail: ledger.customer.email,
@@ -140,7 +131,7 @@ export function buildReceiptFromLedger(
     promoLabel: ledger.audit.promoCode ? `Promo (${ledger.audit.promoCode})` : 'Promo discount',
     promoDiscount: disc('promo') > 0 ? `−${displayMoney(disc('promo'))}` : '$0.00',
     manualDiscount: disc('manual') > 0 ? `−${displayMoney(disc('manual'))}` : undefined,
-    depositPaid: displayMoney(ledger.totals.depositPaidCents),
+    depositPaid: ledger.totals.depositPaidCents > 0 ? displayMoney(ledger.totals.depositPaidCents) : '$0.00',
     cashPaid: displayMoney(ledger.totals.cashPaidCents),
     stripePaid: ledger.totals.stripePaidCents > 0 ? displayMoney(ledger.totals.stripePaidCents) : undefined,
     fullPaid: displayMoney(ledger.totals.totalPaidCents),

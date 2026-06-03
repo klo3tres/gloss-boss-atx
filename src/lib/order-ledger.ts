@@ -12,6 +12,11 @@ import { readCustomLineItems } from '@/lib/work-order-line-items';
 import { resolveWorkOrder, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
+import {
+  isManualFieldPayment,
+  isRealStripeDeposit,
+  isRealStripePayment,
+} from '@/lib/payment-classification';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -208,15 +213,18 @@ function classifyPayment(p: Row): PaymentBucket {
   const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
   const amt = num(p.amount_cents);
   if (amt === 0 || kind.includes('comp') || kind.includes('free') || method.includes('comp')) return 'comp_free';
-  if (method.includes('cash')) return 'cash';
-  if (method.includes('zelle')) return 'zelle';
-  if (method.includes('venmo')) return 'venmo';
-  if (method.includes('check') || method.includes('manual')) return 'check';
-  if (kind.includes('deposit') || kind === 'booking_deposit') return 'stripe_deposit';
-  if (kind.includes('booking_full') || kind.includes('paid_full') || kind === 'field_full') return 'stripe_paid_full';
-  if (kind.includes('final_balance') || kind.includes('remaining')) return 'stripe_balance';
-  if (method.includes('stripe') || method.includes('card') || p.stripe_checkout_session_id || p.stripe_payment_intent_id) {
-    return kind.includes('deposit') ? 'stripe_deposit' : 'stripe_other';
+  if (isManualFieldPayment(p)) {
+    if (method.includes('cash')) return 'cash';
+    if (method.includes('zelle')) return 'zelle';
+    if (method.includes('venmo')) return 'venmo';
+    if (method.includes('check')) return 'check';
+    return 'other';
+  }
+  if (isRealStripeDeposit(p)) return 'stripe_deposit';
+  if (isRealStripePayment(p)) {
+    if (kind.includes('booking_full') || kind.includes('paid_full') || kind === 'field_full') return 'stripe_paid_full';
+    if (kind.includes('final_balance') || kind.includes('remaining')) return 'stripe_balance';
+    return 'stripe_other';
   }
   return 'other';
 }

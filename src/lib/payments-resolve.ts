@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isRealStripeDeposit } from '@/lib/payment-classification';
 import type { Row } from '@/lib/work-order-resolve';
 
 function str(v: unknown) {
@@ -83,12 +84,7 @@ export async function fetchPaymentsForJob(
 
 export function findDepositPayment(payments: Row[]): Row | null {
   for (const p of payments) {
-    const kind = str(p.payment_kind).toLowerCase();
-    if (kind.includes('deposit') || kind === 'booking_deposit') return p;
+    if (isRealStripeDeposit(p)) return p;
   }
-  for (const p of payments) {
-    const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-    if (!method.includes('cash') && (p.stripe_checkout_session_id || p.stripe_payment_intent_id)) return p;
-  }
-  return payments[0] ?? null;
+  return null;
 }

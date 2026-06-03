@@ -3,6 +3,13 @@ import type { Row } from '@/lib/work-order-resolve';
 import { vehiclesFromRow } from '@/lib/work-order-resolve';
 import { findDepositPayment } from '@/lib/payments-resolve';
 import {
+  isManualFieldPayment,
+  isPaymentSucceeded,
+  isPaymentVoided,
+  isRealStripeDeposit,
+  isRealStripePayment,
+} from '@/lib/payment-classification';
+import {
   customLineAdjustmentCents,
   manualOnlyDiscountCents,
 } from '@/lib/pricing-custom-lines';
@@ -21,33 +28,29 @@ function obj(v: unknown): Record<string, unknown> {
 }
 
 function isSucceeded(p: Row) {
-  const st = str(p.status).toLowerCase();
-  return st === 'succeeded' || st === 'paid' || st === 'comped' || st === 'manual_comped';
+  return isPaymentSucceeded(p);
 }
 
 function isCash(p: Row) {
-  return str(p.payment_method ?? p.payment_kind).toLowerCase().includes('cash');
+  return isManualFieldPayment(p) && str(p.payment_method ?? p.payment_kind).toLowerCase().includes('cash');
 }
 
 function isStripe(p: Row) {
-  if (isCash(p)) return false;
-  const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-  if (method.includes('zelle') || method.includes('venmo') || method.includes('manual') || method.includes('check')) return false;
-  return method.includes('stripe') || method.includes('card') || Boolean(p.stripe_checkout_session_id || p.stripe_payment_intent_id);
+  return isRealStripePayment(p);
 }
 
 function isZelle(p: Row) {
   const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-  return method.includes('zelle') || method.includes('venmo');
+  return method.includes('zelle') || method.includes('venmo') || method.includes('cash_app');
 }
 
 function isManual(p: Row) {
   const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-  return method.includes('manual') || method.includes('check') || method.includes('transfer');
+  return method.includes('check') || (method.includes('manual') && !method.includes('stripe'));
 }
 
 function isVoided(p: Row) {
-  return Boolean(p.voided_at || p.voided === true) || str(p.status).toLowerCase() === 'voided';
+  return isPaymentVoided(p);
 }
 
 /** Single pricing snapshot for work order, receipt HTML/PDF, and email. */
@@ -187,46 +190,16 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     else manualPaidCents += amt;
   }
 
-  // Deposit recorded on appointment but payment row missing — credit deposit when Stripe session / status indicates paid
-  if (totalPaidCents < depositOnFile && depositOnFile > 0) {
-    const payStatus = str(job.payment_status).toLowerCase();
-    const hasStripeSession = Boolean(str(job.stripe_checkout_session_id));
-    const depositLikelyPaid =
-      hasStripeSession ||
-      payStatus.includes('deposit') ||
-      payStatus === 'confirmed' ||
-      payStatus === 'deposit_paid' ||
-      payStatus.includes('paid');
-    if (depositLikelyPaid) {
-      const inferred = depositOnFile - totalPaidCents;
-      totalPaidCents += inferred;
-      stripePaidCents += inferred;
-    }
-  }
-
-  const depositPayment = findDepositPayment(succeeded);
   let depositPaidCents = 0;
-  if (depositPayment) {
-    depositPaidCents = num(depositPayment.amount_cents);
-    if (!isZelle(depositPayment) && !isCash(depositPayment)) {
-      stripePaidCents = Math.max(stripePaidCents, depositPaidCents);
-    }
-  } else if (depositOnFile > 0) {
-    const payStatus = str(job.payment_status).toLowerCase();
-    const hasStripeSession = Boolean(str(job.stripe_checkout_session_id));
-    const depositLikelyPaid =
-      hasStripeSession ||
-      payStatus.includes('deposit') ||
-      payStatus === 'confirmed' ||
-      payStatus === 'deposit_paid' ||
-      payStatus === 'paid';
-    if (depositLikelyPaid) {
-      depositPaidCents = depositOnFile;
-      if (stripePaidCents < depositOnFile) stripePaidCents = depositOnFile;
-    }
+  for (const p of succeeded) {
+    if (isRealStripeDeposit(p)) depositPaidCents += num(p.amount_cents);
+  }
+  const depositPayment = findDepositPayment(succeeded);
+  if (depositPayment && isRealStripeDeposit(depositPayment)) {
+    depositPaidCents = Math.max(depositPaidCents, num(depositPayment.amount_cents));
   }
 
-  const rawTotalPaidCents = Math.max(totalPaidCents, depositPaidCents + zellePaidCents + cashPaidCents);
+  const rawTotalPaidCents = totalPaidCents;
   const allocatedTotalPaidCents =
     finalTotalCents > 0 ? Math.min(rawTotalPaidCents, finalTotalCents) : rawTotalPaidCents;
   const overpaymentCents = Math.max(0, rawTotalPaidCents - finalTotalCents);
