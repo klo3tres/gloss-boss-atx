@@ -109,7 +109,6 @@ export function DispatchBoardClient({
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
-  const msgIsError = Boolean(msg && /\b(fail|error|missing)\b/i.test(msg));
   const [filter, setFilter] = useState<BoardFilter>('active');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -411,12 +410,7 @@ export function DispatchBoardClient({
   return (
     <div className="space-y-6">
       {msg ? (
-        <p
-          className={`rounded-2xl border p-4 text-sm font-semibold ${
-            msgIsError ? 'border-red-500/40 bg-red-500/10 text-red-100' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-          }`}
-          role='status'
-        >
+        <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-100 font-semibold" role="status">
           {msg}
         </p>
       ) : null}
@@ -504,11 +498,11 @@ export function DispatchBoardClient({
                     <input type="hidden" name="id" value={f.id} />
                     <button type="submit" className="text-[10px] font-bold uppercase text-zinc-300">Reviewed</button>
                   </form>
-                  <form action={async (fd) => { const r = await archiveBookingFallbackAction(fd); setMsg(r.ok ? 'Fallback archived.' : r.error ?? 'Archive failed'); router.refresh(); }}>
+                  <form action={async (fd) => { await archiveBookingFallbackAction(fd); router.refresh(); }}>
                     <input type="hidden" name="id" value={f.id} />
                     <button type="submit" className="text-[10px] font-bold uppercase text-zinc-300">Archive</button>
                   </form>
-                  <form action={async (fd) => { if (!window.confirm('Delete fallback?')) return; const r = await deleteBookingFallbackAction(fd); setMsg(r.ok ? 'Fallback deleted.' : r.error ?? 'Delete failed'); router.refresh(); }}>
+                  <form action={async (fd) => { if (!window.confirm('Delete fallback?')) return; await deleteBookingFallbackAction(fd); router.refresh(); }}>
                     <input type="hidden" name="id" value={f.id} />
                     <button type="submit" className="text-[10px] font-bold uppercase text-red-300">Delete</button>
                   </form>

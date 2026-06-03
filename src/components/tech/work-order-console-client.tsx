@@ -11,6 +11,7 @@ import { WorkOrderLedgerPanel, type LedgerDiscountRow, type LedgerPaymentRow } f
 import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import type { ReceiptParityDebug } from '@/lib/receipt-totals';
+import { ReceiptLedgerDebugPanel } from '@/components/admin/receipt-ledger-debug-panel';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
@@ -621,10 +622,11 @@ export function WorkOrderConsoleClient({
         ) : null}
 
         <div id='wo-payment' className='scroll-mt-28'>
-        <WorkOrderCollapsible title='Money & receipt' defaultOpen>
+        <WorkOrderCollapsible title='Order ledger — payment & receipt' defaultOpen>
           {data.ledgerResolveError ? (
             <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
           ) : null}
+          {data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
           {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
             <WorkOrderLedgerPanel
               jobId={jobId}
@@ -666,7 +668,6 @@ export function WorkOrderConsoleClient({
               stripePaymentIntent={data.stripePaymentIntent}
               ledgerWarnings={data.ledgerWarnings}
               ledgerTotals={data.ledgerTotals}
-              receiptParityDebug={data.receiptParityDebug}
               recentPaymentsForRepair={data.recentPayments.map((p) => ({
                 id: p.id ?? '',
                 amount: p.amount,

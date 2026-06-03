@@ -15,8 +15,6 @@ body {
   background: var(--gb-bg, #000000);
   color: var(--gb-fg, #ffffff);
   scroll-behavior: smooth;
-  overflow-x: hidden;
-  max-width: 100%;
 }
 
 .hero-gradient {

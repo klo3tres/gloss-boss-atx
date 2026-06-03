@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import {
@@ -123,17 +122,9 @@ export function GoalsDashboardClient({
   const [pending, start] = useTransition();
 
   const refresh = () => router.refresh();
-  const techName = (id: string | null) => (id ? technicians.find((t) => t.id === id)?.name ?? 'Assigned tech' : 'All technicians');
 
   return (
     <div className='space-y-6'>
-      <div className='gb-premium-hero rounded-3xl border border-gold/20 px-6 py-6'>
-        <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>Performance goals</p>
-        <p className='mt-2 text-sm text-zinc-400'>Auto-tracked revenue and job goals sync from the revenue dashboard.</p>
-        <Link href='/admin/revenue' className='mt-4 inline-block rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
-          View revenue dashboard →
-        </Link>
-      </div>
       <GoalForm technicians={technicians} onDone={refresh} />
       {editId ? (
         <GoalForm
@@ -147,12 +138,7 @@ export function GoalsDashboardClient({
       ) : null}
       <div className='space-y-4'>
         {goals.length === 0 ? (
-          <div className='rounded-2xl border border-dashed border-white/15 bg-black/40 px-6 py-12 text-center'>
-            <p className='text-sm font-bold text-zinc-300'>No active goals yet</p>
-            <p className='mx-auto mt-2 max-w-md text-xs text-zinc-500'>
-              Create a monthly revenue or job-count target above. Progress updates automatically from payment and completion data.
-            </p>
-          </div>
+          <p className='text-sm text-zinc-500 italic'>No goals yet. Create one above or apply migration 000057_goals_dashboard.sql.</p>
         ) : (
           goals.map((g) => {
             const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
@@ -164,7 +150,6 @@ export function GoalsDashboardClient({
                     <p className='text-lg font-black text-white uppercase tracking-tight'>{g.title}</p>
                     <p className='text-xs uppercase tracking-widest text-zinc-500 font-bold mt-0.5'>
                       {g.goal_type.replace(/_/g, ' ')} · {auto ? 'Auto-tracked' : 'Manual'}
-                      {g.technician_id ? ` · ${techName(g.technician_id)}` : ''}
                     </p>
                   </div>
                   <span className='rounded-full bg-gold/10 border border-gold/30 px-3 py-1 text-xs font-black uppercase text-gold-soft'>{g.status}</span>

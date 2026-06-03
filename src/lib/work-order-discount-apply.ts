@@ -90,14 +90,11 @@ export async function applyWorkOrderDiscountViaPricingEngine(
     return { ok: false, error: 'Multi-car discount did not apply.' };
   }
 
-  const pricedVehicles: Row[] = vehicles.map((v, i) => {
-    const row = v as Row;
-    return {
-      ...row,
-      vehicle_description: str(row.vehicle_description),
-      price_cents: pricedLines.resolved[i]?.priceCents ?? num(row.price_cents),
-    };
-  });
+  const pricedVehicles: Row[] = vehicles.map((v, i) => ({
+    ...(v as Row),
+    vehicle_description: str(v.vehicle_description),
+    price_cents: pricedLines.resolved[i]?.priceCents ?? v.price_cents,
+  }));
 
   const b: Record<string, unknown> = {
     ...prevB,
