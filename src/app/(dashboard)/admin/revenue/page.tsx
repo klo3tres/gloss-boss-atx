@@ -16,6 +16,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notFound } from 'next/navigation';
 import { RevenueChartsClient } from '@/components/admin/revenue-charts';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
+import { fetchFinancialSummary } from '@/lib/financial-ledger';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,7 @@ export default async function AdminRevenuePage({
   const month = summarizePayments(monthRows, sumOpts);
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
+  const financial = await fetchFinancialSummary(admin, startOfMonthIso(), now, { includeTest });
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
@@ -235,6 +237,23 @@ export default async function AdminRevenuePage({
           <StatBlock label='This month' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
           <StatBlock label='Year to date' value={money(year.grossCents)} hint={`${year.paymentCount} payment(s)`} />
         </div>
+      </section>
+
+      <section className='mt-8 space-y-3'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Stripe money ledger + profit</p>
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents || month.grossCents)} hint='Stripe ledger when synced; payments fallback shown if ledger is empty' />
+          <StatBlock label='Refunds' value={money(financial.refundsCents)} />
+          <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} />
+          <StatBlock label='Expenses' value={money(financial.expensesCents)} />
+          <StatBlock label='Net profit' value={money((financial.grossRevenueCents || month.grossCents) - financial.refundsCents - financial.stripeFeesCents - financial.expensesCents)} hint='Gross - refunds - fees - expenses' />
+          <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} />
+          <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' />
+          <StatBlock label='Paid invoices/deposits' value={money(month.grossCents)} href='/admin/payments' />
+        </div>
+        <p className='text-xs text-zinc-500'>
+          Stripe balance is not company profit. Gross revenue, fees, refunds, expenses, net profit, and payouts are tracked separately for tax-time clarity.
+        </p>
       </section>
 
       <section className='mt-8 space-y-3'>

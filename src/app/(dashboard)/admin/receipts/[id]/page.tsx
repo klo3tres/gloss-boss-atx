@@ -52,6 +52,29 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
   if (!payment && receipt?.payment_id) {
     payment = (await admin.from('payments').select('*').eq('id', str(receipt.payment_id)).maybeSingle()).data as Row | null;
   }
+  if (!receipt && !payment) {
+    const { data: appt } = await admin.from('appointments').select('*').eq('id', id).maybeSingle();
+    if (appt) {
+      const { upsertWorkOrderReceipt } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
+      try {
+        await upsertWorkOrderReceipt(admin, id, id, '', appt);
+        receipt = (await admin.from('receipts').select('*').eq('appointment_id', id).maybeSingle()).data as Row | null;
+      } catch (err) {
+        console.error('[admin/receipts] on-demand rebuild failed for appt', err);
+      }
+    } else {
+      const { data: fb } = await admin.from('booking_fallbacks').select('*').eq('id', id).maybeSingle();
+      if (fb) {
+        const { upsertWorkOrderReceipt } = await import('@/app/(dashboard)/tech/work-order-payment-actions');
+        try {
+          await upsertWorkOrderReceipt(admin, id, '', id, fb);
+          receipt = (await admin.from('receipts').select('*').eq('fallback_booking_id', id).maybeSingle()).data as Row | null;
+        } catch (err) {
+          console.error('[admin/receipts] on-demand rebuild failed for fb', err);
+        }
+      }
+    }
+  }
   if (!receipt && !payment) notFound();
   paymentId = str(payment?.id || receipt?.payment_id);
 

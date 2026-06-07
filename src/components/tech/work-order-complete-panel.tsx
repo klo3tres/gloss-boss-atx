@@ -20,6 +20,7 @@ export function WorkOrderCompletePanel({
   agreementCaptureHref,
   receiptPdfHref,
   jobCompleted,
+  onOfferMaintenancePlan,
 }: {
   jobId: string;
   isFallback: boolean;
@@ -31,6 +32,7 @@ export function WorkOrderCompletePanel({
   agreementCaptureHref: string;
   receiptPdfHref?: string;
   jobCompleted?: boolean;
+  onOfferMaintenancePlan?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(techCompleteJobAction, null);
 
@@ -82,9 +84,19 @@ export function WorkOrderCompletePanel({
           <Link href='/gallery' className='inline-flex items-center gap-2 rounded-2xl border border-white/20 px-5 py-3 text-xs font-black uppercase text-zinc-200'>
             Share before/after
           </Link>
-          <Link href='/book' className='inline-flex items-center gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-5 py-3 text-xs font-black uppercase text-gold-soft'>
-            Book next maintenance
-          </Link>
+          {onOfferMaintenancePlan ? (
+            <button
+              type="button"
+              onClick={onOfferMaintenancePlan}
+              className='inline-flex items-center gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-5 py-3 text-xs font-black uppercase text-gold-soft'
+            >
+              Offer maintenance plan
+            </button>
+          ) : (
+            <Link href='/book' className='inline-flex items-center gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-5 py-3 text-xs font-black uppercase text-gold-soft'>
+              Book next maintenance
+            </Link>
+          )}
           {!isFallback ? (
             <NotificationSendForm
               kind='last_touches'

@@ -185,3 +185,153 @@ export async function dbAddGalleryImageFromUrl(
   }
   return { ok: false, error: 'Insert failed for all variants' };
 }
+
+export async function dbCreateBeforeAfterPost(
+  supabase: SupabaseClient,
+  params: {
+    beforeUrl: string;
+    afterUrl: string;
+    vehicleLabel: string;
+    serviceLabel: string;
+    caption: string;
+    watermark: boolean;
+    published: boolean;
+    jobId?: string;
+    vehicleClass?: string;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  const maxQ = await supabase.from('gallery_images').select('*').limit(500);
+  if (maxQ.error) return { ok: false, error: maxQ.error.message };
+  const nextOrder = maxGallerySortFromRows(maxQ.data ?? []) + 10;
+
+  const metadata = {
+    transformation_phase: 'before_after',
+    vehicle_label: params.vehicleLabel,
+    service_label: params.serviceLabel,
+    before_url: params.beforeUrl,
+    after_url: params.afterUrl,
+    watermark: params.watermark,
+    job_id: params.jobId || null,
+    vehicle_class: params.vehicleClass || null,
+  };
+
+  const now = new Date().toISOString();
+  const payload = {
+    url: params.afterUrl,
+    image_url: params.afterUrl,
+    caption: params.caption.trim() || null,
+    title: params.caption.trim() || null,
+    sort_order: nextOrder,
+    order_index: nextOrder,
+    published: params.published,
+    active: params.published,
+    featured: false,
+    watermark: params.watermark,
+    metadata,
+    created_at: now,
+  };
+
+  const { error } = await supabase.from('gallery_images').insert(payload);
+  if (error) {
+    const payloadWithoutWatermark = {
+      url: params.afterUrl,
+      image_url: params.afterUrl,
+      caption: params.caption.trim() || null,
+      title: params.caption.trim() || null,
+      sort_order: nextOrder,
+      order_index: nextOrder,
+      published: params.published,
+      active: params.published,
+      featured: false,
+      metadata,
+      created_at: now,
+    };
+    const { error: error2 } = await supabase.from('gallery_images').insert(payloadWithoutWatermark);
+    if (error2) {
+      const payloadMinimal = {
+        image_url: params.afterUrl,
+        caption: params.caption.trim() || null,
+        sort_order: nextOrder,
+        metadata,
+      };
+      const { error: error3 } = await supabase.from('gallery_images').insert(payloadMinimal);
+      if (error3) return { ok: false, error: error3.message };
+    }
+  }
+
+  return { ok: true };
+}
+
+export async function dbUpdateGalleryFields(
+  supabase: SupabaseClient,
+  id: string,
+  params: {
+    caption?: string;
+    vehicleLabel?: string;
+    serviceLabel?: string;
+    transformationPhase?: string;
+    watermark?: boolean;
+    published?: boolean;
+    featured?: boolean;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  if (!id) return { ok: false, error: 'Missing id' };
+
+  const { data: existing, error: getErr } = await supabase
+    .from('gallery_images')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (getErr || !existing) {
+    return { ok: false, error: getErr?.message ?? 'Gallery image not found' };
+  }
+
+  let metadata = existing.metadata || {};
+  if (typeof metadata !== 'object' || metadata === null) {
+    metadata = {};
+  }
+
+  if (params.vehicleLabel !== undefined) {
+    metadata.vehicle_label = params.vehicleLabel || null;
+  }
+  if (params.serviceLabel !== undefined) {
+    metadata.service_label = params.serviceLabel || null;
+  }
+  if (params.transformationPhase !== undefined) {
+    metadata.transformation_phase = params.transformationPhase || null;
+  }
+  if (params.watermark !== undefined) {
+    metadata.watermark = params.watermark;
+  }
+
+  const patch: Record<string, any> = {
+    metadata,
+  };
+
+  if (params.caption !== undefined) {
+    patch.caption = params.caption || null;
+    patch.title = params.caption || null;
+  }
+  if (params.published !== undefined) {
+    patch.published = params.published;
+    patch.active = params.published;
+  }
+  if (params.featured !== undefined) {
+    patch.featured = params.featured;
+  }
+  if (params.watermark !== undefined) {
+    patch.watermark = params.watermark;
+  }
+
+  const { error } = await supabase.from('gallery_images').update(patch).eq('id', id);
+  if (error) {
+    if (patch.watermark !== undefined) {
+      delete patch.watermark;
+    }
+    const { error: error2 } = await supabase.from('gallery_images').update(patch).eq('id', id);
+    if (error2) return { ok: false, error: error2.message };
+  }
+
+  return { ok: true };
+}

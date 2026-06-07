@@ -22,6 +22,7 @@ import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
+import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
 import {
   UI_VEHICLE_CLASSES,
   UI_VEHICLE_LABELS,
@@ -87,6 +88,7 @@ export function BookingWizard() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [vehicleDescription, setVehicleDescription] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
@@ -1040,6 +1042,8 @@ export function BookingWizard() {
           guestName,
           guestEmail,
           guestPhone: p10.digits10,
+          smsConsent,
+          smsConsentSource: 'online_booking',
           serviceAddress: serviceAddress.trim(),
           serviceCity: serviceCity.trim(),
           serviceState: serviceState.trim().toUpperCase(),
@@ -1500,9 +1504,11 @@ export function BookingWizard() {
                 required
               />
               {phoneError ? <p className='mt-2 text-xs text-amber-300'>{phoneError}</p> : null}
-              <p className='mt-2 text-xs leading-relaxed text-zinc-500'>
-                By providing your number you consent to appointment SMS from Gloss Boss ATX. Message/data rates may apply.
-                Reply <strong className='text-zinc-400'>STOP</strong> to opt out, <strong className='text-zinc-400'>HELP</strong> for help. See{' '}
+            </label>
+            <fieldset className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm md:col-span-2'>
+              <legend className='px-1 text-xs font-black uppercase tracking-wider text-gold-soft'>Optional SMS updates</legend>
+              <p className='text-xs leading-relaxed text-zinc-400'>
+                {SMS_CONSENT_COPY}{' '}
                 <a href='/privacy' className='text-gold-soft underline' target='_blank' rel='noreferrer'>
                   Privacy
                 </a>{' '}
@@ -1512,7 +1518,32 @@ export function BookingWizard() {
                 </a>
                 .
               </p>
-            </label>
+              <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-300')}>
+                  <input
+                    type='radio'
+                    name='smsConsent'
+                    value='yes'
+                    checked={smsConsent === true}
+                    onChange={() => setSmsConsent(true)}
+                    className='mr-2 accent-[var(--gold)]'
+                  />
+                  Yes, I agree to receive SMS updates.
+                </label>
+                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', !smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-300')}>
+                  <input
+                    type='radio'
+                    name='smsConsent'
+                    value='no'
+                    checked={smsConsent === false}
+                    onChange={() => setSmsConsent(false)}
+                    className='mr-2 accent-[var(--gold)]'
+                  />
+                  No, do not send me SMS updates.
+                </label>
+              </div>
+              <p className='mt-2 text-xs text-zinc-500'>No is selected by default. You can still book and pay without SMS consent.</p>
+            </fieldset>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Notes (optional)</span>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} />

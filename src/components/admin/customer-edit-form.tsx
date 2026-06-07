@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
 
 export function CustomerEditForm({
   customerId,
@@ -18,6 +19,8 @@ export function CustomerEditForm({
     city: string;
     state: string;
     postal_code: string;
+    sms_consent: boolean;
+    sms_status: string;
   };
 }) {
   const router = useRouter();
@@ -101,6 +104,34 @@ export function CustomerEditForm({
           className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
         />
       </label>
+      <fieldset className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm sm:col-span-2'>
+        <legend className='px-1 text-xs font-black uppercase tracking-wider text-gold-soft'>SMS consent</legend>
+        <p className='text-xs leading-relaxed text-zinc-400'>{SMS_CONSENT_COPY}</p>
+        <p className='mt-1 text-xs text-zinc-500'>Only turn this on when the customer explicitly asks to receive texts.</p>
+        <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+          <label className='rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300'>
+            <input
+              type='radio'
+              name='adminSmsConsent'
+              checked={form.sms_consent === true}
+              onChange={() => setForm((f) => ({ ...f, sms_consent: true, sms_status: 'opted_in' }))}
+              className='mr-2 accent-[var(--gold)]'
+            />
+            Yes, I agree to receive SMS updates.
+          </label>
+          <label className='rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300'>
+            <input
+              type='radio'
+              name='adminSmsConsent'
+              checked={form.sms_consent !== true}
+              onChange={() => setForm((f) => ({ ...f, sms_consent: false, sms_status: 'opted_out' }))}
+              className='mr-2 accent-[var(--gold)]'
+            />
+            No, do not send me SMS updates.
+          </label>
+        </div>
+        <p className='mt-2 text-xs text-zinc-500'>Current status: {form.sms_status || 'unknown'}</p>
+      </fieldset>
       <button
         type='submit'
         disabled={busy}

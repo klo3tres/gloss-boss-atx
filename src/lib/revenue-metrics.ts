@@ -17,6 +17,10 @@ export type PayRow = {
   stripe_payment_intent_id?: string | null;
   metadata?: Record<string, unknown> | null;
   provider?: string | null;
+  is_test?: boolean | null;
+  exclude_from_revenue?: boolean | null;
+  refunded_at?: string | null;
+  refunded_amount_cents?: number | null;
 };
 
 function str(v: unknown) {
@@ -63,6 +67,7 @@ export function isTestPaymentRow(
   apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }>,
 ): boolean {
   const meta = p.metadata;
+  if (p.is_test === true) return true;
   if (meta && (meta.is_test === true || meta.test === true)) return true;
   const aid = str(p.appointment_id);
   if (aid && apptById) {
@@ -116,8 +121,9 @@ export function summarizePayments(
     if (opts?.fromIso && ts && ts < opts.fromIso) continue;
     if (opts?.toIso && ts && ts > opts.toIso) continue;
     if (!isPaymentSucceeded(p) || isPaymentVoided(p)) continue;
+    if (p.exclude_from_revenue === true || p.refunded_at) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
-    const amt = typeof p.amount_cents === 'number' ? p.amount_cents : 0;
+    const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
     const channel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p as PayRow);
     addChannel(summary, channel, amt);
@@ -161,6 +167,14 @@ export function buildRevenueDiagnostics(
       exclusions.push({ id, amountCents: amt, method, reason: `Status not collected: ${str(p.status)}` });
       continue;
     }
+    if (p.exclude_from_revenue === true) {
+      exclusions.push({ id, amountCents: amt, method, reason: 'Manually excluded from revenue' });
+      continue;
+    }
+    if (p.refunded_at) {
+      exclusions.push({ id, amountCents: amt, method, reason: 'Refunded payment' });
+      continue;
+    }
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Test booking or test payment metadata' });
       continue;
@@ -188,7 +202,7 @@ export function buildRevenueDiagnostics(
 
 export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string, toIso?: string) {
   const select =
-    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider';
+    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
   const { data: byPaid, error: e1 } = await admin
     .from('payments')
     .select(select)

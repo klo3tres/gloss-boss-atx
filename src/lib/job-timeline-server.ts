@@ -13,7 +13,8 @@ export type JobTimelineEventType =
   | 'pre_inspection_ack_saved'
   | 'job_completed'
   | 'payment_received'
-  | 'intake_submitted';
+  | 'intake_submitted'
+  | 'custom_sms_sent';
 
 /**
  * Best-effort audit log — never throws; ignores schema drift.

@@ -261,6 +261,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             city,
             state,
             postal_code: postal,
+            sms_consent: c.sms_consent === true,
+            sms_status: String(c.sms_status ?? (c.sms_consent === true ? 'opted_in' : 'opted_out')),
           }}
         />
       </section>

@@ -588,6 +588,7 @@ export async function techStartJobAction(
       damageAck: damageAckFb,
       agreementSigned: true,
       preInspectionOverridden: Boolean(canOverrideFb),
+      serviceSlug: (fb as any)?.service_slug || null,
     });
     if (!startGateFb.canStart) {
       return { error: `Cannot start job. ${startGateFb.missingItems.join('; ')}.` };
@@ -687,6 +688,7 @@ export async function techStartJobAction(
     damageAck,
     agreementSigned: true,
     preInspectionOverridden: canOverridePreInspection,
+    serviceSlug: (appt as any)?.service_slug || null,
   });
 
   if (!startGate.canStart) {
@@ -1658,4 +1660,81 @@ export async function techAddJobMediaAction(formData: FormData) {
 export async function techClearStaleJobsFormAction(formData: FormData): Promise<void> {
   const { clearStaleActiveTestRecordsAction } = await import('@/app/(dashboard)/admin/work-orders/work-order-actions');
   await clearStaleActiveTestRecordsAction(formData);
+}
+
+export async function techSendCustomSmsAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return actionErr('Not signed in.');
+  
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const body = String(formData.get('body') ?? '').trim();
+  const kind = String(formData.get('kind') ?? 'custom_sms').trim();
+
+  if (!body) return actionErr('Message body cannot be empty.');
+  if (!appointmentId && !fallbackBookingId) return actionErr('Missing job reference.');
+
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  
+  let guestPhone: string | null = null;
+  let customerId: string | null = null;
+
+  if (appointmentId) {
+    const { data } = await db
+      .from('appointments')
+      .select('guest_phone, customer_id')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (data) {
+      guestPhone = data.guest_phone;
+      customerId = data.customer_id;
+    }
+  } else if (fallbackBookingId) {
+    const { data } = await db
+      .from('booking_fallbacks')
+      .select('guest_phone, customer_id')
+      .eq('id', fallbackBookingId)
+      .maybeSingle();
+    if (data) {
+      guestPhone = data.guest_phone;
+      customerId = data.customer_id;
+    }
+  }
+
+  if (!guestPhone) {
+    return actionErr('Customer phone number not found.');
+  }
+
+  const { sendCustomerSms } = await import('@/lib/sms-send');
+  const res = await sendCustomerSms({
+    db,
+    kind,
+    to: guestPhone,
+    body,
+    appointment_id: appointmentId || null,
+    fallback_booking_id: fallbackBookingId || null,
+    customer_id: customerId,
+    technician_id: gate.userId,
+    template_key: 'custom_template',
+  });
+
+  if (!res.ok) {
+    return actionErr(res.error ?? 'Failed to send SMS.');
+  }
+
+  // Also record to timeline if it's an appointment
+  if (appointmentId) {
+    const { recordJobTimelineEvent } = await import('@/lib/job-timeline-server');
+    await recordJobTimelineEvent(db, {
+      appointmentId,
+      eventType: 'custom_sms_sent',
+      meta: { body_preview: body.slice(0, 60), kind },
+      createdBy: gate.userId,
+    });
+  }
+
+  const id = appointmentId || fallbackBookingId;
+  revalidatePath(`/tech/work-orders/${id}`);
+  return { ok: true, message: 'SMS sent successfully.' };
 }

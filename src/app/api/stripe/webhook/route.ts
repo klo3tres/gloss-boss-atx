@@ -5,6 +5,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { processCheckoutSessionCompleted } from '@/lib/stripe/checkout';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
+import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
 
 export const runtime = 'nodejs';
 
@@ -77,6 +78,28 @@ export async function POST(request: Request) {
           }, { onConflict: 'stripe_payment_intent_id' });
         }
         if (up.error) console.warn('[stripe/webhook] payment_intent upsert', up.error.message);
+        try {
+          const chargeId =
+            typeof pi.latest_charge === 'string'
+              ? pi.latest_charge
+              : pi.latest_charge && typeof pi.latest_charge === 'object'
+                ? pi.latest_charge.id
+                : null;
+          if (chargeId) {
+            const charge = await stripe.charges.retrieve(chargeId);
+            const btId = typeof charge.balance_transaction === 'string' ? charge.balance_transaction : charge.balance_transaction?.id;
+            if (btId) {
+              const tx = await stripe.balanceTransactions.retrieve(btId);
+              await upsertLedgerFromBalanceTransaction(admin, tx, {
+                paymentIntentId: pi.id,
+                chargeId,
+                workOrderId: appointmentId,
+              });
+            }
+          }
+        } catch (ledgerErr) {
+          console.warn('[stripe/webhook] ledger sync skipped', ledgerErr);
+        }
       }
     } else if (event.type === 'charge.refunded' || event.type === 'refund.updated') {
       const obj = event.data.object as Stripe.Charge | Stripe.Refund;
@@ -87,6 +110,28 @@ export async function POST(request: Request) {
           stripe_payment_intent_id: typeof obj.payment_intent === 'string' ? obj.payment_intent : null,
           payload: obj as unknown as Record<string, unknown>,
         });
+        try {
+          const bt =
+            'balance_transaction' in obj
+              ? typeof obj.balance_transaction === 'string'
+                ? obj.balance_transaction
+                : obj.balance_transaction?.id
+              : null;
+          if (bt) {
+            const tx = await stripe.balanceTransactions.retrieve(bt);
+            await upsertLedgerFromBalanceTransaction(admin, tx, {
+              paymentIntentId: typeof obj.payment_intent === 'string' ? obj.payment_intent : null,
+            });
+          }
+        } catch (ledgerErr) {
+          console.warn('[stripe/webhook] refund ledger sync skipped', ledgerErr);
+        }
+      }
+    } else if (event.type === 'payout.paid' || event.type === 'payout.created') {
+      const payout = event.data.object as Stripe.Payout;
+      if (admin && typeof payout.balance_transaction === 'string') {
+        const tx = await stripe.balanceTransactions.retrieve(payout.balance_transaction);
+        await upsertLedgerFromBalanceTransaction(admin, tx, { payoutId: payout.id });
       }
     }
   } catch (e) {

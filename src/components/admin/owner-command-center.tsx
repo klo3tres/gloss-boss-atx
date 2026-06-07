@@ -52,7 +52,7 @@ function CommandMetric({
   );
 }
 
-export function OwnerCommandCenter({ metrics }: { metrics: OwnerDashboardSnapshot }) {
+export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics: OwnerDashboardSnapshot; isSuperAdmin?: boolean }) {
   const quick = [
     { href: '/admin/dispatch', label: 'Dispatch board', icon: Calendar },
     { href: '/admin/revenue', label: 'Revenue detail', icon: TrendingUp },
@@ -408,6 +408,31 @@ export function OwnerCommandCenter({ metrics }: { metrics: OwnerDashboardSnapsho
             ))}
           </div>
         </section>
+
+        {isSuperAdmin ? (
+          <section className="gb-premium-card rounded-3xl border border-gold/15 bg-black/40 p-6">
+            <SectionEyebrow>Business Command Links</SectionEyebrow>
+            <div className="mt-4 grid gap-3 grid-cols-2">
+              {[
+                ['Stripe Dashboard', 'https://dashboard.stripe.com/'],
+                ['Gmail', 'https://mail.google.com/'],
+                ['Twilio Console', 'https://console.twilio.com/'],
+                ['Vercel Dashboard', 'https://vercel.com/dashboard'],
+              ].map(([label, href]) => (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="gb-premium-card flex items-center justify-between gap-3 rounded-2xl border border-gold/15 bg-black/60 px-4 py-3.5 transition-all duration-300 hover:border-gold/45"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider text-white truncate">{label}</span>
+                  <ArrowUpRight className="h-4 w-4 shrink-0 text-gold-soft" />
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="gb-premium-card rounded-3xl border border-gold/15 bg-black/40 p-6">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 mb-4">

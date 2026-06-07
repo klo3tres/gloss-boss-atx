@@ -8,6 +8,7 @@ import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 import { clearAuthUxSession, setRoleCache, writeHydratedOnceFlag } from '@/lib/auth/auth-session-ux';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
 import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
 
@@ -18,6 +19,7 @@ export default function SignupPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
@@ -53,7 +55,12 @@ export default function SignupPage() {
         email,
         password,
         options: {
-          data: { full_name: fullName },
+          data: {
+            full_name: fullName,
+            sms_consent: smsConsent,
+            sms_consent_source: 'account_signup',
+            sms_status: smsConsent ? 'opted_in' : 'opted_out',
+          },
         },
       });
 
@@ -166,6 +173,21 @@ export default function SignupPage() {
             <span className='mb-2 block text-zinc-300'>Password</span>
             <input type='password' value={password} onChange={(e) => setPassword(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
           </label>
+          <fieldset className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm'>
+            <legend className='px-1 text-xs font-black uppercase tracking-wider text-gold-soft'>Optional SMS updates</legend>
+            <p className='text-xs leading-relaxed text-zinc-400'>{SMS_CONSENT_COPY}</p>
+            <div className='mt-3 grid gap-2'>
+              <label className='rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300'>
+                <input type='radio' name='smsConsent' checked={smsConsent} onChange={() => setSmsConsent(true)} className='mr-2 accent-[var(--gold)]' />
+                Yes, I agree to receive SMS updates.
+              </label>
+              <label className='rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300'>
+                <input type='radio' name='smsConsent' checked={!smsConsent} onChange={() => setSmsConsent(false)} className='mr-2 accent-[var(--gold)]' />
+                No, do not send me SMS updates.
+              </label>
+            </div>
+            <p className='mt-2 text-xs text-zinc-500'>No is selected by default. Account creation does not require SMS consent.</p>
+          </fieldset>
         </div>
 
         {error ? <p className='mt-4 text-sm text-red-400'>{error}</p> : null}

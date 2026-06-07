@@ -32,6 +32,7 @@ export function WorkOrderReceiptSendFlow({
   const [docProps, setDocProps] = useState<ReceiptDocumentProps | null>(null);
   const [receiptNumber, setReceiptNumber] = useState('');
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const baseFd = () => {
     const fd = new FormData();
@@ -74,6 +75,7 @@ export function WorkOrderReceiptSendFlow({
   };
 
   const sendCustomer = () => {
+    setShowConfirm(false);
     if (!approved) {
       setMsg({ tone: 'err', text: 'Approve the preview before sending to the customer.' });
       return;
@@ -144,7 +146,7 @@ export function WorkOrderReceiptSendFlow({
           <button
             type='button'
             disabled={pending || !approved}
-            onClick={sendCustomer}
+            onClick={() => setShowConfirm(true)}
             className='flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-4 py-4 text-sm font-black uppercase text-black disabled:opacity-40'
           >
             <Mail className='h-4 w-4' />
@@ -152,6 +154,42 @@ export function WorkOrderReceiptSendFlow({
           </button>
         </div>
       ) : null}
+
+      {showConfirm && docProps && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+          <div className="gb-glass w-full max-w-md rounded-3xl border border-gold/30 bg-black/95 p-6 space-y-4 text-left shadow-[0_0_50px_rgba(212,175,55,0.15)] animate-in fade-in duration-200">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1">Receipt Email Preview</p>
+              <h3 className="text-lg font-bold text-white">Confirm Send Receipt</h3>
+            </div>
+            
+            <div className="space-y-2 text-sm text-zinc-300">
+              <p><strong>To:</strong> {docProps.customerEmail || docProps.customerEmail}</p>
+              <p><strong>Subject:</strong> Gloss Boss ATX Receipt: {receiptNumber || docProps.receiptNumber}</p>
+              <p className="pt-2 text-xs text-zinc-400">
+                This will email the official PDF receipt and update details to the customer.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-black uppercase text-zinc-400 hover:text-white transition duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendCustomer}
+                className="rounded-xl bg-gold px-5 py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition duration-200 shadow-[0_0_15px_rgba(212,175,55,0.3)]"
+              >
+                Confirm & Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {msg ? (
         <p

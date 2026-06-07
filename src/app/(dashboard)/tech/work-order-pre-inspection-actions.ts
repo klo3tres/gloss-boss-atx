@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isAdminLevel } from '@/lib/auth/roles';
+import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
 import { isDamageAckComplete } from '@/lib/pre-inspection';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -130,5 +130,83 @@ export async function savePreInspectionDamageAckAction(
     return { error: 'Acknowledgement incomplete.' };
   }
 
+  return { ok: true };
+}
+
+export async function skipPhotoRequirementsAction(
+  _prev: any,
+  formData: FormData,
+): Promise<{ error?: string; ok?: boolean }> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null)) {
+    return { error: 'Admin role required.' };
+  }
+
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  if (!appointmentId && !fallbackBookingId) return { error: 'Missing job reference.' };
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { error: 'Database unavailable.' };
+
+  const now = new Date().toISOString();
+  const patch = {
+    pre_inspection_override_reason: 'Skipped photo requirements',
+    pre_inspection_override_by: session.user.id,
+    pre_inspection_override_at: now,
+    updated_at: now,
+  };
+
+  if (appointmentId) {
+    const { error } = await admin.from('appointments').update(patch).eq('id', appointmentId);
+    if (error) return { error: error.message };
+  }
+  if (fallbackBookingId) {
+    const { error } = await admin.from('booking_fallbacks').update(patch).eq('id', fallbackBookingId);
+    if (error) return { error: error.message };
+  }
+
+  const id = appointmentId || fallbackBookingId;
+  revalidatePath(`/tech/work-orders/${id}`);
+  revalidatePath('/tech');
+  return { ok: true };
+}
+
+export async function cancelWorkOrderAction(
+  formData: FormData,
+): Promise<{ error?: string; ok?: boolean }> {
+  const session = await getSessionWithProfile();
+  if (!session.user || !isStaffRole(session.profile?.role)) {
+    return { error: 'Not authorized.' };
+  }
+  const id = String(formData.get('id') ?? '').trim();
+  const source = String(formData.get('source') ?? '').trim();
+  const reason = String(formData.get('reason') ?? 'Cancelled by staff').trim();
+  if (!id) return { error: 'Missing job ID.' };
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return { error: 'Database unavailable.' };
+
+  const now = new Date().toISOString();
+  if (source === 'fallback') {
+    const { error } = await admin
+      .from('booking_fallbacks')
+      .update({
+        status: 'cancelled',
+        archived_at: now,
+        notes: `Cancelled: ${reason}`,
+        updated_at: now,
+      })
+      .eq('id', id);
+    if (error) return { error: error.message };
+  } else {
+    const { cancelAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+    const r = await cancelAppointmentLifecycle(admin, { appointmentId: id, reason });
+    if (!r.ok) return { error: r.error ?? 'Cancel failed' };
+  }
+
+  revalidatePath(`/tech/work-orders/${id}`);
+  revalidatePath('/tech');
+  revalidatePath('/admin/work-orders');
   return { ok: true };
 }

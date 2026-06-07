@@ -64,7 +64,7 @@ export default async function AdminDashboardPage() {
           {loadErr}
         </p>
       ) : null}
-      <OwnerCommandCenter metrics={metrics} />
+      <OwnerCommandCenter metrics={metrics} isSuperAdmin={session.profile?.role === 'super_admin'} />
     </DashboardShell>
   );
 }

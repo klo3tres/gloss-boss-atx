@@ -481,7 +481,7 @@ export default async function TechWorkOrderDetailPage({
     fallbackBookingId: isFallback ? queryId : undefined,
     vehicleIndex: 0,
   });
-  const beforeSlotAssessment = assessBeforePhotoSlots(before);
+  const beforeSlotAssessment = assessBeforePhotoSlots(before, row.service_slug as string | null | undefined);
   const slotFilled = Object.fromEntries(
     REQUIRED_BEFORE_SLOTS.map((s) => [s, beforeSlotAssessment.filled.has(s)]),
   ) as Record<RequiredBeforeSlot, boolean>;
@@ -507,6 +507,7 @@ export default async function TechWorkOrderDetailPage({
     damageAck: damageAckRow,
     agreementSigned,
     preInspectionOverridden,
+    serviceSlug: row.service_slug as string | null | undefined,
   });
   const requirements = buildPreInspectionRequirements({
     agreementSigned,
@@ -530,6 +531,7 @@ export default async function TechWorkOrderDetailPage({
       id: str(p.id) || photoUrl(p),
       url: photoUrl(p),
       category: resolvePhotoSlot(p) || 'photo',
+      phase: resolvePhotoPhase(p),
       createdAt: str(p.created_at),
       uploader: uploaderById.get(str(p.uploaded_by || p.technician_id)) ?? resolved.technicianName ?? 'Technician',
       table: str(p._source_table) === 'job_media' ? 'job_media' : 'job_photos',

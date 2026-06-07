@@ -22,6 +22,7 @@ import { normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
 import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-vehicle-sync';
 import { buildBookingOrderSnapshot, mergeSnapshotIntoBreakdown } from '@/lib/booking-order-snapshot';
+import { logSmsConsentChange, normalizeSmsConsentStatus, SMS_CONSENT_COPY, type SmsConsentSource } from '@/lib/sms-consent';
 
 type Body = {
   serviceSlug?: string;
@@ -47,6 +48,8 @@ type Body = {
   promoCode?: string;
   paymentChoice?: 'deposit' | 'full';
   notes?: string;
+  smsConsent?: boolean;
+  smsConsentSource?: SmsConsentSource;
 };
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
@@ -69,6 +72,14 @@ export async function POST(request: Request) {
     const LOCATION_TYPES = new Set(['house', 'apartment', 'business', 'other']);
     const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
     const paymentChoice = body.paymentChoice === 'full' ? 'full' : 'deposit';
+    const smsConsent = body.smsConsent === true;
+    const smsConsentSource: SmsConsentSource = body.smsConsentSource === 'online_booking' ? 'online_booking' : 'online_booking';
+    const smsConsentTimestamp = new Date().toISOString();
+    const smsConsentIp =
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      request.headers.get('x-real-ip') ||
+      null;
+    const smsConsentUserAgent = request.headers.get('user-agent');
     const addOns = Array.isArray(body.addOns)
       ? body.addOns
           .map((a) => String(a ?? '').trim())
@@ -262,6 +273,13 @@ export async function POST(request: Request) {
             power_access: powerAccess,
             parking_access: parkingAccess,
             gate_access_notes: gateAccessNotes || null,
+            sms_consent: smsConsent,
+            sms_consent_source: smsConsentSource,
+            sms_consent_timestamp: smsConsentTimestamp,
+            sms_consent_ip: smsConsentIp,
+            sms_consent_user_agent: smsConsentUserAgent,
+            sms_status: normalizeSmsConsentStatus(smsConsent),
+            sms_opt_out_timestamp: smsConsent ? null : smsConsentTimestamp,
           })
           .eq('id', customerId);
         if (upErr) {
@@ -287,6 +305,13 @@ export async function POST(request: Request) {
             power_access: powerAccess,
             parking_access: parkingAccess,
             gate_access_notes: gateAccessNotes || null,
+            sms_consent: smsConsent,
+            sms_consent_source: smsConsentSource,
+            sms_consent_timestamp: smsConsentTimestamp,
+            sms_consent_ip: smsConsentIp,
+            sms_consent_user_agent: smsConsentUserAgent,
+            sms_status: normalizeSmsConsentStatus(smsConsent),
+            sms_opt_out_timestamp: smsConsent ? null : smsConsentTimestamp,
           })
           .select('id')
           .single();
@@ -375,6 +400,14 @@ export async function POST(request: Request) {
       booking_pricing_breakdown: breakdownWithSnapshot,
       booking_add_ons: addOns,
       booking_source: 'online',
+      sms_consent: smsConsent,
+      sms_consent_source: smsConsentSource,
+      sms_consent_timestamp: smsConsentTimestamp,
+      sms_consent_ip: smsConsentIp,
+      sms_consent_user_agent: smsConsentUserAgent,
+      sms_consent_text: SMS_CONSENT_COPY,
+      sms_status: normalizeSmsConsentStatus(smsConsent),
+      sms_opt_out_timestamp: smsConsent ? null : smsConsentTimestamp,
     };
     if (customerId) insertPayload.customer_id = customerId;
     if (offerRowId) insertPayload.offer_id = offerRowId;
@@ -424,6 +457,16 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    await logSmsConsentChange(admin, {
+      customerId,
+      appointmentId: String(appointment.id),
+      source: smsConsentSource,
+      newConsent: smsConsent,
+      ip: smsConsentIp,
+      userAgent: smsConsentUserAgent,
+      note: 'Public booking form SMS consent. Consent is optional and not required to book.',
+    });
 
     if (promoCode && quote.promo.applied) {
       await incrementPromoUse(admin, promoCode);

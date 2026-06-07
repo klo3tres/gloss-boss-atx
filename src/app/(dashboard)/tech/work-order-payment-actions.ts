@@ -33,7 +33,7 @@ async function loadWorkOrderJob(gate: NonNullable<Awaited<ReturnType<typeof requ
   return { job: job as Record<string, unknown>, jobId, appointmentId, fallbackBookingId, table };
 }
 
-async function upsertWorkOrderReceipt(
+export async function upsertWorkOrderReceipt(
   admin: SupabaseClient,
   jobId: string,
   appointmentId: string,

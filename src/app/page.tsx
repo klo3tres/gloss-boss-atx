@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Gauge, ShieldCheck, Sparkles, X, Zap } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
-import { HomeGalleryStrip } from '@/components/marketing/home-gallery-strip';
+import { HomepageHeroCarousel } from '@/components/marketing/homepage-hero-carousel';
+import { FeaturedTransformationsSection } from '@/components/marketing/featured-transformations-section';
 import { MotionFade } from '@/components/marketing/motion-fade';
 import { OffersMarketingBand } from '@/components/marketing/offers-marketing-band';
 import { SectionErrorBoundary } from '@/components/site/section-error-boundary';
@@ -324,6 +325,10 @@ export default function HomePage() {
         </div>
       </section>
 
+      <SectionErrorBoundary label='Hero Carousel'>
+        <HomepageHeroCarousel />
+      </SectionErrorBoundary>
+
       <section id='services' className='mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8' aria-busy={!siteLoaded}>
         <MotionFade>
           <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>Premium Service Packages</h2>
@@ -364,7 +369,7 @@ export default function HomePage() {
             </Link>
           </MotionFade>
           <SectionErrorBoundary label='Gallery'>
-            <HomeGalleryStrip />
+            <FeaturedTransformationsSection />
           </SectionErrorBoundary>
         </div>
       </section>

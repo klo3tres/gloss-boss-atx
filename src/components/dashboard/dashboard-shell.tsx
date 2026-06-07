@@ -45,6 +45,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Finance',
     links: [
       { href: '/admin/revenue', label: 'Revenue' },
+      { href: '/admin/reports', label: 'Reports' },
       { href: '/admin/payments', label: 'Payments / receipts' },
       { href: '/admin/receipts', label: 'Receipts' },
       { href: '/admin/goals', label: 'Goals' },
@@ -65,6 +66,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/team', label: 'Team' },
       { href: '/admin/services', label: 'Services & pricing' },
       { href: '/admin/addons', label: 'Booking add-ons' },
+      { href: '/admin/memberships', label: 'Memberships & loyalty' },
     ],
   },
   {
@@ -73,6 +75,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/notifications', label: 'Notifications' },
       { href: '/admin/integrations', label: 'Integrations' },
       { href: '/admin/settings/stripe', label: 'Stripe' },
+      { href: '/admin/stripe-sync', label: 'Stripe sync' },
       { href: '/admin/system-status', label: 'System status' },
     ],
   },

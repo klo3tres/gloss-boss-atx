@@ -12,6 +12,7 @@ export type NormalizedGalleryImage = {
   published?: boolean;
   /** When true, show before non-featured in marketing carousels */
   featured?: boolean;
+  watermark?: boolean;
 };
 
 /** Marketing / public portfolio — includes before/after pair fields when stored on row or metadata. */
@@ -20,6 +21,9 @@ export type PublicGalleryItem = NormalizedGalleryImage & {
   afterUrl?: string | null;
   vehicleLabel?: string | null;
   serviceLabel?: string | null;
+  createdAt?: string | null;
+  jobId?: string | null;
+  vehicleClass?: string | null;
 };
 
 function galleryMetaField(row: Record<string, unknown>, key: string): string {
@@ -129,6 +133,14 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
     url;
   const vehicleLabel = galleryMetaField(row, 'vehicle_label') || galleryMetaField(row, 'vehicleLabel') || null;
   const serviceLabel = galleryMetaField(row, 'service_label') || galleryMetaField(row, 'serviceLabel') || null;
+  const jobId = galleryMetaField(row, 'job_id') || galleryMetaField(row, 'jobId') || null;
+  const vehicleClass = galleryMetaField(row, 'vehicle_class') || galleryMetaField(row, 'vehicleClass') || null;
+  const createdAt = typeof row.created_at === 'string' ? row.created_at : typeof row.createdAt === 'string' ? row.createdAt : null;
+
+  const watermark = Boolean(
+    row.watermark ??
+      (row.metadata && typeof row.metadata === 'object' && (row.metadata as Record<string, unknown>).watermark)
+  );
   const item: PublicGalleryItem = {
     id,
     url,
@@ -138,10 +150,14 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
     order_index: order_index ?? null,
     published: typeof published === 'boolean' ? published : true,
     featured,
+    watermark,
     beforeUrl: beforeUrl || null,
     afterUrl: afterUrl || url,
     vehicleLabel: vehicleLabel || null,
     serviceLabel: serviceLabel || null,
+    jobId: jobId || null,
+    vehicleClass: vehicleClass || null,
+    createdAt: createdAt || null,
   };
   item.caption = publicGalleryDisplayTitle(item);
   return item;
@@ -176,6 +192,10 @@ export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGal
         : null;
   const published = (row.published ?? row.active ?? true) as boolean | undefined;
   const featured = typeof row.featured === 'boolean' ? row.featured : false;
+  const watermark = Boolean(
+    row.watermark ??
+      (row.metadata && typeof row.metadata === 'object' && (row.metadata as Record<string, unknown>).watermark)
+  );
   return {
     id,
     url,
@@ -185,6 +205,7 @@ export function normalizeGalleryRow(row: Record<string, unknown>): NormalizedGal
     order_index: order_index ?? null,
     published: typeof published === 'boolean' ? published : true,
     featured,
+    watermark,
   };
 }
 
@@ -224,10 +245,18 @@ export type AdminGalleryRow = {
   published: boolean;
   featured: boolean;
   created_at: string;
+  watermark?: boolean;
+  vehicleLabel?: string | null;
+  serviceLabel?: string | null;
+  transformationPhase?: string | null;
 };
 
 export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGalleryRow | null {
   const n = normalizeGalleryRow(raw);
+  const vehicleLabel = galleryMetaField(raw, 'vehicle_label') || galleryMetaField(raw, 'vehicleLabel') || null;
+  const serviceLabel = galleryMetaField(raw, 'service_label') || galleryMetaField(raw, 'serviceLabel') || null;
+  const phase = galleryMetaField(raw, 'transformation_phase') || galleryMetaField(raw, 'transformationPhase') || null;
+
   if (n) {
     return {
       id: n.id,
@@ -239,6 +268,10 @@ export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGall
       published: Boolean(raw.published ?? raw.active ?? true),
       featured: Boolean(raw.featured),
       created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+      watermark: n.watermark,
+      vehicleLabel,
+      serviceLabel,
+      transformationPhase: phase,
     };
   }
   const id = str(raw.id);
@@ -256,6 +289,13 @@ export function mapRawToAdminGalleryRow(raw: Record<string, unknown>): AdminGall
     published: Boolean(raw.published ?? raw.active ?? true),
     featured: Boolean(raw.featured),
     created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
+    watermark: Boolean(
+      raw.watermark ??
+        (raw.metadata && typeof raw.metadata === 'object' && (raw.metadata as Record<string, unknown>).watermark)
+    ),
+    vehicleLabel,
+    serviceLabel,
+    transformationPhase: phase,
   };
 }
 

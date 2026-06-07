@@ -1,6 +1,7 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
+import { logSmsConsentChange, normalizeSmsConsentStatus } from '@/lib/sms-consent';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -25,6 +26,8 @@ export async function PATCH(request: Request) {
     city?: string;
     state?: string;
     postal_code?: string;
+    sms_consent?: boolean;
+    sms_status?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -46,6 +49,18 @@ export async function PATCH(request: Request) {
   if (typeof body.city === 'string') patch.city = body.city.trim() || null;
   if (typeof body.state === 'string') patch.state = body.state.trim() || null;
   if (typeof body.postal_code === 'string') patch.postal_code = body.postal_code.trim() || null;
+  let smsConsentChanged = false;
+  let previousSmsConsent: boolean | null = null;
+  if (typeof body.sms_consent === 'boolean') {
+    const { data: existing } = await admin.from('customers').select('sms_consent').eq('id', id).maybeSingle();
+    previousSmsConsent = (existing as { sms_consent?: boolean | null } | null)?.sms_consent ?? null;
+    smsConsentChanged = previousSmsConsent !== body.sms_consent;
+    patch.sms_consent = body.sms_consent;
+    patch.sms_consent_source = 'admin_update';
+    patch.sms_consent_timestamp = new Date().toISOString();
+    patch.sms_status = normalizeSmsConsentStatus(body.sms_consent);
+    patch.sms_opt_out_timestamp = body.sms_consent ? null : new Date().toISOString();
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ ok: false, error: 'No fields to update' }, { status: 400 });
@@ -54,6 +69,18 @@ export async function PATCH(request: Request) {
   const { error } = await admin.from('customers').update(patch).eq('id', id);
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  }
+  if (smsConsentChanged && typeof body.sms_consent === 'boolean') {
+    await logSmsConsentChange(admin, {
+      customerId: id,
+      changedBy: gate.userId,
+      source: 'admin_update',
+      previousConsent: previousSmsConsent,
+      newConsent: body.sms_consent,
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? request.headers.get('x-real-ip'),
+      userAgent: request.headers.get('user-agent'),
+      note: 'Admin updated SMS consent after explicit customer request.',
+    });
   }
   revalidatePath('/admin/customers');
   revalidatePath(`/admin/customers/${id}`);

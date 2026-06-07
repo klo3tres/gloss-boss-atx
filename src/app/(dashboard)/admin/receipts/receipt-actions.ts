@@ -159,3 +159,61 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   if (status === 'skipped') return actionErr(skippedReason ?? 'Receipt email skipped — no email sent.');
   return actionErr(errorMessage ?? 'Receipt email failed — customer did not receive it.');
 }
+
+export async function updateReceiptRevenueFlagsAction(formData: FormData): Promise<void> {
+  const gate = await requireReceiptSender();
+  if (!gate) return;
+  const receiptId = str(formData.get('receiptId')).trim();
+  const paymentId = str(formData.get('paymentId')).trim();
+  const action = str(formData.get('flagAction')).trim();
+  const now = new Date().toISOString();
+  const receiptPatch: Record<string, unknown> = {};
+  const paymentPatch: Record<string, unknown> = {};
+
+  if (action === 'mark_test') {
+    receiptPatch.is_test = true;
+    paymentPatch.is_test = true;
+  } else if (action === 'exclude') {
+    receiptPatch.exclude_from_revenue = true;
+    paymentPatch.exclude_from_revenue = true;
+  } else if (action === 'include') {
+    receiptPatch.exclude_from_revenue = false;
+    paymentPatch.exclude_from_revenue = false;
+    receiptPatch.is_test = false;
+    paymentPatch.is_test = false;
+  } else if (action === 'void') {
+    receiptPatch.voided_at = now;
+    receiptPatch.status = 'voided';
+    paymentPatch.voided_at = now;
+    paymentPatch.voided = true;
+    paymentPatch.status = 'voided';
+  } else if (action === 'delete_test' && receiptId) {
+    const { data } = await gate.admin.from('receipts').select('is_test').eq('id', receiptId).maybeSingle();
+    if ((data as { is_test?: boolean } | null)?.is_test === true) {
+      await gate.admin.from('receipts').delete().eq('id', receiptId);
+    }
+    revalidatePath('/admin/receipts');
+    return;
+  }
+
+  if (receiptId && Object.keys(receiptPatch).length) await gate.admin.from('receipts').update(receiptPatch).eq('id', receiptId);
+  if (paymentId && Object.keys(paymentPatch).length) await gate.admin.from('payments').update(paymentPatch).eq('id', paymentId);
+  revalidatePath('/admin/receipts');
+  if (receiptId) revalidatePath(`/admin/receipts/${receiptId}`);
+}
+
+export async function bulkReceiptRevenueFlagsAction(formData: FormData): Promise<void> {
+  const gate = await requireReceiptSender();
+  if (!gate) return;
+  const ids = formData.getAll('receiptIds').map((v) => str(v)).filter(Boolean);
+  const action = str(formData.get('bulkAction'));
+  if (ids.length === 0) return;
+  if (action === 'mark_test') {
+    await gate.admin.from('receipts').update({ is_test: true }).in('id', ids);
+  } else if (action === 'exclude') {
+    await gate.admin.from('receipts').update({ exclude_from_revenue: true }).in('id', ids);
+  } else if (action === 'delete_test') {
+    await gate.admin.from('receipts').delete().in('id', ids).eq('is_test', true);
+  }
+  revalidatePath('/admin/receipts');
+}

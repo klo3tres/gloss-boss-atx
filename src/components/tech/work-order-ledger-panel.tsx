@@ -14,6 +14,12 @@ import { PremiumBadge } from '@/components/ui/premium';
 import { recalculateWorkOrderPricingAction } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 import { useRouter } from 'next/navigation';
 import { useTransition, useState } from 'react';
+import {
+  recordManualStripePaymentAction,
+  syncStripePaymentsForWorkOrderAction,
+} from '@/app/(dashboard)/tech/work-order-stripe-sync-actions';
+import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
+import { voidExtrasAndRebuildActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
 
 export type LedgerDiscountRow = { id: string; label: string; amount: string; source: string };
 export type LedgerPaymentRow = {
@@ -401,38 +407,372 @@ export function WorkOrderLedgerPanel({
 
       {canAdvancedRepair ? (
         <WorkOrderCollapsible title='F. Advanced repair' defaultOpen={false}>
-          <p className='mb-3 text-xs text-zinc-500'>Legacy broken jobs only — sync Stripe, void duplicates, manual Stripe deposit.</p>
-          <RebuildLedgerButton appointmentId={appointmentId} fallbackBookingId={fallbackBookingId} source={source} />
-          <WorkOrderReceiptPanel
-            appointmentId={isFallback ? undefined : jobId}
-            fallbackBookingId={isFallback ? jobId : undefined}
-            receiptPdfHref={receiptPdfHref}
-            pricing={pricing}
-            breakdownLines={breakdownLines}
-            payments={payments.map((p) => ({
-              id: p.id,
-              amount: p.amount,
-              amountCents: p.amountCents ?? 0,
-              status: p.status,
-              method: p.label,
-              at: '',
-              voided: p.voided,
-            }))}
-            promoCode={promoCode}
-            canManagePayments
-            workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
-            repairOnly
-          />
-          <WorkOrderStripeDebugPanel
-            appointmentId={appointmentId}
-            fallbackBookingId={fallbackBookingId}
-            source={source}
-            stripeSessionId={stripeSessionId ?? ''}
-            stripePaymentIntent={stripePaymentIntent ?? ''}
-            paymentRows={recentPaymentsForRepair}
-          />
+          <p className='mb-4 text-xs text-zinc-500'>
+            Diagnostic and self-healing tools for repairing database and Stripe inconsistencies. Use with caution.
+          </p>
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+            <SyncStripeCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+              source={source}
+            />
+            <LinkStripeSessionCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+              source={source}
+              defaultSessionId={stripeSessionId}
+            />
+            <RebuildLedgerCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+              source={source}
+            />
+            <RebuildDraftReceiptCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+            />
+            <ResetPaymentsCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+            />
+            <div className='col-span-1 md:col-span-2 lg:col-span-3'>
+              <CorrectPaymentTruthPanel
+                appointmentId={appointmentId}
+                fallbackBookingId={fallbackBookingId}
+                workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
+                defaultFinalDollars={totals.finalTotal.replace(/[^0-9.]/g, '')}
+                defaultPaidDollars={totals.totalPaid.replace(/[^0-9.]/g, '')}
+              />
+            </div>
+          </div>
         </WorkOrderCollapsible>
       ) : null}
+    </div>
+  );
+}
+
+function SyncStripeCard({
+  appointmentId,
+  fallbackBookingId,
+  source,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  source: 'appointment' | 'fallback';
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  const handleSync = () => {
+    startTransition(async () => {
+      setMsg(null);
+      const fd = new FormData();
+      fd.set('source', source);
+      if (appointmentId) fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      
+      const res = await syncStripePaymentsForWorkOrderAction(fd);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Sync failed' });
+        return;
+      }
+      setMsg({
+        tone: 'ok',
+        text: `Synced ${res.attachedIds.length} payment(s). Matched ${res.matchedBefore} → ${res.matchedAfter}.`,
+      });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className='gb-premium-card gb-glass flex flex-col justify-between rounded-2xl border border-violet-500/20 bg-black/40 p-4 text-xs'>
+      <div>
+        <h4 className='font-black uppercase tracking-wider text-violet-200'>1. Sync Stripe Payments</h4>
+        <p className='mt-1 text-zinc-400 leading-relaxed'>
+          Pulls checkout sessions/intents directly from Stripe API to match and attach missing payments to this work order.
+        </p>
+      </div>
+      <div className='mt-4'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={handleSync}
+          className='w-full rounded-xl bg-violet-600/80 hover:bg-violet-600 px-4 py-2.5 font-bold uppercase tracking-wider text-white disabled:opacity-50 transition'
+        >
+          {pending ? 'Syncing Stripe…' : 'Sync Stripe Payments'}
+        </button>
+        {msg ? (
+          <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function LinkStripeSessionCard({
+  appointmentId,
+  fallbackBookingId,
+  source,
+  defaultSessionId,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  source: 'appointment' | 'fallback';
+  defaultSessionId?: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [amount, setAmount] = useState('');
+  const [refId, setRefId] = useState(defaultSessionId ?? '');
+  const [reason, setReason] = useState('');
+
+  const handleLink = () => {
+    if (!amount || !refId || !reason) {
+      setMsg({ tone: 'err', text: 'All fields are required.' });
+      return;
+    }
+    startTransition(async () => {
+      setMsg(null);
+      const fd = new FormData();
+      fd.set('source', source);
+      if (appointmentId) fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      fd.set('amountDollars', amount);
+      fd.set('reference', refId);
+      fd.set('reason', reason);
+
+      const res = await recordManualStripePaymentAction(fd);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Failed to link session' });
+        return;
+      }
+      setMsg({
+        tone: 'ok',
+        text: `Linked! Payments count: ${res.matchedBefore} → ${res.matchedAfter}.`,
+      });
+      setAmount('');
+      setReason('');
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className='gb-premium-card gb-glass flex flex-col justify-between rounded-2xl border border-violet-500/20 bg-black/40 p-4 text-xs'>
+      <div>
+        <h4 className='font-black uppercase tracking-wider text-violet-200'>2. Link Stripe Session Manually</h4>
+        <p className='mt-1 text-zinc-400 leading-relaxed'>
+          Manually associate a known Stripe Session ID or Payment Intent ID and record the payment amount.
+        </p>
+        <div className='mt-3 space-y-2'>
+          <input
+            type='number'
+            step='0.01'
+            placeholder='Amount ($)'
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className='gb-input w-full'
+          />
+          <input
+            placeholder='Session / Intent ID'
+            value={refId}
+            onChange={(e) => setRefId(e.target.value)}
+            className='gb-input w-full'
+          />
+          <input
+            placeholder='Reason (e.g. Stripe checkout fallback)'
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className='gb-input w-full'
+          />
+        </div>
+      </div>
+      <div className='mt-4'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={handleLink}
+          className='w-full rounded-xl bg-violet-600/80 hover:bg-violet-600 px-4 py-2.5 font-bold uppercase tracking-wider text-white disabled:opacity-50 transition'
+        >
+          {pending ? 'Linking…' : 'Link Stripe Session'}
+        </button>
+        {msg ? (
+          <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RebuildLedgerCard({
+  appointmentId,
+  fallbackBookingId,
+  source,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  source: 'appointment' | 'fallback';
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  const handleRebuild = () => {
+    startTransition(async () => {
+      setMsg(null);
+      const fd = new FormData();
+      fd.set('source', source);
+      if (appointmentId) fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      
+      const res = await recalculateWorkOrderPricingAction(fd);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Rebuild failed' });
+        return;
+      }
+      setMsg({ tone: 'ok', text: res.message ?? 'Ledger rebuilt successfully.' });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className='gb-premium-card gb-glass flex flex-col justify-between rounded-2xl border border-amber-500/20 bg-black/40 p-4 text-xs'>
+      <div>
+        <h4 className='font-black uppercase tracking-wider text-amber-200'>3. Rebuild Ledger from Catalog</h4>
+        <p className='mt-1 text-zinc-400 leading-relaxed'>
+          Recomputes base packages, custom items, and multi-vehicle discounts from the catalog parameters.
+        </p>
+      </div>
+      <div className='mt-4'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={handleRebuild}
+          className='w-full rounded-xl bg-amber-600/80 hover:bg-amber-600 px-4 py-2.5 font-bold uppercase tracking-wider text-white disabled:opacity-50 transition'
+        >
+          {pending ? 'Rebuilding Ledger…' : 'Rebuild Ledger'}
+        </button>
+        {msg ? (
+          <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RebuildDraftReceiptCard({
+  appointmentId,
+  fallbackBookingId,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  const handleRebuild = () => {
+    startTransition(async () => {
+      setMsg(null);
+      const fd = new FormData();
+      if (appointmentId) fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      
+      const res = await generateWorkOrderReceiptActionState(null, fd);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Generation failed' });
+        return;
+      }
+      setMsg({ tone: 'ok', text: res.message ?? 'Draft receipt regenerated.' });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className='gb-premium-card gb-glass flex flex-col justify-between rounded-2xl border border-amber-500/20 bg-black/40 p-4 text-xs'>
+      <div>
+        <h4 className='font-black uppercase tracking-wider text-amber-200'>4. Rebuild Draft Receipt</h4>
+        <p className='mt-1 text-zinc-400 leading-relaxed'>
+          Resets cached receipt configurations and forces the generation of a fresh draft receipt based on current ledger values.
+        </p>
+      </div>
+      <div className='mt-4'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={handleRebuild}
+          className='w-full rounded-xl bg-amber-600/80 hover:bg-amber-600 px-4 py-2.5 font-bold uppercase tracking-wider text-white disabled:opacity-50 transition'
+        >
+          {pending ? 'Rebuilding Receipt…' : 'Rebuild Draft Receipt'}
+        </button>
+        {msg ? (
+          <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ResetPaymentsCard({
+  appointmentId,
+  fallbackBookingId,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  const handleReset = () => {
+    startTransition(async () => {
+      setMsg(null);
+      const fd = new FormData();
+      if (appointmentId) fd.set('appointmentId', appointmentId);
+      if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+      
+      const res = await voidExtrasAndRebuildActionState(null, fd);
+      if (!res.ok) {
+        setMsg({ tone: 'err', text: res.error ?? 'Failed to reset payments' });
+        return;
+      }
+      setMsg({ tone: 'ok', text: res.message ?? 'Extra payments voided successfully.' });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className='gb-premium-card gb-glass flex flex-col justify-between rounded-2xl border border-red-500/20 bg-black/40 p-4 text-xs'>
+      <div>
+        <h4 className='font-black uppercase tracking-wider text-red-300'>5. Reset Payments (Void Extras)</h4>
+        <p className='mt-1 text-zinc-400 leading-relaxed'>
+          Detects duplicate payments that push the total paid over the final total, and voids the later ones.
+        </p>
+      </div>
+      <div className='mt-4'>
+        <button
+          type='button'
+          disabled={pending}
+          onClick={handleReset}
+          className='w-full rounded-xl bg-red-950/40 hover:bg-red-900 border border-red-500/40 px-4 py-2.5 font-bold uppercase tracking-wider text-red-200 disabled:opacity-50 transition'
+        >
+          {pending ? 'Voiding Extras…' : 'Reset Payments'}
+        </button>
+        {msg ? (
+          <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {msg.text}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

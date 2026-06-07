@@ -8,7 +8,7 @@ import {
   REQUIRED_BEFORE_SLOTS,
   type RequiredBeforeSlot,
 } from '@/lib/pre-inspection';
-import { savePreInspectionDamageAckAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
+import { savePreInspectionDamageAckAction, skipPhotoRequirementsAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSaveChecklistSnapshotAction, techStartJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { checklistForServiceSlug } from '@/lib/tech-service-checklist';
 import { PhotoLightboxModal, type LightboxPhoto } from '@/components/tech/photo-lightbox-modal';
@@ -95,6 +95,7 @@ export function WorkOrderPreInspection({
   const [chkPending, setChkPending] = useState(false);
 
   const [ackState, ackAction, ackPending] = useActionState(savePreInspectionDamageAckAction, null);
+  const [skipState, skipAction, skipPending] = useActionState(skipPhotoRequirementsAction, null);
 
   const checklist = useMemo(() => checklistForServiceSlug(serviceSlug), [serviceSlug]);
   const filledCount = REQUIRED_BEFORE_SLOTS.filter((s) => slotFilled[s]).length;
@@ -415,6 +416,20 @@ export function WorkOrderPreInspection({
 
       {showStart ? (
         <div className='rounded-2xl border border-gold/30 bg-black/50 p-4'>
+          {canAdminOverride && !preInspectionOverridden && (
+            <form action={skipAction} className='mb-3'>
+              <input type='hidden' name='appointmentId' value={appointmentId || ''} />
+              <input type='hidden' name='fallbackBookingId' value={fallbackBookingId || ''} />
+              <button
+                type='submit'
+                disabled={skipPending}
+                className='w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs font-black uppercase text-amber-200 hover:bg-amber-500/20 disabled:opacity-50'
+              >
+                {skipPending ? 'Skipping...' : 'Skip photo requirements'}
+              </button>
+              {skipState?.error ? <p className='mt-2 text-xs text-red-200'>{skipState.error}</p> : null}
+            </form>
+          )}
           {!canStartJob && missingStartItems.length > 0 ? (
             <div className='mb-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
               <p className='font-bold uppercase'>Cannot start yet</p>

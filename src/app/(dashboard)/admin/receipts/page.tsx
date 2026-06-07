@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
+import { bulkReceiptRevenueFlagsAction, updateReceiptRevenueFlagsAction } from './receipt-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,22 @@ function chicago(v: unknown) {
 
 function address(r: Row) {
   return [r.service_address, r.service_city, r.service_state, r.service_zip].map(str).filter(Boolean).join(', ');
+}
+
+function countsForRevenue(r: Row) {
+  const receipt = (r.receipt && typeof r.receipt === 'object' ? r.receipt : {}) as Row;
+  const status = str(r.status || receipt.status).toLowerCase();
+  return (
+    r.is_test !== true &&
+    receipt.is_test !== true &&
+    r.exclude_from_revenue !== true &&
+    receipt.exclude_from_revenue !== true &&
+    !r.voided_at &&
+    !receipt.voided_at &&
+    !r.refunded_at &&
+    !receipt.refunded_at &&
+    !['voided', 'refunded', 'canceled', 'cancelled'].includes(status)
+  );
 }
 
 export default async function AdminReceiptsPage() {
@@ -61,6 +78,7 @@ export default async function AdminReceiptsPage() {
       rows.push({ ...job, ...r, receipt: r, receipt_id: r.id, payment_id: r.payment_id });
     }
   }
+  const revenueRows = rows.filter(countsForRevenue);
 
   return (
     <DashboardShell title='Receipts' subtitle='Printable and emailable customer receipts reconstructed from payments, bookings, and CRM records.' role='admin'>
@@ -72,7 +90,8 @@ export default async function AdminReceiptsPage() {
         </div>
         <div className='rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-5'>
           <p className='text-xs font-black uppercase tracking-[0.22em] text-emerald-200'>Paid Total</p>
-          <p className='mt-2 text-3xl font-black text-white'>{money(rows.reduce((sum, r) => sum + (typeof r.amount_cents === 'number' ? r.amount_cents : 0), 0))}</p>
+          <p className='mt-2 text-3xl font-black text-white'>{money(revenueRows.reduce((sum, r) => sum + (typeof r.amount_cents === 'number' ? r.amount_cents : 0), 0))}</p>
+          <p className='mt-1 text-xs text-emerald-100/80'>Excludes test, excluded, voided, refunded, and canceled records.</p>
         </div>
         <Link href='/admin/payments' className='rounded-3xl border border-white/10 bg-black/40 p-5 transition hover:border-gold/40 hover:shadow-[0_0_28px_rgba(212,166,77,0.14)]'>
           <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Payments Ledger</p>
@@ -81,6 +100,19 @@ export default async function AdminReceiptsPage() {
       </section>
 
       <section className='rounded-3xl border border-gold/20 bg-zinc-950/90 p-5'>
+        <form id='receipt-bulk-form' action={bulkReceiptRevenueFlagsAction} className='mb-4 rounded-2xl border border-white/10 bg-black/35 p-4'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <select name='bulkAction' className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
+              <option value='exclude'>Bulk exclude from revenue</option>
+              <option value='mark_test'>Bulk mark as test</option>
+              <option value='delete_test'>Bulk delete test receipts only</option>
+            </select>
+            <button type='submit' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-black uppercase text-gold-soft'>
+              Apply to selected
+            </button>
+          </div>
+          <p className='mt-2 text-xs text-zinc-500'>Select receipt checkboxes below. Delete only removes rows already marked test.</p>
+        </form>
         <div className='grid gap-3'>
           {rows.length === 0 ? <p className='rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500'>No payments or receipts found.</p> : null}
           {rows.map((r) => {
@@ -90,6 +122,12 @@ export default async function AdminReceiptsPage() {
             const receiptNumber = str(receipt.receipt_number) || `RCPT-${id.slice(0, 8).toUpperCase()}`;
             return (
               <article key={`${id}-${str(r.created_at)}`} className='rounded-2xl border border-white/10 bg-black/35 p-4 transition hover:border-gold/30'>
+                {str(receipt.id) ? (
+                  <label className='mb-3 flex items-center gap-2 text-xs font-bold uppercase text-zinc-400'>
+                    <input form='receipt-bulk-form' type='checkbox' name='receiptIds' value={str(receipt.id)} className='h-4 w-4 accent-[var(--gold)]' />
+                    Select for bulk action
+                  </label>
+                ) : null}
                 <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
                   <div>
                     <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>{receiptNumber}</p>
@@ -107,6 +145,15 @@ export default async function AdminReceiptsPage() {
                   <Link href={`/admin/receipts/${encodeURIComponent(id)}`} className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Open Receipt</Link>
                   {str(r.payment_id) ? <Link href={`/admin/payments/${str(r.payment_id)}`} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Payment</Link> : null}
                   <ReceiptSendForm receiptId={str(receipt.id) || undefined} paymentId={str(r.payment_id) || undefined} />
+                  <form action={updateReceiptRevenueFlagsAction} className='flex flex-wrap gap-2'>
+                    <input type='hidden' name='receiptId' value={str(receipt.id)} />
+                    <input type='hidden' name='paymentId' value={str(r.payment_id)} />
+                    <button name='flagAction' value='mark_test' className='rounded-xl border border-amber-500/40 px-3 py-2 text-xs font-black uppercase text-amber-200'>Test</button>
+                    <button name='flagAction' value='exclude' className='rounded-xl border border-white/15 px-3 py-2 text-xs font-black uppercase text-zinc-300'>Exclude</button>
+                    <button name='flagAction' value='include' className='rounded-xl border border-emerald-500/40 px-3 py-2 text-xs font-black uppercase text-emerald-200'>Include</button>
+                    <button name='flagAction' value='void' className='rounded-xl border border-red-500/40 px-3 py-2 text-xs font-black uppercase text-red-200'>Void</button>
+                    {receipt.is_test === true ? <button name='flagAction' value='delete_test' className='rounded-xl border border-red-500/40 px-3 py-2 text-xs font-black uppercase text-red-200'>Delete test</button> : null}
+                  </form>
                 </div>
               </article>
             );

@@ -38,22 +38,35 @@ export function normalizeBeforeSlot(raw: unknown): string {
 
 export type PhotoRowLike = { category?: unknown; photo_category?: unknown; vehicle_index?: unknown };
 
-export function assessBeforePhotoSlots(photos: PhotoRowLike[]): {
+export function getRequiredSlotsForService(serviceSlugOrDesc: string | null): RequiredBeforeSlot[] {
+  const s = String(serviceSlugOrDesc ?? '').toLowerCase();
+  const reqs: RequiredBeforeSlot[] = ['front'];
+  if (s.includes('interior')) {
+    reqs.push('interior');
+  }
+  if (s.includes('exterior') || !s.includes('interior')) {
+    reqs.push('driver_side', 'passenger_side');
+  }
+  return reqs;
+}
+
+export function assessBeforePhotoSlots(photos: PhotoRowLike[], serviceSlugOrDesc?: string | null): {
   filled: Set<RequiredBeforeSlot>;
   missing: RequiredBeforeSlot[];
   count: number;
   total: number;
 } {
+  const requiredSlots = serviceSlugOrDesc ? getRequiredSlotsForService(serviceSlugOrDesc) : REQUIRED_BEFORE_SLOTS;
   const filled = new Set<RequiredBeforeSlot>();
   for (const p of photos) {
     if (resolvePhotoPhase(p as Record<string, unknown>) !== 'before') continue;
     const slot = normalizeBeforeSlot(resolvePhotoSlot(p as Record<string, unknown>));
-    if ((REQUIRED_BEFORE_SLOTS as readonly string[]).includes(slot)) {
+    if ((requiredSlots as readonly string[]).includes(slot)) {
       filled.add(slot as RequiredBeforeSlot);
     }
   }
-  const missing = REQUIRED_BEFORE_SLOTS.filter((s) => !filled.has(s));
-  return { filled, missing, count: filled.size, total: REQUIRED_BEFORE_SLOTS.length };
+  const missing = requiredSlots.filter((s) => !filled.has(s));
+  return { filled, missing, count: filled.size, total: requiredSlots.length };
 }
 
 export type DamageAckRecord = {
@@ -94,8 +107,9 @@ export function evaluatePreInspectionStartGate(input: {
   damageAck: DamageAckRecord | null;
   agreementSigned: boolean;
   preInspectionOverridden?: boolean;
+  serviceSlug?: string | null;
 }): PreInspectionGateResult {
-  const { missing, count, total } = assessBeforePhotoSlots(input.photos);
+  const { missing, count, total } = assessBeforePhotoSlots(input.photos, input.serviceSlug);
   const photoProgress = `${count}/${total}`;
   const missingPhotoLabels = missing.map((s) => BEFORE_SLOT_LABELS[s]);
   const photosComplete = missing.length === 0;
@@ -129,8 +143,9 @@ export function evaluateJobCompletionGate(input: {
   agreementSigned: boolean;
   completionOverridden?: boolean;
   adminPaymentOverride?: boolean;
+  serviceSlug?: string | null;
 }): CompletionGateResult {
-  const before = assessBeforePhotoSlots(input.photos);
+  const before = assessBeforePhotoSlots(input.photos, input.serviceSlug);
   const afterCount = input.photos.filter((p) => resolvePhotoPhase(p as Record<string, unknown>) === 'after').length;
   const missingItems: string[] = [];
   if (!input.agreementSigned) missingItems.push('Agreement not signed');

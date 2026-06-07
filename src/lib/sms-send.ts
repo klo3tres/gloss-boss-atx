@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendTwilioSms, twilioConfigured } from '@/lib/email-send';
+import { customerCanReceiveSms } from '@/lib/sms-consent';
 import { twilioSendMode } from '@/lib/twilio-config';
 import { normalizeToE164 } from '@/lib/us-phone';
 
@@ -62,6 +63,7 @@ export async function sendCustomerSms(params: {
   technician_id?: string | null;
   template_key?: string;
   extraPayload?: Record<string, unknown>;
+  requireConsent?: boolean;
 }): Promise<SmsSendResult> {
   const phone = normalizeToE164(String(params.to ?? ''));
   const e164 = phone.ok ? phone.e164 : String(params.to ?? '').trim();
@@ -100,6 +102,29 @@ export async function sendCustomerSms(params: {
       payload: basePayload,
     });
     return { ok: false, skipped: true, error: phone.error };
+  }
+
+  if (params.requireConsent !== false) {
+    const consent = await customerCanReceiveSms(params.db, {
+      appointmentId: params.appointment_id,
+      fallbackBookingId: params.fallback_booking_id,
+      customerId: params.customer_id,
+      phone: e164,
+    });
+    if (!consent.ok) {
+      await logSmsOutbox(params.db, {
+        kind: params.kind,
+        status: 'skipped',
+        appointment_id: params.appointment_id,
+        fallback_booking_id: params.fallback_booking_id,
+        customer_id: params.customer_id,
+        technician_id: params.technician_id,
+        template_key: params.template_key,
+        skipped_reason: consent.reason ?? 'SMS consent is not opted in.',
+        payload: { ...basePayload, sms_consent_required: true },
+      });
+      return { ok: false, skipped: true, error: consent.reason ?? 'SMS consent is not opted in.' };
+    }
   }
 
   const sent = await sendTwilioSms({ to: e164, body: params.body });
