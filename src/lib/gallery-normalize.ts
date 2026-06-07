@@ -24,6 +24,9 @@ export type PublicGalleryItem = NormalizedGalleryImage & {
   createdAt?: string | null;
   jobId?: string | null;
   vehicleClass?: string | null;
+  serviceCategory?: string | null;
+  destination?: string | null;
+  tags?: string[];
 };
 
 function galleryMetaField(row: Record<string, unknown>, key: string): string {
@@ -135,6 +138,15 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
   const serviceLabel = galleryMetaField(row, 'service_label') || galleryMetaField(row, 'serviceLabel') || null;
   const jobId = galleryMetaField(row, 'job_id') || galleryMetaField(row, 'jobId') || null;
   const vehicleClass = galleryMetaField(row, 'vehicle_class') || galleryMetaField(row, 'vehicleClass') || null;
+  const serviceCategory = galleryMetaField(row, 'service_category') || galleryMetaField(row, 'serviceCategory') || null;
+  const destination = galleryMetaField(row, 'destination') || null;
+  const rawTags =
+    Array.isArray(row.tags)
+      ? row.tags
+      : row.metadata && typeof row.metadata === 'object' && Array.isArray((row.metadata as Record<string, unknown>).tags)
+        ? ((row.metadata as Record<string, unknown>).tags as unknown[])
+        : [];
+  const tags = rawTags.map((tag) => str(tag)).filter(Boolean);
   const createdAt = typeof row.created_at === 'string' ? row.created_at : typeof row.createdAt === 'string' ? row.createdAt : null;
 
   const watermark = Boolean(
@@ -157,6 +169,9 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
     serviceLabel: serviceLabel || null,
     jobId: jobId || null,
     vehicleClass: vehicleClass || null,
+    serviceCategory: serviceCategory || null,
+    destination: destination || null,
+    tags,
     createdAt: createdAt || null,
   };
   item.caption = publicGalleryDisplayTitle(item);

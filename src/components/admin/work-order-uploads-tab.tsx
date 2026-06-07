@@ -21,15 +21,37 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
   const [postTitle, setPostTitle] = useState('');
   const [vehicleLabel, setVehicleLabel] = useState('');
   const [serviceLabel, setServiceLabel] = useState('');
+  const [vehicleType, setVehicleType] = useState('sedan');
+  const [serviceCategory, setServiceCategory] = useState('full detail');
+  const [destination, setDestination] = useState('gallery');
+  const [tags, setTags] = useState('');
   const [useWatermark, setUseWatermark] = useState(true);
   const [publishImmediately, setPublishImmediately] = useState(true);
   const [creatingPost, setCreatingPost] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [postSuccess, setPostSuccess] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('all');
 
   // Group photos by job (appointment_id or fallback_booking_id) and then by vehicle
-  const photos = (recentPhotos || []) as Photo[];
+  const photos = ((recentPhotos || []) as Photo[]).filter((p: any) => {
+    const q = query.trim().toLowerCase();
+    const service = String((p as any).service_type ?? '').toLowerCase();
+    if (serviceFilter !== 'all' && !service.includes(serviceFilter)) return false;
+    if (!q) return true;
+    return [
+      p.category,
+      p.vehicle_label,
+      (p as any).vehicle_description,
+      (p as any).vehicle_color,
+      (p as any).customer_name,
+      (p as any).customer_email,
+      (p as any).service_type,
+      p.uploader,
+      p.created_at,
+    ].filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
   
   const jobsMap: Record<string, {
     jobId: string;
@@ -81,6 +103,10 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
           afterUrl: selectedAfterPhoto,
           vehicleLabel,
           serviceLabel,
+          vehicleClass: vehicleType,
+          serviceCategory,
+          destination,
+          tags,
           caption: postTitle,
           watermark: useWatermark,
           published: publishImmediately,
@@ -110,6 +136,21 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
         <p className="mt-2 text-sm text-zinc-400">
           Pair up `before` and `after` photos uploaded by field technicians to publish featured transformation cards directly onto the marketing gallery.
         </p>
+        <div className='mt-4 grid gap-2 sm:grid-cols-[1fr_220px]'>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder='Search customer, email, vehicle, color, service, date, technician...'
+            className='rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-white'
+          />
+          <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className='rounded-xl border border-white/10 bg-black px-3 py-2 text-sm text-white'>
+            <option value='all'>All services</option>
+            <option value='exterior'>Exterior</option>
+            <option value='interior'>Interior</option>
+            <option value='full'>Full detail</option>
+            <option value='ceramic'>Ceramic coating</option>
+          </select>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -271,6 +312,32 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
                   placeholder="e.g. Ceramic Coating"
                 />
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
+                  Vehicle type
+                  <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-black p-3 text-white">
+                    {['sedan', 'SUV', 'truck', 'coupe', 'van', 'other'].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
+                  Service category
+                  <select value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-black p-3 text-white">
+                    {['exterior', 'interior', 'full detail', 'ceramic coating'].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
+                  Destination
+                  <select value={destination} onChange={(e) => setDestination(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-black p-3 text-white">
+                    {['homepage featured', 'gallery', 'exterior service page', 'interior service page', 'full detail service page', 'ceramic coating page'].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
+                Tags
+                <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder='black paint, RAM, interior, ceramic...' className="mt-1 w-full rounded-xl border border-white/10 bg-black p-3 text-white" />
+              </label>
 
               {/* Toggles */}
               <div className="flex flex-wrap gap-4">

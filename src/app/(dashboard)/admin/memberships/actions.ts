@@ -28,7 +28,7 @@ export async function saveMembershipPlanAction(formData: FormData) {
     slug: str(formData.get('slug')) || slugify(name),
     tier: str(formData.get('tier')) || name.toLowerCase(),
     price_cents: Math.round(Number(str(formData.get('price'))) * 100) || 0,
-    billing_interval: str(formData.get('billing_interval')) || 'month',
+    billing_interval: str(formData.get('billing_interval')) || 'monthly',
     benefits: str(formData.get('benefits')).split('\n').map((s) => s.trim()).filter(Boolean),
     included_services: str(formData.get('included_services')).split('\n').map((s) => s.trim()).filter(Boolean),
     discount_percent: Number(str(formData.get('discount_percent'))) || 0,

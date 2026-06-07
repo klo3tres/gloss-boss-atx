@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Car, FileText, Gift, MessageSquare, Receipt, Sparkles, Star, Award, DollarSign, Image } from 'lucide-react';
+import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
 
@@ -98,17 +98,6 @@ function vehiclesFrom(appt: CustomerAppt) {
 export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const loyaltyVisits = props.history.filter((a) => a.status === 'completed').length;
   
-  // Calculate customer spending history from completed orders
-  const spendingSummary = useMemo(() => {
-    const completed = props.history.filter(a => a.status === 'completed');
-    const totalCents = completed.reduce((sum, a) => sum + (a.base_price_cents ?? 0), 0);
-    const avgCents = completed.length > 0 ? Math.round(totalCents / completed.length) : 0;
-    return {
-      total: money(totalCents),
-      average: money(avgCents),
-    };
-  }, [props.history]);
-
   // Extract garage list of unique vehicles
   const uniqueVehicles = useMemo(() => {
     const seen = new Set<string>();
@@ -225,8 +214,8 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
       {/* Grid of Key summaries */}
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <IconTile icon={<Car className="h-5 w-5" />} label="Garage Count" value={`${uniqueVehicles.length} vehicles`} />
-        <IconTile icon={<DollarSign className="h-5 w-5" />} label="Total Investment" value={spendingSummary.total} />
-        <IconTile icon={<Receipt className="h-5 w-5" />} label="Average Ticket" value={spendingSummary.average} />
+        <IconTile icon={<Calendar className="h-5 w-5" />} label="Upcoming" value={`${appointmentCards.length} appointments`} />
+        <IconTile icon={<Award className="h-5 w-5" />} label="Loyalty Stamps" value={`${loyaltyVisits} earned`} />
         <IconTile icon={<MessageSquare className="h-5 w-5" />} label="Inbox Logs" value={`${props.agreementTotal} signed docs`} href="/dashboard/messages" />
       </section>
 

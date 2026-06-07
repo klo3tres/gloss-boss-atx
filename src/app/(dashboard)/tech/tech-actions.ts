@@ -809,7 +809,9 @@ export async function techStartJobAction(
 }
 
 const NOTIFY_LABELS: Record<string, string> = {
+  technician_on_the_way: 'Technician on the way',
   job_started: 'Job started',
+  halfway_complete: 'Halfway complete',
   last_touches: 'Last touches',
   payment_link: 'Pay now',
   review_request: 'Review request',
@@ -826,6 +828,8 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   const kind = String(formData.get('kind') ?? '').trim();
   const allowed = new Set([
     'job_started',
+    'technician_on_the_way',
+    'halfway_complete',
     'last_touches',
     'payment_link',
     'review_request',
@@ -857,7 +861,9 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
     guestPhone = row.guest_phone ? String(row.guest_phone) : null;
     customerId = row.customer_id ? String(row.customer_id) : null;
   }
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || ''}/dashboard`;
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com';
+  const dashboardUrl = `${appBaseUrl}/dashboard`;
+  const customerReviewUrl = appointmentId ? `${appBaseUrl}/review/${encodeURIComponent(appointmentId)}` : dashboardUrl;
   let paymentUrl: string | null = null;
   const notificationConfigured = Boolean(resendConfigured() || twilioConfigured());
   let outboxStatus = guestEmail || guestPhone ? (notificationConfigured ? 'queued' : 'skipped') : 'skipped';
@@ -890,7 +896,11 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
     }
   }
   const message =
-    kind === 'last_touches'
+    kind === 'technician_on_the_way'
+      ? `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`
+      : kind === 'halfway_complete'
+        ? `Gloss Boss ATX update: We are about halfway through ${vehicle}. Track updates here: ${dashboardUrl}`
+        : kind === 'last_touches'
       ? `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`
       : kind === 'payment_link'
         ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. ${paymentUrl ? `Pay here: ${paymentUrl}` : `Track updates here: ${dashboardUrl}`}`
@@ -904,7 +914,7 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
                 ? `Gloss Boss ATX reminder: Your appointment for ${vehicle} is coming up. Details: ${dashboardUrl}`
                 : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
                   ? `Gloss Boss ATX: Your appointment for ${vehicle} is confirmed. Details: ${dashboardUrl}`
-                  : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
+                  : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${customerReviewUrl}`;
   let smsResult: Awaited<ReturnType<typeof sendCustomerSms>> | null = null;
   let emailResult: Awaited<ReturnType<typeof sendResendHtml>> | null = null;
   if (outboxStatus !== 'skipped') {
@@ -920,19 +930,13 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
         fallback_booking_id: fallbackBookingId || null,
         customer_id: customerId,
         technician_id: gate.userId,
-        extraPayload: { payment_url: paymentUrl, dashboard_url: dashboardUrl },
+        extraPayload: { payment_url: paymentUrl, dashboard_url: dashboardUrl, review_url: customerReviewUrl },
       });
     }
     if (guestEmail && resendConfigured()) {
-      let reviewUrl = dashboardUrl;
+      let reviewUrl = customerReviewUrl;
       if (kind === 'review_request') {
-        const { data: ss } = await db.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle();
-        const raw = (ss as { value?: unknown } | null)?.value;
-        if (typeof raw === 'string' && raw.trim().startsWith('http')) reviewUrl = raw.trim();
-        else if (raw && typeof raw === 'object' && raw !== null && 'review_url' in raw) {
-          const u = (raw as { review_url?: unknown }).review_url;
-          if (typeof u === 'string' && u.trim().startsWith('http')) reviewUrl = u.trim();
-        }
+        reviewUrl = customerReviewUrl;
       }
       const emailHtml =
         kind === 'payment_link' && paymentUrl
@@ -960,7 +964,11 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
         subject:
           kind === 'payment_link'
             ? 'Gloss Boss ATX — Payment link'
-            : kind === 'last_touches'
+            : kind === 'technician_on_the_way'
+              ? 'Gloss Boss ATX — Technician on the way'
+              : kind === 'halfway_complete'
+                ? 'Gloss Boss ATX — Service update'
+                : kind === 'last_touches'
               ? 'Gloss Boss ATX — Last touches'
               : kind === 'job_started' || kind === 'work_started'
                 ? 'Gloss Boss ATX — Service started'

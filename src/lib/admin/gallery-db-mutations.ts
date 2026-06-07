@@ -198,6 +198,9 @@ export async function dbCreateBeforeAfterPost(
     published: boolean;
     jobId?: string;
     vehicleClass?: string;
+    serviceCategory?: string;
+    destination?: string;
+    tags?: string[];
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const maxQ = await supabase.from('gallery_images').select('*').limit(500);
@@ -208,12 +211,17 @@ export async function dbCreateBeforeAfterPost(
     transformation_phase: 'before_after',
     vehicle_label: params.vehicleLabel,
     service_label: params.serviceLabel,
+    service_category: params.serviceCategory || null,
     before_url: params.beforeUrl,
     after_url: params.afterUrl,
     watermark: params.watermark,
     job_id: params.jobId || null,
     vehicle_class: params.vehicleClass || null,
+    vehicle_type: params.vehicleClass || null,
+    destination: params.destination || 'gallery',
+    tags: params.tags || [],
   };
+  const featured = params.destination === 'homepage featured' || params.destination === 'homepage_featured';
 
   const now = new Date().toISOString();
   const payload = {
@@ -225,8 +233,12 @@ export async function dbCreateBeforeAfterPost(
     order_index: nextOrder,
     published: params.published,
     active: params.published,
-    featured: false,
+    featured,
     watermark: params.watermark,
+    vehicle_type: params.vehicleClass || null,
+    service_category: params.serviceCategory || null,
+    destination: params.destination || 'gallery',
+    tags: params.tags || [],
     metadata,
     created_at: now,
   };
@@ -242,7 +254,7 @@ export async function dbCreateBeforeAfterPost(
       order_index: nextOrder,
       published: params.published,
       active: params.published,
-      featured: false,
+      featured,
       metadata,
       created_at: now,
     };
@@ -253,6 +265,7 @@ export async function dbCreateBeforeAfterPost(
         caption: params.caption.trim() || null,
         sort_order: nextOrder,
         metadata,
+        featured,
       };
       const { error: error3 } = await supabase.from('gallery_images').insert(payloadMinimal);
       if (error3) return { ok: false, error: error3.message };

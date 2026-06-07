@@ -88,6 +88,15 @@ create table if not exists public.service_prices (
   unique (service_id, vehicle_class)
 );
 
+delete from public.service_prices sp
+using public.service_prices dup
+where sp.service_id = dup.service_id
+  and sp.vehicle_class = dup.vehicle_class
+  and sp.ctid < dup.ctid;
+
+create unique index if not exists service_prices_service_id_vehicle_class_key
+  on public.service_prices (service_id, vehicle_class);
+
 -- Agreement templates (active one used at booking)
 create table if not exists public.agreement_templates (
   id uuid primary key default gen_random_uuid(),
@@ -236,15 +245,27 @@ alter table public.activity_logs enable row level security;
 alter table public.notifications enable row level security;
 
 -- Helper: current user's role
-create or replace function public.current_role()
-returns public.app_role
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select role from public.profiles where id = auth.uid();
-$$;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'current_role'
+      and pg_get_function_identity_arguments(p.oid) = ''
+  ) then
+    create function public.current_role()
+    returns public.app_role
+    language sql
+    stable
+    security definer
+    set search_path = public
+    as $fn$
+      select role from public.profiles where id = auth.uid();
+    $fn$;
+  end if;
+end $$;
 
 create or replace function public.is_staff()
 returns boolean
@@ -439,6 +460,15 @@ select
 where not exists (select 1 from public.agreement_templates limit 1);
 
 -- Services seed
+delete from public.service_prices sp
+using public.service_prices dup
+where sp.service_id = dup.service_id
+  and sp.vehicle_class = dup.vehicle_class
+  and sp.ctid < dup.ctid;
+
+create unique index if not exists service_prices_service_id_vehicle_class_key
+  on public.service_prices (service_id, vehicle_class);
+
 insert into public.services (slug, title, subtitle, sort_order) values
   ('exterior-wash', 'Exterior Wash', 'Premium maintenance wash package', 1),
   ('interior-detail', 'Interior Detail', 'Deep interior reset package', 2),

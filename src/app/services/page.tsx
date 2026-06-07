@@ -44,6 +44,7 @@ export default function ServicesPage() {
   const [fleetEnabled, setFleetEnabled] = useState(false);
   const [fleetBlurb, setFleetBlurb] = useState("");
   const [fleetPricing, setFleetPricing] = useState<PublicSiteDataPayload["fleetPricing"] | null>(null);
+  const [activeTab, setActiveTab] = useState<'exterior' | 'interior' | 'full' | 'ceramic' | 'memberships'>('exterior');
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : emptyDeals;
@@ -104,6 +105,13 @@ export default function ServicesPage() {
   const showPromosBand =
     loaded &&
     ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || hasServiceOffers);
+  const visiblePackages = packages.filter((service) => {
+    const text = `${service.title} ${service.subtitle ?? ''}`.toLowerCase();
+    if (activeTab === 'memberships') return false;
+    if (activeTab === 'full') return text.includes('full') || text.includes('detail');
+    return text.includes(activeTab);
+  });
+  const serviceCards = visiblePackages.length > 0 ? visiblePackages : packages;
 
   return (
     <main className="gb-luxury-page min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
@@ -132,6 +140,37 @@ export default function ServicesPage() {
                 </article>
               ) : null}
               <OffersMarketingBand embed offers={offers} placement='services' />
+            </div>
+          </section>
+        ) : null}
+
+        <div className='mt-6 flex gap-2 overflow-x-auto pb-2'>
+          {[
+            ['exterior', 'Exterior'],
+            ['interior', 'Interior'],
+            ['full', 'Full Detail'],
+            ['ceramic', 'Ceramic Coating'],
+            ['memberships', 'Memberships'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type='button'
+              onClick={() => setActiveTab(key as typeof activeTab)}
+              className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-wider transition ${activeTab === key ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/35 text-zinc-300 hover:border-gold/40'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'memberships' ? (
+          <section className='mt-6 rounded-3xl border border-gold/30 bg-gradient-to-br from-gold/15 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)]'>
+            <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>Memberships</p>
+            <h2 className='mt-2 text-3xl font-black uppercase text-white'>Save with Gloss Boss Memberships</h2>
+            <p className='mt-3 max-w-2xl text-sm text-zinc-300'>Choose Bronze, Silver, Gold, or Elite plans when enabled. Members get configured discounts, included services, and loyalty stamps toward rewards.</p>
+            <div className='mt-5 flex flex-wrap gap-3'>
+              <Link href='/memberships' className='rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black'>View memberships</Link>
+              <Link href='/book' className='rounded-xl border border-white/15 px-5 py-3 text-xs font-black uppercase text-white'>Book one-time detail</Link>
             </div>
           </section>
         ) : null}
@@ -191,9 +230,9 @@ export default function ServicesPage() {
           </p>
         ) : null}
 
-        {loaded ? (
+        {loaded && activeTab !== 'memberships' ? (
         <div className="mt-6 space-y-6">
-          {packages.map((service) => (
+          {serviceCards.map((service) => (
                 <article
                   key={service.id}
                   className="gb-premium-card rounded-2xl border border-gold/15 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_35px_rgba(212,175,55,0.18)]"

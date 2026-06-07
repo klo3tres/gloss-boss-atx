@@ -8,6 +8,7 @@ alter table public.customers add column if not exists sms_consent_ip text;
 alter table public.customers add column if not exists sms_consent_user_agent text;
 alter table public.customers add column if not exists sms_opt_out_timestamp timestamptz;
 alter table public.customers add column if not exists sms_status text not null default 'opted_out';
+alter table public.customers add column if not exists membership_discount_percent integer not null default 0;
 
 alter table public.appointments add column if not exists sms_consent boolean not null default false;
 alter table public.appointments add column if not exists sms_consent_source text;
@@ -86,7 +87,15 @@ create table if not exists public.financial_ledger (
   metadata jsonb not null default '{}'::jsonb
 );
 
+alter table public.financial_ledger add column if not exists stripe_balance_transaction_id text;
+alter table public.financial_ledger add column if not exists stripe_issuing_transaction_id text;
+alter table public.financial_ledger add column if not exists type text;
+alter table public.financial_ledger add column if not exists occurred_at timestamptz not null default now();
+alter table public.financial_ledger add column if not exists exclude_from_reports boolean not null default false;
+alter table public.financial_ledger add column if not exists is_test boolean not null default false;
+
 create unique index if not exists idx_financial_ledger_balance_tx on public.financial_ledger (stripe_balance_transaction_id) where stripe_balance_transaction_id is not null;
+create unique index if not exists idx_financial_ledger_issuing_tx on public.financial_ledger (stripe_issuing_transaction_id) where stripe_issuing_transaction_id is not null;
 create index if not exists idx_financial_ledger_type_date on public.financial_ledger (type, occurred_at desc);
 create index if not exists idx_financial_ledger_reports on public.financial_ledger (exclude_from_reports, is_test, occurred_at desc);
 
@@ -136,10 +145,48 @@ create table if not exists public.customer_memberships (
   started_at timestamptz not null default now(),
   ends_at timestamptz,
   assigned_by uuid,
+  stripe_checkout_session_id text,
+  stripe_subscription_id text,
+  stripe_payment_intent_id text,
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.customer_memberships add column if not exists stripe_checkout_session_id text;
+alter table public.customer_memberships add column if not exists stripe_subscription_id text;
+alter table public.customer_memberships add column if not exists stripe_payment_intent_id text;
+
+create unique index if not exists idx_customer_memberships_checkout on public.customer_memberships (stripe_checkout_session_id) where stripe_checkout_session_id is not null;
+
+create table if not exists public.loyalty_stamps (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null,
+  appointment_id uuid,
+  membership_plan_id uuid,
+  stamp_count integer not null default 1,
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_loyalty_stamps_customer on public.loyalty_stamps (customer_id, created_at desc);
+
+create table if not exists public.customer_reviews (
+  id uuid primary key default gen_random_uuid(),
+  appointment_id uuid,
+  customer_id uuid,
+  customer_email text,
+  customer_name text,
+  service_label text,
+  rating integer not null default 5,
+  testimonial text not null,
+  published boolean not null default false,
+  approved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_customer_reviews_created on public.customer_reviews (created_at desc);
+create index if not exists idx_customer_reviews_published on public.customer_reviews (published, created_at desc);
 
 create table if not exists public.loyalty_rules (
   id uuid primary key default gen_random_uuid(),
@@ -171,6 +218,14 @@ alter table if exists public.gallery_items add column if not exists vehicle text
 alter table if exists public.gallery_items add column if not exists service_type text;
 alter table if exists public.gallery_items add column if not exists published boolean not null default true;
 alter table if exists public.gallery_items add column if not exists featured boolean not null default false;
+
+alter table if exists public.gallery_images add column if not exists appointment_id uuid;
+alter table if exists public.gallery_images add column if not exists before_photo_url text;
+alter table if exists public.gallery_images add column if not exists after_photo_url text;
+alter table if exists public.gallery_images add column if not exists vehicle_type text;
+alter table if exists public.gallery_images add column if not exists service_category text;
+alter table if exists public.gallery_images add column if not exists destination text;
+alter table if exists public.gallery_images add column if not exists tags text[] not null default '{}'::text[];
 
 alter table public.notification_outbox add column if not exists consent_checked boolean not null default false;
 alter table public.notification_outbox add column if not exists consent_result text;

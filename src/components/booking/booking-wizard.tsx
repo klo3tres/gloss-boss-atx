@@ -1134,6 +1134,16 @@ export function BookingWizard() {
           Updating prices…
         </div>
       ) : null}
+      <div className='rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/10 via-black/50 to-black p-4 text-sm text-zinc-200'>
+        <p className='font-black uppercase tracking-wider text-gold-soft'>Member pricing</p>
+        <p className='mt-1 text-xs leading-relaxed text-zinc-300'>
+          Sign in to use member pricing and earn loyalty stamps. Already a member? Sign in before booking. Guest booking still works without an account.
+        </p>
+        <div className='mt-3 flex flex-wrap gap-2'>
+          <a href='/login?next=/book' className='rounded-lg border border-gold/35 px-3 py-2 text-xs font-black uppercase text-gold-soft'>Sign in</a>
+          <a href='/memberships' className='rounded-lg border border-white/15 px-3 py-2 text-xs font-black uppercase text-zinc-200'>View memberships</a>
+        </div>
+      </div>
       {claimedOfferSnap ? (
         <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
           Offer applied:{' '}

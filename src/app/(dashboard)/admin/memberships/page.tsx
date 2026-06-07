@@ -33,6 +33,10 @@ export default async function MembershipsAdminPage() {
 
   return (
     <DashboardShell title='Memberships & loyalty' subtitle='Manage plans, benefits, tier rules, rewards, and customer membership status.' role='admin'>
+      <section className='rounded-3xl border border-gold/20 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6'>
+        <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>Plan Manager</p>
+        <p className='mt-2 max-w-2xl text-sm text-zinc-300'>Edit public membership offers. Plans marked Homepage or Services appear on public sales surfaces.</p>
+      </section>
       <section className='grid gap-4 lg:grid-cols-3'>
         {plans.map((p) => (
           <form key={String(p.id)} action={saveMembershipPlanAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -41,10 +45,12 @@ export default async function MembershipsAdminPage() {
             <div className='mt-3 grid gap-2 sm:grid-cols-2'>
               <input name='tier' defaultValue={String(p.tier ?? '')} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
               <input name='price' type='number' step='0.01' defaultValue={((Number(p.price_cents ?? 0)) / 100).toFixed(2)} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-              <select name='billing_interval' defaultValue={String(p.billing_interval ?? 'month')} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
-                <option value='month'>Monthly</option>
-                <option value='year'>Yearly</option>
-                <option value='one_time'>One time</option>
+              <select name='billing_interval' defaultValue={String(p.billing_interval ?? 'monthly')} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
+                <option value='weekly'>Weekly</option>
+                <option value='bi-weekly'>Bi-weekly</option>
+                <option value='monthly'>Monthly</option>
+                <option value='yearly'>Yearly</option>
+                <option value='one-time'>One-time</option>
               </select>
               <input name='discount_percent' type='number' defaultValue={Number(p.discount_percent ?? 0)} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
             </div>
@@ -76,7 +82,8 @@ export default async function MembershipsAdminPage() {
 
       <section className='mt-6 grid gap-4 lg:grid-cols-2'>
         <form action={saveLoyaltyRuleAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Loyalty reward rule</p>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Loyalty Rules</p>
+          <p className='mt-1 text-xs text-zinc-500'>Configure the punch-card reward shown on customer dashboards.</p>
           <input type='hidden' name='id' value={String(rules[0]?.id ?? '')} />
           <input name='name' defaultValue={String(rules[0]?.name ?? 'Default punch card')} className='mt-3 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
           <input name='services_required' type='number' defaultValue={Number(rules[0]?.services_required ?? 5)} className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
@@ -86,7 +93,8 @@ export default async function MembershipsAdminPage() {
         </form>
 
         <form action={assignCustomerMembershipAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Assign customer membership</p>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Assign Customer Membership</p>
+          <p className='mt-1 text-xs text-zinc-500'>Search support is coming next; start typing in the browser select to find a customer by name/email.</p>
           <select name='customer_id' className='mt-3 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
           </select>
@@ -99,7 +107,7 @@ export default async function MembershipsAdminPage() {
       </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Active customer memberships</p>
+        <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Active Customer Memberships</p>
         <div className='mt-3 grid gap-2'>
           {((membershipsRes.data ?? []) as any[]).map((m) => (
             <div key={m.id} className='rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300'>
@@ -107,6 +115,11 @@ export default async function MembershipsAdminPage() {
             </div>
           ))}
         </div>
+      </section>
+      <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Public Preview</p>
+        <p className='mt-2 text-sm text-zinc-300'>Review the live sales page customers see.</p>
+        <a href='/memberships' target='_blank' rel='noreferrer' className='mt-3 inline-block rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Open public memberships</a>
       </section>
     </DashboardShell>
   );

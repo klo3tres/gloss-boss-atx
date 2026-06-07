@@ -35,7 +35,59 @@ export async function POST(request: Request) {
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      await processCheckoutSessionCompleted({ admin, session });
+      if (session.metadata?.kind === 'membership') {
+        if (admin) {
+          const customerId = session.metadata.customer_id || null;
+          const planId = session.metadata.membership_plan_id || null;
+          await admin.from('customer_memberships').upsert(
+            {
+              customer_id: customerId,
+              membership_plan_id: planId,
+              status: 'active',
+              stripe_checkout_session_id: session.id,
+              stripe_subscription_id: typeof session.subscription === 'string' ? session.subscription : session.subscription?.id ?? null,
+              stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
+              started_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'stripe_checkout_session_id' },
+          );
+          const [{ data: plan }, { data: customer }] = await Promise.all([
+            planId ? admin.from('membership_plans').select('name, discount_percent').eq('id', planId).maybeSingle() : Promise.resolve({ data: null }),
+            customerId ? admin.from('customers').select('email, phone, full_name, sms_consent, sms_status').eq('id', customerId).maybeSingle() : Promise.resolve({ data: null }),
+          ]);
+          if (customerId && plan) {
+            await admin.from('customers').update({ membership_discount_percent: (plan as { discount_percent?: number }).discount_percent ?? 0 }).eq('id', customerId);
+          }
+          try {
+            const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+            const email = String((customer as { email?: string } | null)?.email ?? session.customer_details?.email ?? session.customer_email ?? '').trim();
+            if (email && resendConfigured()) {
+              await sendResendHtml({
+                to: email,
+                subject: `Gloss Boss ATX membership activated`,
+                html: `<p>Your ${String((plan as { name?: string } | null)?.name ?? 'Gloss Boss ATX')} membership is active.</p><p>Sign in to book with member pricing and earn loyalty stamps.</p>`,
+              });
+            }
+            const { sendCustomerSms } = await import('@/lib/sms-send');
+            const phone = String((customer as { phone?: string } | null)?.phone ?? '');
+            if (phone) {
+              await sendCustomerSms({
+                db: admin,
+                kind: 'membership_confirmation',
+                template_key: 'membership_confirmation',
+                to: phone,
+                customer_id: customerId,
+                body: `Gloss Boss ATX: Your ${String((plan as { name?: string } | null)?.name ?? '')} membership is active. Sign in to book with member pricing.`,
+              });
+            }
+          } catch (notifyErr) {
+            console.warn('[stripe/webhook] membership notify skipped', notifyErr);
+          }
+        }
+      } else {
+        await processCheckoutSessionCompleted({ admin, session });
+      }
       console.info('[stripe/webhook] checkout.session.completed processed', session.id, session.metadata?.appointment_id ?? 'gift');
     } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;

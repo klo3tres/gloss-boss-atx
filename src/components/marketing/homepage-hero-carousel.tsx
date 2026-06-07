@@ -24,11 +24,10 @@ export function HomepageHeroCarousel() {
         if (cancelled || !data?.images) return;
         // Filter for transformations that have both before and after images
         const transformations = data.images.filter(
-          (img) => img.beforeUrl && img.afterUrl && img.beforeUrl !== img.afterUrl
+          (img) => img.featured && img.beforeUrl && img.afterUrl && img.beforeUrl !== img.afterUrl
         );
-        // Show featured first, then others
+        // Homepage carousel only uses transformations explicitly marked featured.
         const sorted = [...transformations].sort((a, b) => {
-          if (a.featured !== b.featured) return a.featured ? -1 : 1;
           return (a.sort_order ?? 0) - (b.sort_order ?? 0);
         });
         setItems(sorted);

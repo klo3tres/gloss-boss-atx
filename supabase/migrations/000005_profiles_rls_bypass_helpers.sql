@@ -4,8 +4,6 @@
 -- raise "infinite recursion detected in policy for relation profiles" (PostgREST surfaces
 -- this as a generic read error → app shows PROFILE_FETCH_ERROR on login).
 --
--- SECURITY DEFINER helpers must disable row security for their internal reads.
-
-alter function public.current_role() set (row_security = off);
-alter function public.is_staff() set (row_security = off);
-alter function public.is_admin_level() set (row_security = off);
+-- `ALTER FUNCTION ... SET (row_security = off)` is not valid PostgreSQL syntax.
+-- The helpers are created as SECURITY DEFINER with a pinned search_path in 000001;
+-- 000006 removes the recursive profiles policy that caused this issue.

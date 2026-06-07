@@ -30,6 +30,9 @@ type Body = {
   transformationPhase?: string;
   jobId?: string;
   vehicleClass?: string;
+  serviceCategory?: string;
+  destination?: string;
+  tags?: string | string[];
 };
 
 export async function POST(request: Request) {
@@ -94,6 +97,14 @@ export async function POST(request: Request) {
       const published = Boolean(body.published ?? true);
       const jobId = body.jobId ? String(body.jobId).trim() : undefined;
       let vehicleClass = body.vehicleClass ? String(body.vehicleClass).trim() : undefined;
+      const serviceCategory = body.serviceCategory ? String(body.serviceCategory).trim() : undefined;
+      const destination = body.destination ? String(body.destination).trim() : undefined;
+      const tags = Array.isArray(body.tags)
+        ? body.tags.map((tag) => String(tag).trim()).filter(Boolean)
+        : String(body.tags ?? '')
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter(Boolean);
 
       if (!beforeUrl || !afterUrl || !vehicleLabel || !serviceLabel || !caption) {
         return NextResponse.json({ ok: false, error: 'Missing required fields for post' }, { status: 400 });
@@ -133,6 +144,9 @@ export async function POST(request: Request) {
         published,
         jobId,
         vehicleClass,
+        serviceCategory,
+        destination,
+        tags,
       });
       break;
     }

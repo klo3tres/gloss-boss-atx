@@ -22,9 +22,9 @@ export function FeaturedTransformationsSection() {
         if (cancelled || !data?.images) return;
         // Filter for transformations that have both before and after images
         const transformations = data.images.filter(
-          (img) => img.beforeUrl && img.afterUrl && img.beforeUrl !== img.afterUrl
+          (img) => img.featured && img.beforeUrl && img.afterUrl && img.beforeUrl !== img.afterUrl
         );
-        // Show the latest 3 transformations
+        // Homepage only shows real work that admin marked featured.
         setItems(transformations.slice(0, 3));
         setLoading(false);
       })

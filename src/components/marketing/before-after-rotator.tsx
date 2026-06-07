@@ -11,6 +11,7 @@ export function BeforeAfterRotator() {
   const [slides, setSlides] = useState<SiteDataFeaturedSlide[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightbox, setLightbox] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +29,7 @@ export function BeforeAfterRotator() {
     ])
       .then(([gal, site]) => {
         if (cancelled) return;
-        const featured = (gal?.images ?? []).filter((i) => i.featured !== false && (i.url || i.image_url));
+        const featured = (gal?.images ?? []).filter((i) => i.featured === true && (i.url || i.image_url));
         if (featured.length > 0) {
           setSlides(
             featured.map((img, i) => ({
@@ -58,10 +59,11 @@ export function BeforeAfterRotator() {
   useEffect(() => {
     const n = Math.max(slides.length, 1);
     const interval = window.setInterval(() => {
+      if (paused || lightbox) return;
       setActiveIndex((value) => (value + 1) % n);
-    }, 2600);
+    }, 5200);
     return () => window.clearInterval(interval);
-  }, [slides.length]);
+  }, [lightbox, paused, slides.length]);
 
   useEffect(() => {
     if (!lightbox) return;
@@ -93,7 +95,13 @@ export function BeforeAfterRotator() {
   }
 
   return (
-    <article className="rounded-2xl border border-gold/20 bg-black/60 p-5 backdrop-blur">
+    <article
+      className="rounded-2xl border border-gold/20 bg-black/60 p-5 backdrop-blur"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Before / After Preview</p>
       <p className="mt-2 text-[11px] text-zinc-500">Curated from Admin → Homepage featured transformations.</p>
       <button
@@ -123,7 +131,10 @@ export function BeforeAfterRotator() {
           <button
             key={car.id}
             type="button"
-            onClick={() => setActiveIndex(idx)}
+            onClick={() => {
+              setPaused(true);
+              setActiveIndex(idx);
+            }}
             className={`relative h-12 w-16 shrink-0 overflow-hidden rounded-md border-2 transition ${
               idx === safeIndex ? "border-gold shadow-[0_0_12px_rgba(212,166,77,0.35)]" : "border-white/10 opacity-70 hover:opacity-100"
             }`}

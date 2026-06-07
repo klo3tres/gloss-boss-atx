@@ -171,12 +171,39 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
   let recentPhotos: any[] = [];
   try {
-    const { data: pRes } = await supabase
-      .from('job_photos')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    recentPhotos = pRes || [];
+    const [photosRes, mediaRes] = await Promise.all([
+      supabase.from('job_photos').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('job_media').select('*').order('created_at', { ascending: false }).limit(200),
+    ]);
+    const rawPhotos = [...(photosRes.data ?? []), ...(mediaRes.data ?? [])] as Record<string, unknown>[];
+    const appointmentIds = [...new Set(rawPhotos.map((p) => String(p.appointment_id ?? '')).filter(Boolean))];
+    const techIds = [...new Set(rawPhotos.map((p) => String(p.technician_id ?? p.uploaded_by ?? '')).filter(Boolean))];
+    const [apptMeta, techMeta] = await Promise.all([
+      appointmentIds.length ? supabase.from('appointments').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', appointmentIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      techIds.length ? supabase.from('profiles').select('id, full_name, email').in('id', techIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ]);
+    const apptById = new Map(((apptMeta.data ?? []) as Record<string, unknown>[]).map((a) => [String(a.id), a]));
+    const techById = new Map(((techMeta.data ?? []) as Record<string, unknown>[]).map((t) => [String(t.id), t]));
+    recentPhotos = rawPhotos
+      .map((p) => {
+        const appt = apptById.get(String(p.appointment_id ?? '')) ?? {};
+        const tech = techById.get(String(p.technician_id ?? p.uploaded_by ?? '')) ?? {};
+        const url = String(p.url ?? p.public_url ?? p.media_url ?? p.file_url ?? '').trim();
+        return {
+          ...p,
+          id: String(p.id ?? url),
+          url,
+          category: String(p.photo_category ?? p.category ?? 'photo'),
+          created_at: String(p.created_at ?? ''),
+          uploader: String(tech.full_name ?? tech.email ?? p.uploader ?? ''),
+          customer_name: String(appt.guest_name ?? ''),
+          customer_email: String(appt.guest_email ?? ''),
+          vehicle_label: String(p.vehicle_label ?? p.vehicle_description ?? appt.vehicle_description ?? ''),
+          service_type: String(p.service_type ?? appt.service_slug ?? ''),
+          booking_vehicles: appt.booking_vehicles,
+        };
+      })
+      .filter((p) => p.url);
   } catch (err) {
     console.error('Failed to fetch recent job photos', err);
   }

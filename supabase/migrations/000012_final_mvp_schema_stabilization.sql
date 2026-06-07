@@ -11,7 +11,14 @@ update public.profiles p
 set email = u.email
 from auth.users u
 where u.id = p.id
-  and (p.email is null or btrim(coalesce(p.email, '')) = '');
+  and (p.email is null or btrim(coalesce(p.email, '')) = '')
+  and u.email is not null
+  and not exists (
+    select 1
+    from public.profiles existing
+    where lower(existing.email) = lower(u.email)
+      and existing.id <> p.id
+  );
 
 update public.profiles
 set updated_at = coalesce(updated_at, created_at, now())

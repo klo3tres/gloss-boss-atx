@@ -4,6 +4,16 @@ import { useState, useRef } from 'react';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
 
+const UPDATE_TEMPLATES = [
+  { value: 'technician_on_the_way', label: 'Technician on the way' },
+  { value: 'job_started', label: 'Service started' },
+  { value: 'halfway_complete', label: 'Halfway complete' },
+  { value: 'last_touches', label: 'Final touches' },
+  { value: 'job_completed', label: 'Service completed' },
+  { value: 'payment_link', label: 'Payment reminder' },
+  { value: 'review_request', label: 'Review request' },
+];
+
 export function NotificationSendForm({
   kind,
   appointmentId,
@@ -26,6 +36,7 @@ export function NotificationSendForm({
   guestName?: string;
 }) {
   const [showModal, setShowModal] = useState(false);
+  const [selectedKind, setSelectedKind] = useState(kind);
   const hiddenSubmitRef = useRef<HTMLButtonElement>(null);
 
   const vehicle = vehicleLabel || 'your vehicle';
@@ -34,7 +45,13 @@ export function NotificationSendForm({
   let previewText = '';
   const dashboardUrl = typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : '/dashboard';
   
-  switch (kind) {
+  switch (selectedKind) {
+    case 'technician_on_the_way':
+      previewText = `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`;
+      break;
+    case 'halfway_complete':
+      previewText = `Gloss Boss ATX update: We are about halfway through ${vehicle}. Track updates here: ${dashboardUrl}`;
+      break;
     case 'last_touches':
       previewText = `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`;
       break;
@@ -63,7 +80,7 @@ export function NotificationSendForm({
   return (
     <>
       <ToastActionForm action={techSendActiveJobNotificationAction} className={className}>
-        <input type='hidden' name='kind' value={kind} />
+        <input type='hidden' name='kind' value={selectedKind} />
         {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
         {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
         
@@ -85,6 +102,21 @@ export function NotificationSendForm({
               <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1">Message Outbox Preview</p>
               <h3 className="text-lg font-bold text-white">Confirm Customer Message</h3>
             </div>
+
+            <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
+              Update template
+              <select
+                value={selectedKind}
+                onChange={(e) => setSelectedKind(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white"
+              >
+                {UPDATE_TEMPLATES.map((template) => (
+                  <option key={template.value} value={template.value}>
+                    {template.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             
             <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
               {previewText}

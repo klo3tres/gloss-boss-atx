@@ -18,7 +18,5 @@ CREATE POLICY "profiles_update_own_row" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
 -- Other tables still use public.is_staff() / current_role(), which read `profiles`.
--- Ensure those SECURITY DEFINER helpers do not re-enter RLS on `profiles`.
-ALTER FUNCTION public.current_role() SET (row_security = off);
-ALTER FUNCTION public.is_staff() SET (row_security = off);
-ALTER FUNCTION public.is_admin_level() SET (row_security = off);
+-- The helpers are SECURITY DEFINER with a pinned search_path; this migration removes
+-- recursive profiles policies without using invalid function-level row_security syntax.

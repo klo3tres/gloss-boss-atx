@@ -17,6 +17,9 @@ import { notFound } from 'next/navigation';
 import { RevenueChartsClient } from '@/components/admin/revenue-charts';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { fetchFinancialSummary } from '@/lib/financial-ledger';
+import Stripe from 'stripe';
+import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
+import { getStripeSecrets } from '@/lib/stripe/stripeService';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,6 +90,20 @@ export default async function AdminRevenuePage({
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
   const financial = await fetchFinancialSummary(admin, startOfMonthIso(), now, { includeTest });
+  let stripeBalances: { available: number | null; pending: number | null; treasury: number | null } = { available: null, pending: null, treasury: null };
+  const stripeSecrets = await getStripeSecrets(admin);
+  if (stripeSecrets.secretKey) {
+    try {
+      const snap = await getStripeFinanceSnapshot(new Stripe(stripeSecrets.secretKey));
+      stripeBalances = {
+        available: snap.paymentAvailableCents,
+        pending: snap.paymentPendingCents,
+        treasury: snap.treasuryAvailableCents,
+      };
+    } catch {
+      stripeBalances = { available: null, pending: null, treasury: null };
+    }
+  }
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
@@ -248,6 +265,9 @@ export default async function AdminRevenuePage({
           <StatBlock label='Expenses' value={money(financial.expensesCents)} />
           <StatBlock label='Net profit' value={money((financial.grossRevenueCents || month.grossCents) - financial.refundsCents - financial.stripeFeesCents - financial.expensesCents)} hint='Gross - refunds - fees - expenses' />
           <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} />
+          <StatBlock label='Available Stripe balance' value={stripeBalances.available == null ? 'Unavailable' : money(stripeBalances.available)} />
+          <StatBlock label='Pending Stripe balance' value={stripeBalances.pending == null ? 'Unavailable' : money(stripeBalances.pending)} />
+          <StatBlock label='Treasury balance' value={stripeBalances.treasury == null ? 'Unavailable' : money(stripeBalances.treasury)} />
           <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' />
           <StatBlock label='Paid invoices/deposits' value={money(month.grossCents)} href='/admin/payments' />
         </div>

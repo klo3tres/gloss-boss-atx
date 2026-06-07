@@ -6,7 +6,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 export const dynamic = 'force-dynamic';
 
 const SELECT =
-  'id, guest_name, guest_phone, guest_email, vehicle_description, service_slug, scheduled_start, base_price_cents, assigned_technician_id, status, service_address, notes, job_started_at, job_completed_at';
+  'id, guest_name, guest_phone, guest_email, vehicle_description, service_slug, scheduled_start, base_price_cents, assigned_technician_id, status, service_address, notes, job_started_at, job_completed_at, archived, archived_at, deleted_at, is_test, payment_status';
 
 function guestFromPayload(payload: unknown): { name: string | null; email: string | null; phone: string | null } {
   if (!payload || typeof payload !== 'object') return { name: null, email: null, phone: null };
@@ -39,6 +39,10 @@ export default async function AdminDispatchPage() {
       .from('appointments')
       .select(SELECT)
       .neq('status', 'awaiting_payment')
+      .neq('status', 'test_comped')
+      .eq('archived', false)
+      .is('deleted_at', null)
+      .eq('is_test', false)
       .order('scheduled_start', { ascending: true })
       .limit(250),
     admin.from('profiles').select('id, full_name, email, role, active').eq('role', 'technician').order('full_name', { ascending: true }),
@@ -50,7 +54,14 @@ export default async function AdminDispatchPage() {
       .limit(80),
   ]);
 
-  const jobs = (jobsRes.data ?? []) as DispatchJobRow[];
+  const seen = new Set<string>();
+  const jobs = ((jobsRes.data ?? []) as (DispatchJobRow & Record<string, unknown>)[])
+    .filter((j) => {
+      if (!j.id || seen.has(j.id)) return false;
+      seen.add(j.id);
+      const hay = [j.guest_email, j.guest_name, j.guest_phone, j.notes].filter(Boolean).join(' ').toLowerCase();
+      return !/(^|[\s._-])(test|qa|demo|fake)([\s._-]|$)/i.test(hay);
+    }) as DispatchJobRow[];
   const jobIds = jobs.map((j) => j.id);
   const jobNotes: Record<string, string> = {};
   if (jobIds.length) {

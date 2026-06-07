@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import Stripe from 'stripe';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
-import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
+import { syncRecentStripeFinance } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -15,10 +15,7 @@ export async function resyncStripeTransactionsAction() {
   const secrets = await getStripeSecrets(admin);
   if (!secrets.secretKey) return;
   const stripe = new Stripe(secrets.secretKey);
-  const txs = await stripe.balanceTransactions.list({ limit: 100 });
-  for (const tx of txs.data) {
-    await upsertLedgerFromBalanceTransaction(admin, tx);
-  }
+  await syncRecentStripeFinance(stripe, admin);
   await admin.from('financial_ledger').insert({
     source: 'stripe',
     type: 'adjustment',
@@ -32,4 +29,45 @@ export async function resyncStripeTransactionsAction() {
   });
   revalidatePath('/admin/stripe-sync');
   revalidatePath('/admin/revenue');
+}
+
+export async function addManualExpenseAction(formData: FormData) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !isStaffRole(session.profile?.role) || !admin) return;
+  const description = String(formData.get('description') ?? '').trim();
+  const amount = Math.round(Number(String(formData.get('amount') ?? '0')) * 100);
+  if (!description || amount <= 0) return;
+  const category = String(formData.get('category') ?? 'other').trim() || 'other';
+  const occurredAt = String(formData.get('occurred_at') ?? '').trim();
+  const occurred_at = occurredAt ? new Date(`${occurredAt}T12:00:00`).toISOString() : new Date().toISOString();
+  const isTest = formData.get('is_test') === 'on';
+  const exclude = formData.get('exclude_from_reports') === 'on';
+  const { data } = await admin.from('expenses').insert({
+    description,
+    category,
+    amount_cents: amount,
+    payment_method: String(formData.get('payment_method') ?? 'other'),
+    occurred_at,
+    is_test: isTest,
+    exclude_from_reports: exclude,
+    created_by: session.user.id,
+  }).select('id').maybeSingle();
+  await admin.from('financial_ledger').insert({
+    source: 'manual',
+    type: 'expense',
+    amount: -Math.abs(amount),
+    gross_amount: -Math.abs(amount),
+    fee_amount: 0,
+    net_amount: -Math.abs(amount),
+    description,
+    category,
+    is_test: isTest,
+    exclude_from_reports: exclude,
+    occurred_at,
+    metadata: { expense_id: data?.id ?? null },
+  });
+  revalidatePath('/admin/stripe-sync');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
 }
