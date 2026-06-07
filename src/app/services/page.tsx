@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { Clock, Check, Sparkles, AlertTriangle, ShieldCheck, Zap, Compass, Star } from "lucide-react";
 import {
   defaultServicePackages,
   formatVehiclePrice,
@@ -105,93 +107,148 @@ export default function ServicesPage() {
   const showPromosBand =
     loaded &&
     ((displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0) || hasServiceOffers);
+
   const visiblePackages = packages.filter((service) => {
     const text = `${service.title} ${service.subtitle ?? ''}`.toLowerCase();
     if (activeTab === 'memberships') return false;
-    if (activeTab === 'full') return text.includes('full') || text.includes('detail');
+    if (activeTab === 'full') return text.includes('full') || (text.includes('detail') && !text.includes('exterior') && !text.includes('interior'));
+    if (activeTab === 'ceramic') return text.includes('ceramic') || text.includes('coating');
+    if (activeTab === 'exterior') return text.includes('exterior') && !text.includes('full');
+    if (activeTab === 'interior') return text.includes('interior') && !text.includes('full');
     return text.includes(activeTab);
   });
+
   const serviceCards = visiblePackages.length > 0 ? visiblePackages : packages;
 
-  return (
-    <main className="gb-luxury-page min-h-screen bg-background px-4 pb-16 pt-24 text-foreground sm:px-6">
-      <div className="mx-auto w-full max-w-6xl">
-        <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Mobile Detailing - We Come To You</p>
-        <h1 className="mt-3 text-4xl font-black uppercase sm:text-5xl">Services & Pricing</h1>
-        <p className="mt-3 max-w-3xl text-zinc-300">
-          Transparent package pricing with clear deliverables so customers know exactly what they are buying. All prices are starting at.
-        </p>
-        <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-500">{PRICING_DISCLAIMER}</p>
-        <p className="mt-2 max-w-3xl text-xs leading-relaxed text-zinc-500">{PRICING_DISCOUNT_RULES}</p>
+  // Custom durations lookup for display
+  const getDuration = (id: string) => {
+    const sId = id.toLowerCase();
+    if (sId.includes("exterior-wash") || sId.includes("exterior_wash")) return "1 - 1.5 Hours";
+    if (sId.includes("exterior-detail") || sId.includes("exterior_detail")) return "2 - 3 Hours";
+    if (sId.includes("interior")) return "2.5 - 4 Hours";
+    if (sId.includes("full")) return "4 - 6 Hours";
+    if (sId.includes("ceramic")) return "1 - 2 Days (requires curing)";
+    return "2 - 3 Hours";
+  };
 
+  // Driveway backgrounds for each tab
+  const getTabBackground = () => {
+    if (activeTab === 'exterior') return '/assets/exterior_wash_driveway_1780872964011.png';
+    if (activeTab === 'interior') return '/assets/interior_detail_driveway_1780872974449.png';
+    if (activeTab === 'full') return '/assets/full_detail_driveway_no_people_1780873155626.png';
+    if (activeTab === 'ceramic') return '/assets/ceramic_coating_driveway_1780872997033.png';
+    return '/assets/black_detailer_driveway_1780873080456.png';
+  };
+
+  return (
+    <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">
+      {/* Category-Specific Hero Banner */}
+      <section className="relative w-full h-[45vh] min-h-[350px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-12">
+        <Image
+          src={getTabBackground()}
+          alt={`Gloss Boss ATX ${activeTab}`}
+          fill
+          priority
+          className="object-cover object-center opacity-40 brightness-75 scale-102 transition-all duration-700"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black" />
+
+        <div className="relative z-10 max-w-4xl px-6 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.35em] text-gold">
+            Premium Mobile Auto Detailing
+          </p>
+          <h1 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl leading-none">
+            {activeTab === 'full' ? 'Full Detail Packages' : activeTab === 'ceramic' ? 'Ceramic Protective Coating' : `${activeTab} Detailing`}
+          </h1>
+          <p className="mt-3 max-w-2xl mx-auto text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            Professional mobile detailing at your doorstep. We supply our own spot-free filtered water, electricity, and premium chemicals.
+          </p>
+        </div>
+      </section>
+
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        {/* Navigation Tabs */}
+        <div className="flex justify-center mb-10">
+          <div className="inline-flex flex-wrap justify-center gap-2 rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md">
+            {[
+              ['exterior', 'Exterior Detailing'],
+              ['interior', 'Interior Detailing'],
+              ['full', 'Full Packages'],
+              ['ceramic', 'Ceramic Coatings'],
+              ['memberships', 'Memberships'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(key as any)}
+                className={`rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-300 ${
+                  activeTab === key
+                    ? 'bg-gold text-black shadow-[0_0_15px_rgba(212,175,55,0.3)]'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Promo Band */}
         {showPromosBand ? (
-          <section className='mt-6'>
-            <p className='text-[10px] font-bold uppercase tracking-[0.28em] text-gold-soft'>Featured offers</p>
-            <div className='mt-3 flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory'>
+          <section className="mb-10">
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-gold-soft mb-3">Featured Active Offers</p>
+            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
               {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
-                <article className='min-w-[min(100%,280px)] snap-start rounded-xl border border-amber-400/40 bg-gradient-to-br from-amber-500/14 via-black/65 to-black/90 p-4 shadow-[0_0_28px_rgba(251,191,36,0.18)] ring-1 ring-amber-300/25 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_36px_rgba(251,191,36,0.26)]'>
-                  <p className='text-[10px] uppercase tracking-[0.2em] text-gold-soft'>{displayDeals.websitePromoLabel || 'Website booking offer'}</p>
-                  <p className='mt-1.5 text-xl font-black text-white sm:text-2xl'>{displayDeals.websitePromoPercent}% off online bookings</p>
-                  <p className='mt-2 text-xs leading-relaxed text-zinc-300'>
-                    {displayDeals.promoStacksWithMultiCar
-                      ? 'Stacks with multi-car savings when both are enabled in admin.'
-                      : 'Does not stack with multi-car — checkout applies the best single discount.'}
+                <article className="min-w-[300px] snap-start rounded-2xl border border-gold/20 bg-gradient-to-br from-gold/8 via-zinc-950 to-black p-5 shadow-lg">
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-gold-soft font-black">{displayDeals.websitePromoLabel || 'Online Booking Promo'}</p>
+                  <p className="mt-1 text-2xl font-black text-white">{displayDeals.websitePromoPercent}% Off Base Services</p>
+                  <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+                    Automatically applied to your base packages when booking online. {displayDeals.promoStacksWithMultiCar ? 'Combines with multi-car discount.' : 'Does not stack with multi-car discounts.'}
                   </p>
                 </article>
               ) : null}
-              <OffersMarketingBand embed offers={offers} placement='services' />
+              <OffersMarketingBand embed offers={offers} placement="services" />
             </div>
           </section>
         ) : null}
 
-        <div className='mt-6 flex gap-2 overflow-x-auto pb-2'>
-          {[
-            ['exterior', 'Exterior'],
-            ['interior', 'Interior'],
-            ['full', 'Full Detail'],
-            ['ceramic', 'Ceramic Coating'],
-            ['memberships', 'Memberships'],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              type='button'
-              onClick={() => setActiveTab(key as typeof activeTab)}
-              className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-wider transition ${activeTab === key ? 'border-gold bg-gold text-black' : 'border-white/15 bg-black/35 text-zinc-300 hover:border-gold/40'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
+        {/* Memberships Redirect Tab */}
         {activeTab === 'memberships' ? (
-          <section className='mt-6 rounded-3xl border border-gold/30 bg-gradient-to-br from-gold/15 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)]'>
-            <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>Memberships</p>
-            <h2 className='mt-2 text-3xl font-black uppercase text-white'>Save with Gloss Boss Memberships</h2>
-            <p className='mt-3 max-w-2xl text-sm text-zinc-300'>Choose Bronze, Silver, Gold, or Elite plans when enabled. Members get configured discounts, included services, and loyalty stamps toward rewards.</p>
-            <div className='mt-5 flex flex-wrap gap-3'>
-              <Link href='/memberships' className='rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black'>View memberships</Link>
-              <Link href='/book' className='rounded-xl border border-white/15 px-5 py-3 text-xs font-black uppercase text-white'>Book one-time detail</Link>
+          <section className="rounded-3xl border border-gold/30 bg-gradient-to-br from-gold/12 via-zinc-950 to-black p-8 shadow-[0_0_50px_rgba(212,175,55,0.12)] mb-12 text-center max-w-4xl mx-auto">
+            <span className="inline-flex rounded-full bg-gold/15 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gold border border-gold/35">
+              Best Long-Term Value
+            </span>
+            <h2 className="mt-4 text-3.5xl font-black uppercase text-white tracking-tight">Gloss Boss Detailing Subscriptions</h2>
+            <p className="mt-3 max-w-2xl mx-auto text-sm text-zinc-300 leading-relaxed">
+              Maintain your vehicle's gloss year-round. Join our Bronze, Silver, or Gold membership plans to unlock bi-weekly washes, 2x loyalty stamp boosts, and up to 20% flat discount on add-on packages.
+            </p>
+            <div className="mt-8 flex justify-center gap-4">
+              <Link href="/memberships" className="rounded-xl bg-gold px-6 py-3.5 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:bg-gold-soft transition">
+                Explore Memberships
+              </Link>
+              <Link href="/book" className="rounded-xl border border-white/15 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white hover:bg-white/5 transition">
+                Book One-Time Detail
+              </Link>
             </div>
           </section>
         ) : null}
 
+        {/* System Warnings Block */}
         {showSchemaNotice ? (
-          <div role="alert" className="mt-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-left text-sm text-amber-100">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">Site notice</p>
-                <p className="mt-1 text-xs text-amber-100/90">We are using safe defaults where needed. Dismiss anytime.</p>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs break-words text-amber-100/95">
-                  {schemaWarnings.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
+          <div role="alert" className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm text-amber-200">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="h-4.5 w-4.5 text-gold-soft" /> Catalog Offline NOTICE</p>
+                <p className="mt-1 text-xs text-zinc-400">Showing standard catalog packages. Discrepancies listed below:</p>
+                <ul className="mt-2 list-disc pl-5 text-xs text-zinc-400 space-y-0.5">
+                  {schemaWarnings.map((w) => <li key={w}>{w}</li>)}
                 </ul>
               </div>
               <button
                 type="button"
                 onClick={() => setDismissSchemaNotice(true)}
-                className="shrink-0 rounded border border-amber-400/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-50 hover:bg-amber-500/20"
-                aria-label="Dismiss configuration notice"
+                className="shrink-0 rounded-lg border border-amber-500/30 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200 hover:bg-amber-500/10"
               >
                 Dismiss
               </button>
@@ -199,122 +256,214 @@ export default function ServicesPage() {
           </div>
         ) : null}
 
-        <section className="mt-6 gb-premium-card rounded-2xl border border-gold/20 p-6 backdrop-blur">
-          <p className="text-xs uppercase tracking-[0.2em] text-gold-soft font-black">Two Car Deal</p>
-          <h3 className="mt-2 text-3xl font-black uppercase tracking-tight text-white">Multi-Car Bundle</h3>
-          {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
-            <p className="mt-2 text-zinc-200">
-              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
-            </p>
-          ) : loaded ? (
-            <p className="mt-2 text-sm text-zinc-400">Multi-car discount is managed in Admin → deal settings.</p>
-          ) : (
-            <p className="mt-2 text-zinc-200">
-              Get <span className="font-bold text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</span> the second vehicle when both are booked in one appointment.
-            </p>
-          )}
-          {multiCarLine ? <p className="mt-2 text-sm text-zinc-400 font-mono bg-black/40 p-2 rounded-lg border border-white/5">{multiCarLine}</p> : loaded ? <p className="mt-2 text-sm text-zinc-400">Publish catalog pricing to show a live example.</p> : null}
-        </section>
+        {/* Main Service Cards Grid */}
+        {loaded && activeTab !== 'memberships' && (
+          <div className="space-y-8 mb-16">
+            {serviceCards.map((service) => {
+              const duration = getDuration(service.id);
+              const isQuoteOnly = !service.sedanPrice;
 
-        {!loaded ? (
-          <div className="mt-6 space-y-4" aria-busy="true">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-36 animate-pulse rounded-2xl border border-white/10 bg-zinc-900/80" />
-            ))}
-          </div>
-        ) : null}
-
-        {showCatalogFallbackNote ? (
-          <p className="mt-3 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
-            Live catalog returned no rows — showing standard packages until services are published in Admin.
-          </p>
-        ) : null}
-
-        {loaded && activeTab !== 'memberships' ? (
-        <div className="mt-6 space-y-6">
-          {serviceCards.map((service) => (
+              return (
                 <article
                   key={service.id}
-                  className="gb-premium-card rounded-2xl border border-gold/15 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_0_35px_rgba(212,175,55,0.18)]"
+                  className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 backdrop-blur-md p-6 sm:p-8 hover:border-gold/30 hover:shadow-[0_0_40px_rgba(212,175,55,0.08)] transition-all duration-300"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
-                    <h2 className="text-2xl font-black uppercase tracking-tight text-white">{service.title}</h2>
-                    <div className="flex flex-wrap gap-2 text-sm font-bold">
-                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">Sedan {formatVehiclePrice(service.sedanPrice)}</span>
-                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">SUV {formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
-                      <span className="rounded-full bg-gold/10 text-gold-soft border border-gold/30 px-3 py-1.5 text-xs font-black uppercase tracking-wider">Truck {formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 pb-6 border-b border-white/5">
+                    <div>
+                      <h2 className="text-2.5xl font-black uppercase text-white tracking-tight">{service.title}</h2>
+                      {service.subtitle?.trim() && <p className="mt-1 text-xs text-zinc-400 italic">{service.subtitle}</p>}
+                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/5 px-3 py-1 text-xs text-zinc-300">
+                        <Clock className="h-3.5 w-3.5 text-gold-soft" />
+                        <span>Estimated Duration: <strong className="text-white">{duration}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!isQuoteOnly ? (
+                        <>
+                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
+                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">Sedan</span>
+                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.sedanPrice)}</span>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
+                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">SUV</span>
+                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
+                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">Truck</span>
+                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="rounded-2xl bg-gold/10 border border-gold/30 px-6 py-3 text-center">
+                          <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">Starting at</span>
+                          <span className="text-sm font-black text-gold-soft">Quote Required</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {service.subtitle?.trim() ? <p className="mt-4 text-sm text-zinc-300 italic">{service.subtitle}</p> : null}
-                  <ul className="mt-4 grid gap-3 text-sm text-zinc-200 sm:grid-cols-2">
-                    {service.includes.map((line) => (
-                      <li key={line} className="flex items-start gap-2">
-                        <span className="text-gold shrink-0">✦</span>
-                        <span>{line}</span>
-                      </li>
-                    ))}
-                  </ul>
+
+                  {/* Checklist of deliverables */}
+                  <div className="mt-6">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-3">Service Inclusions</p>
+                    <ul className="grid gap-3 text-xs text-zinc-300 sm:grid-cols-2 md:grid-cols-3">
+                      {service.includes.map((line) => (
+                        <li key={line} className="flex items-start gap-2 bg-zinc-950/30 p-2.5 rounded-xl border border-white/5">
+                          <Check className="h-4 w-4 shrink-0 text-gold-soft mt-0.5" />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-8 flex justify-end gap-3">
+                    {isQuoteOnly ? (
+                      <Link
+                        href="/contact"
+                        className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition"
+                      >
+                        Request Custom Quote
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/book?package=${service.id}`}
+                        className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black shadow-[0_0_15px_rgba(212,175,55,0.2)] hover:bg-gold-soft transition"
+                      >
+                        Book Package
+                      </Link>
+                    )}
+                  </div>
                 </article>
-              ))}
-        </div>
-        ) : null}
+              );
+            })}
+          </div>
+        )}
 
-        {fleetEnabled ? (
-          <section className="mt-10 gb-premium-card rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.1)]">
-            <p className="text-xs uppercase tracking-[0.25em] text-gold-soft font-black">Fleet & business accounts</p>
-            <h2 className="mt-2 text-2xl font-black uppercase text-white sm:text-3xl tracking-tight">Fleet & Business Detailing</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
-            <ul className="mt-4 grid gap-3 text-sm text-zinc-200 sm:grid-cols-2">
-              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
-                <span className="font-bold text-gold-soft">{fleetPricing?.smallLabel ?? "Small fleet (1–5 vehicles)"}</span>
-                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.smallDetail ?? "from $65/vehicle exterior wash"}</span>
-              </li>
-              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
-                <span className="font-bold text-gold-soft">{fleetPricing?.mediumLabel ?? "Medium fleet (6–15 vehicles)"}</span>
-                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.mediumDetail ?? "from $55/vehicle exterior wash"}</span>
-              </li>
-              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
-                <span className="font-bold text-gold-soft">{fleetPricing?.largeLabel ?? "Large fleet (15+ vehicles)"}</span>
-                <span className="block mt-1 text-xs text-zinc-400">{fleetPricing?.largeDetail ?? "custom quote"}</span>
-              </li>
-              <li className="rounded-xl border border-white/5 bg-black/60 px-4 py-3">
-                <span className="font-bold text-gold-soft">Recurring Frequencies</span>
-                <span className="block mt-1 text-xs text-zinc-400">Weekly ({fleetPricing?.weeklyDiscount ?? "5%"}) · Biweekly ({fleetPricing?.biweeklyDiscount ?? "3%"}) · Monthly ({fleetPricing?.monthlyDiscount ?? "10%"})</span>
-              </li>
-            </ul>
-            <p className="mt-3 text-xs text-zinc-500 italic">{fleetPricing?.commercialNotes ?? "Recurring fleet maintenance, employee parking lots, water/power access — we document everything on site."}</p>
-            <FleetInquiryForm />
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Link href="/contact" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white hover:bg-white/5 transition duration-200">
-                General contact
-              </Link>
-              <a href="tel:+15124812319" className="rounded-lg border border-white/20 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white hover:bg-white/5 transition duration-200">
-                Call (512) 481-2319
-              </a>
+        {/* Multi-Car Bundle Feature */}
+        <section className="mb-16 border border-white/10 bg-zinc-950/40 p-6 sm:p-8 rounded-3xl backdrop-blur-sm">
+          <span className="inline-flex rounded-lg bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/35 mb-3">
+            Bundle & Save
+          </span>
+          <h3 className="text-2.5xl font-black uppercase tracking-tight text-white">Multi-Car Booking Discount</h3>
+          {displayDeals.multiCarSecondVehicleDiscountPercent > 0 ? (
+            <p className="mt-2 text-zinc-300 text-sm leading-relaxed max-w-3xl">
+              Booking more than one vehicle? Automatically receive <strong className="text-gold-soft">{displayDeals.multiCarSecondVehicleDiscountPercent}% off</strong> the second vehicle base package during checkout. Perfect for families or detailing multiple cars on the same driveway visit.
+            </p>
+          ) : (
+            <p className="mt-2 text-zinc-400 text-sm">Configure multi-car discounts under Deal settings in Admin.</p>
+          )}
+          {multiCarLine && (
+            <div className="mt-4 p-3 bg-black/80 rounded-xl border border-white/5 font-mono text-xs text-zinc-400">
+              {multiCarLine}
             </div>
-          </section>
-        ) : null}
-
-        <section className="mt-10 gb-premium-card rounded-2xl border border-gold/20 p-6">
-          <h2 className="text-xl font-black uppercase tracking-tight text-white">Add-ons & Upgrades</h2>
-          <p className="mt-2 text-sm text-zinc-400">Optional upgrades — final price depends on vehicle and condition.</p>
-          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-            {PUBLIC_ADDON_PRICING.map((addon) => (
-              <li key={addon.label} className="rounded-xl border border-white/5 bg-black/40 px-4 py-3">
-                <p className="font-bold text-gold-soft">{addon.label}</p>
-                <p className="mt-1 text-sm text-zinc-300">{addon.detail}</p>
-              </li>
-            ))}
-          </ul>
+          )}
         </section>
 
-        <div className="mt-8 flex flex-wrap gap-4">
-          <Link href="/book" className="rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_0_35px_rgba(212,175,55,0.3)] hover:brightness-110 transition duration-300">
-            Book Service
-          </Link>
-          <Link href="/gift-cards" className="rounded-xl border border-white/20 bg-black/40 px-8 py-4 text-sm font-black uppercase tracking-widest text-white hover:border-gold/40 hover:text-gold-soft transition duration-300">
-            Buy Gift Card
-          </Link>
+        {/* Placeholders for Future Offerings Expansion (Requested) */}
+        <section className="mb-16">
+          <div className="text-center mb-10">
+            <p className="text-xs font-black uppercase tracking-[0.25em] text-gold-soft">Coming Soon</p>
+            <h3 className="mt-2 text-2.5xl font-black uppercase text-white tracking-tight">Future Services & Expansions</h3>
+            <p className="mt-2 text-xs text-zinc-400">We are expanding our mobile garage to offer additional luxury services.</p>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-white/5 bg-zinc-950/20 p-5 opacity-75 hover:opacity-100 transition-opacity">
+              <Compass className="h-6 w-6 text-zinc-500 mb-3" />
+              <h4 className="text-sm font-black uppercase text-white">Pressure Washing</h4>
+              <p className="mt-1 text-xs text-zinc-400 leading-relaxed">Driveways, patios, solar panels, and residential exterior cleaning resetting.</p>
+            </div>
+            <div className="rounded-2xl border border-white/5 bg-zinc-950/20 p-5 opacity-75 hover:opacity-100 transition-opacity">
+              <Sparkles className="h-6 w-6 text-zinc-500 mb-3" />
+              <h4 className="text-sm font-black uppercase text-white">Headlight Restoration</h4>
+              <p className="mt-1 text-xs text-zinc-400 leading-relaxed">Oxidation removal, multi-stage sanding, clear coat sealing for night safety.</p>
+            </div>
+            <div className="rounded-2xl border border-white/5 bg-zinc-950/20 p-5 opacity-75 hover:opacity-100 transition-opacity">
+              <Zap className="h-6 w-6 text-zinc-500 mb-3" />
+              <h4 className="text-sm font-black uppercase text-white">Engine Bay Cleaning</h4>
+              <p className="mt-1 text-xs text-zinc-400 leading-relaxed">Degreasing, steam blowouts, plastic detailing protection for engine compartments.</p>
+            </div>
+            <div className="rounded-2xl border border-white/5 bg-zinc-950/20 p-5 opacity-75 hover:opacity-100 transition-opacity">
+              <ShieldCheck className="h-6 w-6 text-zinc-500 mb-3" />
+              <h4 className="text-sm font-black uppercase text-white">Fleet Packages</h4>
+              <p className="mt-1 text-xs text-zinc-400 leading-relaxed">Commercial, corporate parking lot, and dealership recurring packages.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Fleet Services Section */}
+        {fleetEnabled && (
+          <section className="mb-16 border border-gold/20 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6 sm:p-8 rounded-3xl shadow-[0_0_40px_rgba(212,175,55,0.08)]">
+            <p className="text-xs uppercase tracking-[0.25em] text-gold-soft font-black">Corporate & Business accounts</p>
+            <h2 className="mt-2 text-2.5xl font-black uppercase text-white tracking-tight">Commercial Fleet Detailing</h2>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-300">{fleetBlurb}</p>
+            
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <div className="rounded-xl border border-white/5 bg-black/60 p-4">
+                <span className="block text-[9px] font-black uppercase text-zinc-500">Tier 1</span>
+                <span className="font-bold text-gold-soft block mt-1">{fleetPricing?.smallLabel ?? "Small (1–5 Cars)"}</span>
+                <span className="text-xs text-zinc-400">{fleetPricing?.smallDetail ?? "Starting at $65/car"}</span>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-black/60 p-4">
+                <span className="block text-[9px] font-black uppercase text-zinc-500">Tier 2</span>
+                <span className="font-bold text-gold-soft block mt-1">{fleetPricing?.mediumLabel ?? "Medium (6–15 Cars)"}</span>
+                <span className="text-xs text-zinc-400">{fleetPricing?.mediumDetail ?? "Starting at $55/car"}</span>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-black/60 p-4">
+                <span className="block text-[9px] font-black uppercase text-zinc-500">Tier 3</span>
+                <span className="font-bold text-gold-soft block mt-1">{fleetPricing?.largeLabel ?? "Large (15+ Cars)"}</span>
+                <span className="text-xs text-zinc-400">{fleetPricing?.largeDetail ?? "Custom quote"}</span>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-black/60 p-4">
+                <span className="block text-[9px] font-black uppercase text-zinc-500">Frequency Boost</span>
+                <span className="font-bold text-gold-soft block mt-1">Discounts</span>
+                <span className="text-xs text-zinc-400">Weekly ({fleetPricing?.weeklyDiscount ?? "5%"}) · Bi-weekly ({fleetPricing?.biweeklyDiscount ?? "3%"}) · Monthly ({fleetPricing?.monthlyDiscount ?? "10%"})</span>
+              </div>
+            </div>
+            {fleetPricing?.commercialNotes && (
+              <p className="mt-4 text-xs text-zinc-500 italic">Note: {fleetPricing.commercialNotes}</p>
+            )}
+
+            <div className="mt-8 border-t border-white/5 pt-8">
+              <FleetInquiryForm />
+            </div>
+          </section>
+        )}
+
+        {/* Add-ons & Upgrades List */}
+        <section className="mb-16 rounded-3xl border border-white/10 bg-zinc-950/30 p-6 sm:p-8">
+          <h3 className="text-xl font-black uppercase tracking-tight text-white mb-2">Available Individual Add-ons</h3>
+          <p className="text-xs text-zinc-400 mb-6">Customize your detailing package. Add-ons can be selected during the booking checkout flow.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {PUBLIC_ADDON_PRICING.map((addon) => (
+              <div key={addon.label} className="rounded-2xl border border-white/5 bg-black/40 p-4 hover:border-gold/15 transition-all">
+                <p className="text-xs font-black uppercase text-white tracking-wide">{addon.label}</p>
+                <p className="mt-1 text-xs text-zinc-400">{addon.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Sticky footer CTAs */}
+        <div className="flex flex-wrap items-center justify-between gap-6 border-t border-white/10 pt-10">
+          <div>
+            <h4 className="text-lg font-black uppercase text-white">Ready for a showroom reset?</h4>
+            <p className="text-xs text-zinc-400">Secure your appointment slot in minutes.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/book" className="rounded-xl bg-gold px-6 py-3.5 text-xs font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:bg-gold-soft transition">
+              Book Appointment
+            </Link>
+            <Link href="/gift-cards" className="rounded-xl border border-white/20 bg-black/50 px-6 py-3.5 text-xs font-black uppercase tracking-widest text-white hover:border-gold/25 transition">
+              Purchase Gift Card
+            </Link>
+          </div>
+        </div>
+
+        {/* Legal disclosures */}
+        <div className="mt-12 text-center text-[10px] text-zinc-600 space-y-2 max-w-4xl mx-auto">
+          <p>{PRICING_DISCLAIMER}</p>
+          <p>{PRICING_DISCOUNT_RULES}</p>
         </div>
       </div>
     </main>

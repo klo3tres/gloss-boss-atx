@@ -135,3 +135,107 @@ export async function techArchiveOwnLeadAction(formData: FormData): Promise<void
   revalidatePath('/tech');
   revalidatePath('/admin/leads');
 }
+
+export async function techCreateFieldLeadAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const name = String(formData.get('name') ?? '').trim();
+  const phone = String(formData.get('phone') ?? '').trim();
+  const email = String(formData.get('email') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
+
+  if (!name) {
+    return { ok: false, error: 'Customer name is required' };
+  }
+
+  const { error } = await gate.supabase.from('leads').insert({
+    name,
+    phone: phone || null,
+    email: email || null,
+    notes: notes || null,
+    status: 'new',
+    assigned_technician_id: gate.userId,
+    assigned_to: gate.userId,
+    assigned_at: new Date().toISOString(),
+    in_pool: false,
+  });
+
+  if (error) {
+    console.error('[tech] create field lead error', error.message);
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath('/tech');
+  return { ok: true };
+}
+
+export async function techSubmitSupplyRequestAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const items = String(formData.get('items') ?? '').trim();
+  const notes = String(formData.get('notes') ?? '').trim();
+
+  if (!items) {
+    return { ok: false, error: 'Please specify the items requested' };
+  }
+
+  const { error } = await gate.supabase.from('business_expenses').insert({
+    category: 'supplies',
+    amount_cents: 0,
+    notes: `Supply Request by tech: ${items}. Notes: ${notes}`,
+    created_by: gate.userId,
+    incurred_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    console.error('[tech] supply request error', error.message);
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath('/tech');
+  return { ok: true };
+}
+
+export async function techLogMileageAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const gate = await requireTechnicianSupabase();
+  if (!gate.ok || !gate.supabase || !gate.userId) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const startMileage = Number(formData.get('startMileage') ?? 0);
+  const endMileage = Number(formData.get('endMileage') ?? 0);
+  const gasCost = Number(formData.get('gasCost') ?? 0);
+  const notes = String(formData.get('notes') ?? '').trim();
+
+  if (startMileage <= 0) {
+    return { ok: false, error: 'Starting mileage must be positive' };
+  }
+
+  const totalMiles = endMileage > startMileage ? endMileage - startMileage : 0;
+  const gasCostCents = Math.round(gasCost * 100);
+
+  const { error } = await gate.supabase.from('job_mileage_logs').insert({
+    appointment_id: appointmentId || null,
+    start_mileage: startMileage,
+    end_mileage: endMileage || null,
+    total_miles: totalMiles || null,
+    gas_cost_cents: gasCostCents || null,
+    notes: notes || null,
+    created_by: gate.userId,
+  });
+
+  if (error) {
+    console.error('[tech] mileage log error', error.message);
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath('/tech');
+  return { ok: true };
+}

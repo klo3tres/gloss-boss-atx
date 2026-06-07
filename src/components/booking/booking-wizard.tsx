@@ -478,12 +478,28 @@ export function BookingWizard() {
     if (!bookingDateKey) return [];
     const now = new Date();
     const todayKey = dateKeyLocal(now);
+    const DEFAULT_FRIDAY_W = { startHour: 17, startMinute: 0, endHour: 21, endMinute: 0 };
+    const DEFAULT_WEEKEND_W = { startHour: 7, startMinute: 30, endHour: 19, endMinute: 0 };
+
     return slotOpts.filter((s) => {
       const d = new Date(`${bookingDateKey}T${s.value}:00`);
       if (Number.isNaN(d.getTime())) return false;
       if (bookingDateKey === todayKey && d.getTime() < now.getTime() - 60_000) return false;
       if (!isBookingSlotAllowed(d, bookingRules)) return false;
       if (slotConflictsWithBlocks(d.toISOString(), bookingDurationMinutes, bookedBlocks)) return false;
+
+      // Business hours remaining check
+      const day = d.getDay();
+      let timeWindow = DEFAULT_WEEKEND_W;
+      if (day === 0 && bookingRules.allowSunday) timeWindow = bookingRules.sundayWindow ?? DEFAULT_WEEKEND_W;
+      else if (day === 6 && bookingRules.allowSaturday) timeWindow = bookingRules.saturdayWindow ?? DEFAULT_WEEKEND_W;
+      else if (day === 5) timeWindow = bookingRules.fridayWindow ?? DEFAULT_FRIDAY_W;
+
+      const endMinutes = timeWindow.endHour * 60 + timeWindow.endMinute;
+      const startMinutes = d.getHours() * 60 + d.getMinutes();
+      const remainingMinutes = endMinutes - startMinutes;
+      if (bookingDurationMinutes > remainingMinutes) return false;
+
       return true;
     });
   }, [bookingDateKey, slotOpts, bookingRules, bookedBlocks, bookingDurationMinutes]);
@@ -1010,6 +1026,24 @@ export function BookingWizard() {
         setScheduleError(
           'Selected time is outside online booking hours. ' + bookingAvailabilityHint(bookingRules),
         );
+        setSubmitting(false);
+        return;
+      }
+
+      // Check if booking fits remaining business hours
+      const day = scheduled.getDay();
+      const DEFAULT_FRIDAY_W = { startHour: 17, startMinute: 0, endHour: 21, endMinute: 0 };
+      const DEFAULT_WEEKEND_W = { startHour: 7, startMinute: 30, endHour: 19, endMinute: 0 };
+      let timeWindow = DEFAULT_WEEKEND_W;
+      if (day === 0 && bookingRules.allowSunday) timeWindow = bookingRules.sundayWindow ?? DEFAULT_WEEKEND_W;
+      else if (day === 6 && bookingRules.allowSaturday) timeWindow = bookingRules.saturdayWindow ?? DEFAULT_WEEKEND_W;
+      else if (day === 5) timeWindow = bookingRules.fridayWindow ?? DEFAULT_FRIDAY_W;
+
+      const endMinutes = timeWindow.endHour * 60 + timeWindow.endMinute;
+      const startMinutes = scheduled.getHours() * 60 + scheduled.getMinutes();
+      const remainingMinutes = endMinutes - startMinutes;
+      if (bookingDurationMinutes > remainingMinutes) {
+        setScheduleError("This service requires more time than remaining business hours. Please select an earlier appointment.");
         setSubmitting(false);
         return;
       }

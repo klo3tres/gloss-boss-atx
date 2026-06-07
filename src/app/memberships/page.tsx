@@ -2,95 +2,122 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Sparkles, Trophy, ShieldCheck, type LucideIcon } from 'lucide-react';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { MembershipJoinButton } from './membership-join-button';
+import { MembershipsPricingClient } from './memberships-pricing-client';
 
 export const dynamic = 'force-dynamic';
 
-const LOGO = '/brand/glossboss-official-atx.png';
+const LOGO = '/assets/glossboss_atx_logo.png';
+const DRIVEWAY_HERO = '/assets/black_detailer_driveway_1780873080456.png';
+
 const MEMBERSHIP_HIGHLIGHTS: Array<{ title: string; body: string; Icon: LucideIcon }> = [
-  { title: 'Member pricing', body: 'Automatic discounts when signed in.', Icon: Sparkles },
-  { title: 'Loyalty stamps', body: 'Completed services build rewards.', Icon: Trophy },
-  { title: 'Priority care', body: 'Recurring shine with real records.', Icon: ShieldCheck },
+  { title: 'Member Pricing', body: 'Automatic discounts on all detailing packages.', Icon: Sparkles },
+  { title: 'Loyalty Multiplier', body: 'Earn stamps faster and unlock rewards.', Icon: Trophy },
+  { title: 'Priority Scheduling', body: 'Lock in recurring care with dedicated slots.', Icon: ShieldCheck },
 ];
 
-function money(cents: unknown) {
-  return `$${((typeof cents === 'number' ? cents : 0) / 100).toFixed(0)}`;
-}
-
-function tone(tier: unknown) {
-  const t = String(tier ?? '').toLowerCase();
-  if (t.includes('silver')) return 'from-zinc-300/20 via-zinc-950 to-black border-zinc-300/35';
-  if (t.includes('gold') || t.includes('platinum')) return 'from-gold/25 via-zinc-950 to-black border-gold/45';
-  if (t.includes('elite')) return 'from-cyan-300/18 via-zinc-950 to-black border-cyan-200/35';
-  return 'from-amber-700/20 via-zinc-950 to-black border-amber-700/40';
+interface Plan {
+  id: string;
+  name: string;
+  slug: string;
+  tier: string;
+  price_cents: number;
+  price_weekly_cents: number;
+  price_biweekly_cents: number;
+  price_monthly_cents: number;
+  price_yearly_cents: number;
+  discount_percent: number;
+  benefits: string[];
+  included_services: string[];
+  billing_interval: string;
 }
 
 export default async function MembershipsPage() {
   const admin = tryCreateAdminSupabase();
   const { data } = admin
-    ? await admin.from('membership_plans').select('*').eq('archived', false).or('show_on_homepage.eq.true,show_on_services.eq.true').order('price_cents')
-    : { data: [] as Record<string, unknown>[] };
-  const plans = (data ?? []) as Record<string, unknown>[];
+    ? await admin.from('membership_plans')
+        .select('*')
+        .eq('archived', false)
+        .or('show_on_homepage.eq.true,show_on_services.eq.true')
+    : { data: [] as any[] };
+  
+  const plans = (data ?? []) as Plan[];
 
   return (
-    <main className='gb-luxury-page min-h-screen bg-background px-4 pb-20 pt-24 text-foreground sm:px-6'>
-      <section className='mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center'>
-        <div>
-          <Image src={LOGO} alt='Gloss Boss ATX' width={360} height={220} className='h-auto w-52 object-contain sm:w-72' priority />
-          <p className='mt-6 text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss Memberships</p>
-          <h1 className='mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-6xl'>
-            Save with monthly mobile detailing care.
-          </h1>
-          <p className='mt-4 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base'>
-            Lock in member pricing, earn loyalty stamps, and keep your vehicle looking ready without starting from scratch every visit.
-          </p>
-          <div className='mt-6 flex flex-wrap gap-3'>
-            <Link href='#plans' className='rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase tracking-wider text-black'>View memberships</Link>
-            <Link href='/book' className='rounded-xl border border-white/15 px-5 py-3 text-xs font-black uppercase tracking-wider text-white'>Book one-time detail</Link>
+    <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">
+      {/* Premium Driveway Hero Banner */}
+      <section className="relative w-full h-[60vh] min-h-[480px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-16">
+        <Image
+          src={DRIVEWAY_HERO}
+          alt="Luxury car detailing driveway"
+          fill
+          priority
+          className="object-cover object-center opacity-40 brightness-75 scale-105"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black" />
+
+        <div className="relative z-10 max-w-5xl px-6 text-center">
+          <div className="flex justify-center mb-6">
+            <Image
+              src={LOGO}
+              alt="Gloss Boss ATX"
+              width={280}
+              height={100}
+              className="h-auto w-56 object-contain sm:w-64"
+              priority
+            />
           </div>
-        </div>
-        <div className='rounded-3xl border border-gold/20 bg-gradient-to-br from-gold/12 via-black/80 to-black p-6 shadow-[0_0_55px_rgba(212,175,55,0.12)]'>
-          <div className='grid gap-3 sm:grid-cols-3'>
-            {MEMBERSHIP_HIGHLIGHTS.map(({ title, body, Icon }) => (
-              <div key={title} className='rounded-2xl border border-white/10 bg-black/45 p-4'>
-                <Icon className='h-6 w-6 text-gold-soft' />
-                <p className='mt-3 text-sm font-black uppercase text-white'>{title}</p>
-                <p className='mt-1 text-xs text-zinc-400'>{body}</p>
-              </div>
-            ))}
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-gold">
+            Gloss Boss Autocare Subscriptions
+          </p>
+          <h1 className="mt-4 text-4.5xl font-black uppercase tracking-tight text-white sm:text-6xl max-w-3xl mx-auto leading-none">
+            RECURRING SHINE FOR LUXURY DRIVES.
+          </h1>
+          <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base text-zinc-300 leading-relaxed font-medium">
+            Keep your vehicle in showroom condition with our tailored maintenance plans. Lock in guaranteed pricing, priority scheduling slots, and double loyalty points.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <a
+              href="#pricing-calculator"
+              className="rounded-xl bg-gold px-6 py-3.5 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_20px_rgba(212,175,55,0.35)] hover:bg-gold-soft transition"
+            >
+              Choose Plan
+            </a>
+            <Link
+              href="/book"
+              className="rounded-xl border border-white/20 bg-black/60 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white hover:bg-white/5 transition"
+            >
+              One-Time Booking
+            </Link>
           </div>
         </div>
       </section>
 
-      <section id='plans' className='mx-auto mt-10 max-w-6xl'>
-        <div className='grid gap-5 lg:grid-cols-4'>
-          {plans.length === 0 ? (
-            <div className='rounded-2xl border border-dashed border-white/10 p-8 text-center text-zinc-400 lg:col-span-4'>
-              Membership plans are being finalized. Book a one-time detail or check back soon.
+      {/* Highlights Grid */}
+      <section className="max-w-6xl mx-auto px-6 mb-20">
+        <div className="grid gap-6 sm:grid-cols-3">
+          {MEMBERSHIP_HIGHLIGHTS.map(({ title, body, Icon }) => (
+            <div
+              key={title}
+              className="rounded-3xl border border-white/5 bg-zinc-950/60 p-6 flex flex-col items-center text-center backdrop-blur-sm"
+            >
+              <div className="rounded-2xl bg-gold/10 p-3.5 border border-gold/15">
+                <Icon className="h-6 w-6 text-gold-soft" />
+              </div>
+              <h3 className="mt-4 text-sm font-black uppercase tracking-wider text-white">
+                {title}
+              </h3>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400 max-w-[240px]">
+                {body}
+              </p>
             </div>
-          ) : null}
-          {plans.map((p) => {
-            const benefits = Array.isArray(p.benefits) ? p.benefits : [];
-            const included = Array.isArray(p.included_services) ? p.included_services : [];
-            return (
-              <article key={String(p.id)} className={`rounded-3xl border bg-gradient-to-br p-5 shadow-[0_0_35px_rgba(212,175,55,0.08)] ${tone(p.tier)}`}>
-                <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>{String(p.tier ?? '')}</p>
-                <h2 className='mt-2 text-3xl font-black uppercase text-white'>{String(p.name ?? 'Membership')}</h2>
-                <p className='mt-3 text-4xl font-black text-white'>{money(p.price_cents)}<span className='text-sm font-bold text-zinc-400'> / {String(p.billing_interval ?? 'month')}</span></p>
-                {Number(p.discount_percent ?? 0) > 0 ? <p className='mt-2 text-sm font-bold text-emerald-300'>{Number(p.discount_percent)}% member discount</p> : null}
-                <ul className='mt-5 space-y-2 text-sm text-zinc-200'>
-                  {benefits.map((b) => <li key={String(b)} className='flex gap-2'><span className='text-gold-soft'>*</span>{String(b)}</li>)}
-                  {included.map((b) => <li key={String(b)} className='flex gap-2'><span className='text-gold-soft'>+</span>{String(b)}</li>)}
-                </ul>
-                <p className='mt-4 rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-400'>Loyalty benefit: earn stamps toward configurable Gloss Boss rewards.</p>
-                <div className='mt-5 space-y-2'>
-                  <MembershipJoinButton planId={String(p.id)} />
-                  <Link href='/book' className='block rounded-xl border border-white/15 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-white'>Book one-time detail</Link>
-                </div>
-              </article>
-            );
-          })}
+          ))}
         </div>
+      </section>
+
+      {/* Pricing Calculator Section */}
+      <section id="pricing-calculator" className="max-w-6xl mx-auto px-6">
+        <MembershipsPricingClient plans={plans} />
       </section>
     </main>
   );

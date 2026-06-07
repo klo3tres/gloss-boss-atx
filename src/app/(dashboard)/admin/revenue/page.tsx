@@ -20,6 +20,7 @@ import { fetchFinancialSummary } from '@/lib/financial-ledger';
 import Stripe from 'stripe';
 import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
+import { AlertTriangle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,14 +73,21 @@ export default async function AdminRevenuePage({
   );
 
   const now = new Date().toISOString();
-  const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes] = await Promise.all([
+  const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes, techsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
     fetchPaymentsSince(admin, startOfYearIso(), now),
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
-    admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start').order('scheduled_start', { ascending: false }).limit(800),
+    admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class').order('scheduled_start', { ascending: false }).limit(800),
+    admin.from('profiles').select('id, full_name, email').in('role', ['technician', 'admin', 'super_admin']),
   ]);
+
+  const techNames: Record<string, string> = {};
+  for (const t of techsRes.data ?? []) {
+    const row = t as { id: string; full_name: string | null; email: string | null };
+    techNames[row.id] = row.full_name?.trim() || row.email?.trim() || 'Tech';
+  }
 
   const sumOpts = includeTest
     ? { fromIso: startOfMonthIso(), toIso: now }
@@ -90,9 +98,12 @@ export default async function AdminRevenuePage({
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
   const financial = await fetchFinancialSummary(admin, startOfMonthIso(), now, { includeTest });
+  
   let stripeBalances: { available: number | null; pending: number | null; treasury: number | null } = { available: null, pending: null, treasury: null };
   const stripeSecrets = await getStripeSecrets(admin);
-  if (stripeSecrets.secretKey) {
+  const isStripeConnected = Boolean(stripeSecrets.secretKey);
+  
+  if (isStripeConnected && stripeSecrets.secretKey) {
     try {
       const snap = await getStripeFinanceSnapshot(new Stripe(stripeSecrets.secretKey));
       stripeBalances = {
@@ -148,6 +159,65 @@ export default async function AdminRevenuePage({
     .sort((a, b) => b.totalCents - a.totalCents)
     .slice(0, 4);
 
+  // Advanced Breakdowns (Phase 2 additions)
+  // Popular Services and Service Revenue
+  const serviceBreakdown: Record<string, { label: string; count: number; revenueCents: number }> = {};
+  for (const a of allAppts) {
+    if (a.status === 'completed') {
+      const slug = a.service_slug || 'other';
+      const label = slug.replace(/-/g, ' ');
+      const price = a.base_price_cents ?? 0;
+      if (!serviceBreakdown[slug]) {
+        serviceBreakdown[slug] = { label, count: 0, revenueCents: 0 };
+      }
+      serviceBreakdown[slug].count += 1;
+      serviceBreakdown[slug].revenueCents += price;
+    }
+  }
+  const popularServices = Object.values(serviceBreakdown)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // Tech Revenue
+  const techBreakdown: Record<string, { name: string; count: number; revenueCents: number }> = {};
+  for (const a of allAppts) {
+    if (a.status === 'completed' && a.assigned_technician_id) {
+      const tid = a.assigned_technician_id;
+      const name = techNames[tid] || 'Tech';
+      const price = a.base_price_cents ?? 0;
+      if (!techBreakdown[tid]) {
+        techBreakdown[tid] = { name, count: 0, revenueCents: 0 };
+      }
+      techBreakdown[tid].count += 1;
+      techBreakdown[tid].revenueCents += price;
+    }
+  }
+  const techRevenueList = Object.values(techBreakdown)
+    .sort((a, b) => b.revenueCents - a.revenueCents)
+    .slice(0, 5);
+
+  // Vehicle Type Revenue
+  const vehicleBreakdown: Record<string, { label: string; count: number; revenueCents: number }> = {};
+  for (const a of allAppts) {
+    if (a.status === 'completed') {
+      const rawClass = a.vehicle_class || 'Sedan/Coupe';
+      let label = 'Sedan';
+      if (rawClass.toLowerCase().includes('suv')) label = 'SUV';
+      else if (rawClass.toLowerCase().includes('truck')) label = 'Truck';
+      else if (rawClass.toLowerCase().includes('exotic')) label = 'Exotic';
+      else if (rawClass.toLowerCase().includes('van')) label = 'Van';
+      
+      const price = a.base_price_cents ?? 0;
+      if (!vehicleBreakdown[label]) {
+        vehicleBreakdown[label] = { label, count: 0, revenueCents: 0 };
+      }
+      vehicleBreakdown[label].count += 1;
+      vehicleBreakdown[label].revenueCents += price;
+    }
+  }
+  const vehicleRevenueList = Object.values(vehicleBreakdown)
+    .sort((a, b) => b.revenueCents - a.revenueCents);
+
   // Group monthly revenue last 6 months
   const monthsData: Array<{ label: string; year: number; month: number; value: number }> = [];
   for (let i = 5; i >= 0; i--) {
@@ -198,16 +268,16 @@ export default async function AdminRevenuePage({
     .limit(6);
 
   return (
-    <DashboardShell title='Revenue' subtitle='Cash collected — voided payments excluded.' role='admin'>
+    <DashboardShell title='Revenue Command Center' subtitle='SaaS-quality transaction analytics and business profit ledger.' role='admin'>
       <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner revenue</p>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner MTD Revenue</p>
         <p className='mt-2 font-mono text-4xl font-black text-gold-soft sm:text-5xl'>{money(month.grossCents)}</p>
         <p className='mt-1 text-sm text-zinc-400'>Collected this month · {month.paymentCount} payments</p>
         <div className='mt-6 flex flex-wrap gap-2'>
           <Link href='/admin' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
             ← Command center
           </Link>
-          <Link href='/admin/receipts' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
+          <Link href='/admin/receipts' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>
             Receipts
           </Link>
           {includeTest ? (
@@ -222,7 +292,7 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
-      {/* Insert Interactive Charts Section */}
+      {/* Interactive Charts Section */}
       <div className='mb-8'>
         <RevenueChartsClient
           monthsData={monthsData}
@@ -240,13 +310,82 @@ export default async function AdminRevenuePage({
         />
       </div>
 
-      <section className='space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected</p>
+      {/* Advanced Breakdowns Section (Phase 2 Additions) */}
+      <section className='mb-8 grid grid-cols-1 gap-6 md:grid-cols-3'>
+        {/* Service Popularity & Revenue */}
+        <div className='gb-premium-card rounded-3xl border border-white/10 bg-black/40 p-5 sm:p-6'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft border-b border-white/10 pb-3 mb-4'>Revenue by Service</p>
+          {popularServices.length === 0 ? (
+            <p className='text-xs text-zinc-500 text-center py-12'>No services logged yet.</p>
+          ) : (
+            <div className='space-y-3.5'>
+              {popularServices.map((svc) => (
+                <div key={svc.label} className='flex items-center justify-between rounded-xl bg-zinc-950/20 px-3 py-2.5 border border-white/5'>
+                  <div className='min-w-0 flex-1 pr-2'>
+                    <p className='text-xs font-bold text-white truncate capitalize'>{svc.label}</p>
+                    <p className='text-[9px] text-zinc-500 mt-0.5'>{svc.count} completed bookings</p>
+                  </div>
+                  <div className='text-right shrink-0'>
+                    <p className='font-mono text-xs font-bold text-gold-soft'>{money(svc.revenueCents)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Technician Revenue */}
+        <div className='gb-premium-card rounded-3xl border border-white/10 bg-black/40 p-5 sm:p-6'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft border-b border-white/10 pb-3 mb-4'>Revenue by Technician</p>
+          {techRevenueList.length === 0 ? (
+            <p className='text-xs text-zinc-500 text-center py-12'>No technician assignments logged.</p>
+          ) : (
+            <div className='space-y-3.5'>
+              {techRevenueList.map((t) => (
+                <div key={t.name} className='flex items-center justify-between rounded-xl bg-zinc-950/20 px-3 py-2.5 border border-white/5'>
+                  <div className='min-w-0 flex-1 pr-2'>
+                    <p className='text-xs font-bold text-white truncate'>{t.name}</p>
+                    <p className='text-[9px] text-zinc-500 mt-0.5'>{t.count} completed details</p>
+                  </div>
+                  <div className='text-right shrink-0'>
+                    <p className='font-mono text-xs font-bold text-gold-soft'>{money(t.revenueCents)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Vehicle Type Revenue */}
+        <div className='gb-premium-card rounded-3xl border border-white/10 bg-black/40 p-5 sm:p-6'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft border-b border-white/10 pb-3 mb-4'>Revenue by Vehicle Type</p>
+          {vehicleRevenueList.length === 0 ? (
+            <p className='text-xs text-zinc-500 text-center py-12'>No vehicle types categorized.</p>
+          ) : (
+            <div className='space-y-3.5'>
+              {vehicleRevenueList.map((vh) => (
+                <div key={vh.label} className='flex items-center justify-between rounded-xl bg-zinc-950/20 px-3 py-2.5 border border-white/5'>
+                  <div className='min-w-0 flex-1 pr-2'>
+                    <p className='text-xs font-bold text-white truncate'>{vh.label}</p>
+                    <p className='text-[9px] text-zinc-500 mt-0.5'>{vh.count} completed bookings</p>
+                  </div>
+                  <div className='text-right shrink-0'>
+                    <p className='font-mono text-xs font-bold text-gold-soft'>{money(vh.revenueCents)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className='space-y-3 mb-8'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected Cashflow</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Stripe (month)' value={money(month.stripeCents)} hint='Succeeded Stripe rows' />
-          <StatBlock label='Cash (month)' value={money(month.cashCents)} />
-          <StatBlock label='Zelle/Venmo (month)' value={money(month.zelleCents)} />
-          <StatBlock label='Other (month)' value={money(month.otherCents)} />
+          <StatBlock label='Stripe (month)' value={money(month.stripeCents)} hint='Succeeded card payments' />
+          <StatBlock label='Cash (month)' value={money(month.cashCents)} hint='Hand-collected cash' />
+          <StatBlock label='Zelle/Venmo (month)' value={money(month.zelleCents)} hint='Electronic direct deposits' />
+          <StatBlock label='Other (month)' value={money(month.otherCents)} hint='Comp/manual ledger rows' />
         </div>
         <div className='mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
@@ -256,36 +395,43 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
-      <section className='mt-8 space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Stripe money ledger + profit</p>
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents || month.grossCents)} hint='Stripe ledger when synced; payments fallback shown if ledger is empty' />
-          <StatBlock label='Refunds' value={money(financial.refundsCents)} />
-          <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} />
-          <StatBlock label='Expenses' value={money(financial.expensesCents)} />
-          <StatBlock label='Net profit' value={money((financial.grossRevenueCents || month.grossCents) - financial.refundsCents - financial.stripeFeesCents - financial.expensesCents)} hint='Gross - refunds - fees - expenses' />
-          <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} />
-          <StatBlock label='Available Stripe balance' value={stripeBalances.available == null ? 'Unavailable' : money(stripeBalances.available)} />
-          <StatBlock label='Pending Stripe balance' value={stripeBalances.pending == null ? 'Unavailable' : money(stripeBalances.pending)} />
-          <StatBlock label='Treasury balance' value={stripeBalances.treasury == null ? 'Unavailable' : money(stripeBalances.treasury)} />
-          <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' />
-          <StatBlock label='Paid invoices/deposits' value={money(month.grossCents)} href='/admin/payments' />
-        </div>
-        <p className='text-xs text-zinc-500'>
-          Stripe balance is not company profit. Gross revenue, fees, refunds, expenses, net profit, and payouts are tracked separately for tax-time clarity.
-        </p>
+      {/* Live Stripe Account Balances */}
+      <section className='mb-8 space-y-3'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Live Stripe Account Balances</p>
+        {isStripeConnected && (stripeBalances.available !== null || stripeBalances.pending !== null) ? (
+          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+            <StatBlock label='Available Stripe balance' value={stripeBalances.available == null ? 'Unavailable' : money(stripeBalances.available)} hint='Funds ready for instant bank payout' />
+            <StatBlock label='Pending Stripe balance' value={stripeBalances.pending == null ? 'Unavailable' : money(stripeBalances.pending)} hint='Credit card funds clearing' />
+            <StatBlock label='Treasury balance' value={stripeBalances.treasury == null ? 'Unavailable' : money(stripeBalances.treasury)} hint='Stripe financial storage account' />
+          </div>
+        ) : (
+          <div className="gb-glass rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 text-xs text-amber-200">
+            <p className="font-bold flex items-center gap-1.5 text-gold-soft">
+              <AlertTriangle className="h-4.5 w-4.5 text-gold-soft" />
+              No Stripe revenue data available yet.
+            </p>
+            <p className="mt-1 text-zinc-400">
+              Stripe API connection is currently inactive or using incomplete credentials. Configure your live API secret key in Settings to sync clearing balances and treasury accounts.
+            </p>
+          </div>
+        )}
       </section>
 
-      <section className='mt-8 space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Month breakdown</p>
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-          <StatBlock label='Stripe / card' value={money(month.stripeCents)} />
-          <StatBlock label='Cash' value={money(month.cashCents)} />
-          <StatBlock label='Zelle / Venmo' value={money(month.zelleCents)} />
-          <StatBlock label='Other manual' value={money(month.otherCents)} />
-          <StatBlock label='Open balances (appointments)' value={money(balanceDueCents)} href='/admin/work-orders' />
-          <StatBlock label='Avg payment (month)' value={money(month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0)} hint={`${completedMonth ?? 0} jobs completed this month`} />
+      <section className='mb-8 space-y-3'>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents || month.grossCents)} hint='Ledger volume MTD' />
+          <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
+          <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
+          <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Technician fuel & supply costs' />
+          <StatBlock label='Net profit' value={money((financial.grossRevenueCents || month.grossCents) - financial.refundsCents - financial.stripeFeesCents - financial.expensesCents)} hint='Gross - refunds - fees - expenses' />
+          <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} hint='Disbursed bank transfers' />
+          <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' hint='Accounts receivable' />
+          <StatBlock label='Paid invoices/deposits' value={money(month.grossCents)} href='/admin/payments' hint='Cleared invoice transactions' />
         </div>
+        <p className='text-xs text-zinc-500'>
+          ledger profitability is computed from local payment records and manual technician expenses. Payouts and fees are automatically tracked at time of transaction synchronization.
+        </p>
       </section>
 
       {(debugEvents ?? []).length > 0 ? (

@@ -107,8 +107,12 @@ export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFi
 }
 
 export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient) {
-  const balanceTxs = await stripe.balanceTransactions.list({ limit: 100 });
-  for (const tx of balanceTxs.data) await upsertLedgerFromBalanceTransaction(db, tx);
+  try {
+    const balanceTxs = await stripe.balanceTransactions.list({ limit: 100 });
+    for (const tx of balanceTxs.data) await upsertLedgerFromBalanceTransaction(db, tx);
+  } catch (e) {
+    console.warn('[stripe-finance-sync] balance transactions sync failed or unavailable', e);
+  }
 
   try {
     const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<Record<string, unknown> & { id: string; amount: number; created: number; merchant_data?: { name?: string | null } }> }> } } }).issuing;

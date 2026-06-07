@@ -47,6 +47,15 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   const margin = 48;
   let y = margin;
 
+  const isPaid =
+    !input.remainingBalance ||
+    input.remainingBalance.trim() === '$0.00' ||
+    input.remainingBalance.trim() === '$0' ||
+    input.remainingBalance.trim() === '—' ||
+    input.remainingBalance.trim() === '' ||
+    input.status?.toLowerCase() === 'paid';
+  const headerText = isPaid ? 'RECEIPT' : 'INVOICE';
+
   doc.setFillColor(10, 10, 10);
   doc.rect(0, 0, 612, 72, 'F');
   doc.setTextColor(212, 175, 55);
@@ -54,7 +63,7 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
   doc.text(input.brandName.toUpperCase(), margin, 32);
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(18);
-  doc.text('INVOICE', margin, 52);
+  doc.text(headerText, margin, 52);
   doc.setFontSize(11);
   doc.text(input.receiptNumber, 420, 52);
 
@@ -140,7 +149,17 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
       y = margin;
     }
     const isTotal = line.tone === 'total';
-    doc.setFontSize(isTotal ? 12 : 9);
+    const isBalanceDue = line.label?.toLowerCase() === 'balance due' || line.label?.toLowerCase() === 'remaining balance';
+    const isGoldAccented = isTotal || isBalanceDue;
+
+    if (isGoldAccented) {
+      doc.setTextColor(180, 145, 35); // Luxury gold accent for print readability
+      doc.setFontSize(isTotal ? 12 : 10);
+    } else {
+      doc.setTextColor(30, 30, 30);
+      doc.setFontSize(9);
+    }
+
     const labelHeight = drawWrappedLabel(doc, line.label, LABEL_X, y, LABEL_MAX_W);
     doc.text(line.amount, AMOUNT_X, y, { align: 'right' });
     y += Math.max(labelHeight, isTotal ? 20 : 16);

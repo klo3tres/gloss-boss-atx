@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
-export function MembershipJoinButton({ planId }: { planId: string }) {
+export function MembershipJoinButton({ planId, interval }: { planId: string; interval: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function MembershipJoinButton({ planId }: { planId: string }) {
             const res = await fetchWithTimeout('/api/memberships/checkout', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ planId }),
+              body: JSON.stringify({ planId, interval }),
               timeoutMs: 15000,
             });
             const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };

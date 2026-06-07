@@ -38,45 +38,85 @@ export default async function MembershipsAdminPage() {
         <p className='mt-2 max-w-2xl text-sm text-zinc-300'>Edit public membership offers. Plans marked Homepage or Services appear on public sales surfaces.</p>
       </section>
       <section className='grid gap-4 lg:grid-cols-3'>
-        {plans.map((p) => (
+        {plans.map((p: any) => (
           <form key={String(p.id)} action={saveMembershipPlanAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
             <input type='hidden' name='id' value={String(p.id)} />
-            <input name='name' defaultValue={String(p.name ?? '')} className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-            <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-              <input name='tier' defaultValue={String(p.tier ?? '')} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-              <input name='price' type='number' step='0.01' defaultValue={((Number(p.price_cents ?? 0)) / 100).toFixed(2)} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-              <select name='billing_interval' defaultValue={String(p.billing_interval ?? 'monthly')} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
-                <option value='weekly'>Weekly</option>
-                <option value='bi-weekly'>Bi-weekly</option>
-                <option value='monthly'>Monthly</option>
-                <option value='yearly'>Yearly</option>
-                <option value='one-time'>One-time</option>
-              </select>
-              <input name='discount_percent' type='number' defaultValue={Number(p.discount_percent ?? 0)} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            <div className='flex gap-2 mb-3'>
+              <input name='name' defaultValue={String(p.name ?? '')} placeholder="Plan Name" className='flex-1 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white font-bold' />
+              <input name='tier' defaultValue={String(p.tier ?? '')} placeholder="Tier" className='w-28 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
             </div>
+            
+            <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1'>Interval Pricing ($)</p>
+            <div className='grid grid-cols-2 gap-2 mb-3'>
+              <label className='text-[10px] text-zinc-400'>
+                Weekly
+                <input name='price_weekly' type='number' step='0.01' defaultValue={((Number(p.price_weekly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+              <label className='text-[10px] text-zinc-400'>
+                Bi-Weekly
+                <input name='price_biweekly' type='number' step='0.01' defaultValue={((Number(p.price_biweekly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+              <label className='text-[10px] text-zinc-400'>
+                Monthly
+                <input name='price_monthly' type='number' step='0.01' defaultValue={((Number(p.price_monthly_cents ?? p.price_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+              <label className='text-[10px] text-zinc-400'>
+                Yearly
+                <input name='price_yearly' type='number' step='0.01' defaultValue={((Number(p.price_yearly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+            </div>
+
+            <div className='grid grid-cols-2 gap-2 mb-3'>
+              <label className='text-[10px] text-zinc-400'>
+                Discount %
+                <input name='discount_percent' type='number' defaultValue={Number(p.discount_percent ?? 0)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+              <label className='text-[10px] text-zinc-400'>
+                Legacy Interval
+                <select name='billing_interval' defaultValue={String(p.billing_interval ?? 'monthly')} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white'>
+                  <option value='weekly'>Weekly</option>
+                  <option value='bi-weekly'>Bi-weekly</option>
+                  <option value='monthly'>Monthly</option>
+                  <option value='yearly'>Yearly</option>
+                  <option value='one-time'>One-time</option>
+                </select>
+              </label>
+            </div>
+
             <label className='mt-3 block text-xs text-zinc-400'>
-              Benefits
-              <textarea name='benefits' rows={4} defaultValue={Array.isArray(p.benefits) ? p.benefits.join('\n') : ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+              Benefits (one per line)
+              <textarea name='benefits' rows={4} defaultValue={Array.isArray(p.benefits) ? p.benefits.join('\n') : ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
             </label>
             <label className='mt-3 block text-xs text-zinc-400'>
-              Included services
-              <textarea name='included_services' rows={3} defaultValue={Array.isArray(p.included_services) ? p.included_services.join('\n') : ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+              Included Services (one per line)
+              <textarea name='included_services' rows={3} defaultValue={Array.isArray(p.included_services) ? p.included_services.join('\n') : ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
             </label>
             <div className='mt-3 flex flex-wrap gap-3 text-xs text-zinc-300'>
               <label><input type='checkbox' name='show_on_homepage' defaultChecked={p.show_on_homepage !== false} className='mr-2 accent-[var(--gold)]' />Homepage</label>
               <label><input type='checkbox' name='show_on_services' defaultChecked={p.show_on_services !== false} className='mr-2 accent-[var(--gold)]' />Services</label>
               <label><input type='checkbox' name='archived' defaultChecked={p.archived === true} className='mr-2 accent-[var(--gold)]' />Archived</label>
             </div>
-            <button className='mt-4 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save {String(p.name ?? 'plan')}</button>
-            <p className='mt-2 text-xs text-zinc-500'>{money(p.price_cents)} / {String(p.billing_interval ?? 'month')}</p>
+            <button className='mt-4 w-full rounded-lg bg-gold px-4 py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>Save {String(p.name ?? 'plan')}</button>
+            <p className='mt-2 text-center text-[10px] text-zinc-500'>
+              Monthly: {money(p.price_monthly_cents ?? p.price_cents)} · Weekly: {money(p.price_weekly_cents)} · Yearly: {money(p.price_yearly_cents)}
+            </p>
           </form>
         ))}
-        <form action={saveMembershipPlanAction} className='rounded-2xl border border-dashed border-gold/30 bg-black/35 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>New plan</p>
-          <input name='name' placeholder='Elite' className='mt-3 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <input name='tier' placeholder='elite' className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <input name='price' type='number' step='0.01' placeholder='99.00' className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
-          <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Create plan</button>
+        <form action={saveMembershipPlanAction} className='rounded-2xl border border-dashed border-gold/30 bg-black/35 p-5 flex flex-col justify-between'>
+          <div>
+            <p className='text-xs font-black uppercase tracking-wider text-gold-soft mb-3'>Create New Plan</p>
+            <input name='name' placeholder='Plan Name (e.g. Platinum)' className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white mb-2' />
+            <input name='tier' placeholder='tier (e.g. platinum)' className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white mb-3' />
+            
+            <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1'>Interval Pricing ($)</p>
+            <div className='grid grid-cols-2 gap-2 mb-3'>
+              <input name='price_weekly' type='number' step='0.01' placeholder='Weekly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              <input name='price_biweekly' type='number' step='0.01' placeholder='Bi-Weekly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              <input name='price_monthly' type='number' step='0.01' placeholder='Monthly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              <input name='price_yearly' type='number' step='0.01' placeholder='Yearly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+            </div>
+          </div>
+          <button className='mt-3 w-full rounded-lg bg-gold px-4 py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>Create Plan</button>
         </form>
       </section>
 

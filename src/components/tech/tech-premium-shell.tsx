@@ -13,6 +13,13 @@ import {
   Timer,
   TrendingUp,
   Zap,
+  MapPin,
+  Gauge,
+  Fuel,
+  PackageOpen,
+  UserPlus,
+  Navigation,
+  ChevronRight
 } from 'lucide-react';
 import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
 import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
@@ -21,7 +28,15 @@ import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techClearStaleJobsFormAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
-import { techArchiveOwnLeadAction, techClaimLeadAction, techUpdateLeadNotesAction, techUpdateLeadStatusAction } from '@/app/(dashboard)/tech/tech-lead-actions';
+import { 
+  techArchiveOwnLeadAction, 
+  techClaimLeadAction, 
+  techUpdateLeadNotesAction, 
+  techUpdateLeadStatusAction,
+  techCreateFieldLeadAction,
+  techSubmitSupplyRequestAction,
+  techLogMileageAction
+} from '@/app/(dashboard)/tech/tech-lead-actions';
 
 export type TechJob = {
   id: string;
@@ -203,6 +218,14 @@ export function TechPremiumShell({
   const initial = (techName || '?').charAt(0).toUpperCase();
   const goalPct =
     goalTargetCents != null && goalTargetCents > 0 ? Math.min(100, Math.round((revenueWeekCents / goalTargetCents) * 100)) : 0;
+
+  const [opsTab, setOpsTab] = useState<'routes' | 'mileage' | 'supplies' | 'leads'>('routes');
+  const [mileageMsg, setMileageMsg] = useState<string | null>(null);
+  const [supplyMsg, setSupplyMsg] = useState<string | null>(null);
+  const [leadMsg, setLeadMsg] = useState<string | null>(null);
+  const [mileageBusy, setMileageBusy] = useState(false);
+  const [supplyBusy, setSupplyBusy] = useState(false);
+  const [leadBusy, setLeadBusy] = useState(false);
 
   return (
     <div className='relative min-h-screen overflow-hidden pb-24'>
@@ -594,6 +617,247 @@ export function TechPremiumShell({
             ))}
           </ul>
         )}
+      </section>
+
+      {/* Field Operations Center Overhaul */}
+      <section className='mb-10 rounded-3xl border border-gold/20 bg-gradient-to-br from-zinc-950 via-black to-zinc-950/95 p-5 shadow-[0_0_40px_rgba(212,166,77,0.05)]'>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Field Operations Center</p>
+        
+        {/* Ops Tabs Navigation */}
+        <div className='mt-4 flex gap-1.5 overflow-x-auto pb-1 border-b border-white/5'>
+          {(['routes', 'mileage', 'supplies', 'leads'] as const).map((tab) => (
+            <button
+              key={tab}
+              type='button'
+              onClick={() => setOpsTab(tab)}
+              className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                opsTab === tab
+                  ? 'bg-gold text-black shadow-[0_0_12px_rgba(212,166,77,0.25)]'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {tab === 'routes' ? 'Routes & Dispatch' : tab === 'mileage' ? 'Gas & Mileage Log' : tab === 'supplies' ? 'Supply Request' : 'Field Lead Capture'}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className='mt-5'>
+          {/* Routes Tab */}
+          {opsTab === 'routes' && (
+            <div className='space-y-4'>
+              <p className='text-xs text-zinc-400'>Unified daily route mapping. Select destinations to launch step-by-step navigation.</p>
+              {todayJobs.length === 0 ? (
+                <p className='text-xs text-zinc-500 italic py-4 text-center'>No jobs scheduled for today to map.</p>
+              ) : (
+                <div className='space-y-3.5'>
+                  <div className='space-y-2'>
+                    {todayJobs.map((j, i) => (
+                      <div key={j.id} className='flex items-center justify-between rounded-xl bg-zinc-900/40 p-3 border border-white/5 hover:border-gold/20 transition'>
+                        <div className='flex items-start gap-2.5'>
+                          <div className='flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gold/10 text-xs font-black text-gold border border-gold/25'>
+                            {i + 1}
+                          </div>
+                          <div>
+                            <p className='text-xs font-bold text-white'>{j.guest_name ?? 'Customer'} · <span className='text-gold-soft font-mono'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></p>
+                            <p className='text-[10px] text-zinc-400 mt-0.5'>{j.service_address ?? 'No address provided'}</p>
+                          </div>
+                        </div>
+                        {j.service_address && (
+                          <a
+                            href={directionsHref(j.service_address)}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-200 flex items-center gap-1'
+                          >
+                            <Navigation className='h-3 w-3 text-gold-soft' /> Nav
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {todayJobs.some(j => j.service_address) && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(todayJobs.filter(j => j.service_address).map(j => j.service_address).join('|'))}`}
+                      target='_blank'
+                      rel='noreferrer'
+                      className='w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.25)] hover:bg-gold-soft transition'
+                    >
+                      <MapPin className='h-4 w-4' /> Launch Unified Route in Google Maps
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mileage Log Tab */}
+          {opsTab === 'mileage' && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setMileageBusy(true);
+                setMileageMsg(null);
+                try {
+                  const fd = new FormData(e.currentTarget);
+                  const res = await techLogMileageAction(fd);
+                  if (res.ok) {
+                    setMileageMsg('Mileage and gas purchase logged successfully!');
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    setMileageMsg(res.error ?? 'Failed to log mileage.');
+                  }
+                } catch {
+                  setMileageMsg('Network error logging mileage.');
+                } finally {
+                  setMileageBusy(false);
+                }
+              }}
+              className='space-y-3'
+            >
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Link to Job (Optional)
+                  <select name='appointmentId' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
+                    <option value=''>Standalone Log (No linked job)</option>
+                    {jobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.guest_name ?? 'Job'} - {j.vehicle_description ?? 'TBD'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Gas cost ($)
+                  <input name='gasCost' type='number' step='0.01' min='0' placeholder='0.00' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Odometer Start (mi) *
+                  <input name='startMileage' type='number' step='0.1' min='0' required placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Odometer End (mi)
+                  <input name='endMileage' type='number' step='0.1' min='0' placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+              </div>
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Notes
+                <textarea name='notes' rows={2} placeholder='Specify vehicle info, gas station, or route notes' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+              </label>
+              <button
+                type='submit'
+                disabled={mileageBusy}
+                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50'
+              >
+                {mileageBusy ? 'Saving Log...' : 'Submit Mileage & Gas Log'}
+              </button>
+              {mileageMsg && <p className='text-xs text-gold-soft mt-1.5'>{mileageMsg}</p>}
+            </form>
+          )}
+
+          {/* Supply Request Tab */}
+          {opsTab === 'supplies' && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSupplyBusy(true);
+                setSupplyMsg(null);
+                try {
+                  const fd = new FormData(e.currentTarget);
+                  const res = await techSubmitSupplyRequestAction(fd);
+                  if (res.ok) {
+                    setSupplyMsg('Supply request submitted to manager review.');
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    setSupplyMsg(res.error ?? 'Failed to submit supply request.');
+                  }
+                } catch {
+                  setSupplyMsg('Network error submitting request.');
+                } finally {
+                  setSupplyBusy(false);
+                }
+              }}
+              className='space-y-3'
+            >
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Items Requested *
+                <textarea
+                  name='items'
+                  rows={2}
+                  required
+                  placeholder='e.g., 10x Microfiber Towels, 1gal Tire Shine, 1x Clay Bar kit'
+                  className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white font-mono'
+                />
+              </label>
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Internal Notes / Urgency
+                <textarea name='notes' rows={2} placeholder='Detail warehouse locations or job deadlines' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+              </label>
+              <button
+                type='submit'
+                disabled={supplyBusy}
+                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50'
+              >
+                {supplyBusy ? 'Submitting...' : 'Submit Supply Request'}
+              </button>
+              {supplyMsg && <p className='text-xs text-gold-soft mt-1.5'>{supplyMsg}</p>}
+            </form>
+          )}
+
+          {/* Lead Capture Tab */}
+          {opsTab === 'leads' && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setLeadBusy(true);
+                setLeadMsg(null);
+                try {
+                  const fd = new FormData(e.currentTarget);
+                  const res = await techCreateFieldLeadAction(fd);
+                  if (res.ok) {
+                    setLeadMsg('Field lead captured! Claimed automatically.');
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    setLeadMsg(res.error ?? 'Failed to capture lead.');
+                  }
+                } catch {
+                  setLeadMsg('Network error capturing lead.');
+                } finally {
+                  setLeadBusy(false);
+                }
+              }}
+              className='space-y-3'
+            >
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Customer Full Name *
+                  <input name='name' required placeholder='e.g. John Doe' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Phone Number
+                  <input name='phone' placeholder='512-555-0199' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold sm:col-span-2'>
+                  Email Address
+                  <input name='email' type='email' placeholder='customer@domain.com' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                </label>
+              </div>
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Upsell / Lead Opportunity Details
+                <textarea name='notes' rows={3} placeholder='Door-knocking detail, neighbor of today’s job, vehicle interest details...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+              </label>
+              <button
+                type='submit'
+                disabled={leadBusy}
+                className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,166,77,0.2)] disabled:opacity-50'
+              >
+                {leadBusy ? 'Saving Lead...' : 'Register Field Lead Opportunity'}
+              </button>
+              {leadMsg && <p className='text-xs text-gold-soft mt-1.5'>{leadMsg}</p>}
+            </form>
+          )}
+        </div>
       </section>
 
       <section className='mt-8'>

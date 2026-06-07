@@ -662,3 +662,60 @@ body {
   animation: gb-shimmer 4s infinite linear;
 }
 
+/* Custom Premium Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #020202;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f1f23;
+  border: 2px solid #020202;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gb-gold, #d4af37);
+}
+
+/* Scrollbar support for non-webkit browsers */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1f1f23 #020202;
+}
+
+/* Micro-animations and Transitions */
+.hover-gold-grow {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hover-gold-grow:hover {
+  transform: scale(1.02);
+  border-color: var(--gb-gold, #d4af37);
+  box-shadow: 0 0 15px rgba(212, 175, 55, 0.15);
+}
+
+.hover-glow-gold {
+  transition: all 0.3s ease;
+}
+.hover-glow-gold:hover {
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.25);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+/* Luxury Interactive Comparison Range Slider Styling */
+input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  width: 40px;
+  height: 100%;
+  opacity: 0;
+  cursor: ew-resize;
+}
+input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 40px;
+  height: 100%;
+  opacity: 0;
+  cursor: ew-resize;
+}
+

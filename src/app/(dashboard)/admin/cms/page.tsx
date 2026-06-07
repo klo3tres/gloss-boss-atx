@@ -297,7 +297,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
             </button>
           </form>
 
-          <GalleryAdminManager rows={galleryAdminItems} />
+          <GalleryAdminManager rows={galleryAdminItems} recentPhotos={recentPhotos} />
         </section>
       )}
 
