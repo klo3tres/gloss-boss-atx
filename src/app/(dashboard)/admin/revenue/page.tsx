@@ -98,6 +98,13 @@ export default async function AdminRevenuePage({
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
   const financial = await getFinancialSnapshot(admin, { startDate: startOfMonthIso(), endDate: now, includeTest });
+  const sourceBreakdown = [
+    { label: 'Stripe/card', cents: financial.stripeRevenueCents, hint: 'Succeeded card payments saved locally' },
+    { label: 'Cash', cents: financial.cashRevenueCents, hint: 'Manual cash payments' },
+    { label: 'Zelle/Venmo/Cash App', cents: financial.zelleRevenueCents, hint: 'Direct electronic payments' },
+    { label: 'Memberships', cents: financial.membershipRevenueCents, hint: 'Membership payment rows' },
+    { label: 'Other/manual', cents: financial.otherRevenueCents, hint: 'Other non-voided payment rows' },
+  ].filter((row) => row.cents !== 0 || financial.grossRevenueCents === 0);
   
   let stripeBalances: { available: number | null; pending: number | null; treasury: number | null } = { available: null, pending: null, treasury: null };
   const stripeSecrets = await getStripeSecrets(admin);
@@ -433,6 +440,60 @@ export default async function AdminRevenuePage({
         <p className='text-xs text-zinc-500'>
           ledger profitability is computed from local payment records and manual technician expenses. Payouts and fees are automatically tracked at time of transaction synchronization.
         </p>
+      </section>
+
+      <section className='mb-8 grid gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]'>
+        <div className='rounded-3xl border border-gold/20 bg-black/45 p-5'>
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue source breakdown</p>
+          <p className='mt-1 text-xs text-zinc-500'>Canonical month-to-date sources from payments and receipt-backed records.</p>
+          <div className='mt-4 space-y-2'>
+            {sourceBreakdown.map((row) => (
+              <div key={row.label} className='rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3'>
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='text-sm font-bold text-white'>{row.label}</p>
+                  <p className='font-mono text-sm font-black text-gold-soft'>{money(row.cents)}</p>
+                </div>
+                <p className='mt-1 text-[11px] text-zinc-500'>{row.hint}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className='rounded-3xl border border-gold/20 bg-black/45 p-5'>
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Recent real ledger rows</p>
+          <div className='mt-4 grid gap-4 md:grid-cols-2'>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300'>Payments</p>
+              <div className='mt-2 max-h-72 overflow-y-auto rounded-2xl border border-white/10'>
+                {financial.recentPayments.slice(0, 10).map((row) => (
+                  <Link key={row.id} href={row.href ?? '/admin/payments'} className='block border-b border-white/5 px-3 py-2 last:border-0 hover:bg-white/5'>
+                    <div className='flex justify-between gap-2 text-xs'>
+                      <span className='truncate text-zinc-200'>{row.label}</span>
+                      <span className='font-mono font-bold text-emerald-300'>{money(row.amountCents)}</span>
+                    </div>
+                    <p className='mt-0.5 text-[10px] text-zinc-500'>{row.method ?? row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
+                  </Link>
+                ))}
+                {financial.recentPayments.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No counted payment rows this month.</p> : null}
+              </div>
+            </div>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-[0.18em] text-amber-300'>Expenses</p>
+              <div className='mt-2 max-h-72 overflow-y-auto rounded-2xl border border-white/10'>
+                {financial.recentExpenses.slice(0, 10).map((row) => (
+                  <div key={row.id} className='border-b border-white/5 px-3 py-2 last:border-0'>
+                    <div className='flex justify-between gap-2 text-xs'>
+                      <span className='truncate text-zinc-200'>{row.label}</span>
+                      <span className='font-mono font-bold text-amber-300'>{money(row.amountCents)}</span>
+                    </div>
+                    <p className='mt-0.5 text-[10px] text-zinc-500'>{row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
+                  </div>
+                ))}
+                {financial.recentExpenses.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No expense rows this month.</p> : null}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {(debugEvents ?? []).length > 0 ? (

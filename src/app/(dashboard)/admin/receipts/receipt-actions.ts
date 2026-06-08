@@ -208,12 +208,26 @@ export async function bulkReceiptRevenueFlagsAction(formData: FormData): Promise
   const ids = formData.getAll('receiptIds').map((v) => str(v)).filter(Boolean);
   const action = str(formData.get('bulkAction'));
   if (ids.length === 0) return;
+  const { data: linkedReceipts } = await gate.admin.from('receipts').select('id, payment_id, is_test').in('id', ids);
+  const paymentIds = (linkedReceipts ?? []).map((r) => str((r as Record<string, unknown>).payment_id)).filter(Boolean);
+  const now = new Date().toISOString();
   if (action === 'mark_test') {
     await gate.admin.from('receipts').update({ is_test: true }).in('id', ids);
+    if (paymentIds.length > 0) await gate.admin.from('payments').update({ is_test: true }).in('id', paymentIds);
   } else if (action === 'exclude') {
     await gate.admin.from('receipts').update({ exclude_from_revenue: true }).in('id', ids);
+    if (paymentIds.length > 0) await gate.admin.from('payments').update({ exclude_from_revenue: true }).in('id', paymentIds);
+  } else if (action === 'void') {
+    await gate.admin.from('receipts').update({ voided_at: now, status: 'voided' }).in('id', ids);
+    if (paymentIds.length > 0) await gate.admin.from('payments').update({ voided_at: now, voided: true, status: 'voided' }).in('id', paymentIds);
   } else if (action === 'delete_test') {
-    await gate.admin.from('receipts').delete().in('id', ids).eq('is_test', true);
+    const testIds = (linkedReceipts ?? [])
+      .filter((r) => (r as Record<string, unknown>).is_test === true)
+      .map((r) => str((r as Record<string, unknown>).id))
+      .filter(Boolean);
+    if (testIds.length > 0) await gate.admin.from('receipts').delete().in('id', testIds).eq('is_test', true);
   }
   revalidatePath('/admin/receipts');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
 }

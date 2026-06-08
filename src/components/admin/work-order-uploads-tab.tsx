@@ -31,6 +31,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
   const [postError, setPostError] = useState<string | null>(null);
   const [postSuccess, setPostSuccess] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [activeVehicleKey, setActiveVehicleKey] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all');
 
@@ -55,6 +56,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
   
   const jobsMap: Record<string, {
     jobId: string;
+    vehicleKey: string;
     vehicleLabel: string;
     photos: Photo[];
   }> = {};
@@ -62,10 +64,12 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
   photos.forEach((p) => {
     const jId = p.appointment_id || p.fallback_booking_id || 'orphan';
     const vLabel = p.vehicle_label || 'Vehicle';
-    const key = `${jId}-${vLabel}`;
+    const vehicleToken = p.vehicle_index != null ? `vehicle-${p.vehicle_index}` : vLabel;
+    const key = `${jId}-${vehicleToken}`;
     if (!jobsMap[key]) {
       jobsMap[key] = {
         jobId: jId,
+        vehicleKey: key,
         vehicleLabel: vLabel,
         photos: [],
       };
@@ -75,8 +79,9 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
 
   const groupedJobs = Object.values(jobsMap);
 
-  const handleOpenPostModal = (jobId: string, vLabel: string, beforePhotos: Photo[], afterPhotos: Photo[]) => {
+  const handleOpenPostModal = (jobId: string, vehicleKey: string, vLabel: string, beforePhotos: Photo[], afterPhotos: Photo[]) => {
     setActiveJobId(jobId);
+    setActiveVehicleKey(vehicleKey);
     setVehicleLabel(vLabel);
     setSelectedBeforePhoto(beforePhotos[0]?.url || null);
     setSelectedAfterPhoto(afterPhotos[0]?.url || null);
@@ -163,7 +168,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
           const afterPhotos = group.photos.filter((p) => p.category === 'after' || p.category?.startsWith('after_'));
 
           return (
-            <div key={idx} className="gb-glass rounded-2xl border border-white/10 bg-black/40 p-5 space-y-4">
+            <div key={group.vehicleKey || idx} className="gb-glass rounded-2xl border border-white/10 bg-black/40 p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">{group.vehicleLabel}</h3>
@@ -172,7 +177,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
                 {beforePhotos.length > 0 && afterPhotos.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => handleOpenPostModal(group.jobId, group.vehicleLabel, beforePhotos, afterPhotos)}
+                    onClick={() => handleOpenPostModal(group.jobId, group.vehicleKey, group.vehicleLabel, beforePhotos, afterPhotos)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black hover:bg-gold-soft transition duration-200"
                   >
                     Create Before/After Post
@@ -220,7 +225,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
 
       {/* Before/After Post Modal */}
       {activeJobId && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md" onClick={() => setActiveJobId(null)}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md" onClick={() => { setActiveJobId(null); setActiveVehicleKey(null); }}>
           <div className="gb-glass w-full max-w-2xl rounded-3xl border border-gold/30 bg-black/95 p-6 space-y-4 text-left shadow-[0_0_50px_rgba(212,175,55,0.15)] animate-in fade-in duration-200 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1">Marketing Integration</p>
@@ -245,7 +250,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-zinc-400 mb-2">Select Before Image</p>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {photos.filter((p) => (p.appointment_id === activeJobId || p.fallback_booking_id === activeJobId) && (p.category === 'before' || p.category === 'front' || p.category === 'driver_side' || p.category === 'passenger_side' || p.category === 'rear')).map((p) => {
+                  {(groupedJobs.find((g) => g.vehicleKey === activeVehicleKey)?.photos ?? []).filter((p) => (p.category === 'before' || p.category === 'front' || p.category === 'driver_side' || p.category === 'passenger_side' || p.category === 'rear')).map((p) => {
                     const isSelected = selectedBeforePhoto === p.url;
                     return (
                       <button
@@ -267,7 +272,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-zinc-400 mb-2">Select After Image</p>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {photos.filter((p) => (p.appointment_id === activeJobId || p.fallback_booking_id === activeJobId) && (p.category === 'after')).map((p) => {
+                  {(groupedJobs.find((g) => g.vehicleKey === activeVehicleKey)?.photos ?? []).filter((p) => (p.category === 'after')).map((p) => {
                     const isSelected = selectedAfterPhoto === p.url;
                     return (
                       <button
@@ -367,7 +372,7 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: any[] }) {
               <button
                 type="button"
                 disabled={creatingPost}
-                onClick={() => setActiveJobId(null)}
+                onClick={() => { setActiveJobId(null); setActiveVehicleKey(null); }}
                 className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-black uppercase text-zinc-400 hover:text-white transition duration-200"
               >
                 Cancel

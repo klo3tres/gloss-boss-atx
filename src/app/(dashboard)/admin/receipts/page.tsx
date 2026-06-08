@@ -105,6 +105,7 @@ export default async function AdminReceiptsPage() {
             <select name='bulkAction' className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
               <option value='exclude'>Bulk exclude from revenue</option>
               <option value='mark_test'>Bulk mark as test</option>
+              <option value='void'>Bulk void receipt + linked payment</option>
               <option value='delete_test'>Bulk delete test receipts only</option>
             </select>
             <button type='submit' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-black uppercase text-gold-soft'>

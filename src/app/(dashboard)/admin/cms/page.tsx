@@ -189,6 +189,17 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         const appt = apptById.get(String(p.appointment_id ?? '')) ?? {};
         const tech = techById.get(String(p.technician_id ?? p.uploaded_by ?? '')) ?? {};
         const url = String(p.url ?? p.public_url ?? p.media_url ?? p.file_url ?? '').trim();
+        const vehicleIndex = typeof p.vehicle_index === 'number' ? p.vehicle_index : Number.isFinite(Number(p.vehicle_index)) ? Number(p.vehicle_index) : null;
+        const bookingVehicles = Array.isArray(appt.booking_vehicles) ? (appt.booking_vehicles as Record<string, unknown>[]) : [];
+        const indexedVehicle = vehicleIndex != null ? bookingVehicles[vehicleIndex] ?? bookingVehicles[vehicleIndex - 1] : null;
+        const indexedLabel = indexedVehicle
+          ? [indexedVehicle.year, indexedVehicle.make, indexedVehicle.model, indexedVehicle.color].map((v) => (v == null ? '' : String(v))).filter(Boolean).join(' ')
+          : '';
+        const vehicleLabel =
+          String(p.vehicle_label ?? p.vehicle_description ?? '').trim() ||
+          indexedLabel ||
+          String(appt.vehicle_description ?? '').trim() ||
+          `Vehicle ${vehicleIndex != null ? vehicleIndex + 1 : ''}`.trim();
         return {
           ...p,
           id: String(p.id ?? url),
@@ -198,7 +209,9 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           uploader: String(tech.full_name ?? tech.email ?? p.uploader ?? ''),
           customer_name: String(appt.guest_name ?? ''),
           customer_email: String(appt.guest_email ?? ''),
-          vehicle_label: String(p.vehicle_label ?? p.vehicle_description ?? appt.vehicle_description ?? ''),
+          vehicle_index: vehicleIndex,
+          vehicle_label: vehicleLabel,
+          vehicle_color: String(p.vehicle_color ?? indexedVehicle?.color ?? ''),
           service_type: String(p.service_type ?? appt.service_slug ?? ''),
           booking_vehicles: appt.booking_vehicles,
         };

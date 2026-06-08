@@ -81,6 +81,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
   const [wizardStep, setWizardStep] = useState<'select' | 'preview' | 'configure' | 'publish'>('select');
   const [wizardSearch, setWizardSearch] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const [selectedBeforeUrl, setSelectedBeforeUrl] = useState<string | null>(null);
   const [selectedAfterUrl, setSelectedAfterUrl] = useState<string | null>(null);
   
@@ -107,6 +108,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
   // Group work order photos
   const groupedJobs = (() => {
     const jobsMap: Record<string, {
+      groupKey: string;
       jobId: string;
       customerName: string;
       vehicleLabel: string;
@@ -117,9 +119,11 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
     (recentPhotos as Photo[]).forEach((p) => {
       const jId = p.appointment_id || p.fallback_booking_id || 'unassigned';
       const vLabel = p.vehicle_label || 'Vehicle Detail';
-      const key = `${jId}-${vLabel}`;
+      const vehicleToken = p.vehicle_index != null ? `vehicle-${p.vehicle_index}` : vLabel;
+      const key = `${jId}-${vehicleToken}`;
       if (!jobsMap[key]) {
         jobsMap[key] = {
+          groupKey: key,
           jobId: jId,
           customerName: p.customer_name || 'Walk-in Customer',
           vehicleLabel: vLabel,
@@ -145,6 +149,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
   // Autocomplete metadata when a job is picked
   const handleJobSelect = (job: typeof groupedJobs[number]) => {
     setSelectedJobId(job.jobId);
+    setSelectedGroupKey(job.groupKey);
     
     // Auto-pre-select before and after photos if they exist
     const befores = job.photos.filter((p) => p.category === 'before' || p.category === 'front' || p.category === 'driver_side' || p.category === 'passenger_side' || p.category === 'rear');
@@ -210,6 +215,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
         setTimeout(() => {
           // Reset wizard and back to list
           setSelectedJobId(null);
+          setSelectedGroupKey(null);
           setSelectedBeforeUrl(null);
           setSelectedAfterUrl(null);
           setWTitle('');
@@ -656,10 +662,10 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
                     <p className="text-xs text-zinc-500 italic p-4">No recent photos found.</p>
                   ) : (
                     groupedJobs.map((job) => {
-                      const isSelected = selectedJobId === job.jobId;
+                      const isSelected = selectedGroupKey === job.groupKey;
                       return (
                         <button
-                          key={job.jobId}
+                          key={job.groupKey}
                           type="button"
                           onClick={() => handleJobSelect(job)}
                           className={`w-full text-left p-3 rounded-xl border transition flex items-center justify-between ${
@@ -693,7 +699,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
                       <div className="space-y-2">
                         <p className="text-[10px] font-black uppercase tracking-wider text-amber-200">1. Select Before Image</p>
                         <div className="flex gap-2 overflow-x-auto pb-2">
-                          {groupedJobs.find((j) => j.jobId === selectedJobId)?.photos.map((p) => {
+                          {groupedJobs.find((j) => j.groupKey === selectedGroupKey)?.photos.map((p) => {
                             const isBefore = selectedBeforeUrl === p.url;
                             return (
                               <button
@@ -718,7 +724,7 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
                       <div className="space-y-2">
                         <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">2. Select After Image</p>
                         <div className="flex gap-2 overflow-x-auto pb-2">
-                          {groupedJobs.find((j) => j.jobId === selectedJobId)?.photos.map((p) => {
+                          {groupedJobs.find((j) => j.groupKey === selectedGroupKey)?.photos.map((p) => {
                             const isAfter = selectedAfterUrl === p.url;
                             return (
                               <button
