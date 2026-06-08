@@ -24,9 +24,19 @@ export async function GET(request: Request) {
 
   let rows: Record<string, unknown>[] = [];
   if (report === 'expenses') {
-    const q = admin.from('expenses').select('*').gte('occurred_at', from).lte('occurred_at', to).order('occurred_at', { ascending: false });
-    const { data } = includeTest ? await q : await q.eq('is_test', false).eq('exclude_from_reports', false);
-    rows = (data ?? []) as Record<string, unknown>[];
+    const expensesQ = admin.from('expenses').select('*').gte('occurred_at', from).lte('occurred_at', to).order('occurred_at', { ascending: false });
+    const businessQ = admin.from('business_expenses').select('*').gte('incurred_at', from).lte('incurred_at', to).order('incurred_at', { ascending: false });
+    const mileageQ = admin.from('job_mileage_logs').select('*').gte('created_at', from).lte('created_at', to).order('created_at', { ascending: false });
+    const [expensesRes, businessRes, mileageRes] = await Promise.all([
+      includeTest ? expensesQ : expensesQ.eq('is_test', false).eq('exclude_from_reports', false),
+      businessQ,
+      mileageQ,
+    ]);
+    rows = [
+      ...((expensesRes.data ?? []) as Record<string, unknown>[]).map((r) => ({ source: 'expenses', ...r })),
+      ...((businessRes.data ?? []) as Record<string, unknown>[]).map((r) => ({ source: 'business_expenses', ...r })),
+      ...((mileageRes.data ?? []) as Record<string, unknown>[]).map((r) => ({ source: 'job_mileage_logs', amount_cents: r.gas_cost_cents, ...r })),
+    ];
   } else if (report === 'payments') {
     const q = admin.from('payments').select('*').gte('created_at', from).lte('created_at', to).order('created_at', { ascending: false });
     const { data } = includeTest ? await q : await q.eq('is_test', false).eq('exclude_from_revenue', false);

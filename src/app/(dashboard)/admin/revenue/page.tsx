@@ -16,7 +16,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notFound } from 'next/navigation';
 import { RevenueChartsClient } from '@/components/admin/revenue-charts';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
-import { fetchFinancialSummary } from '@/lib/financial-ledger';
+import { getFinancialSnapshot } from '@/lib/financial-ledger';
 import Stripe from 'stripe';
 import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
@@ -97,7 +97,7 @@ export default async function AdminRevenuePage({
   const month = summarizePayments(monthRows, sumOpts);
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
-  const financial = await fetchFinancialSummary(admin, startOfMonthIso(), now, { includeTest });
+  const financial = await getFinancialSnapshot(admin, { startDate: startOfMonthIso(), endDate: now, includeTest });
   
   let stripeBalances: { available: number | null; pending: number | null; treasury: number | null } = { available: null, pending: null, treasury: null };
   const stripeSecrets = await getStripeSecrets(admin);
@@ -118,7 +118,7 @@ export default async function AdminRevenuePage({
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
-  const balanceDueCents = allAppts
+  const balanceDueCents = financial.openBalancesCents || allAppts
     .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
     .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
 
@@ -420,14 +420,15 @@ export default async function AdminRevenuePage({
       <section className='mb-8 space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents || month.grossCents)} hint='Ledger volume MTD' />
+          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed MTD' />
           <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
           <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
-          <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Technician fuel & supply costs' />
-          <StatBlock label='Net profit' value={money((financial.grossRevenueCents || month.grossCents) - financial.refundsCents - financial.stripeFeesCents - financial.expensesCents)} hint='Gross - refunds - fees - expenses' />
+          <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
+          <StatBlock label='Net profit' value={money(financial.netProfitCents)} hint='Gross - refunds - fees - expenses' />
           <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} hint='Disbursed bank transfers' />
           <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' hint='Accounts receivable' />
-          <StatBlock label='Paid invoices/deposits' value={money(month.grossCents)} href='/admin/payments' hint='Cleared invoice transactions' />
+          <StatBlock label='Pending deposits' value={money(financial.pendingDepositsCents)} href='/admin/work-orders' hint='Jobs awaiting deposit' />
+          <StatBlock label='Paid invoices/deposits' value={money(financial.paidInvoicesDepositsCents)} href='/admin/payments' hint='Cleared invoice transactions' />
         </div>
         <p className='text-xs text-zinc-500'>
           ledger profitability is computed from local payment records and manual technician expenses. Payouts and fees are automatically tracked at time of transaction synchronization.
@@ -496,6 +497,24 @@ export default async function AdminRevenuePage({
           <div className='rounded-xl border border-white/10 px-3 py-2'>
             <dt className='text-zinc-500'>Gross collected</dt>
             <dd className='font-mono font-bold text-gold-soft'>{money(monthDiagnostics.grossCents)}</dd>
+          </div>
+        </dl>
+        <dl className='mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Ledger rows</dt>
+            <dd className='font-mono font-bold text-white'>{financial.diagnostics.ledgerRowsLoaded}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Expense rows</dt>
+            <dd className='font-mono font-bold text-white'>{financial.diagnostics.expenseRowsLoaded}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Business expenses</dt>
+            <dd className='font-mono font-bold text-white'>{financial.diagnostics.businessExpenseRowsLoaded}</dd>
+          </div>
+          <div className='rounded-xl border border-white/10 px-3 py-2'>
+            <dt className='text-zinc-500'>Mileage logs</dt>
+            <dd className='font-mono font-bold text-white'>{financial.diagnostics.mileageRowsLoaded}</dd>
           </div>
         </dl>
         {Object.keys(monthDiagnostics.byMethod).length > 0 ? (

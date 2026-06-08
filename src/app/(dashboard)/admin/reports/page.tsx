@@ -4,7 +4,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { displayMoney } from '@/lib/display-format';
-import { fetchFinancialSummary } from '@/lib/financial-ledger';
+import { getFinancialSnapshot } from '@/lib/financial-ledger';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,7 @@ export default async function ReportsPage({
   const includeTest = sp.includeTest === '1';
   const fromIso = new Date(`${from}T00:00:00`).toISOString();
   const toIso = new Date(`${to}T23:59:59`).toISOString();
-  const summary = await fetchFinancialSummary(admin, fromIso, toIso, { includeTest });
+  const summary = await getFinancialSnapshot(admin, { startDate: fromIso, endDate: toIso, includeTest });
   const qs = `from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}${includeTest ? '&includeTest=1' : ''}`;
 
   const reports = [
@@ -49,10 +49,53 @@ export default async function ReportsPage({
       </form>
 
       <section className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-        <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Gross</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.grossRevenueCents)}</p></div>
+        <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Gross</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.grossRevenueCents)}</p><p className='mt-1 text-[10px] text-zinc-500'>{summary.paymentsCount} payments · {summary.receiptsCount} receipts</p></div>
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Refunds + fees</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.refundsCents + summary.stripeFeesCents)}</p></div>
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Expenses</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.expensesCents)}</p></div>
         <div className='rounded-2xl border border-gold/20 bg-black/40 p-5'><p className='text-xs uppercase text-gold-soft'>Net profit</p><p className='mt-2 text-2xl font-black text-gold-soft'>{displayMoney(summary.netProfitCents)}</p></div>
+      </section>
+
+      <section className='grid gap-4 lg:grid-cols-2'>
+        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent payments in report</p>
+          {summary.recentPayments.length === 0 ? (
+            <p className='mt-4 text-sm text-zinc-500'>No counted payments in this date range.</p>
+          ) : (
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full text-left text-xs'>
+                <tbody className='divide-y divide-white/10'>
+                  {summary.recentPayments.slice(0, 12).map((row) => (
+                    <tr key={`${row.source}-${row.id}`}>
+                      <td className='py-2 pr-3 font-bold text-white'>{row.label}</td>
+                      <td className='py-2 pr-3 text-zinc-400'>{row.method ?? row.source}</td>
+                      <td className='py-2 text-right font-mono text-gold-soft'>{displayMoney(row.amountCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent expenses in report</p>
+          {summary.recentExpenses.length === 0 ? (
+            <p className='mt-4 text-sm text-zinc-500'>No expenses found from expenses, business expenses, or mileage logs.</p>
+          ) : (
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full text-left text-xs'>
+                <tbody className='divide-y divide-white/10'>
+                  {summary.recentExpenses.slice(0, 12).map((row) => (
+                    <tr key={`${row.source}-${row.id}`}>
+                      <td className='py-2 pr-3 font-bold text-white'>{row.label}</td>
+                      <td className='py-2 pr-3 text-zinc-400'>{row.source}</td>
+                      <td className='py-2 text-right font-mono text-rose-200'>{displayMoney(row.amountCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
@@ -71,6 +114,9 @@ export default async function ReportsPage({
         <p className='mt-3 text-sm text-zinc-300 print:text-black'>Gross Revenue - Refunds - Stripe Fees - Expenses = Net Profit</p>
         <p className='mt-2 text-sm text-zinc-400 print:text-black'>
           {displayMoney(summary.grossRevenueCents)} - {displayMoney(summary.refundsCents)} - {displayMoney(summary.stripeFeesCents)} - {displayMoney(summary.expensesCents)} = {displayMoney(summary.netProfitCents)}
+        </p>
+        <p className='mt-3 text-xs text-zinc-500 print:text-black'>
+          Diagnostics: {summary.diagnostics.rowsLoaded} payment/receipt rows, {summary.diagnostics.ledgerRowsLoaded} ledger rows, {summary.diagnostics.expenseRowsLoaded} expense rows, {summary.diagnostics.businessExpenseRowsLoaded} business expense rows, {summary.diagnostics.mileageRowsLoaded} mileage rows.
         </p>
       </section>
     </DashboardShell>
