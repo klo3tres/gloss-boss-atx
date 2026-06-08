@@ -30,7 +30,7 @@ export default async function AdminDashboardPage() {
     },
     pendingDeposits: '$0.00',
     activeJobsCount: 0,
-    bookingHealth: 100,
+    bookingHealth: 0,
     unreadMessageCount: 0,
     bookingsThisWeek: 0,
     dispatchUnassignedToday: 0,

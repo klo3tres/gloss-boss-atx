@@ -115,7 +115,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
     { href: '/admin/dispatch', label: 'Dispatch Board', desc: 'Manage slots & routes', icon: Zap, color: 'text-cyan-400' },
     { href: '/admin/revenue', label: 'Revenue Center', desc: 'Payment details & charts', icon: TrendingUp, color: 'text-emerald-400' },
     { href: '/admin/customers', label: 'Customers', desc: 'Profiles & loyalty records', icon: Users, color: 'text-amber-400' },
-    { href: '/admin/gallery', label: 'Gallery Manager', desc: 'Review & publish showcase', icon: Sparkles, color: 'text-gold' },
+    { href: '/admin/cms', label: 'Gallery Manager', desc: 'Review & publish showcase', icon: Sparkles, color: 'text-gold' },
     { href: 'https://dashboard.stripe.com/', label: 'Stripe Dashboard', desc: 'External Stripe Console', icon: ExternalLink, external: true, color: 'text-indigo-400' },
     { href: 'https://console.twilio.com/', label: 'Twilio Console', desc: 'External SMS Console', icon: ExternalLink, external: true, color: 'text-rose-400' },
     { href: 'https://mail.google.com/', label: 'Gmail Admin', desc: 'Business mailbox console', icon: ExternalLink, external: true, color: 'text-red-400' },
@@ -233,20 +233,14 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
               <div className="rounded-2xl bg-zinc-950/50 p-4 border border-white/5">
                 <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Average Ticket</p>
                 <p className="mt-2 font-mono text-2xl font-black text-white">{metrics.averageTicketSize}</p>
-                <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>+4.2% vs last month</span>
-                </div>
+                <p className="mt-2 text-[10px] font-bold text-zinc-500">Month-to-date paid average</p>
               </div>
 
               {/* Membership revenue */}
               <div className="rounded-2xl bg-zinc-950/50 p-4 border border-white/5">
                 <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Membership MTD</p>
                 <p className="mt-2 font-mono text-2xl font-black text-gold">{metrics.membershipRevenueMonth}</p>
-                <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
-                  <ShieldCheck className="h-3 w-3" />
-                  <span>Steady recurring cashflow</span>
-                </div>
+                <p className="mt-2 text-[10px] font-bold text-zinc-500">Paid membership transactions</p>
               </div>
 
               {/* Booking Health */}

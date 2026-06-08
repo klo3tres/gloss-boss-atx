@@ -402,7 +402,7 @@ export default async function AdminRevenuePage({
           <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
             <StatBlock label='Available Stripe balance' value={stripeBalances.available == null ? 'Unavailable' : money(stripeBalances.available)} hint='Funds ready for instant bank payout' />
             <StatBlock label='Pending Stripe balance' value={stripeBalances.pending == null ? 'Unavailable' : money(stripeBalances.pending)} hint='Credit card funds clearing' />
-            <StatBlock label='Treasury balance' value={stripeBalances.treasury == null ? 'Unavailable' : money(stripeBalances.treasury)} hint='Stripe financial storage account' />
+            {stripeBalances.treasury != null ? <StatBlock label='Treasury balance' value={money(stripeBalances.treasury)} hint='Stripe financial storage account' /> : null}
           </div>
         ) : (
           <div className="gb-glass rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 text-xs text-amber-200">

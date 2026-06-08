@@ -31,6 +31,26 @@ interface Plan {
   billing_interval: string;
 }
 
+const PUBLIC_TIERS = ['bronze', 'silver', 'gold'] as const;
+
+function normalizeTier(plan: Pick<Plan, 'tier' | 'name' | 'slug'>) {
+  const hay = `${plan.tier ?? ''} ${plan.name ?? ''} ${plan.slug ?? ''}`.toLowerCase();
+  return PUBLIC_TIERS.find((tier) => hay.includes(tier)) ?? null;
+}
+
+function publicMembershipPlans(rows: Plan[]) {
+  const byTier = new Map<string, Plan>();
+  for (const plan of rows) {
+    const tier = normalizeTier(plan);
+    if (!tier) continue;
+    const current = byTier.get(tier);
+    const planHasPrice = Boolean(plan.price_monthly_cents || plan.price_biweekly_cents || plan.price_yearly_cents || plan.price_cents);
+    const currentHasPrice = current ? Boolean(current.price_monthly_cents || current.price_biweekly_cents || current.price_yearly_cents || current.price_cents) : false;
+    if (!current || (planHasPrice && !currentHasPrice)) byTier.set(tier, plan);
+  }
+  return PUBLIC_TIERS.map((tier) => byTier.get(tier)).filter((plan): plan is Plan => Boolean(plan));
+}
+
 export default async function MembershipsPage() {
   const admin = tryCreateAdminSupabase();
   const { data } = admin
@@ -40,7 +60,7 @@ export default async function MembershipsPage() {
         .or('show_on_homepage.eq.true,show_on_services.eq.true')
     : { data: [] as any[] };
   
-  const plans = (data ?? []) as Plan[];
+  const plans = publicMembershipPlans((data ?? []) as Plan[]);
 
   return (
     <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">

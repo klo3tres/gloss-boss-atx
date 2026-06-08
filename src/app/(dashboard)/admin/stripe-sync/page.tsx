@@ -51,18 +51,22 @@ export default async function StripeSyncPage() {
         <a href='https://dashboard.stripe.com/' target='_blank' rel='noreferrer' className='rounded-2xl border border-gold/20 bg-gold/10 p-5 text-sm font-black uppercase text-gold-soft'>Open Stripe Dashboard</a>
       </section>
 
-      <section className='grid gap-3 sm:grid-cols-2'>
-        <div className='rounded-2xl border border-white/10 bg-black/40 p-5'>
-          <p className='text-xs uppercase text-zinc-500'>Treasury / financial account balance</p>
-          <p className='mt-2 text-2xl font-black text-white'>{stripeSnapshot?.treasuryAvailableCents == null ? 'Unavailable' : displayMoney(stripeSnapshot.treasuryAvailableCents)}</p>
-          {stripeSnapshot?.treasuryUnavailableReason ? <p className='mt-2 text-xs text-amber-200'>{stripeSnapshot.treasuryUnavailableReason}</p> : null}
-        </div>
-        <div className='rounded-2xl border border-white/10 bg-black/40 p-5'>
-          <p className='text-xs uppercase text-zinc-500'>Stripe card / issuing spend</p>
-          <p className='mt-2 text-2xl font-black text-white'>{displayMoney(Math.abs((stripeSnapshot?.recentCardSpends ?? []).reduce((s, r) => s + r.amount, 0)))}</p>
-          {stripeSnapshot?.issuingUnavailableReason ? <p className='mt-2 text-xs text-amber-200'>{stripeSnapshot.issuingUnavailableReason}</p> : null}
-        </div>
-      </section>
+      {stripeSnapshot?.treasuryAvailableCents != null || (stripeSnapshot?.recentCardSpends ?? []).length > 0 ? (
+        <section className='grid gap-3 sm:grid-cols-2'>
+          {stripeSnapshot?.treasuryAvailableCents != null ? (
+            <div className='rounded-2xl border border-white/10 bg-black/40 p-5'>
+              <p className='text-xs uppercase text-zinc-500'>Treasury / financial account balance</p>
+              <p className='mt-2 text-2xl font-black text-white'>{displayMoney(stripeSnapshot.treasuryAvailableCents)}</p>
+            </div>
+          ) : null}
+          {(stripeSnapshot?.recentCardSpends ?? []).length > 0 ? (
+            <div className='rounded-2xl border border-white/10 bg-black/40 p-5'>
+              <p className='text-xs uppercase text-zinc-500'>Stripe card / issuing spend</p>
+              <p className='mt-2 text-2xl font-black text-white'>{displayMoney(Math.abs((stripeSnapshot?.recentCardSpends ?? []).reduce((s, r) => s + r.amount, 0)))}</p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <form action={resyncStripeTransactionsAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <button className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Resync Stripe transactions</button>
@@ -111,16 +115,17 @@ export default async function StripeSyncPage() {
             {(stripeSnapshot?.recentTransfers ?? []).length === 0 ? <li className='text-zinc-500'>No recent transfers returned by Stripe API.</li> : null}
           </ul>
         </div>
-        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent card spends / issuing</p>
-          <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
-            {(stripeSnapshot?.recentCardSpends ?? []).map((t) => <li key={t.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(t.amount)} - {t.merchant ?? 'Card spend'} - {fmt(new Date(t.created * 1000).toISOString())}</li>)}
-            {(stripeSnapshot?.recentCardSpends ?? []).length === 0 ? <li className='text-zinc-500'>No card spend rows returned, or Stripe Issuing access is unavailable.</li> : null}
-          </ul>
-        </div>
+        {(stripeSnapshot?.recentCardSpends ?? []).length > 0 ? (
+          <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent card spends / issuing</p>
+            <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
+              {(stripeSnapshot?.recentCardSpends ?? []).map((t) => <li key={t.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(t.amount)} - {t.merchant ?? 'Card spend'} - {fmt(new Date(t.created * 1000).toISOString())}</li>)}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
-      <p className='text-xs text-zinc-500'>If Treasury or Issuing is not enabled on the API key, use manual expenses in Operations so net profit still stays accurate.</p>
+      <p className='text-xs text-zinc-500'>Manual expenses keep profit accurate for purchases that are not returned by Stripe balance transactions.</p>
       <Link href='/admin/revenue' className='text-xs font-bold uppercase text-gold-soft underline'>Back to revenue</Link>
     </DashboardShell>
   );

@@ -21,6 +21,8 @@ export type PayRow = {
   exclude_from_revenue?: boolean | null;
   refunded_at?: string | null;
   refunded_amount_cents?: number | null;
+  source_table?: 'payments' | 'receipts';
+  payment_id?: string | null;
 };
 
 function str(v: unknown) {
@@ -203,19 +205,14 @@ export function buildRevenueDiagnostics(
 export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string, toIso?: string) {
   const select =
     'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
-  const { data: byPaid, error: e1 } = await admin
-    .from('payments')
-    .select(select)
-    .gte('paid_at', fromIso)
-    .lte('paid_at', toIso ?? new Date().toISOString())
-    .limit(5000);
-  if (!e1 && byPaid?.length) return (byPaid ?? []) as PayRow[];
+  const upper = toIso ?? new Date().toISOString();
+  const [byPaidRes, byCreatedRes, receiptRows] = await Promise.all([
+    admin.from('payments').select(select).gte('paid_at', fromIso).lte('paid_at', upper).limit(5000),
+    admin.from('payments').select(select).gte('created_at', fromIso).lte('created_at', upper).limit(5000),
+    fetchReceiptRevenueSince(admin, fromIso, upper),
+  ]);
 
-  let q = admin.from('payments').select(select).gte('created_at', fromIso);
-  if (toIso) q = q.lte('created_at', toIso);
-  const { data, error } = await q.limit(5000);
-  if (error) return [];
-  const rows = (data ?? []) as PayRow[];
+  const rows = [...((byPaidRes.data ?? []) as PayRow[]), ...((byCreatedRes.data ?? []) as PayRow[])];
   const seen = new Set<string>();
   const out: PayRow[] = [];
   for (const p of rows) {
@@ -225,7 +222,56 @@ export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string,
     const ts = payTimestamp(p);
     if (ts >= fromIso && (!toIso || ts <= toIso)) out.push(p);
   }
+  const paymentIds = new Set(out.map((p) => str(p.id)).filter(Boolean));
+  for (const receipt of receiptRows) {
+    const linkedPaymentId = str(receipt.payment_id);
+    if (linkedPaymentId && paymentIds.has(linkedPaymentId)) continue;
+    const id = str(receipt.id);
+    const syntheticId = id ? `receipt:${id}` : '';
+    if (syntheticId && seen.has(syntheticId)) continue;
+    if (syntheticId) seen.add(syntheticId);
+    out.push({ ...receipt, id: syntheticId || id, source_table: 'receipts' });
+  }
   return out;
+}
+
+async function fetchReceiptRevenueSince(admin: SupabaseClient, fromIso: string, toIso: string): Promise<PayRow[]> {
+  const fullSelect =
+    'id, payment_id, amount_cents, final_total_cents, payment_method, created_at, appointment_id, fallback_booking_id, metadata, is_test, exclude_from_revenue, voided_at, refunded_at';
+  let res = await admin.from('receipts').select(fullSelect).gte('created_at', fromIso).lte('created_at', toIso).limit(5000);
+  if (res.error) {
+    const fallbackRes = await admin.from('receipts').select('id, payment_id, amount_cents, payment_method, created_at, appointment_id, voided_at').gte('created_at', fromIso).lte('created_at', toIso).limit(5000);
+    if (fallbackRes.error) return [];
+    return ((fallbackRes.data ?? []) as Array<Record<string, unknown>>).map(receiptToPayRow);
+  }
+  if (res.error) return [];
+  return ((res.data ?? []) as Array<Record<string, unknown>>).map(receiptToPayRow);
+}
+
+function receiptToPayRow(r: Record<string, unknown>): PayRow {
+  return {
+    id: str(r.id),
+    payment_id: str(r.payment_id) || null,
+    amount_cents:
+      typeof r.amount_cents === 'number'
+        ? r.amount_cents
+        : typeof r.final_total_cents === 'number'
+          ? r.final_total_cents
+          : 0,
+    status: 'paid',
+    payment_method: str(r.payment_method) || 'receipt',
+    payment_kind: 'receipt',
+    voided_at: str(r.voided_at) || null,
+    created_at: str(r.created_at) || null,
+    paid_at: str(r.created_at) || null,
+    appointment_id: str(r.appointment_id) || null,
+    metadata: (r.metadata && typeof r.metadata === 'object' ? r.metadata : null) as Record<string, unknown> | null,
+    is_test: r.is_test === true,
+    exclude_from_revenue: r.exclude_from_revenue === true,
+    refunded_at: str(r.refunded_at) || null,
+    refunded_amount_cents: 0,
+    source_table: 'receipts',
+  };
 }
 
 export function startOfYearIso(): string {

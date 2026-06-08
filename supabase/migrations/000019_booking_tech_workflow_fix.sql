@@ -28,14 +28,14 @@ create policy "addons_admin_all"
     exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.role in ('admin'::public.app_role, 'super_admin'::public.app_role)
+        and p.role::text in ('admin', 'super_admin')
     )
   )
   with check (
     exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.role in ('admin'::public.app_role, 'super_admin'::public.app_role)
+        and p.role::text in ('admin', 'super_admin')
     )
   );
 

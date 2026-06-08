@@ -731,7 +731,7 @@ export default async function TechnicianDashboardPage({
   }
 
   return (
-    <DashboardShell title='Field mode' subtitle='Today’s route, active job, and work orders — mobile-first.' role='technician'>
+    <DashboardShell title='Technician overview' subtitle='Live jobs, revenue, leads, goals, customers, and route work from real CRM data.' role='technician'>
       <TechPremiumShell
         techName={techName}
         roleLabel={roleLabel}

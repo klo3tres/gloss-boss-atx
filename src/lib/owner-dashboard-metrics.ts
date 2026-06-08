@@ -228,21 +228,21 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   }
   const uniqueCustomers = Object.keys(customerEmailCounts).length;
   const repeatCustomers = Object.values(customerEmailCounts).filter((c) => c > 1).length;
-  const customerRetentionRate = uniqueCustomers > 0 ? Math.round((repeatCustomers / uniqueCustomers) * 100) : 82;
+  const customerRetentionRate = uniqueCustomers > 0 ? Math.round((repeatCustomers / uniqueCustomers) * 100) : 0;
 
   // Average Ticket Size
-  const averageTicketSizeCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 18500;
+  const averageTicketSizeCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0;
   const averageTicketSize = displayMoney(averageTicketSizeCents);
 
   // Membership Revenue Month
   const membershipCents = (monthPay ?? [])
     .filter((p) => p.payment_kind === 'membership' || p.payment_method === 'membership')
     .reduce((sum, p) => sum + (p.amount_cents ?? 0), 0);
-  const membershipRevenueMonth = displayMoney(membershipCents > 0 ? membershipCents : 249000);
+  const membershipRevenueMonth = displayMoney(membershipCents);
 
   // Loyalty Participation
   const stampCustomers = new Set((loyaltyStampsRes.data ?? []).map((s) => s.customer_id));
-  const loyaltyParticipation = uniqueCustomers > 0 ? Math.round((stampCustomers.size / uniqueCustomers) * 100) : 75;
+  const loyaltyParticipation = uniqueCustomers > 0 ? Math.round((stampCustomers.size / uniqueCustomers) * 100) : 0;
 
   // Recent Payments
   const recentPayments = (paymentRowsRes.data ?? []).map((p) => {
@@ -354,7 +354,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     bookingsThisWeek,
     dispatchUnassignedToday,
     dispatchCompletedToday,
-    conversionRate: activeLeads.length > 0 ? Math.round((convertedCount / activeLeads.length) * 100) : 68,
+    conversionRate: activeLeads.length > 0 ? Math.round((convertedCount / activeLeads.length) * 100) : 0,
     customerRetentionRate,
     averageTicketSize,
     membershipRevenueMonth,

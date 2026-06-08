@@ -808,6 +808,7 @@ export function TechPremiumShell({
           {/* Lead Capture Tab */}
           {opsTab === 'leads' && (
             <form
+              id='field-lead-capture'
               onSubmit={async (e) => {
                 e.preventDefault();
                 setLeadBusy(true);
@@ -871,10 +872,10 @@ export function TechPremiumShell({
             <Zap className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
             Field invoice
           </Link>
-          <Link href='/admin/leads' className={actionBtn}>
+          <button type='button' onClick={() => setOpsTab('leads')} className={actionBtn}>
             <FileText className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
-            Leads (admin)
-          </Link>
+            Capture lead
+          </button>
           <Link href='/tech/resources' className={actionBtn}>
             <Sparkles className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
             SOPs & docs

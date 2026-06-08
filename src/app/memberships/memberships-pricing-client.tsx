@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Check, ChevronDown, Sparkles, Trophy, ShieldCheck, Zap, Award, Star, HelpCircle } from 'lucide-react';
+import { Check, ChevronDown, Zap, HelpCircle } from 'lucide-react';
 import { MembershipJoinButton } from './membership-join-button';
 
 interface Plan {
@@ -23,13 +22,12 @@ interface Plan {
 }
 
 export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
-  const [interval, setInterval] = useState<'weekly' | 'biweekly' | 'monthly' | 'yearly'>('monthly');
+  const [interval, setInterval] = useState<'biweekly' | 'monthly' | 'yearly'>('monthly');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   const getPrice = (plan: Plan) => {
     let price = 0;
-    if (interval === 'weekly') price = plan.price_weekly_cents;
-    else if (interval === 'biweekly') price = plan.price_biweekly_cents;
+    if (interval === 'biweekly') price = plan.price_biweekly_cents;
     else if (interval === 'yearly') price = plan.price_yearly_cents;
     else price = plan.price_monthly_cents;
 
@@ -40,7 +38,6 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
   };
 
   const getIntervalLabel = () => {
-    if (interval === 'weekly') return 'week';
     if (interval === 'biweekly') return '2 weeks';
     if (interval === 'yearly') return 'year';
     return 'month';
@@ -103,7 +100,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
       {/* Interval Selector Section */}
       <div className="flex justify-center mb-16">
         <div className="inline-flex rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md shadow-[0_0_25px_rgba(0,0,0,0.5)]">
-          {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((mode) => (
+          {(['biweekly', 'monthly', 'yearly'] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -208,7 +205,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
         <div className="text-center mb-12">
           <p className="text-xs font-black uppercase tracking-[0.25em] text-gold-soft">Side-by-Side Comparison</p>
           <h3 className="mt-2 text-3xl font-black uppercase text-white tracking-tight">Compare Membership Inclusions</h3>
-          <p className="mt-2 text-sm text-zinc-400">Find the perfect level of premium care for your vehicle.</p>
+          <p className="mt-2 text-sm text-zinc-400">Every value below comes from the active admin membership plans.</p>
         </div>
 
         <div className="overflow-x-auto rounded-3xl border border-white/10 bg-black/40 backdrop-blur-sm shadow-[0_0_40px_rgba(0,0,0,0.6)]">
@@ -216,65 +213,58 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
             <thead>
               <tr className="border-b border-white/10 bg-zinc-950/60">
                 <th className="p-5 text-[10px] font-black uppercase tracking-wider text-zinc-400">Membership Features</th>
-                <th className="p-5 text-[10px] font-black uppercase tracking-wider text-amber-600 text-center">Bronze</th>
-                <th className="p-5 text-[10px] font-black uppercase tracking-wider text-zinc-300 text-center">Silver</th>
-                <th className="p-5 text-[10px] font-black uppercase tracking-wider text-gold-soft text-center">Gold</th>
+                {plans.map((plan) => (
+                  <th key={plan.id} className="p-5 text-center text-[10px] font-black uppercase tracking-wider text-gold-soft">
+                    {plan.name}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-xs text-zinc-300">
               <tr>
-                <td className="p-5 font-bold text-white">Maintenance Visits</td>
-                <td className="p-5 text-center">Monthly / Bi-weekly</td>
-                <td className="p-5 text-center">Bi-weekly / Weekly</td>
-                <td className="p-5 text-center">Weekly / Custom</td>
+                <td className="p-5 font-bold text-white">Available Billing</td>
+                {plans.map((plan) => {
+                  const intervals = [
+                    plan.price_biweekly_cents > 0 ? 'Bi-weekly' : '',
+                    (plan.price_monthly_cents || plan.price_cents) > 0 ? 'Monthly' : '',
+                    plan.price_yearly_cents > 0 ? 'Yearly' : '',
+                  ].filter(Boolean);
+                  return <td key={plan.id} className="p-5 text-center">{intervals.join(' / ') || 'Contact us'}</td>;
+                })}
               </tr>
               <tr>
                 <td className="p-5 font-bold text-white">Member Discount on Packages</td>
-                <td className="p-5 text-center font-mono">10%</td>
-                <td className="p-5 text-center font-mono text-zinc-100">15%</td>
-                <td className="p-5 text-center font-mono text-gold-soft font-bold">20%</td>
+                {plans.map((plan) => (
+                  <td key={plan.id} className="p-5 text-center font-mono">
+                    {plan.discount_percent > 0 ? String(plan.discount_percent) + '%' : 'Configured in admin'}
+                  </td>
+                ))}
               </tr>
               <tr>
-                <td className="p-5 font-bold text-white">Loyalty Stamp Multiplier</td>
-                <td className="p-5 text-center">1x (Standard)</td>
-                <td className="p-5 text-center text-zinc-100 font-semibold">2x Boost</td>
-                <td className="p-5 text-center text-gold-soft font-bold">3x Ultra Boost</td>
+                <td className="p-5 font-bold text-white">Included Services</td>
+                {plans.map((plan) => (
+                  <td key={plan.id} className="p-5 text-center">
+                    {plan.included_services?.slice(0, 3).join(', ') || 'Configured in admin'}
+                  </td>
+                ))}
               </tr>
               <tr>
-                <td className="p-5 font-bold text-white">Priority Scheduling Access</td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-zinc-500" /></td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-gold-soft" /></td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-gold-soft" /></td>
+                <td className="p-5 font-bold text-white">Priority Scheduling</td>
+                {plans.map((plan) => (
+                  <td key={plan.id} className="p-5 text-center">
+                    {(plan.benefits ?? []).some((benefit) => benefit.toLowerCase().includes('priority'))
+                      ? <Check className="h-4 w-4 mx-auto text-gold-soft" />
+                      : 'Configured in admin'}
+                  </td>
+                ))}
               </tr>
               <tr>
-                <td className="p-5 font-bold text-white">Cancellation & Reschedule Waivers</td>
-                <td className="p-5 text-center">—</td>
-                <td className="p-5 text-center">50% waiver</td>
-                <td className="p-5 text-center text-gold-soft font-bold">100% Free Waiver</td>
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Complimentary Ceramic Boosters</td>
-                <td className="p-5 text-center">—</td>
-                <td className="p-5 text-center">Once per year</td>
-                <td className="p-5 text-center font-semibold text-white">Every 6 months</td>
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Interior Leather & Trim Conditioning</td>
-                <td className="p-5 text-center">—</td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-gold-soft" /></td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-gold-soft" /></td>
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Engine Bay Detailing Inclusions</td>
-                <td className="p-5 text-center">—</td>
-                <td className="p-5 text-center">—</td>
-                <td className="p-5 text-center"><Check className="h-4 w-4 mx-auto text-gold-soft" /></td>
-              </tr>
-              <tr className="bg-zinc-950/20">
-                <td className="p-5 font-bold text-white">Support Channels</td>
-                <td className="p-5 text-center">Email & Web App</td>
-                <td className="p-5 text-center">Dedicated Detail Line</td>
-                <td className="p-5 text-center font-bold text-gold-soft">Direct Owner SMS Line</td>
+                <td className="p-5 font-bold text-white">Loyalty Rewards</td>
+                {plans.map((plan) => (
+                  <td key={plan.id} className="p-5 text-center">
+                    {(plan.benefits ?? []).find((benefit) => /loyalty|stamp|punch/i.test(benefit)) ?? 'Digital punch card eligible'}
+                  </td>
+                ))}
               </tr>
             </tbody>
           </table>

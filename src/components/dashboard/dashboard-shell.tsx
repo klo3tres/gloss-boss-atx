@@ -86,7 +86,7 @@ const adminLinks = adminNavGroups.flatMap((g) => g.links);
 const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
-  { href: '/tech', label: 'Active work orders' },
+  { href: '/tech', label: 'Overview' },
   { href: '/tech/workflow', label: 'Walk-in workflow' },
   { href: '/tech#field-invoice', label: 'Field tools' },
   { href: '/tech/resources', label: 'SOPs' },
