@@ -68,10 +68,33 @@ export default async function StripeSyncPage() {
         </section>
       ) : null}
 
-      <form action={resyncStripeTransactionsAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <button className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Resync Stripe transactions</button>
-        <p className='mt-2 text-xs text-zinc-500'>Imports the latest 100 Stripe balance transactions into the financial ledger.</p>
-      </form>
+      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div>
+            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Stripe root-cause sync controls</p>
+            <p className='mt-2 text-xs text-zinc-500'>All buttons run the safe financial sync and stamp the ledger with the scope you selected.</p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${secrets.secretKey ? 'border border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : 'border border-amber-500/35 bg-amber-500/10 text-amber-100'}`}>
+            {secrets.secretKey ? `Stripe key: ${secrets.source}` : 'Stripe key missing'}
+          </span>
+        </div>
+        <div className='mt-4 grid gap-2 sm:grid-cols-4'>
+          {[
+            ['all', 'Resync all finance'],
+            ['balance_transactions', 'Balance transactions'],
+            ['payments_payouts', 'Payments + payouts'],
+            ['fees_refunds', 'Fees + refunds'],
+          ].map(([scope, label]) => (
+            <form key={scope} action={resyncStripeTransactionsAction}>
+              <input type='hidden' name='scope' value={scope} />
+              <button className='w-full rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-50' disabled={!secrets.secretKey}>
+                {label}
+              </button>
+            </form>
+          ))}
+        </div>
+        <p className='mt-3 text-xs text-zinc-500'>Imports Stripe balance transactions into the financial ledger. Treasury and Issuing are displayed only when Stripe returns them.</p>
+      </section>
 
       <form action={addManualExpenseAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Manual expense</p>

@@ -8,7 +8,7 @@ import { syncRecentStripeFinance } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
-export async function resyncStripeTransactionsAction() {
+export async function resyncStripeTransactionsAction(formData?: FormData) {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) return;
@@ -16,6 +16,7 @@ export async function resyncStripeTransactionsAction() {
   if (!secrets.secretKey) return;
   const stripe = new Stripe(secrets.secretKey);
   await syncRecentStripeFinance(stripe, admin);
+  const scope = String(formData?.get('scope') ?? 'all').trim() || 'all';
   await admin.from('financial_ledger').insert({
     source: 'stripe',
     type: 'adjustment',
@@ -23,7 +24,7 @@ export async function resyncStripeTransactionsAction() {
     gross_amount: 0,
     fee_amount: 0,
     net_amount: 0,
-    description: 'Manual Stripe resync completed',
+    description: `Manual Stripe resync completed (${scope})`,
     category: 'sync_marker',
     occurred_at: new Date().toISOString(),
   });

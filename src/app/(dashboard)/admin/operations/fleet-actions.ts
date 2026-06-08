@@ -36,6 +36,7 @@ export async function setFleetPricingAction(formData: FormData) {
   );
   revalidatePath('/admin/operations');
   revalidatePath('/services');
+  revalidatePath('/fleet');
 }
 
 export async function setFleetServicesSettingAction(formData: FormData) {
@@ -58,4 +59,5 @@ export async function setFleetServicesSettingAction(formData: FormData) {
 
   revalidatePath('/admin/operations');
   revalidatePath('/services');
+  revalidatePath('/fleet');
 }

@@ -17,6 +17,7 @@ const marketingLinks = [
   { href: '/', label: 'Home' },
   { href: '/services', label: 'Services' },
   { href: '/memberships', label: 'Memberships' },
+  { href: '/fleet', label: 'Fleet' },
   { href: '/gallery', label: 'Gallery' },
   { href: '/book', label: 'Book' },
   { href: '#about', label: 'About' },

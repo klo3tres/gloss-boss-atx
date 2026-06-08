@@ -64,6 +64,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'Operations',
     links: [
       { href: '/admin/operations', label: 'Operations & mileage' },
+      { href: '/admin/supply-requests', label: 'Supply requests' },
+      { href: '/admin/fleet', label: 'Fleet accounts' },
       { href: '/admin/team', label: 'Team' },
       { href: '/admin/services', label: 'Services & pricing' },
       { href: '/admin/addons', label: 'Booking add-ons' },
@@ -102,6 +104,7 @@ const techLinks = [
 const customerLinks = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/messages', label: 'Messages' },
+  { href: '/dashboard/settings', label: 'Settings' },
   { href: '/book', label: 'Book again' },
   { href: '/gift-cards', label: 'Gift cards' },
   { href: '/services', label: 'Services' },

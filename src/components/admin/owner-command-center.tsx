@@ -19,7 +19,9 @@ import {
   ChevronRight,
   ShieldCheck,
   Percent,
-  TrendingDown
+  TrendingDown,
+  ClipboardList,
+  Wrench
 } from 'lucide-react';
 import type { OwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
 import { PremiumBadge, SectionEyebrow, GlassCard } from '@/components/ui/premium';
@@ -114,6 +116,9 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
     { href: '/book', label: 'New Booking', desc: 'Create manual field job', icon: Calendar, color: 'text-gold-soft' },
     { href: '/admin/dispatch', label: 'Dispatch Board', desc: 'Manage slots & routes', icon: Zap, color: 'text-cyan-400' },
     { href: '/admin/revenue', label: 'Revenue Center', desc: 'Payment details & charts', icon: TrendingUp, color: 'text-emerald-400' },
+    { href: '/admin/work-orders/add-past', label: 'Add Past Job', desc: 'Backfill completed work', icon: ClipboardList, color: 'text-amber-300' },
+    { href: '/admin/reports', label: 'Reports', desc: 'Tax and revenue exports', icon: Activity, color: 'text-emerald-300' },
+    { href: '/admin/system-diagnostics', label: 'Diagnostics', desc: 'Find data blockers fast', icon: Wrench, color: 'text-rose-300' },
     { href: '/admin/customers', label: 'Customers', desc: 'Profiles & loyalty records', icon: Users, color: 'text-amber-400' },
     { href: '/admin/cms', label: 'Gallery Manager', desc: 'Review & publish showcase', icon: Sparkles, color: 'text-gold' },
     { href: 'https://dashboard.stripe.com/', label: 'Stripe Dashboard', desc: 'External Stripe Console', icon: ExternalLink, external: true, color: 'text-indigo-400' },

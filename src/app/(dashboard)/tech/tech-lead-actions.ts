@@ -186,7 +186,7 @@ export async function techSubmitSupplyRequestAction(formData: FormData): Promise
   }
 
   const { error } = await gate.supabase.from('business_expenses').insert({
-    category: 'supplies',
+    category: 'supply_request',
     amount_cents: 0,
     notes: `Supply Request by tech: ${items}. Notes: ${notes}`,
     created_by: gate.userId,

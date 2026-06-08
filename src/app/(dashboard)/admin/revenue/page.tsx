@@ -590,6 +590,24 @@ export default async function AdminRevenuePage({
             </ul>
           </div>
         ) : null}
+        {monthDiagnostics.duplicateGroups.length > 0 ? (
+          <div className='mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4'>
+            <p className='text-[10px] font-black uppercase tracking-[0.2em] text-amber-200'>Duplicate payment protection</p>
+            <p className='mt-1 text-xs text-amber-100/80'>
+              {monthDiagnostics.duplicateExtraCount} duplicate row{monthDiagnostics.duplicateExtraCount === 1 ? '' : 's'} are being ignored in revenue math so Stripe/manual double-entry does not inflate totals.
+            </p>
+            <ul className='mt-3 space-y-2 text-xs text-amber-50/90'>
+              {monthDiagnostics.duplicateGroups.slice(0, 8).map((group) => (
+                <li key={group.key} className='rounded-xl border border-amber-500/20 bg-black/30 px-3 py-2'>
+                  <span className='font-mono'>{group.key}</span> · {money(group.amountCents)} · {group.ids.length} matching rows
+                </li>
+              ))}
+            </ul>
+            <Link href='/admin/system-diagnostics' className='mt-3 inline-block text-[10px] font-black uppercase text-gold-soft underline'>
+              Open diagnostics
+            </Link>
+          </div>
+        ) : null}
         {monthDiagnostics.exclusions.length > 0 ? (
           <div className='mt-4 max-h-48 overflow-y-auto'>
             <p className='text-[10px] font-black uppercase text-zinc-500'>Exclusion reasons (sample)</p>
