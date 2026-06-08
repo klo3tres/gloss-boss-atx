@@ -4,13 +4,25 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   applyCanonicalPriceSheetAction,
-  updateServiceActiveAction,
+  updateServiceMetaAction,
   updateServicePriceCentsAction,
   type SavedPriceRow,
 } from '@/app/(dashboard)/admin/service-pricing-actions';
 import { adminDisplayTitleForSlug, CERAMIC_COATING_SLUG } from '@/lib/admin/canonical-services';
 
-type ServiceMeta = { id: string; slug: string; title: string; active: boolean };
+type ServiceMeta = {
+  id: string;
+  slug: string;
+  title: string;
+  active: boolean;
+  estimated_min_minutes: number | null;
+  estimated_max_minutes: number | null;
+  coming_soon: boolean | null;
+  quote_required: boolean | null;
+  public_description: string | null;
+  admin_notes: string | null;
+  inclusions: string[] | null;
+};
 type PriceRow = SavedPriceRow;
 
 export function AdminServicesPricingClient({
@@ -82,29 +94,13 @@ export function AdminServicesPricingClient({
 
       {servicesMeta.length > 0 ? (
         <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-          <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Service visibility</p>
-          <ul className='mt-3 space-y-2'>
+          <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Service setup</p>
+          <p className='mt-1 text-xs text-zinc-400'>Controls booking visibility, duration blocking, public service copy, and package inclusions.</p>
+          <div className='mt-4 grid gap-4'>
             {servicesMeta.map((s) => (
-              <li key={s.id} className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2'>
-                <span className='text-sm font-semibold text-white'>
-                  {s.title} <span className='text-zinc-500'>({s.slug})</span>
-                </span>
-                <button
-                  type='button'
-                  disabled={pending || !hasServiceRole}
-                  onClick={() => {
-                    const fd = new FormData();
-                    fd.set('serviceId', s.id);
-                    fd.set('active', s.active ? 'false' : 'true');
-                    run(() => updateServiceActiveAction(fd));
-                  }}
-                  className='text-xs font-bold uppercase text-gold-soft'
-                >
-                  {s.active ? 'Deactivate' : 'Activate'}
-                </button>
-              </li>
+              <ServiceMetaForm key={s.id} service={s} disabled={pending || !hasServiceRole} onSave={(fd) => run(() => updateServiceMetaAction(fd))} />
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
@@ -155,6 +151,132 @@ export function AdminServicesPricingClient({
         })}
       </div>
     </div>
+  );
+}
+
+function ServiceMetaForm({
+  service,
+  disabled,
+  onSave,
+}: {
+  service: ServiceMeta;
+  disabled: boolean;
+  onSave: (formData: FormData) => void;
+}) {
+  const [active, setActive] = useState(Boolean(service.active));
+  const [comingSoon, setComingSoon] = useState(Boolean(service.coming_soon));
+  const [quoteRequired, setQuoteRequired] = useState(Boolean(service.quote_required));
+  const [minMinutes, setMinMinutes] = useState(service.estimated_min_minutes ? String(service.estimated_min_minutes) : '');
+  const [maxMinutes, setMaxMinutes] = useState(service.estimated_max_minutes ? String(service.estimated_max_minutes) : '');
+  const [publicDescription, setPublicDescription] = useState(service.public_description ?? '');
+  const [adminNotes, setAdminNotes] = useState(service.admin_notes ?? '');
+  const [inclusions, setInclusions] = useState((service.inclusions ?? []).join('\n'));
+
+  return (
+    <article className='rounded-xl border border-white/10 bg-black/40 p-4'>
+      <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
+        <div>
+          <p className='text-sm font-semibold text-white'>
+            {service.title} <span className='text-zinc-500'>({service.slug})</span>
+          </p>
+          <p className='mt-1 text-xs text-zinc-500'>Duration is used to block late booking times before checkout.</p>
+        </div>
+        <button
+          type='button'
+          disabled={disabled}
+          onClick={() => setActive((value) => !value)}
+          className='text-xs font-bold uppercase text-gold-soft'
+        >
+          {active ? 'Set inactive' : 'Set active'}
+        </button>
+      </div>
+
+      <div className='mt-4 grid gap-3 md:grid-cols-4'>
+        <label className='text-xs text-zinc-400'>
+          Min minutes
+          <input
+            type='number'
+            min={0}
+            value={minMinutes}
+            onChange={(e) => setMinMinutes(e.target.value)}
+            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='text-xs text-zinc-400'>
+          Max minutes
+          <input
+            type='number'
+            min={0}
+            value={maxMinutes}
+            onChange={(e) => setMaxMinutes(e.target.value)}
+            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200'>
+          <input type='checkbox' checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Active
+        </label>
+        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200'>
+          <input type='checkbox' checked={comingSoon} onChange={(e) => setComingSoon(e.target.checked)} />
+          Coming soon
+        </label>
+        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200 md:col-span-2'>
+          <input type='checkbox' checked={quoteRequired} onChange={(e) => setQuoteRequired(e.target.checked)} />
+          Quote required
+        </label>
+      </div>
+
+      <div className='mt-3 grid gap-3 md:grid-cols-2'>
+        <label className='text-xs text-zinc-400'>
+          Public description
+          <textarea
+            value={publicDescription}
+            onChange={(e) => setPublicDescription(e.target.value)}
+            rows={3}
+            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='text-xs text-zinc-400'>
+          Included services (one per line)
+          <textarea
+            value={inclusions}
+            onChange={(e) => setInclusions(e.target.value)}
+            rows={3}
+            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+        <label className='text-xs text-zinc-400 md:col-span-2'>
+          Admin notes
+          <textarea
+            value={adminNotes}
+            onChange={(e) => setAdminNotes(e.target.value)}
+            rows={2}
+            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+          />
+        </label>
+      </div>
+
+      <button
+        type='button'
+        disabled={disabled}
+        onClick={() => {
+          const fd = new FormData();
+          fd.set('serviceId', service.id);
+          fd.set('active', active ? 'true' : 'false');
+          fd.set('comingSoon', comingSoon ? 'true' : 'false');
+          fd.set('quoteRequired', quoteRequired ? 'true' : 'false');
+          fd.set('estimatedMinMinutes', minMinutes);
+          fd.set('estimatedMaxMinutes', maxMinutes);
+          fd.set('publicDescription', publicDescription);
+          fd.set('adminNotes', adminNotes);
+          fd.set('inclusions', inclusions);
+          onSave(fd);
+        }}
+        className='mt-4 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-50'
+      >
+        Save service setup
+      </button>
+    </article>
   );
 }
 

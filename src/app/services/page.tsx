@@ -46,7 +46,7 @@ export default function ServicesPage() {
   const [fleetEnabled, setFleetEnabled] = useState(false);
   const [fleetBlurb, setFleetBlurb] = useState("");
   const [fleetPricing, setFleetPricing] = useState<PublicSiteDataPayload["fleetPricing"] | null>(null);
-  const [activeTab, setActiveTab] = useState<'exterior' | 'interior' | 'full' | 'ceramic' | 'memberships'>('exterior');
+  const [activeTab, setActiveTab] = useState<'all' | 'exterior' | 'interior' | 'full' | 'ceramic' | 'memberships'>('all');
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
   const displayDeals = loaded ? deals : emptyDeals;
@@ -110,6 +110,7 @@ export default function ServicesPage() {
 
   const visiblePackages = packages.filter((service) => {
     const text = `${service.title} ${service.subtitle ?? ''}`.toLowerCase();
+    if (activeTab === 'all') return true;
     if (activeTab === 'memberships') return false;
     if (activeTab === 'full') return text.includes('full') || (text.includes('detail') && !text.includes('exterior') && !text.includes('interior'));
     if (activeTab === 'ceramic') return text.includes('ceramic') || text.includes('coating');
@@ -120,15 +121,29 @@ export default function ServicesPage() {
 
   const serviceCards = visiblePackages.length > 0 ? visiblePackages : packages;
 
-  // Custom durations lookup for display
-  const getDuration = (id: string) => {
+  const formatDuration = (min?: number | null, max?: number | null) => {
+    if (!min && !max) return null;
+    const lo = min ?? max ?? 0;
+    const hi = max ?? min ?? 0;
+    if (lo >= 1440 || hi >= 1440) {
+      const minDays = Math.max(1, Math.round(lo / 1440));
+      const maxDays = Math.max(minDays, Math.round(hi / 1440));
+      return minDays === maxDays ? `${minDays} day` : `${minDays} - ${maxDays} days`;
+    }
+    return lo === hi ? `${lo} min` : `${lo} - ${hi} min`;
+  };
+
+  const getDuration = (service: ServicePackage) => {
+    const fromData = formatDuration(service.estimatedMinMinutes, service.estimatedMaxMinutes);
+    if (fromData) return fromData;
+    const id = service.id;
     const sId = id.toLowerCase();
-    if (sId.includes("exterior-wash") || sId.includes("exterior_wash")) return "1 - 1.5 Hours";
-    if (sId.includes("exterior-detail") || sId.includes("exterior_detail")) return "2 - 3 Hours";
-    if (sId.includes("interior")) return "2.5 - 4 Hours";
-    if (sId.includes("full")) return "4 - 6 Hours";
-    if (sId.includes("ceramic")) return "1 - 2 Days (requires curing)";
-    return "2 - 3 Hours";
+    if (sId.includes("exterior-wash") || sId.includes("exterior_wash")) return "60 - 90 min";
+    if (sId.includes("exterior-detail") || sId.includes("exterior_detail")) return "120 - 180 min";
+    if (sId.includes("interior")) return "90 - 150 min";
+    if (sId.includes("full")) return "180 - 240 min";
+    if (sId.includes("ceramic")) return "1 - 2 days";
+    return "90 - 120 min";
   };
 
   // Driveway backgrounds for each tab
@@ -159,7 +174,7 @@ export default function ServicesPage() {
             Premium Mobile Auto Detailing
           </p>
           <h1 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl leading-none">
-            {activeTab === 'full' ? 'Full Detail Packages' : activeTab === 'ceramic' ? 'Ceramic Protective Coating' : `${activeTab} Detailing`}
+            {activeTab === 'all' ? 'All Premium Services' : activeTab === 'full' ? 'Full Detail Packages' : activeTab === 'ceramic' ? 'Ceramic Protective Coating' : `${activeTab} Detailing`}
           </h1>
           <p className="mt-3 max-w-2xl mx-auto text-xs sm:text-sm text-zinc-300 leading-relaxed">
             Professional mobile detailing at your doorstep. We supply our own spot-free filtered water, electricity, and premium chemicals.
@@ -172,6 +187,7 @@ export default function ServicesPage() {
         <div className="flex justify-center mb-10">
           <div className="inline-flex flex-wrap justify-center gap-2 rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md">
             {[
+              ['all', 'All Services'],
               ['exterior', 'Exterior Detailing'],
               ['interior', 'Interior Detailing'],
               ['full', 'Full Packages'],
@@ -197,8 +213,8 @@ export default function ServicesPage() {
         {/* Promo Band */}
         {showPromosBand ? (
           <section className="mb-10">
-            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-gold-soft mb-3">Featured Active Offers</p>
-            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
+            <p className="text-center text-[10px] font-bold uppercase tracking-[0.28em] text-gold-soft mb-3">Featured Active Offers</p>
+            <div className="mx-auto flex max-w-4xl justify-center gap-4 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
               {displayDeals.websitePromoActive && displayDeals.websitePromoPercent > 0 ? (
                 <article className="min-w-[300px] snap-start rounded-2xl border border-gold/20 bg-gradient-to-br from-gold/8 via-zinc-950 to-black p-5 shadow-lg">
                   <p className="text-[9px] uppercase tracking-[0.2em] text-gold-soft font-black">{displayDeals.websitePromoLabel || 'Online Booking Promo'}</p>
@@ -260,8 +276,8 @@ export default function ServicesPage() {
         {loaded && activeTab !== 'memberships' && (
           <div className="space-y-8 mb-16">
             {serviceCards.map((service) => {
-              const duration = getDuration(service.id);
-              const isQuoteOnly = !service.sedanPrice;
+              const duration = getDuration(service);
+              const isQuoteOnly = !service.sedanPrice || service.quoteRequired || service.comingSoon;
 
               return (
                 <article
@@ -326,7 +342,7 @@ export default function ServicesPage() {
                       </Link>
                     ) : (
                       <Link
-                        href={`/book?package=${service.id}`}
+                        href={`/book?service=${service.id}&package=${service.id}`}
                         className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black shadow-[0_0_15px_rgba(212,175,55,0.2)] hover:bg-gold-soft transition"
                       >
                         Book Package

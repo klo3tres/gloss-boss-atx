@@ -31,6 +31,13 @@ export type ApplySheetResult = {
   rows: SavedPriceRow[];
 };
 
+export type ServiceMetaSaveResult = {
+  serviceId: string;
+  active: boolean;
+  comingSoon: boolean;
+  quoteRequired: boolean;
+};
+
 function requireAdminClient(): ActionResponse<{ admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>> }> {
   const admin = tryCreateAdminSupabase();
   if (!admin) {
@@ -222,4 +229,78 @@ export async function updateServiceActiveAction(formData: FormData): Promise<Act
   revalidatePath('/admin/services');
   revalidatePath('/book');
   return actionSuccess({ serviceId, active: Boolean(data.active) });
+}
+
+function nullablePositiveInt(formData: FormData, key: string): number | null {
+  const raw = String(formData.get(key) ?? '').trim();
+  if (raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
+function listFromTextarea(formData: FormData, key: string): string[] {
+  return String(formData.get(key) ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export async function updateServiceMetaAction(formData: FormData): Promise<ActionResponse<ServiceMetaSaveResult>> {
+  const auth = await authGate();
+  if (!auth.ok) return auth;
+
+  const serviceId = String(formData.get('serviceId') ?? '').trim();
+  if (!serviceId) return actionFailure('Missing service');
+
+  const gate = requireAdminClient();
+  if (!gate.ok) return gate;
+  const { admin } = gate.data;
+
+  const active = String(formData.get('active') ?? '') === 'true';
+  const comingSoon = String(formData.get('comingSoon') ?? '') === 'true';
+  const quoteRequired = String(formData.get('quoteRequired') ?? '') === 'true';
+  const minMinutes = nullablePositiveInt(formData, 'estimatedMinMinutes');
+  const maxMinutes = nullablePositiveInt(formData, 'estimatedMaxMinutes');
+  const publicDescription = String(formData.get('publicDescription') ?? '').trim() || null;
+  const adminNotes = String(formData.get('adminNotes') ?? '').trim() || null;
+  const inclusions = listFromTextarea(formData, 'inclusions');
+
+  if (minMinutes !== null && maxMinutes !== null && maxMinutes < minMinutes) {
+    return actionFailure('Maximum duration must be greater than or equal to minimum duration.');
+  }
+
+  const update = {
+    active,
+    coming_soon: comingSoon,
+    quote_required: quoteRequired,
+    estimated_min_minutes: minMinutes,
+    estimated_max_minutes: maxMinutes,
+    public_description: publicDescription,
+    admin_notes: adminNotes,
+    inclusions,
+  };
+
+  const { data, error } = await admin
+    .from('services')
+    .update(update)
+    .eq('id', serviceId)
+    .select('id, active, coming_soon, quote_required')
+    .maybeSingle();
+
+  if (error) return actionFailure(error.message);
+  if (!data) return actionFailure('Service row not found');
+
+  revalidatePath('/admin/services');
+  revalidatePath('/services');
+  revalidatePath('/book');
+  revalidatePath('/api/services');
+  revalidatePath('/api/public/site-data');
+
+  return actionSuccess({
+    serviceId,
+    active: Boolean(data.active),
+    comingSoon: Boolean(data.coming_soon),
+    quoteRequired: Boolean(data.quote_required),
+  });
 }

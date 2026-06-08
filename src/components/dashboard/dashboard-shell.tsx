@@ -48,6 +48,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/reports', label: 'Reports' },
       { href: '/admin/payments', label: 'Payments / receipts' },
       { href: '/admin/receipts', label: 'Receipts' },
+      { href: '/admin/gift-cards', label: 'Gift cards' },
       { href: '/admin/goals', label: 'Goals' },
     ],
   },

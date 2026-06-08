@@ -12,6 +12,10 @@ const ROWS: Array<{
   sedan_cents: number;
   suv_cents: number;
   truck_cents: number;
+  min_minutes: number;
+  max_minutes: number;
+  coming_soon?: boolean;
+  quote_required?: boolean;
 }> = [
   {
     slug: 'exterior-wash',
@@ -19,8 +23,10 @@ const ROWS: Array<{
     subtitle: 'Premium maintenance wash package',
     sort_order: 10,
     sedan_cents: 7500,
-    suv_cents: 9000,
-    truck_cents: 11000,
+    suv_cents: 10000,
+    truck_cents: 12500,
+    min_minutes: 60,
+    max_minutes: 90,
   },
   {
     slug: 'exterior-detail',
@@ -30,6 +36,8 @@ const ROWS: Array<{
     sedan_cents: 13000,
     suv_cents: 15000,
     truck_cents: 17000,
+    min_minutes: 120,
+    max_minutes: 180,
   },
   {
     slug: 'interior-detail',
@@ -39,15 +47,19 @@ const ROWS: Array<{
     sedan_cents: 16500,
     suv_cents: 19500,
     truck_cents: 22500,
+    min_minutes: 90,
+    max_minutes: 150,
   },
   {
     slug: 'full-detail',
     title: 'Full Detail',
     subtitle: 'Complete inside and outside detail',
     sort_order: 40,
-    sedan_cents: 25000,
-    suv_cents: 30000,
-    truck_cents: 35000,
+    sedan_cents: 22500,
+    suv_cents: 25500,
+    truck_cents: 27500,
+    min_minutes: 180,
+    max_minutes: 240,
   },
   {
     slug: 'ceramic-coating',
@@ -57,6 +69,10 @@ const ROWS: Array<{
     sedan_cents: 0,
     suv_cents: 0,
     truck_cents: 0,
+    min_minutes: 1440,
+    max_minutes: 2880,
+    coming_soon: true,
+    quote_required: true,
   },
 ];
 
@@ -76,6 +92,11 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
             subtitle: row.subtitle,
             active: true,
             sort_order: row.sort_order,
+            display_order: row.sort_order,
+            estimated_min_minutes: row.min_minutes,
+            estimated_max_minutes: row.max_minutes,
+            coming_soon: row.coming_soon === true,
+            quote_required: row.quote_required === true,
           })
           .select('id')
           .single();
@@ -86,7 +107,17 @@ export async function ensureCanonicalServiceCatalog(admin: SupabaseClient): Prom
       } else {
         await admin
           .from('services')
-          .update({ title: row.title, subtitle: row.subtitle, active: true, sort_order: row.sort_order })
+          .update({
+            title: row.title,
+            subtitle: row.subtitle,
+            active: true,
+            sort_order: row.sort_order,
+            display_order: row.sort_order,
+            estimated_min_minutes: row.min_minutes,
+            estimated_max_minutes: row.max_minutes,
+            coming_soon: row.coming_soon === true,
+            quote_required: row.quote_required === true,
+          })
           .eq('id', serviceId);
       }
 

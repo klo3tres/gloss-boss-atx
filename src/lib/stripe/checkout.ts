@@ -519,6 +519,29 @@ export async function processCheckoutSessionCompleted(params: {
     const amount = session.amount_total ?? Number(session.metadata?.amount_cents) ?? 0;
     console.info('[checkout] gift card purchase completed', session.id, amount);
     try {
+      const code = `GB-${session.id.slice(-8).toUpperCase()}`;
+      const email = session.customer_details?.email ?? session.customer_email ?? null;
+      const name = session.customer_details?.name ?? null;
+      const { error } = await admin.from('gift_cards').upsert(
+        {
+          code,
+          purchaser_name: name,
+          purchaser_email: email,
+          original_balance_cents: amount,
+          current_balance_cents: amount,
+          status: amount > 0 ? 'active' : 'pending',
+          notes: `Stripe checkout ${session.id}`,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'code' },
+      );
+      if (error && !isSchemaDriftError(error.message)) {
+        console.warn('[checkout] gift card ledger upsert', error.message);
+      }
+    } catch (e) {
+      console.warn('[checkout] gift card ledger upsert', e);
+    }
+    try {
       const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
       await notifyOwnerBookingEvent({
         kind: 'gift_card',

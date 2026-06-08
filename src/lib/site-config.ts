@@ -8,6 +8,11 @@ export type ServicePackage = {
   /** SUV / Truck combined price (legacy / booking fallback). */
   suvTruckPrice: number | null;
   includes: string[];
+  estimatedMinMinutes?: number;
+  estimatedMaxMinutes?: number;
+  comingSoon?: boolean;
+  quoteRequired?: boolean;
+  publicDescription?: string | null;
 };
 
 export const PRICING_DISCLAIMER =
@@ -30,9 +35,11 @@ export const defaultServicePackages: ServicePackage[] = [
     title: "Exterior Wash",
     subtitle: "Fast, show-ready exterior refresh",
     sedanPrice: 75,
-    suvPrice: 90,
-    truckPrice: 110,
-    suvTruckPrice: 80,
+    suvPrice: 100,
+    truckPrice: 125,
+    suvTruckPrice: 100,
+    estimatedMinMinutes: 60,
+    estimatedMaxMinutes: 90,
     includes: [
       "Foam pre-soak",
       "Hand wash",
@@ -48,7 +55,9 @@ export const defaultServicePackages: ServicePackage[] = [
     sedanPrice: 130,
     suvPrice: 150,
     truckPrice: 170,
-    suvTruckPrice: 125,
+    suvTruckPrice: 150,
+    estimatedMinMinutes: 120,
+    estimatedMaxMinutes: 180,
     includes: [
       "Foam wash",
       "Clay treatment",
@@ -61,20 +70,24 @@ export const defaultServicePackages: ServicePackage[] = [
     id: "interior-detail",
     title: "Interior Detail",
     subtitle: "Deep clean cabin reset",
-    sedanPrice: 175,
+    sedanPrice: 165,
     suvPrice: 195,
     truckPrice: 225,
-    suvTruckPrice: 115,
+    suvTruckPrice: 195,
+    estimatedMinMinutes: 90,
+    estimatedMaxMinutes: 150,
     includes: ["Vacuum", "Wipe down plastics/trim", "Stain treatment", "Glass cleaning", "Odor refresh"],
   },
   {
     id: "full-detail",
     title: "Full Detail",
     subtitle: "Complete inside + outside transformation",
-    sedanPrice: 250,
-    suvPrice: 300,
-    truckPrice: 350,
-    suvTruckPrice: 225,
+    sedanPrice: 225,
+    suvPrice: 255,
+    truckPrice: 275,
+    suvTruckPrice: 255,
+    estimatedMinMinutes: 180,
+    estimatedMaxMinutes: 240,
     includes: [
       "Interior detail",
       "Exterior detail",
@@ -89,6 +102,10 @@ export const defaultServicePackages: ServicePackage[] = [
     subtitle: "Long-term gloss and hydrophobic protection — quote by condition",
     sedanPrice: null,
     suvTruckPrice: null,
+    estimatedMinMinutes: 1440,
+    estimatedMaxMinutes: 2880,
+    comingSoon: true,
+    quoteRequired: true,
     includes: [
       "Paint prep",
       "Surface decontamination",

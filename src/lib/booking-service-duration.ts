@@ -1,5 +1,4 @@
 import { addonDurationMinutes, BOOKING_BUFFER_MINUTES } from '@/lib/addon-vehicle-pricing';
-import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 
 export type VehicleDurationLine = {
   serviceSlug: string;
@@ -10,14 +9,14 @@ export type VehicleDurationLine = {
 /** Estimated service duration in minutes (mobile detailing). */
 export function serviceDurationMinutes(serviceSlug: string, vehicleClass: string): number {
   const slug = String(serviceSlug ?? '').toLowerCase();
-  const vc = normalizeVehicleClass(vehicleClass);
-  const isLarge = vc === 'suv' || vc === 'truck';
+  void vehicleClass;
 
-  if (slug.includes('ceramic')) return 24 * 60;
-  if (slug.includes('full')) return vc === 'truck' ? 195 : isLarge ? 180 : 150;
-  if (slug.includes('interior')) return vc === 'truck' ? 135 : isLarge ? 120 : 90;
-  if (slug.includes('exterior') || slug.includes('wash')) return vc === 'truck' ? 90 : isLarge ? 75 : 60;
-  return vc === 'truck' ? 100 : isLarge ? 90 : 75;
+  if (slug.includes('ceramic')) return 2 * 24 * 60;
+  if (slug.includes('full')) return 240;
+  if (slug.includes('interior')) return 150;
+  if (slug.includes('exterior-detail')) return 180;
+  if (slug.includes('exterior') || slug.includes('wash')) return 90;
+  return 120;
 }
 
 export function totalBookingDurationMinutes(lines: VehicleDurationLine[]): number {

@@ -3,7 +3,18 @@ import { slugifyServiceSlug } from '@/lib/slugify';
 import { defaultServicePackages } from '@/lib/site-config';
 import { normalizeVehicleClass, pickCentsForUiClass, type PriceRowLike, UI_VEHICLE_CLASSES } from '@/lib/vehicle-pricing';
 
-export type FallbackServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
+export type FallbackServiceRow = {
+  id: string;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  sort_order: number;
+  estimated_min_minutes?: number | null;
+  estimated_max_minutes?: number | null;
+  coming_soon?: boolean | null;
+  quote_required?: boolean | null;
+  public_description?: string | null;
+};
 export type FallbackPriceRow = { service_id: string; vehicle_class: string; price_cents: number };
 
 /** Deterministic 12 hex chars for UUID tail (stable per slug). */
@@ -126,6 +137,11 @@ export function getLocalFallbackCatalog(): { services: FallbackServiceRow[]; pri
     title: p.title,
     subtitle: p.subtitle,
     sort_order: (i + 1) * 10,
+    estimated_min_minutes: p.estimatedMinMinutes ?? null,
+    estimated_max_minutes: p.estimatedMaxMinutes ?? null,
+    coming_soon: p.comingSoon ?? false,
+    quote_required: p.quoteRequired ?? false,
+    public_description: p.publicDescription ?? null,
   }));
 
   const prices: FallbackPriceRow[] = [];
@@ -174,6 +190,10 @@ export function mergeLiveCatalogWithDefaults(
       title: slug,
       subtitle: null,
       sort_order: (i + 1) * 10,
+      estimated_min_minutes: null,
+      estimated_max_minutes: null,
+      coming_soon: false,
+      quote_required: false,
     };
   });
 
@@ -229,7 +249,20 @@ export function mapUnknownToFallbackServiceRow(row: Record<string, unknown>, ind
       : typeof row.order_index === 'number' && !Number.isNaN(row.order_index)
         ? row.order_index
         : (index + 1) * 10;
-  return { id, slug, title, subtitle, sort_order };
+  const estimated_min_minutes = typeof row.estimated_min_minutes === 'number' ? row.estimated_min_minutes : null;
+  const estimated_max_minutes = typeof row.estimated_max_minutes === 'number' ? row.estimated_max_minutes : null;
+  return {
+    id,
+    slug,
+    title,
+    subtitle,
+    sort_order,
+    estimated_min_minutes,
+    estimated_max_minutes,
+    coming_soon: row.coming_soon === true,
+    quote_required: row.quote_required === true,
+    public_description: typeof row.public_description === 'string' ? row.public_description : null,
+  };
 }
 
 /** Map `service_prices` rows from `select('*')` into stable quote rows. */

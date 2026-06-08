@@ -72,8 +72,25 @@ export default async function AdminServicesPricingPage({
     };
   });
 
-  const { data: serviceMeta } = await priceClient.from('services').select('id, slug, title, active, sort_order').order('sort_order', { ascending: true });
-  const servicesMeta = (serviceMeta ?? []) as Array<{ id: string; slug: string; title: string; active: boolean }>;
+  const { data: serviceMeta } = await priceClient
+    .from('services')
+    .select(
+      'id, slug, title, active, sort_order, estimated_min_minutes, estimated_max_minutes, coming_soon, quote_required, public_description, admin_notes, inclusions',
+    )
+    .order('sort_order', { ascending: true });
+  const servicesMeta = (serviceMeta ?? []) as Array<{
+    id: string;
+    slug: string;
+    title: string;
+    active: boolean;
+    estimated_min_minutes: number | null;
+    estimated_max_minutes: number | null;
+    coming_soon: boolean | null;
+    quote_required: boolean | null;
+    public_description: string | null;
+    admin_notes: string | null;
+    inclusions: string[] | null;
+  }>;
   const hasServiceRole = Boolean(admin);
 
   return (

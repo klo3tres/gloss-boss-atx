@@ -39,7 +39,17 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const LS_CACHE_TTL_MS = 30 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 9000;
 
-type ServiceRow = { id: string; slug: string; title: string; subtitle: string | null; sort_order: number };
+type ServiceRow = {
+  id: string;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  sort_order: number;
+  estimated_min_minutes?: number | null;
+  estimated_max_minutes?: number | null;
+  coming_soon?: boolean | null;
+  quote_required?: boolean | null;
+};
 type PriceRow = { service_id: string; vehicle_class: string; price_cents: number };
 
 type VehicleClass = UiVehicleClass;
@@ -54,6 +64,11 @@ type ExtraLine = {
 
 type AddonOption = { slug: string; label: string; price_cents: number };
 
+function formatHours(minutes: number) {
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1).replace(/\.0$/, '');
+}
+
 function serviceIcon(slug: string) {
   if (slug.includes('ceramic')) return <Sparkles className='h-6 w-6 text-gold-soft' />;
   if (slug.includes('interior')) return <Car className='h-6 w-6 text-gold-soft' />;
@@ -65,10 +80,24 @@ function classLabel(c: VehicleClass) {
   return UI_VEHICLE_LABELS[c];
 }
 
+function serviceDurationLabel(service: ServiceRow) {
+  const min = Number(service.estimated_min_minutes ?? 0);
+  const max = Number(service.estimated_max_minutes ?? 0);
+  if (min >= 1440 || max >= 1440) {
+    const minDays = Math.max(1, Math.round(min / 1440));
+    const maxDays = Math.max(minDays, Math.round(max / 1440));
+    return maxDays > minDays ? `${minDays}-${maxDays} days` : `${minDays} day`;
+  }
+  if (min > 0 && max > 0) return max > min ? `${formatHours(min)}-${formatHours(max)} hrs` : `${formatHours(max)} hr`;
+  return null;
+}
+
 export function BookingWizard() {
   const searchParams = useSearchParams();
   const offerFromUrl = String(searchParams?.get('offer') ?? '').trim();
+  const serviceFromUrl = String(searchParams?.get('service') ?? searchParams?.get('package') ?? '').trim();
   const liveCatalogAppliedRef = useRef(false);
+  const serviceFromUrlAppliedRef = useRef('');
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
   const [prices, setPrices] = useState<PriceRow[]>(() => consolidatePriceRowsForUi([...BOOKING_SEED.prices]));
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
@@ -133,6 +162,17 @@ export function BookingWizard() {
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
   const freePromoRequested = appliedPromoCode === 'FREE';
+
+  useEffect(() => {
+    if (!serviceFromUrl || services.length === 0) return;
+    if (serviceFromUrlAppliedRef.current === serviceFromUrl) return;
+    const requested = serviceFromUrl.toLowerCase();
+    const matched = services.find((s) => s.slug.toLowerCase() === requested || s.id.toLowerCase() === requested);
+    if (matched) {
+      serviceFromUrlAppliedRef.current = serviceFromUrl;
+      if (matched.slug !== serviceSlug) setServiceSlug(matched.slug);
+    }
+  }, [serviceFromUrl, services, serviceSlug]);
 
   useEffect(() => {
     type CatalogPayload = {
@@ -1237,6 +1277,8 @@ export function BookingWizard() {
             <div className='mt-4 grid gap-3 sm:grid-cols-2'>
               {services.map((s) => {
                 const active = s.slug === serviceSlug;
+                const duration = serviceDurationLabel(s);
+                const limited = Boolean(s.coming_soon || s.quote_required);
                 return (
                   <button
                     key={s.id}
@@ -1254,6 +1296,10 @@ export function BookingWizard() {
                         <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>{s.slug.replace(/-/g, ' ')}</p>
                         <p className='mt-1 text-base font-black uppercase text-white'>{s.title}</p>
                         <p className='mt-1 text-xs text-zinc-400'>{s.subtitle}</p>
+                        <p className='mt-2 text-[11px] font-bold uppercase tracking-wide text-zinc-300'>
+                          {duration ? `Estimated ${duration}` : 'Duration confirmed after review'}
+                          {limited ? ' · Quote required' : ''}
+                        </p>
                       </div>
                       {serviceIcon(s.slug)}
                     </div>

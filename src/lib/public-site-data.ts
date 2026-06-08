@@ -98,7 +98,18 @@ export function getOfflineMarketingPackages(): ServicePackage[] {
 }
 
 export function mapCatalogToServicePackages(
-  services: { id: string; slug: string; title: string; subtitle: string | null; sort_order: number }[],
+  services: {
+    id: string;
+    slug: string;
+    title: string;
+    subtitle: string | null;
+    sort_order: number;
+    estimated_min_minutes?: number | null;
+    estimated_max_minutes?: number | null;
+    coming_soon?: boolean | null;
+    quote_required?: boolean | null;
+    public_description?: string | null;
+  }[],
   prices: { service_id: string; vehicle_class: string; price_cents: number }[],
 ): ServicePackage[] {
   return [...services]
@@ -114,12 +125,16 @@ export function mapCatalogToServicePackages(
       return {
         id: s.slug,
         title: s.title,
-        subtitle: canon?.subtitle ?? (s.subtitle ?? ''),
+        subtitle: s.public_description ?? canon?.subtitle ?? (s.subtitle ?? ''),
         sedanPrice: dollarsFromCents(sedanC),
         suvPrice: dollarsFromCents(suvRow?.price_cents ?? suvTruckC),
         truckPrice: dollarsFromCents(truckRow?.price_cents ?? suvTruckC),
         suvTruckPrice: dollarsFromCents(suvTruckC),
         includes,
+        estimatedMinMinutes: s.estimated_min_minutes ?? canon?.estimatedMinMinutes,
+        estimatedMaxMinutes: s.estimated_max_minutes ?? canon?.estimatedMaxMinutes,
+        comingSoon: s.coming_soon ?? canon?.comingSoon,
+        quoteRequired: s.quote_required ?? canon?.quoteRequired,
       };
     });
 }
