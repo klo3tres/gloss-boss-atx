@@ -329,6 +329,48 @@ export default function HomePage() {
         <HomepageHeroCarousel />
       </SectionErrorBoundary>
 
+      <section className='relative overflow-hidden border-y border-gold/15 bg-black px-4 py-14 sm:px-6 lg:px-8'>
+        <div className='absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,175,55,0.16),transparent_34%),linear-gradient(120deg,rgba(255,255,255,0.05),transparent_35%)]' aria-hidden />
+        <div className='relative mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center'>
+          <MotionFade>
+            <div>
+              <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Gloss Boss memberships</p>
+              <h2 className='mt-3 text-3xl font-black uppercase leading-tight text-white sm:text-5xl'>
+                Save with recurring shine.
+              </h2>
+              <p className='mt-4 max-w-2xl text-sm leading-relaxed text-zinc-300'>
+                Bronze, Silver, and Gold plans keep your vehicle protected with priority scheduling, member pricing, and a digital punch-card reward built for repeat clients.
+              </p>
+              <div className='mt-6 flex flex-wrap gap-3'>
+                <Link href='/memberships' className='rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_26px_rgba(212,175,55,0.25)]'>
+                  View Memberships
+                </Link>
+                <Link href='/memberships#pricing-calculator' className='rounded-xl border border-gold/35 bg-gold/10 px-6 py-3 text-xs font-black uppercase tracking-wider text-gold-soft'>
+                  Join Monthly Plan
+                </Link>
+                <Link href='/book' className='rounded-xl border border-white/15 px-6 py-3 text-xs font-black uppercase tracking-wider text-white'>
+                  Book One-Time Detail
+                </Link>
+              </div>
+            </div>
+          </MotionFade>
+          <MotionFade delay={0.08}>
+            <div className='grid gap-3 sm:grid-cols-3'>
+              {[
+                ['5', 'paid services punch card'],
+                ['25%', 'yearly savings target'],
+                ['3', 'clean public tiers'],
+              ].map(([value, label]) => (
+                <div key={label} className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 text-center'>
+                  <p className='text-4xl font-black text-gold-soft'>{value}</p>
+                  <p className='mt-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>{label}</p>
+                </div>
+              ))}
+            </div>
+          </MotionFade>
+        </div>
+      </section>
+
       <section id='services' className='mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8' aria-busy={!siteLoaded}>
         <MotionFade>
           <h2 className='text-2xl font-black uppercase tracking-[0.12em] sm:text-4xl'>Premium Service Packages</h2>

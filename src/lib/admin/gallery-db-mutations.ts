@@ -201,6 +201,7 @@ export async function dbCreateBeforeAfterPost(
     serviceCategory?: string;
     destination?: string;
     tags?: string[];
+    publicCaption?: string;
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const maxQ = await supabase.from('gallery_images').select('*').limit(500);
@@ -214,6 +215,7 @@ export async function dbCreateBeforeAfterPost(
     service_category: params.serviceCategory || null,
     before_url: params.beforeUrl,
     after_url: params.afterUrl,
+    public_caption: params.publicCaption || null,
     watermark: params.watermark,
     job_id: params.jobId || null,
     vehicle_class: params.vehicleClass || null,
@@ -221,7 +223,8 @@ export async function dbCreateBeforeAfterPost(
     destination: params.destination || 'gallery',
     tags: params.tags || [],
   };
-  const featured = params.destination === 'homepage featured' || params.destination === 'homepage_featured';
+  const destinationKey = (params.destination || 'gallery').toLowerCase();
+  const featured = destinationKey === 'homepage featured' || destinationKey === 'homepage_featured' || destinationKey === 'all';
 
   const now = new Date().toISOString();
   const payload = {
@@ -239,6 +242,7 @@ export async function dbCreateBeforeAfterPost(
     service_category: params.serviceCategory || null,
     destination: params.destination || 'gallery',
     tags: params.tags || [],
+    public_caption: params.publicCaption || null,
     metadata,
     created_at: now,
   };

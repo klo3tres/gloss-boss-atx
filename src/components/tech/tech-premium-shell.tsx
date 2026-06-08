@@ -620,7 +620,7 @@ export function TechPremiumShell({
       </section>
 
       {/* Field Operations Center Overhaul */}
-      <section className='mb-10 rounded-3xl border border-gold/20 bg-gradient-to-br from-zinc-950 via-black to-zinc-950/95 p-5 shadow-[0_0_40px_rgba(212,166,77,0.05)]'>
+      <section id='routes' className='mb-10 scroll-mt-28 rounded-3xl border border-gold/20 bg-gradient-to-br from-zinc-950 via-black to-zinc-950/95 p-5 shadow-[0_0_40px_rgba(212,166,77,0.05)]'>
         <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Field Operations Center</p>
         
         {/* Ops Tabs Navigation */}
@@ -695,6 +695,7 @@ export function TechPremiumShell({
           {/* Mileage Log Tab */}
           {opsTab === 'mileage' && (
             <form
+              id='mileage'
               onSubmit={async (e) => {
                 e.preventDefault();
                 setMileageBusy(true);
@@ -759,6 +760,7 @@ export function TechPremiumShell({
           {/* Supply Request Tab */}
           {opsTab === 'supplies' && (
             <form
+              id='supplies'
               onSubmit={async (e) => {
                 e.preventDefault();
                 setSupplyBusy(true);

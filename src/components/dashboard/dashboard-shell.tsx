@@ -89,7 +89,12 @@ const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
   { href: '/tech', label: 'Overview' },
+  { href: '/tech/work-orders', label: 'Active Work Orders' },
+  { href: '/tech#routes', label: 'Route' },
+  { href: '/tech#field-lead-capture', label: 'Leads' },
   { href: '/tech/workflow', label: 'Walk-in workflow' },
+  { href: '/tech#mileage', label: 'Mileage' },
+  { href: '/tech#supplies', label: 'Supply Requests' },
   { href: '/tech#field-invoice', label: 'Field tools' },
   { href: '/tech/resources', label: 'SOPs' },
 ];

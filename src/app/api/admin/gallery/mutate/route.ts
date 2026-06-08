@@ -33,6 +33,7 @@ type Body = {
   serviceCategory?: string;
   destination?: string;
   tags?: string | string[];
+  publicCaption?: string;
 };
 
 export async function POST(request: Request) {
@@ -99,6 +100,7 @@ export async function POST(request: Request) {
       let vehicleClass = body.vehicleClass ? String(body.vehicleClass).trim() : undefined;
       const serviceCategory = body.serviceCategory ? String(body.serviceCategory).trim() : undefined;
       const destination = body.destination ? String(body.destination).trim() : undefined;
+      const publicCaption = body.publicCaption ? String(body.publicCaption).trim() : undefined;
       const tags = Array.isArray(body.tags)
         ? body.tags.map((tag) => String(tag).trim()).filter(Boolean)
         : String(body.tags ?? '')
@@ -147,6 +149,7 @@ export async function POST(request: Request) {
         serviceCategory,
         destination,
         tags,
+        publicCaption,
       });
       break;
     }

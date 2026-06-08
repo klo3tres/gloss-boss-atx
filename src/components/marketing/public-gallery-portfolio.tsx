@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Search, Sparkles, Tag, Car, Calendar, SlidersHorizontal, ArrowRight } from 'lucide-react';
+import { Search, Sparkles, Tag, Car, Calendar, SlidersHorizontal, ArrowRight, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
@@ -30,6 +29,9 @@ export function PublicGalleryPortfolio() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedBodyStyle, setSelectedBodyStyle] = useState('all');
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [slider, setSlider] = useState(50);
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,7 +229,11 @@ export function PublicGalleryPortfolio() {
               </span>
               <div className="grid gap-6 sm:grid-cols-2">
                 {featured.map((img) => (
-                  <TransformationCard key={img.id} img={img} />
+                  <TransformationCard key={img.id} img={img} onOpen={() => {
+                    setActiveIndex(filteredItems.findIndex((item) => item.id === img.id));
+                    setSlider(50);
+                    setZoomed(false);
+                  }} />
                 ))}
               </div>
             </section>
@@ -241,18 +247,44 @@ export function PublicGalleryPortfolio() {
               </span>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {regular.map((img) => (
-                  <TransformationCard key={img.id} img={img} />
+                  <TransformationCard key={img.id} img={img} onOpen={() => {
+                    setActiveIndex(filteredItems.findIndex((item) => item.id === img.id));
+                    setSlider(50);
+                    setZoomed(false);
+                  }} />
                 ))}
               </div>
             </section>
           )}
         </div>
       )}
+      {activeIndex != null && filteredItems[activeIndex] ? (
+        <GalleryModal
+          item={filteredItems[activeIndex]}
+          index={activeIndex}
+          total={filteredItems.length}
+          slider={slider}
+          zoomed={zoomed}
+          onSlider={setSlider}
+          onZoom={() => setZoomed((v) => !v)}
+          onClose={() => setActiveIndex(null)}
+          onPrev={() => {
+            setActiveIndex((activeIndex - 1 + filteredItems.length) % filteredItems.length);
+            setSlider(50);
+            setZoomed(false);
+          }}
+          onNext={() => {
+            setActiveIndex((activeIndex + 1) % filteredItems.length);
+            setSlider(50);
+            setZoomed(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function TransformationCard({ img }: { img: PublicGalleryItem }) {
+function TransformationCard({ img, onOpen }: { img: PublicGalleryItem; onOpen: () => void }) {
   const before = str(img.beforeUrl);
   const after = str(img.afterUrl || img.url);
   const rawCaption = publicGalleryDisplayTitle(img);
@@ -261,8 +293,9 @@ function TransformationCard({ img }: { img: PublicGalleryItem }) {
   const hasSlider = before && after && before !== after;
 
   return (
-    <Link
-      href={`/gallery/${img.id}`}
+    <button
+      type="button"
+      onClick={onOpen}
       className="group block overflow-hidden gb-premium-card gb-luxury-card-hover rounded-3xl border border-gold/15 bg-black text-left shadow-[0_0_35px_rgba(212,175,55,0.03)] hover:border-gold/50 transition duration-300"
     >
       {/* Before/After Split Preview or Single image */}
@@ -349,6 +382,86 @@ function TransformationCard({ img }: { img: PublicGalleryItem }) {
           </span>
         </div>
       </div>
-    </Link>
+    </button>
+  );
+}
+
+function GalleryModal({
+  item,
+  index,
+  total,
+  slider,
+  zoomed,
+  onSlider,
+  onZoom,
+  onClose,
+  onPrev,
+  onNext,
+}: {
+  item: PublicGalleryItem;
+  index: number;
+  total: number;
+  slider: number;
+  zoomed: boolean;
+  onSlider: (value: number) => void;
+  onZoom: () => void;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const before = str(item.beforeUrl);
+  const after = str(item.afterUrl || item.url);
+  const caption = publicGalleryDisplayTitle(item) || 'Gloss Boss transformation';
+  const hasPair = before && after && before !== after;
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/95 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true">
+      <div className="mx-auto flex h-full max-w-7xl flex-col">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">{index + 1} / {total}</p>
+            <h3 className="mt-1 text-lg font-black uppercase text-white sm:text-2xl">{caption}</h3>
+            <p className="text-xs text-zinc-500">{item.vehicleLabel || 'Vehicle'} - {item.serviceLabel || 'Detailing'}</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onZoom} className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40">
+              {zoomed ? <ZoomOut className="h-4 w-4" /> : <ZoomIn className="h-4 w-4" />}
+            </button>
+            <button type="button" onClick={onClose} className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-gold/20 bg-zinc-950">
+          {hasPair ? (
+            <>
+              <img src={before} alt="Before" className={`absolute inset-0 h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} />
+              <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${slider}%` }}>
+                <img src={after} alt="After" className={`h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} style={{ width: '100vw', maxWidth: 'none' }} />
+              </div>
+              <div className="absolute inset-y-0 w-[2px] bg-gold shadow-[0_0_18px_rgba(212,175,55,0.9)]" style={{ left: `${slider}%` }}>
+                <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-gold bg-black px-3 py-2 text-xs font-black text-gold-soft">DRAG</span>
+              </div>
+              <input type="range" min="0" max="100" value={slider} onChange={(e) => onSlider(Number(e.target.value))} className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0" />
+              <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200">Before</span>
+              <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black">After</span>
+            </>
+          ) : (
+            <img src={after} alt={caption} className={`h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} />
+          )}
+          {item.watermark ? <img src="/brand/glossboss-clean-logo.png" alt="" className="pointer-events-none absolute bottom-4 right-4 h-10 w-auto opacity-20" /> : null}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <button type="button" onClick={onPrev} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-xs font-black uppercase text-zinc-200 hover:border-gold/40">
+            <ChevronLeft className="h-4 w-4" /> Previous
+          </button>
+          <button type="button" onClick={onNext} className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase text-black">
+            Next <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

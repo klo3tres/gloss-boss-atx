@@ -114,7 +114,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
               {mode === 'biweekly' ? 'Bi-Weekly' : mode}
               {mode === 'yearly' && (
                 <span className="ml-1.5 rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[9px] text-emerald-300 border border-emerald-500/30">
-                  Save ~15%
+                  Save 25%
                 </span>
               )}
             </button>
