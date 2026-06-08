@@ -10,6 +10,8 @@ function str(v: FormDataEntryValue | null) {
   return v == null ? '' : String(v).trim();
 }
 
+const PUBLIC_TIERS = new Set(['bronze', 'silver', 'gold']);
+
 async function gate() {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
@@ -23,10 +25,12 @@ export async function saveMembershipPlanAction(formData: FormData) {
   const id = str(formData.get('id'));
   const name = str(formData.get('name'));
   if (!name) return;
+  const tier = (str(formData.get('tier')) || name.toLowerCase()).toLowerCase();
+  if (!id && !PUBLIC_TIERS.has(tier)) return;
   const patch = {
     name,
     slug: str(formData.get('slug')) || slugify(name),
-    tier: str(formData.get('tier')) || name.toLowerCase(),
+    tier,
     price_cents: Math.round(Number(str(formData.get('price_monthly'))) * 100) || Math.round(Number(str(formData.get('price'))) * 100) || 0,
     price_weekly_cents: Math.round(Number(str(formData.get('price_weekly'))) * 100) || 0,
     price_biweekly_cents: Math.round(Number(str(formData.get('price_biweekly'))) * 100) || 0,

@@ -33,6 +33,16 @@ function payTimestamp(p: PayRow): string {
   return str(p.paid_at) || str(p.created_at) || '';
 }
 
+function revenueIdentityKey(p: PayRow): string {
+  const pi = str(p.stripe_payment_intent_id);
+  if (pi) return `stripe_pi:${pi}`;
+  const session = str(p.stripe_checkout_session_id);
+  if (session) return `stripe_session:${session}`;
+  const receiptPaymentId = str(p.source_table) === 'receipts' ? str(p.payment_id) : '';
+  if (receiptPaymentId) return `receipt_payment:${receiptPaymentId}`;
+  return '';
+}
+
 export type RevenueSummary = {
   grossCents: number;
   paymentCount: number;
@@ -62,6 +72,8 @@ export type RevenueDiagnostics = {
   grossCents: number;
   byMethod: Record<string, number>;
   exclusions: RevenueExclusion[];
+  duplicateGroups: Array<{ key: string; ids: string[]; amountCents: number }>;
+  duplicateExtraCount: number;
 };
 
 export function isTestPaymentRow(
@@ -117,6 +129,7 @@ export function summarizePayments(
     compCents: 0,
     otherCents: 0,
   };
+  const seenRevenueKeys = new Set<string>();
 
   for (const p of rows) {
     const ts = payTimestamp(p);
@@ -127,6 +140,9 @@ export function summarizePayments(
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
+    const key = revenueIdentityKey(p);
+    if (key && seenRevenueKeys.has(key)) continue;
+    if (key) seenRevenueKeys.add(key);
     const channel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p as PayRow);
     addChannel(summary, channel, amt);
   }
@@ -144,6 +160,8 @@ export function buildRevenueDiagnostics(
 ): RevenueDiagnostics {
   const exclusions: RevenueExclusion[] = [];
   const byMethod: Record<string, number> = {};
+  const duplicateMap = new Map<string, PayRow[]>();
+  const seenRevenueKeys = new Set<string>();
   let rowsCounted = 0;
   let grossCents = 0;
 
@@ -186,11 +204,31 @@ export function buildRevenueDiagnostics(
       continue;
     }
 
+    const key = revenueIdentityKey(p);
+    if (key) {
+      const group = duplicateMap.get(key) ?? [];
+      group.push(p);
+      duplicateMap.set(key, group);
+      if (seenRevenueKeys.has(key)) {
+        exclusions.push({ id, amountCents: amt, method, reason: `Duplicate revenue identity: ${key}` });
+        continue;
+      }
+      seenRevenueKeys.add(key);
+    }
+
     rowsCounted += 1;
     grossCents += amt;
     const channel = classifyPaymentChannel(method, str(p.payment_kind), p);
     byMethod[channel] = (byMethod[channel] ?? 0) + amt;
   }
+
+  const duplicateGroups = Array.from(duplicateMap.entries())
+    .filter(([, group]) => group.length > 1)
+    .map(([key, group]) => ({
+      key,
+      ids: group.map((p) => str(p.id) || 'unknown'),
+      amountCents: group.reduce((sum, p) => sum + Math.max(0, typeof p.amount_cents === 'number' ? p.amount_cents : 0), 0),
+    }));
 
   return {
     rowsLoaded: rows.length,
@@ -199,6 +237,8 @@ export function buildRevenueDiagnostics(
     grossCents,
     byMethod,
     exclusions: exclusions.slice(0, 40),
+    duplicateGroups: duplicateGroups.slice(0, 20),
+    duplicateExtraCount: duplicateGroups.reduce((sum, group) => sum + Math.max(0, group.ids.length - 1), 0),
   };
 }
 

@@ -7,6 +7,7 @@ import {
   type PayRow,
   type RevenueDiagnostics,
 } from '@/lib/revenue-metrics';
+import { classifyPaymentChannel } from '@/lib/payment-classification';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 export type FinancialSummary = {
@@ -161,13 +162,26 @@ export async function getFinancialSnapshot(
   const diagnostics = buildRevenueDiagnostics(payments, { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
 
   let membershipRevenueCents = 0;
+  const membershipChannelCents = {
+    stripe: 0,
+    cash: 0,
+    zelleGroup: 0,
+    other: 0,
+  };
   const recentPayments: FinancialDetailRow[] = [];
   const countedPayments: PayRow[] = [];
   for (const p of payments) {
     const paySummary = summarizePayments([p], { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
     if (paySummary.grossCents <= 0) continue;
     countedPayments.push(p);
-    if (p.payment_kind === 'membership' || p.payment_method === 'membership') membershipRevenueCents += paySummary.grossCents;
+    if (p.payment_kind === 'membership' || p.payment_method === 'membership') {
+      membershipRevenueCents += paySummary.grossCents;
+      const membershipChannel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p);
+      if (membershipChannel === 'stripe') membershipChannelCents.stripe += paySummary.grossCents;
+      else if (membershipChannel === 'cash') membershipChannelCents.cash += paySummary.grossCents;
+      else if (membershipChannel === 'zelle' || membershipChannel === 'venmo' || membershipChannel === 'cash_app') membershipChannelCents.zelleGroup += paySummary.grossCents;
+      else membershipChannelCents.other += paySummary.grossCents;
+    }
     const appt = p.appointment_id ? apptById.get(p.appointment_id) : null;
     recentPayments.push({
       id: str(p.id),
@@ -280,13 +294,20 @@ export async function getFinancialSnapshot(
 
   const netProfitCents = summary.grossCents - refundsCents - stripeFeesCents - expensesCents;
   const sortRevenue = <T extends { revenueCents: number }>(rows: T[]) => rows.sort((a, b) => b.revenueCents - a.revenueCents);
+  const stripeSourceCents = Math.max(0, summary.stripeCents - membershipChannelCents.stripe);
+  const cashSourceCents = Math.max(0, summary.cashCents - membershipChannelCents.cash);
+  const electronicSourceCents = Math.max(0, summary.zelleCents + summary.venmoCents + summary.cashAppCents - membershipChannelCents.zelleGroup);
+  const otherSourceCents = Math.max(
+    0,
+    summary.otherCents + summary.applePayCents + summary.checkCents + summary.manualCardCents + summary.compCents - membershipChannelCents.other,
+  );
 
   return {
     grossRevenueCents: summary.grossCents,
-    cashRevenueCents: summary.cashCents,
-    stripeRevenueCents: summary.stripeCents,
-    zelleRevenueCents: summary.zelleCents + summary.venmoCents + summary.cashAppCents,
-    otherRevenueCents: summary.otherCents + summary.applePayCents + summary.checkCents + summary.manualCardCents + summary.compCents,
+    cashRevenueCents: cashSourceCents,
+    stripeRevenueCents: stripeSourceCents,
+    zelleRevenueCents: electronicSourceCents,
+    otherRevenueCents: otherSourceCents,
     membershipRevenueCents,
     refundsCents,
     stripeFeesCents,

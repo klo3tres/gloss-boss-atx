@@ -77,6 +77,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/integrations', label: 'Integrations' },
       { href: '/admin/settings/stripe', label: 'Stripe' },
       { href: '/admin/stripe-sync', label: 'Stripe sync' },
+      { href: '/admin/system-diagnostics', label: 'System diagnostics' },
       { href: '/admin/system-status', label: 'System status' },
     ],
   },

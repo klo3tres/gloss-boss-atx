@@ -25,6 +25,23 @@ type ServiceMeta = {
 };
 type PriceRow = SavedPriceRow;
 
+const DURATION_OPTIONS = [
+  { label: 'Unset', value: '' },
+  { label: '30 minutes', value: '30' },
+  { label: '45 minutes', value: '45' },
+  { label: '1 hour', value: '60' },
+  { label: '1 hour 15 minutes', value: '75' },
+  { label: '1 hour 30 minutes', value: '90' },
+  { label: '2 hours', value: '120' },
+  { label: '2 hours 30 minutes', value: '150' },
+  { label: '3 hours', value: '180' },
+  { label: '4 hours', value: '240' },
+  { label: '5 hours', value: '300' },
+  { label: '6 hours', value: '360' },
+  { label: 'Full day', value: '480' },
+  { label: 'Two-day ceramic block', value: '960' },
+];
+
 export function AdminServicesPricingClient({
   initialRows,
   servicesMeta,
@@ -193,24 +210,28 @@ function ServiceMetaForm({
 
       <div className='mt-4 grid gap-3 md:grid-cols-4'>
         <label className='text-xs text-zinc-400'>
-          Min minutes
-          <input
-            type='number'
-            min={0}
+          Minimum duration
+          <select
             value={minMinutes}
             onChange={(e) => setMinMinutes(e.target.value)}
             className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
+          >
+            {DURATION_OPTIONS.map((option) => (
+              <option key={`min-${option.value}`} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
         <label className='text-xs text-zinc-400'>
-          Max minutes
-          <input
-            type='number'
-            min={0}
+          Maximum duration
+          <select
             value={maxMinutes}
             onChange={(e) => setMaxMinutes(e.target.value)}
             className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
+          >
+            {DURATION_OPTIONS.map((option) => (
+              <option key={`max-${option.value}`} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
         <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200'>
           <input type='checkbox' checked={active} onChange={(e) => setActive(e.target.checked)} />

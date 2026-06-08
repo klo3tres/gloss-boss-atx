@@ -11,6 +11,45 @@ function money(cents: unknown) {
   return `$${(((typeof cents === 'number' ? cents : 0) / 100)).toFixed(2)}`;
 }
 
+const PUBLIC_TIERS = ['bronze', 'silver', 'gold'] as const;
+
+function normalizeTier(plan: Record<string, unknown>) {
+  const hay = `${plan.tier ?? ''} ${plan.name ?? ''} ${plan.slug ?? ''}`.toLowerCase();
+  return PUBLIC_TIERS.find((tier) => hay.includes(tier)) ?? null;
+}
+
+function planHasPrice(plan: Record<string, unknown>) {
+  return Boolean(
+    Number(plan.price_monthly_cents ?? 0) ||
+    Number(plan.price_biweekly_cents ?? 0) ||
+    Number(plan.price_yearly_cents ?? 0) ||
+    Number(plan.price_cents ?? 0),
+  );
+}
+
+function canonicalMembershipPlans(rows: Record<string, unknown>[]) {
+  const byTier = new Map<string, Record<string, unknown>>();
+  for (const plan of rows) {
+    const tier = normalizeTier(plan);
+    if (!tier) continue;
+    const current = byTier.get(tier);
+    if (!current) {
+      byTier.set(tier, plan);
+      continue;
+    }
+    const score = (p: Record<string, unknown>) => {
+      let value = 0;
+      if (p.archived !== true) value += 100;
+      if (p.show_on_homepage !== false || p.show_on_services !== false) value += 25;
+      if (planHasPrice(p)) value += 50;
+      value += Date.parse(String(p.updated_at ?? p.created_at ?? 0)) / 100000000000;
+      return value;
+    };
+    if (score(plan) > score(current)) byTier.set(tier, plan);
+  }
+  return PUBLIC_TIERS.map((tier) => byTier.get(tier)).filter((plan): plan is Record<string, unknown> => Boolean(plan));
+}
+
 export default async function MembershipsAdminPage() {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
@@ -28,6 +67,8 @@ export default async function MembershipsAdminPage() {
   ]);
 
   const plans = (plansRes.data ?? []) as Record<string, unknown>[];
+  const publicPlans = canonicalMembershipPlans(plans);
+  const hiddenPlanCount = Math.max(0, plans.length - publicPlans.length);
   const rules = (rulesRes.data ?? []) as Record<string, unknown>[];
   const customers = (customersRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
 
@@ -37,8 +78,13 @@ export default async function MembershipsAdminPage() {
         <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>Plan Manager</p>
         <p className='mt-2 max-w-2xl text-sm text-zinc-300'>Edit public membership offers. Plans marked Homepage or Services appear on public sales surfaces.</p>
       </section>
+      {hiddenPlanCount > 0 ? (
+        <div className='rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-50'>
+          Showing the canonical Bronze, Silver, and Gold plans only. {hiddenPlanCount} duplicate or non-public plan row{hiddenPlanCount === 1 ? '' : 's'} are hidden from the main manager and left untouched in the database.
+        </div>
+      ) : null}
       <section className='grid gap-4 lg:grid-cols-3'>
-        {plans.map((p: any) => (
+        {publicPlans.map((p: any) => (
           <form key={String(p.id)} action={saveMembershipPlanAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
             <input type='hidden' name='id' value={String(p.id)} />
             <div className='flex gap-2 mb-3'>
@@ -102,22 +148,6 @@ export default async function MembershipsAdminPage() {
             </p>
           </form>
         ))}
-        <form action={saveMembershipPlanAction} className='rounded-2xl border border-dashed border-gold/30 bg-black/35 p-5 flex flex-col justify-between'>
-          <div>
-            <p className='text-xs font-black uppercase tracking-wider text-gold-soft mb-3'>Create New Plan</p>
-            <input name='name' placeholder='Plan Name (e.g. Platinum)' className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white mb-2' />
-            <input name='tier' placeholder='tier (e.g. platinum)' className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white mb-3' />
-            
-            <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1'>Interval Pricing ($)</p>
-            <div className='grid grid-cols-2 gap-2 mb-3'>
-              <input name='price_weekly' type='number' step='0.01' placeholder='Weekly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
-              <input name='price_biweekly' type='number' step='0.01' placeholder='Bi-Weekly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
-              <input name='price_monthly' type='number' step='0.01' placeholder='Monthly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
-              <input name='price_yearly' type='number' step='0.01' placeholder='Yearly Price' className='rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
-            </div>
-          </div>
-          <button className='mt-3 w-full rounded-lg bg-gold px-4 py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>Create Plan</button>
-        </form>
       </section>
 
       <section className='mt-6 grid gap-4 lg:grid-cols-2'>
@@ -139,7 +169,7 @@ export default async function MembershipsAdminPage() {
             {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
           </select>
           <select name='membership_plan_id' className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
-            {plans.map((p) => <option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}
+            {publicPlans.map((p) => <option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}
           </select>
           <textarea name='notes' placeholder='Optional internal note' className='mt-2 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
           <button className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Assign</button>

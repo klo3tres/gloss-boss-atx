@@ -77,18 +77,19 @@ export type PaymentChannel =
 export function classifyPaymentChannel(methodRaw: string, kindRaw: string, row?: Row): PaymentChannel {
   const method = methodRaw.toLowerCase();
   const kind = kindRaw.toLowerCase();
-  if (kind.includes('comp') || kind.includes('free') || method.includes('comp')) return 'comp';
-  if (method.includes('cash')) return 'cash';
-  if (method.includes('zelle')) return 'zelle';
-  if (method.includes('venmo')) return 'venmo';
-  if (method.includes('cash_app') || method.includes('cashapp')) return 'cash_app';
-  if (method.includes('apple_pay') || method.includes('apple pay')) return 'apple_pay';
-  if (method.includes('check')) return 'check';
+  const source = `${method} ${kind}`;
+  if (source.includes('comp') || source.includes('free')) return 'comp';
+  if (source.includes('zelle')) return 'zelle';
+  if (source.includes('venmo')) return 'venmo';
+  if (source.includes('cash_app') || source.includes('cashapp')) return 'cash_app';
+  if (source.includes('apple_pay') || source.includes('apple pay')) return 'apple_pay';
+  if (source.includes('check')) return 'check';
+  if (source.includes('cash')) return 'cash';
   if (row && isRealStripePayment(row)) return 'stripe';
-  if (method.includes('stripe') || method.includes('card')) {
+  if (source.includes('stripe') || source.includes('card')) {
     if (row && hasStripeProviderEvidence(row)) return 'stripe';
     return 'other';
   }
-  if (method.includes('manual') && method.includes('card')) return 'manual_card';
+  if (source.includes('manual') && source.includes('card')) return 'manual_card';
   return 'other';
 }
