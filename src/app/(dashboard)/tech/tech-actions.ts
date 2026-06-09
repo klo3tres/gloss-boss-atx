@@ -1452,11 +1452,34 @@ export async function techCompleteJobAction(
       .maybeSingle();
 
     if (!existingStamp) {
+      // Resolve membership tier and rules
+      const { data: activeMembership } = await dbClient
+        .from('customer_memberships')
+        .select('*, membership_plans(*)')
+        .eq('customer_id', appt.customer_id)
+        .in('status', ['active', 'trialing'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const plan = activeMembership?.membership_plans as any;
+      let multiplier = 1.0;
+      let bonus = 0;
+      if (plan) {
+        multiplier = Number(plan.punch_multiplier ?? 1.0);
+        bonus = Number(plan.bonus_punches ?? 0);
+      }
+
+      // Calculate final stamps: 1 punch base * multiplier + bonus
+      const stampCount = Math.max(1, Math.round(1 * multiplier) + bonus);
+
       const { error: stampError } = await dbClient.from('loyalty_stamps').insert({
         customer_id: appt.customer_id,
         appointment_id: appointmentId,
-        stamp_count: 1,
-        reason: `Completed service: ${String(appt.service_slug ?? '').replace(/-/g, ' ')}`,
+        stamp_count: stampCount,
+        reason: `Completed service: ${String(appt.service_slug ?? '').replace(/-/g, ' ')}${plan ? ` (${plan.name} Member Bonus)` : ''}`,
+        source: 'auto_job_completion',
+        technician_id: gate.userId,
       });
       if (stampError) {
         console.warn('[tech-complete] failed to insert loyalty stamp', stampError.message);

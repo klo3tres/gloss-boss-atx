@@ -557,10 +557,25 @@ export default async function TechWorkOrderDetailPage({
     notes: item.notes,
   }));
 
-  const consoleData: WorkOrderConsoleData = {
+  let stampsCount = 0;
+  let stampsList: any[] = [];
+  if (row.customer_id) {
+    const { data: stampsData } = await admin
+      .from('loyalty_stamps')
+      .select('id, stamp_count, reason, created_at, appointment_id, voided, voided_at, voided_by, source')
+      .eq('customer_id', row.customer_id)
+      .order('created_at', { ascending: false });
+    
+    stampsList = stampsData ?? [];
+    stampsCount = stampsList.filter(s => !s.voided).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+  }
+
+  const consoleData: any = {
     id,
     canonicalId: queryId,
     customerId: str(row.customer_id) || undefined,
+    loyaltyStampsCount: stampsCount,
+    loyaltyStamps: stampsList,
     customLineItems,
     jobPricing: pricing,
     pricingSnapshot: {

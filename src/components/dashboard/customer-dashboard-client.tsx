@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
+import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
 
 export type CustomerAppt = {
@@ -46,6 +47,7 @@ export type CustomerDashboardProps = {
   appointmentCount: number;
   snapshotByAppt?: Record<string, CustomerApptSnapshotView>;
   loyaltyStampsCount?: number;
+  activeCardDesign?: any;
 };
 
 function money(cents: number) {
@@ -104,6 +106,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const [rotateX, setRotateX] = useState(0);
   const [rotateY, setRotateY] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const [isFlipped, setIsFlipped] = useState(false);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const card = e.currentTarget;
@@ -334,99 +337,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
         {/* Right Column: Loyalty Tracker & Google Review */}
         <div className="space-y-6">
           {/* Luxury 3D Carbon & Gold Punch Card */}
-          <div className="perspective-[1000px] w-full">
-            <motion.div
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-              onMouseEnter={() => setIsHovered(true)}
-              animate={{ rotateX, rotateY, scale: isHovered ? 1.02 : 1 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-              style={{ transformStyle: 'preserve-3d' }}
-              className="relative overflow-hidden rounded-3xl border border-gold/30 bg-gradient-to-br from-zinc-900 via-neutral-950 to-zinc-900 p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)] transition-shadow duration-300 hover:shadow-[0_0_50px_rgba(212,175,55,0.22)] select-none cursor-grab"
-            >
-              {/* Carbon fiber style subtle pattern overlay */}
-              <div 
-                className="pointer-events-none absolute inset-0 opacity-[0.035] bg-[radial-gradient(circle_at_center,white_1px,transparent_1px)] bg-[size:10px_10px]" 
-                aria-hidden 
-              />
-              
-              {/* Shine overlay that moves with rotation */}
-              <div
-                className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent transition-transform duration-200"
-                style={{
-                  transform: `translateX(${rotateY * 4}px) translateY(${rotateX * 4}px)`,
-                  mixBlendMode: 'overlay',
-                }}
-                aria-hidden
-              />
-
-              <div className="flex items-center justify-between border-b border-gold/10 pb-3" style={{ transform: 'translateZ(20px)' }}>
-                <div>
-                  <SectionEyebrow className="text-gold-soft font-black tracking-[0.25em]">VIP LOYALTY CARD</SectionEyebrow>
-                  <p className="text-[9px] uppercase tracking-wider text-zinc-500 mt-0.5">Gloss Boss ATX Premium</p>
-                </div>
-                <Award className="h-5 w-5 text-gold animate-pulse" />
-              </div>
-
-              {/* Punch Slots Grid */}
-              <div className="mt-6 grid grid-cols-3 gap-4" style={{ transform: 'translateZ(30px)' }}>
-                {[1, 2, 3, 4, 5, 'Reward'].map((slot, index) => {
-                  const isReward = slot === 'Reward';
-                  const isPunched = currentStep > index || (isReward && currentStep === 0 && loyaltyVisits > 0 && loyaltyVisits % loyaltyTarget === 0);
-                  
-                  return (
-                    <div
-                      key={index}
-                      className={`relative flex aspect-square flex-col items-center justify-center rounded-2xl border transition duration-300 ${
-                        isPunched
-                          ? 'border-gold bg-gradient-to-br from-gold/20 via-gold/5 to-black shadow-[0_0_15px_rgba(212,175,55,0.2)]'
-                          : isReward && currentStep === loyaltyTarget - 1
-                          ? 'border-emerald-500/50 bg-emerald-500/5 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.15)]'
-                          : 'border-white/10 bg-black/40 hover:border-gold/30'
-                      }`}
-                    >
-                      {isPunched ? (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="flex flex-col items-center justify-center"
-                        >
-                          <Sparkles className="h-6 w-6 text-gold fill-gold/20" />
-                          <span className="mt-1 text-[8px] font-black text-gold-soft tracking-widest uppercase">SHINE</span>
-                        </motion.div>
-                      ) : isReward ? (
-                        <div className="flex flex-col items-center justify-center">
-                          <Gift className={`h-6 w-6 ${currentStep === loyaltyTarget - 1 ? 'text-emerald-400' : 'text-zinc-600'}`} />
-                          <span className={`mt-1 text-[8px] font-black tracking-widest uppercase ${currentStep === loyaltyTarget - 1 ? 'text-emerald-300' : 'text-zinc-500'}`}>FREE</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center">
-                          <span className="text-zinc-600 text-lg font-black font-mono">{slot}</span>
-                          <span className="mt-0.5 text-[7px] font-bold text-zinc-700 tracking-wider">STAMP</span>
-                        </div>
-                      )}
-                      
-                      {/* Little physical-looking punch hole shadow if punched */}
-                      {isPunched && (
-                        <div className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-zinc-950 border border-gold/35 shadow-inner" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 flex items-center justify-between border-t border-gold/10 pt-4" style={{ transform: 'translateZ(15px)' }}>
-                <p className="text-[9px] font-mono font-bold text-zinc-500">
-                  VISITS RECORDED: <span className="text-white font-black">{loyaltyVisits}</span>
-                </p>
-                <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">
-                  {currentStep === 0 && loyaltyVisits > 0 && loyaltyVisits % loyaltyTarget === 0
-                    ? 'REWARD READY TO REDEEM!'
-                    : `${loyaltyTarget - currentStep} STAMPS UNTIL REWARD`}
-                </p>
-              </div>
-            </motion.div>
-          </div>
+          <LoyaltyCard3D 
+            activeCardDesign={props.activeCardDesign} 
+            stampsCount={loyaltyVisits} 
+            customerEmail={props.history[0]?.guest_email || 'VIP MEMBER'} 
+          />
+          <p className="text-[10px] text-zinc-500 text-center mt-1">
+            💡 Click card to flip front/back
+          </p>
 
           {/* Stepper Progress Visualizer (Subtle text info card) */}
           <GlassCard className="border-zinc-900 bg-black/30 mt-2">

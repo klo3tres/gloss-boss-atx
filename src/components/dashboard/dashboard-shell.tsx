@@ -94,19 +94,18 @@ const techLinks = [
   { href: '/tech/work-orders', label: 'Active Work Orders' },
   { href: '/tech#routes', label: 'Route' },
   { href: '/tech#field-lead-capture', label: 'Leads' },
-  { href: '/tech/workflow', label: 'Walk-in workflow' },
   { href: '/tech#mileage', label: 'Mileage' },
   { href: '/tech#supplies', label: 'Supply Requests' },
-  { href: '/tech#field-invoice', label: 'Field tools' },
+  { href: '/tech#field-invoice', label: 'Field Tools' },
   { href: '/tech/resources', label: 'SOPs' },
 ];
 
 const customerLinks = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/messages', label: 'Messages' },
-  { href: '/book', label: 'Book again' },
+  { href: '/book', label: 'Book Again' },
+  { href: '/gift-cards', label: 'Gift Cards' },
   { href: '/services', label: 'Services' },
-  { href: '/gift-cards', label: 'Gift cards' },
   { href: '/dashboard/settings', label: 'Settings' },
 ];
 
@@ -124,6 +123,16 @@ export function DashboardShell({
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
+  const [currentHash, setCurrentHash] = useState('');
+
+  useEffect(() => {
+    setCurrentHash(window.location.hash);
+    const handleHashChange = () => {
+      setCurrentHash(window.location.hash);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   useEffect(() => {
     const read = () => {
@@ -173,9 +182,16 @@ export function DashboardShell({
       : `${panelLabel[role]} panel`;
 
   const linkClass = (href: string) => {
-    const isActive =
-      pathname === href ||
-      (href !== '/dashboard' && href !== '/admin' && href !== '/tech' && pathname.startsWith(`${href}/`));
+    const [pathPart, hashPart] = href.split('#');
+    const hasHash = Boolean(hashPart);
+    let isActive = false;
+    if (hasHash) {
+      isActive = pathname === pathPart && currentHash === `#${hashPart}`;
+    } else {
+      isActive =
+        pathname === href ||
+        (href !== '/dashboard' && href !== '/admin' && href !== '/tech' && pathname.startsWith(`${href}/`));
+    }
     return `block rounded-lg border px-3 py-2 text-sm transition ${
       isActive
         ? 'border-gold/50 bg-gold/10 text-gold-soft'

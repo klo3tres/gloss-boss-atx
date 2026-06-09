@@ -40,6 +40,10 @@ export async function saveMembershipPlanAction(formData: FormData) {
     benefits: str(formData.get('benefits')).split('\n').map((s) => s.trim()).filter(Boolean),
     included_services: str(formData.get('included_services')).split('\n').map((s) => s.trim()).filter(Boolean),
     discount_percent: Number(str(formData.get('discount_percent'))) || 0,
+    punch_multiplier: Number(str(formData.get('punch_multiplier')) || 1.0),
+    bonus_punches: Number(str(formData.get('bonus_punches')) || 0),
+    reward_threshold: Number(str(formData.get('reward_threshold')) || 5),
+    reward_description: str(formData.get('reward_description')) || 'Complete 5 services, unlock 6th wash/free reward.',
     show_on_homepage: formData.get('show_on_homepage') === 'on',
     show_on_services: formData.get('show_on_services') === 'on',
     archived: formData.get('archived') === 'on',
@@ -81,4 +85,94 @@ export async function assignCustomerMembershipAction(formData: FormData) {
     notes: str(formData.get('notes')) || null,
   });
   revalidatePath('/admin/memberships');
+}
+
+export async function saveLoyaltyCardDesignAction(formData: FormData): Promise<void> {
+  const g = await gate();
+  if (!g) return;
+
+  const id = str(formData.get('id'));
+  const name = str(formData.get('name')) || 'Loyalty Card Design';
+  const tier = str(formData.get('tier')) || 'default';
+  const active = formData.get('active') === 'on';
+  const archived = formData.get('archived') === 'on';
+
+  const frontFile = formData.get('frontImage');
+  const backFile = formData.get('backImage');
+
+  let front_image_url = str(formData.get('front_image_url_existing'));
+  let front_image_path = str(formData.get('front_image_path_existing'));
+  let back_image_url = str(formData.get('back_image_url_existing'));
+  let back_image_path = str(formData.get('back_image_path_existing'));
+
+  const uploadFile = async (file: FormDataEntryValue | null, suffix: string) => {
+    if (file instanceof File && file.size > 0) {
+      const mime = file.type || 'image/png';
+      const buf = Buffer.from(await file.arrayBuffer());
+      const timestamp = Date.now();
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 50);
+      const path = `${tier}/${timestamp}-${suffix}-${cleanName}`;
+      
+      const { error: upErr } = await g.admin.storage
+        .from('loyalty-cards')
+        .upload(path, buf, { contentType: mime, upsert: true });
+
+      if (upErr) throw new Error(upErr.message);
+
+      const { data: pub } = g.admin.storage.from('loyalty-cards').getPublicUrl(path);
+      return { url: pub.publicUrl, path };
+    }
+    return null;
+  };
+
+  try {
+    const frontRes = await uploadFile(frontFile, 'front');
+    if (frontRes) {
+      front_image_url = frontRes.url;
+      front_image_path = frontRes.path;
+    }
+
+    const backRes = await uploadFile(backFile, 'back');
+    if (backRes) {
+      back_image_url = backRes.url;
+      back_image_path = backRes.path;
+    }
+
+    const patch: any = {
+      name,
+      tier,
+      front_image_url,
+      front_image_path,
+      back_image_url,
+      back_image_path,
+      active,
+      archived,
+      updated_at: new Date().toISOString(),
+    };
+
+    let targetId = id;
+    if (id) {
+      const { error } = await g.admin.from('loyalty_card_designs').update(patch).eq('id', id);
+      if (error) throw error;
+    } else {
+      patch.created_by = g.userId;
+      const { data, error } = await g.admin.from('loyalty_card_designs').insert(patch).select('id').maybeSingle();
+      if (error) throw error;
+      if (data?.id) targetId = data.id;
+    }
+
+    if (active && !archived && targetId) {
+      const { error } = await g.admin
+        .from('loyalty_card_designs')
+        .update({ active: false })
+        .eq('tier', tier)
+        .neq('id', targetId);
+      if (error) throw error;
+    }
+
+    revalidatePath('/admin/memberships');
+    revalidatePath('/dashboard');
+  } catch (err: any) {
+    console.error('[saveLoyaltyCardDesignAction] error:', err);
+  }
 }

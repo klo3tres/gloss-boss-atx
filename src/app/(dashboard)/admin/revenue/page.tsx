@@ -454,9 +454,9 @@ export default async function AdminRevenuePage({
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed MTD' />
-          <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
-          <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
           <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
+          <StatBlock label='Fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
+          <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
           <StatBlock label='Net Profit' value={money(financial.netProfitCents)} hint='Gross - refunds - fees - expenses' />
           <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} hint='Disbursed bank transfers' />
           <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' hint='Accounts receivable' />

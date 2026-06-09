@@ -137,20 +137,35 @@ export async function deleteCustomerAction(formData: FormData) {
 export async function addManualLoyaltyStampAction(formData: FormData) {
   const customerId = String(formData.get('customerId') ?? '').trim();
   const stampCount = Number(formData.get('stampCount') ?? 1);
-  const reason = String(formData.get('reason') ?? 'Manual adjustment').trim();
-  if (!customerId || isNaN(stampCount) || stampCount < 1) return;
+  const reason = String(formData.get('reason') ?? '').trim() || 'Manual adjustment';
+  const source = String(formData.get('source') ?? 'admin_manual').trim();
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim() || null;
+  if (!customerId || isNaN(stampCount)) return;
 
-  const gate = await requireAdminGate();
-  if (!gate.ok) return;
-
+  const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
-  const client = admin ?? gate.supabase;
+  if (!session.user || !admin) return;
 
-  const { error } = await client.from('loyalty_stamps').insert({
+  const isStaff = ['admin', 'super_admin', 'technician'].includes(session.profile?.role ?? '');
+  if (!isStaff) return;
+
+  const patch: any = {
     customer_id: customerId,
     stamp_count: stampCount,
     reason,
-  });
+    note: reason,
+    source,
+    appointment_id: appointmentId,
+    created_by: session.user.id,
+  };
+
+  if (session.profile?.role === 'technician') {
+    patch.technician_id = session.user.id;
+  } else {
+    patch.admin_id = session.user.id;
+  }
+
+  const { error } = await admin.from('loyalty_stamps').insert(patch);
 
   if (error) {
     console.warn('[CRM_DEBUG_DB]', 'add_manual_loyalty_stamp_failed', error.message);
@@ -160,4 +175,51 @@ export async function addManualLoyaltyStampAction(formData: FormData) {
   revalidatePath('/admin/customers');
   revalidatePath(`/admin/customers/${customerId}`);
   revalidatePath('/dashboard');
+  revalidatePath('/admin/memberships');
+  revalidatePath('/tech');
+  if (appointmentId) {
+    revalidatePath(`/tech/work-orders/${appointmentId}`);
+    revalidatePath(`/admin/work-orders/${appointmentId}`);
+  }
+}
+
+export async function deleteLoyaltyStampAction(formData: FormData) {
+  const stampId = String(formData.get('stampId') ?? '').trim();
+  const customerId = String(formData.get('customerId') ?? '').trim();
+  const voidReason = String(formData.get('voidReason') ?? 'Correction/Void').trim();
+  if (!stampId || !customerId) return;
+
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !admin) return;
+
+  const isStaff = ['admin', 'super_admin', 'technician'].includes(session.profile?.role ?? '');
+  if (!isStaff) return;
+
+  // Soft-void the stamp by marking it voided = true
+  const { error } = await admin
+    .from('loyalty_stamps')
+    .update({
+      voided: true,
+      voided_at: new Date().toISOString(),
+      voided_by: session.user.id,
+      reason: `Voided: ${voidReason}`,
+      note: voidReason,
+    })
+    .eq('id', stampId);
+
+  if (error) {
+    console.warn('[CRM_DEBUG_DB]', 'delete_loyalty_stamp_failed', error.message);
+    return;
+  }
+
+  revalidatePath('/admin/customers');
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/dashboard');
+  revalidatePath('/admin/memberships');
+  revalidatePath('/tech');
+}
+
+export async function voidLoyaltyStampAction(formData: FormData) {
+  return deleteLoyaltyStampAction(formData);
 }

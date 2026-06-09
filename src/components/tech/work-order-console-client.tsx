@@ -26,6 +26,7 @@ import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs'
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSendCustomSmsAction } from '@/app/(dashboard)/tech/tech-actions';
+import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);
@@ -130,6 +131,8 @@ export type WorkOrderConsoleData = {
   canManagePayments?: boolean;
   workOrderPath?: string;
   customerId?: string;
+  loyaltyStampsCount?: number;
+  loyaltyStamps?: any[];
   customLineItems?: Array<{ id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string }>;
   pricingSnapshot?: InvoicePricingSnapshot;
   jobPricing?: JobPricingDisplay;
@@ -968,6 +971,113 @@ export function WorkOrderConsoleClient({
           ) : null}
         </WorkOrderCollapsible>
         </div>
+
+        {data.customerId ? (
+          <div id='wo-loyalty' className='scroll-mt-32'>
+            <WorkOrderCollapsible 
+              title='Loyalty punch controls' 
+              badge={String(data.loyaltyStampsCount ?? 0)} 
+              defaultOpen={false}
+            >
+              <div className='grid gap-6 md:grid-cols-2'>
+                <div>
+                  <p className='text-xs text-zinc-400'>
+                    Active loyalty stamps recorded for this customer:
+                  </p>
+                  <div className='mt-2.5 flex items-center gap-2'>
+                    <span className='text-2xl font-black text-white'>
+                      {(data.loyaltyStampsCount ?? 0) % 6} / 6
+                    </span>
+                    <span className='text-xs text-zinc-500 uppercase tracking-widest'>
+                      stamps on current card ({(data.loyaltyStampsCount ?? 0)} total)
+                    </span>
+                  </div>
+
+                  {/* Stamp award form */}
+                  <form action={addManualLoyaltyStampAction} className='mt-4 rounded-xl border border-white/10 bg-black/45 p-4 space-y-3'>
+                    <input type='hidden' name='customerId' value={data.customerId} />
+                    <input type='hidden' name='appointmentId' value={data.id} />
+                    
+                    <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Award Loyalty Stamps</p>
+                    
+                    <div className='grid gap-2 grid-cols-2'>
+                      <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                        Count
+                        <select name='stampCount' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'>
+                          <option value='1'>+1 Stamp</option>
+                          <option value='2'>+2 Stamps</option>
+                          <option value='3'>+3 Stamps</option>
+                          <option value='5'>+5 Stamps</option>
+                        </select>
+                      </label>
+                      <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                        Source
+                        <select name='source' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'>
+                          <option value='tech_manual'>Tech Manual</option>
+                          <option value='admin_manual'>Admin Manual</option>
+                          <option value='membership_bonus'>Membership Bonus</option>
+                        </select>
+                      </label>
+                    </div>
+                    
+                    <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                      Reason / Note
+                      <input name='reason' required placeholder='e.g., Referral bonus, goodwill adjustment...' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white' />
+                    </label>
+
+                    <button type='submit' className='w-full rounded bg-gold py-1.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>
+                      Award Punch
+                    </button>
+                  </form>
+                </div>
+
+                <div>
+                  <p className='text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2'>Punches history</p>
+                  {!data.loyaltyStamps || data.loyaltyStamps.length === 0 ? (
+                    <p className='text-xs text-zinc-600 italic py-4 border border-dashed border-white/5 rounded-xl text-center'>
+                      No stamps recorded.
+                    </p>
+                  ) : (
+                    <ul className='space-y-2.5 max-h-[200px] overflow-y-auto pr-1 text-xs'>
+                      {data.loyaltyStamps.map((s) => {
+                        const isVoided = Boolean(s.voided);
+                        return (
+                          <li key={s.id} className={`flex items-start justify-between gap-2 border-b border-white/5 pb-2 last:border-b-0 ${isVoided ? 'opacity-50' : ''}`}>
+                            <div className="min-w-0 flex-1">
+                              <p className={`font-semibold ${isVoided ? 'line-through text-zinc-500' : 'text-zinc-300'}`}>
+                                {s.reason || 'Loyalty stamp earned'}
+                              </p>
+                              <p className='text-[9px] text-zinc-500 font-mono mt-0.5'>
+                                {new Date(s.created_at).toLocaleDateString()}
+                                {s.source && ` · ${s.source.replace(/_/g, ' ')}`}
+                                {isVoided && ' (Voided)'}
+                              </p>
+                            </div>
+                            <div className='flex items-center gap-1.5 shrink-0'>
+                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${isVoided ? 'bg-zinc-800 text-zinc-500 line-through' : 'bg-gold/15 text-gold-soft border border-gold/25'}`}>
+                                {isVoided ? '0' : `+${s.stamp_count ?? 1}`}
+                              </span>
+                              {!isVoided && (
+                                <form action={deleteLoyaltyStampAction} method='POST' className='flex gap-1'>
+                                  <input type='hidden' name='stampId' value={s.id} />
+                                  <input type='hidden' name='customerId' value={data.customerId} />
+                                  <input type='text' name='voidReason' placeholder='Void reason...' required className='w-16 rounded border border-zinc-700 bg-black px-1 py-0.5 text-[8px] text-white' />
+                                  <button type='submit' className='text-[9px] font-black uppercase text-red-400 hover:text-red-300 px-1 border border-red-500/20 rounded bg-red-500/5'>
+                                    Void
+                                  </button>
+                                </form>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </WorkOrderCollapsible>
+          </div>
+        ) : null}
 
         <div id='wo-notes' className='scroll-mt-32'>
         <WorkOrderCollapsible title='Notes' badge={String(data.notes.length)} defaultOpen={false}>

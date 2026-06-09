@@ -3,10 +3,11 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
-import { createCustomerAction, deleteCustomerAction, updateCustomerAction, archiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
+import { createCustomerAction, deleteCustomerAction, archiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { backfillAllAppointmentVehicles } from '@/lib/crm-vehicle-sync';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
+import { User, Mail, Phone, Calendar, Award, Star } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,16 @@ type CustomerRow = {
   phone: string | null;
   created_at: string;
   archived?: boolean | null;
+  customer_memberships?: Array<{
+    status: string;
+    membership_plans: {
+      name: string;
+      tier: string;
+    } | null;
+  }>;
+  loyalty_stamps?: Array<{
+    stamp_count: number;
+  }>;
 };
 
 export default async function AdminCustomersPage() {
@@ -31,142 +42,192 @@ export default async function AdminCustomersPage() {
     if ((vehicleCount ?? 0) < 3) {
       await backfillAllAppointmentVehicles(client);
     }
+    
     const full = await client
       .from('customers')
-      .select('id, email, full_name, phone, created_at, archived')
+      .select(`
+        id, 
+        email, 
+        full_name, 
+        phone, 
+        created_at, 
+        archived,
+        customer_memberships(
+          status,
+          membership_plans(name, tier)
+        ),
+        loyalty_stamps(stamp_count)
+      `)
       .or('archived.is.null,archived.eq.false')
       .order('created_at', { ascending: false })
       .limit(200);
-    if (full.error && /archived|column|schema cache|Could not find/i.test(full.error.message)) {
-      const noArch = await client
-        .from('customers')
-        .select('id, email, full_name, phone, created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (noArch.error && /phone|full_name|column .* does not exist|Could not find|schema cache/i.test(noArch.error.message)) {
-        const lean = await client.from('customers').select('id, email, created_at').order('created_at', { ascending: false }).limit(200);
-        if (lean.error) {
-          qErr = lean.error.message;
-          console.warn('[CRM_DEBUG_DB]', 'customers_list', lean.error.message);
-        } else {
-          rows = (lean.data ?? []).map((r) => ({
-            ...r,
-            full_name: null,
-            phone: null,
-          })) as CustomerRow[];
-        }
-      } else if (noArch.error) {
-        qErr = noArch.error.message;
-        console.warn('[CRM_DEBUG_DB]', 'customers_list', noArch.error.message);
-      } else {
-        rows = (noArch.data ?? []) as CustomerRow[];
-      }
-    } else if (full.error) {
+
+    if (full.error) {
       qErr = full.error.message;
       console.warn('[CRM_DEBUG_DB]', 'customers_list', full.error.message);
     } else {
-      rows = (full.data ?? []) as CustomerRow[];
+      rows = (full.data ?? []) as unknown as CustomerRow[];
     }
   }
 
   const isSuper = session.profile?.role === 'super_admin';
 
   return (
-    <DashboardShell title='Customers' subtitle='CRM records — add, edit, or remove (delete: super admin + confirmation).' role='admin'>
+    <DashboardShell title='Customer CRM' subtitle='Manage customer profiles, loyalty stamp status, and contact directory.' role='admin'>
       {qErr ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
           Could not load customers: {qErr}
         </p>
       ) : null}
 
-      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <h2 className='text-lg font-bold uppercase text-gold-soft'>Add customer</h2>
-        <p className='mt-1 text-xs text-zinc-500'>Creates a CRM row (does not create a login).</p>
-        <form action={createCustomerAction} className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+      {/* Add Customer Form */}
+      <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-lg'>
+        <h2 className='text-sm font-black uppercase text-gold-soft tracking-wider'>Add customer profile</h2>
+        <p className='mt-1 text-xs text-zinc-500'>Creates a new CRM profile row. Customers can later sign up using the same email to link their account.</p>
+        <form action={createCustomerAction} className='mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
           <label className='block text-xs text-zinc-400 sm:col-span-2'>
-            Email
-            <input name='email' type='email' required className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            Email Address
+            <input name='email' type='email' placeholder='name@domain.com' required className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
           </label>
           <label className='block text-xs text-zinc-400'>
-            Full name
-            <input name='full_name' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            Full Name
+            <input name='full_name' placeholder='First Last' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
           </label>
           <label className='block text-xs text-zinc-400'>
-            Phone
-            <input name='phone' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white' />
+            Phone Number
+            <input name='phone' placeholder='(512) 555-0199' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
           </label>
-          <div className='flex items-end sm:col-span-2 lg:col-span-4'>
-            <button type='submit' className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-              Create
+          <div className='flex items-end sm:col-span-2 lg:col-span-4 mt-2'>
+            <button type='submit' className='rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black shadow-md hover:brightness-110 transition'>
+              Create CRM Profile
             </button>
           </div>
         </form>
       </section>
 
-      <section className='mt-8 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <h2 className='text-lg font-bold uppercase text-gold-soft'>Directory</h2>
-        <div className='gb-admin-table-wrap mt-4'>
-          <table className='w-full min-w-[960px] border-collapse text-left text-sm'>
-            <thead>
-              <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>
-                <th className='py-2 pr-2'>Email</th>
-                <th className='py-2 pr-2'>Name</th>
-                <th className='py-2 pr-2'>Phone</th>
-                <th className='py-2 pr-2'>Created</th>
-                <th className='py-2'>Save</th>
-                <th className='py-2 pl-2'>Remove</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className='border-b border-white/5 align-middle text-zinc-200'>
-                  <td className='py-2 pr-2' colSpan={6}>
-                    <div className='flex flex-col gap-2 py-2 lg:flex-row lg:items-end lg:gap-3'>
-                      <form action={updateCustomerAction} className='flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end'>
+      {/* Directory Grid */}
+      <section className='mt-8 rounded-3xl border border-gold/20 bg-zinc-950/60 p-6'>
+        <div className='flex justify-between items-center mb-6'>
+          <div>
+            <h2 className='text-sm font-black uppercase text-gold-soft tracking-wider'>Customer Directory</h2>
+            <p className='text-xs text-zinc-500 mt-1'>Showing up to 200 of the latest active customer records.</p>
+          </div>
+          <span className='rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-zinc-400 font-bold'>
+            {rows.length} Profiles
+          </span>
+        </div>
+
+        <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
+          {rows.map((c) => {
+            const initials = String(c.full_name ?? c.email)
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2);
+
+            // Resolve active membership
+            const activeMembership = c.customer_memberships?.find((m) => m.status === 'active');
+            const tier = activeMembership?.membership_plans?.tier || 'default';
+            const tierName = activeMembership?.membership_plans?.name || null;
+
+            // Resolve stamp count
+            const stampsCount = c.loyalty_stamps?.reduce((sum, s) => sum + (s.stamp_count ?? 1), 0) ?? 0;
+            const currentPunchCardStamps = stampsCount % 5;
+
+            return (
+              <div 
+                key={c.id} 
+                className='relative group flex flex-col justify-between rounded-2xl border border-white/5 bg-zinc-950/40 p-5 hover:border-gold/30 hover:shadow-[0_0_24px_rgba(212,175,55,0.08)] transition duration-300'
+              >
+                <div>
+                  <div className='flex items-start justify-between gap-3'>
+                    {/* Customer Profile Link clickable */}
+                    <Link href={`/admin/customers/${c.id}`} className='flex items-center gap-3 min-w-0 group-hover:text-gold-soft transition'>
+                      <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/10 border border-gold/20 text-gold-soft font-black text-sm group-hover:border-gold/50 transition'>
+                        {initials}
+                      </div>
+                      <div className='min-w-0'>
+                        <h3 className='font-bold text-white group-hover:text-gold-soft transition truncate leading-snug'>
+                          {c.full_name || 'Unnamed Client'}
+                        </h3>
+                        <p className='text-xs text-zinc-500 truncate mt-0.5'>{c.email}</p>
+                      </div>
+                    </Link>
+
+                    {/* Tier badge */}
+                    {tierName && (
+                      <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase border shrink-0 ${
+                        tier === 'gold' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' :
+                        tier === 'silver' ? 'bg-zinc-400/10 text-zinc-300 border-zinc-500/20' :
+                        'bg-orange-700/10 text-orange-400 border-orange-700/30'
+                      }`}>
+                        {tierName}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className='mt-4 space-y-2 border-t border-white/5 pt-3.5 text-xs text-zinc-400'>
+                    {c.phone && (
+                      <div className='flex items-center gap-2'>
+                        <Phone className='h-3.5 w-3.5 text-zinc-500' />
+                        <span>{c.phone}</span>
+                      </div>
+                    )}
+                    <div className='flex items-center gap-2 justify-between'>
+                      <div className='flex items-center gap-2'>
+                        <Star className='h-3.5 w-3.5 text-gold fill-gold/10' />
+                        <span>Stamps count: <strong className='text-white'>{stampsCount}</strong> ({currentPunchCardStamps}/5 active)</span>
+                      </div>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      <Calendar className='h-3.5 w-3.5 text-zinc-500' />
+                      <span>Registered: {new Date(c.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className='mt-5 flex items-center justify-between gap-2 border-t border-white/5 pt-3'>
+                  <Link 
+                    href={`/admin/customers/${c.id}`} 
+                    className='text-xs font-black uppercase text-gold-soft hover:underline'
+                  >
+                    View CRM Details →
+                  </Link>
+
+                  <div className='flex gap-2'>
+                    <form action={archiveCustomerAction}>
+                      <input type='hidden' name='id' value={c.id} />
+                      <ConfirmSubmitButton 
+                        message={`Archive customer ${c.full_name || c.email}?`}
+                        className='rounded px-2.5 py-1 text-[9px] font-black uppercase border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 transition'
+                      >
+                        Archive
+                      </ConfirmSubmitButton>
+                    </form>
+                    {isSuper && (
+                      <form action={deleteCustomerAction}>
                         <input type='hidden' name='id' value={c.id} />
-                        <label className='min-w-[200px] flex-1 text-xs text-zinc-500'>
-                          Email
-                          <input name='email' type='email' required defaultValue={c.email} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2 py-1.5 text-sm' />
-                        </label>
-                        <label className='min-w-[140px] text-xs text-zinc-500'>
-                          Name
-                          <input name='full_name' defaultValue={c.full_name ?? ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2 py-1.5 text-sm' />
-                        </label>
-                        <label className='min-w-[120px] text-xs text-zinc-500'>
-                          Phone
-                          <input name='phone' defaultValue={c.phone ?? ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-2 py-1.5 text-sm' />
-                        </label>
-                        <button type='submit' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft'>
-                          Save
-                        </button>
-                        <Link href={`/admin/customers/${c.id}`} className='rounded-lg border border-white/15 px-3 py-2 text-xs font-bold uppercase text-zinc-300 hover:border-gold/40'>
-                          View detail
-                        </Link>
-                      </form>
-                      <form action={archiveCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>
-                        <input type='hidden' name='id' value={c.id} />
-                        <ConfirmSubmitButton message='Archive this customer?' className='rounded-lg border border-amber-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-amber-200 hover:bg-amber-500/10'>
-                          Archive
+                        <ConfirmSubmitButton 
+                          message={`PERMANENTLY delete customer ${c.full_name || c.email}?`}
+                          className='rounded px-2.5 py-1 text-[9px] font-black uppercase border border-red-500/35 text-red-400 hover:bg-red-500/10 transition'
+                        >
+                          Delete
                         </ConfirmSubmitButton>
                       </form>
-                      {isSuper ? (
-                        <form action={deleteCustomerAction} className='flex shrink-0 flex-wrap items-center gap-2'>
-                          <input type='hidden' name='id' value={c.id} />
-                          <ConfirmSubmitButton message='Delete this customer?' className='rounded-lg border border-red-500/50 px-2 py-1.5 text-[10px] font-bold uppercase text-red-300 hover:bg-red-500/10'>
-                            Delete
-                          </ConfirmSubmitButton>
-                        </form>
-                      ) : null}
-                    </div>
-                    <p className='pb-2 text-[10px] text-zinc-600'>{new Date(c.created_at).toLocaleString()}</p>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.length === 0 && !qErr ? <p className='mt-4 text-sm text-zinc-500'>No customers yet.</p> : null}
-          {!isSuper ? <p className='mt-4 text-xs text-zinc-600'>Customer delete is restricted to super admins (type DELETE to confirm).</p> : null}
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
+
+        {rows.length === 0 && !qErr ? (
+          <p className='mt-4 text-center text-sm text-zinc-500 py-12 border border-dashed border-white/10 rounded-2xl'>
+            No customers registered in CRM directory yet.
+          </p>
+        ) : null}
       </section>
 
       <Link href='/admin' className='mt-8 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>

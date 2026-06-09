@@ -281,15 +281,45 @@ export default async function CustomerDashboardRootPage() {
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
   let loyaltyStampsCount = 0;
+  let activeCardDesign = null;
   if (adminDb && userEmail) {
     const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
     if (cust?.id) {
-      const [{ count }, { data: stamps }] = await Promise.all([
+      const [{ count }, { data: stamps }, { data: activeMembership }] = await Promise.all([
         adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id),
         adminDb.from('loyalty_stamps').select('stamp_count').eq('customer_id', cust.id),
+        adminDb
+          .from('customer_memberships')
+          .select('membership_plans(tier)')
+          .eq('customer_id', cust.id)
+          .in('status', ['active', 'trialing', 'past_due'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
       loyaltyStampsCount = (stamps ?? []).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+
+      const tier = (activeMembership?.membership_plans as any)?.tier || 'default';
+      const { data: design } = await adminDb
+        .from('loyalty_card_designs')
+        .select('*')
+        .eq('tier', tier)
+        .eq('active', true)
+        .eq('archived', false)
+        .maybeSingle();
+      activeCardDesign = design;
+
+      if (!activeCardDesign && tier !== 'default') {
+        const { data: defaultDesign } = await adminDb
+          .from('loyalty_card_designs')
+          .select('*')
+          .eq('tier', 'default')
+          .eq('active', true)
+          .eq('archived', false)
+          .maybeSingle();
+        activeCardDesign = defaultDesign;
+      }
     }
   }
   const receiptTotal = Array.from(receiptsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0) || Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
@@ -367,6 +397,7 @@ export default async function CustomerDashboardRootPage() {
         appointmentCount={appointments.length}
         snapshotByAppt={snapshotByAppt}
         loyaltyStampsCount={loyaltyStampsCount}
+        activeCardDesign={activeCardDesign}
       />
     </DashboardShell>
   );

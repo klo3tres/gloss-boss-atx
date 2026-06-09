@@ -22,11 +22,12 @@ export default async function StripeSyncPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
-  const [ledgerRes, paymentsRes, refundsRes, payoutsRes] = await Promise.all([
+  const [ledgerRes, paymentsRes, refundsRes, payoutsRes, dbAllPaymentsRes] = await Promise.all([
     admin.from('financial_ledger').select('*').eq('source', 'stripe').order('created_at', { ascending: false }).limit(20),
     admin.from('payments').select('*').eq('payment_method', 'stripe').order('created_at', { ascending: false }).limit(10),
     admin.from('financial_ledger').select('*').eq('type', 'refund').order('occurred_at', { ascending: false }).limit(10),
     admin.from('financial_ledger').select('*').eq('type', 'payout').order('occurred_at', { ascending: false }).limit(10),
+    admin.from('payments').select('id, amount_cents, status, stripe_payment_intent_id, stripe_checkout_session_id, exclude_from_revenue, appointment_id, appointments(id, service_slug, customers(id, full_name, email))').order('created_at', { ascending: false }).limit(100),
   ]);
 
   let stripeSnapshot: StripeFinanceSnapshot | null = null;
@@ -41,6 +42,54 @@ export default async function StripeSyncPage() {
   }
 
   const latestLedger = ledgerRes.data?.[0] as Record<string, unknown> | undefined;
+
+  const livePayments = stripeSnapshot?.recentPayments ?? [];
+  const dbPayments = (dbAllPaymentsRes?.data ?? []) as any[];
+
+  // Helper to diagnose each live Stripe charge
+  const diagnostics = livePayments.map((liveCharge) => {
+    const matches = dbPayments.filter(
+      (p) =>
+        p.stripe_payment_intent_id === liveCharge.id ||
+        p.stripe_checkout_session_id === liveCharge.id ||
+        p.id === liveCharge.id ||
+        (p.stripe_payment_intent_id && liveCharge.description?.includes(p.stripe_payment_intent_id))
+    );
+
+    const dbInserted = matches.length > 0;
+    const isDuplicate = matches.length > 1;
+    const isExcluded = matches.some((p) => p.exclude_from_revenue);
+    
+    let exclusionReason = '';
+    if (isExcluded) {
+      exclusionReason = 'Marked as excluded in DB';
+    } else if (liveCharge.amount === 0) {
+      exclusionReason = 'Zero-amount setup/test charge';
+    } else if (liveCharge.status !== 'succeeded') {
+      exclusionReason = `Stripe charge status is ${liveCharge.status}`;
+    } else if (!dbInserted) {
+      exclusionReason = 'Charge not synced to DB';
+    }
+
+    const firstMatch = matches[0];
+    const appointment = firstMatch?.appointments;
+    const customer = appointment?.customers;
+
+    return {
+      chargeId: liveCharge.id,
+      amount: liveCharge.amount,
+      status: liveCharge.status,
+      created: liveCharge.created,
+      dbInserted,
+      isDuplicate,
+      isExcluded,
+      exclusionReason,
+      appointmentId: appointment?.id || null,
+      serviceSlug: appointment?.service_slug || null,
+      customerId: customer?.id || null,
+      customerName: customer?.full_name || customer?.email || null,
+    };
+  });
 
   return (
     <DashboardShell title='Stripe sync' subtitle='Payments, fees, refunds, payouts, and Stripe balance status.' role='admin'>
@@ -112,25 +161,103 @@ export default async function StripeSyncPage() {
         </div>
       </form>
 
-      <section className='grid gap-4 lg:grid-cols-2'>
-        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent Stripe payments</p>
-          <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
-            {(paymentsRes.data ?? []).map((p: any) => <li key={p.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(p.amount_cents ?? 0)} - {p.status} - {fmt(p.created_at)}</li>)}
-            {(stripeSnapshot?.recentPayments ?? []).map((p) => <li key={p.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(p.amount)} - {p.status} - {fmt(new Date(p.created * 1000).toISOString())}</li>)}
-          </ul>
-        </div>
-        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
-          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent Stripe fees/refunds/payouts</p>
-          <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
-            {[...(ledgerRes.data ?? []), ...(refundsRes.data ?? []), ...(payoutsRes.data ?? [])].slice(0, 12).map((r: any) => (
-              <li key={r.id} className='rounded border border-white/10 px-3 py-2'>{r.type} - {displayMoney(r.net_amount ?? r.amount ?? 0)} - {fmt(r.occurred_at)}</li>
-            ))}
-          </ul>
+      {/* Stripe Sync Diagnostics Table */}
+      <section className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+        <p className='text-xs font-black uppercase tracking-wider text-gold-soft mb-3'>Stripe Revenue Sync Diagnostics</p>
+        <div className='overflow-x-auto'>
+          <table className='w-full text-left text-xs text-zinc-300 border-collapse'>
+            <thead>
+              <tr className='border-b border-white/10 text-zinc-400 font-bold uppercase tracking-wider text-[10px]'>
+                <th className='pb-2.5 pr-4'>Charge / PI ID</th>
+                <th className='pb-2.5 pr-4'>Amount</th>
+                <th className='pb-2.5 pr-4'>Status</th>
+                <th className='pb-2.5 pr-4'>DB Sync</th>
+                <th className='pb-2.5 pr-4'>Excluded</th>
+                <th className='pb-2.5 pr-4'>Duplicate</th>
+                <th className='pb-2.5'>Linked Work Order / Customer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diagnostics.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className='py-4 text-center text-zinc-500 italic'>No recent charges retrieved from Stripe API.</td>
+                </tr>
+              ) : (
+                diagnostics.map((d) => (
+                  <tr key={d.chargeId} className='border-b border-white/5 hover:bg-white/5 transition'>
+                    <td className='py-2.5 pr-4 font-mono select-all text-[11px]'>{d.chargeId}</td>
+                    <td className='py-2.5 pr-4 font-semibold text-white'>{displayMoney(d.amount)}</td>
+                    <td className='py-2.5 pr-4'>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${d.status === 'succeeded' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-400'}`}>
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className='py-2.5 pr-4'>
+                      {d.dbInserted ? (
+                        <span className='text-emerald-400 font-bold'>Yes</span>
+                      ) : (
+                        <span className='text-rose-400 font-bold'>No</span>
+                      )}
+                    </td>
+                    <td className='py-2.5 pr-4'>
+                      {d.isExcluded ? (
+                        <span className='text-amber-400 font-bold' title={d.exclusionReason}>Yes ({d.exclusionReason})</span>
+                      ) : d.exclusionReason ? (
+                        <span className='text-zinc-500 italic'>{d.exclusionReason}</span>
+                      ) : (
+                        <span className='text-zinc-400'>No</span>
+                      )}
+                    </td>
+                    <td className='py-2.5 pr-4'>
+                      {d.isDuplicate ? (
+                        <span className='text-rose-500 font-bold animate-pulse'>⚠️ Yes</span>
+                      ) : (
+                        <span className='text-zinc-400'>No</span>
+                      )}
+                    </td>
+                    <td className='py-2.5'>
+                      {d.appointmentId ? (
+                        <div className='flex flex-col gap-0.5'>
+                          <Link href={`/admin/work-orders?id=${d.appointmentId}`} className='text-gold-soft hover:underline font-bold font-mono'>
+                            WO: {d.serviceSlug || d.appointmentId.slice(0, 8)}
+                          </Link>
+                          {d.customerName && (
+                            <span className='text-[10px] text-zinc-500'>{d.customerName}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className='text-zinc-500 italic'>None</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
       <section className='grid gap-4 lg:grid-cols-2'>
+        <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent Stripe fees/refunds/payouts</p>
+          <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
+            {[...(ledgerRes.data ?? []), ...(refundsRes.data ?? []), ...(payoutsRes.data ?? [])].slice(0, 12).map((r: any) => (
+              <li key={r.id} className='rounded border border-white/10 px-3 py-2 flex justify-between items-center'>
+                <div className='flex gap-2 items-center'>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${r.type === 'refund' ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20' : r.type === 'payout' ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-blue-500/10 text-blue-300 border border-blue-500/20'}`}>
+                    {r.type}
+                  </span>
+                  <span className='text-zinc-400'>{r.description || 'Stripe Sync Item'}</span>
+                </div>
+                <div className='text-right'>
+                  <span className='font-mono font-bold'>{displayMoney(r.net_amount ?? r.amount ?? 0)}</span>
+                  <span className='block text-[10px] text-zinc-500'>{fmt(r.occurred_at)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
           <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent transfers</p>
           <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
@@ -138,15 +265,16 @@ export default async function StripeSyncPage() {
             {(stripeSnapshot?.recentTransfers ?? []).length === 0 ? <li className='text-zinc-500'>No recent transfers returned by Stripe API.</li> : null}
           </ul>
         </div>
-        {(stripeSnapshot?.recentCardSpends ?? []).length > 0 ? (
-          <div className='rounded-2xl border border-white/10 bg-black/35 p-5'>
-            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent card spends / issuing</p>
-            <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
-              {(stripeSnapshot?.recentCardSpends ?? []).map((t) => <li key={t.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(t.amount)} - {t.merchant ?? 'Card spend'} - {fmt(new Date(t.created * 1000).toISOString())}</li>)}
-            </ul>
-          </div>
-        ) : null}
       </section>
+
+      {(stripeSnapshot?.recentCardSpends ?? []).length > 0 ? (
+        <section className='rounded-2xl border border-white/10 bg-black/35 p-5'>
+          <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Recent card spends / issuing</p>
+          <ul className='mt-3 space-y-2 text-xs text-zinc-300'>
+            {(stripeSnapshot?.recentCardSpends ?? []).map((t) => <li key={t.id} className='rounded border border-white/10 px-3 py-2'>{displayMoney(t.amount)} - {t.merchant ?? 'Card spend'} - {fmt(new Date(t.created * 1000).toISOString())}</li>)}
+          </ul>
+        </section>
+      ) : null}
 
       <p className='text-xs text-zinc-500'>Manual expenses keep profit accurate for purchases that are not returned by Stripe balance transactions.</p>
       <Link href='/admin/revenue' className='text-xs font-bold uppercase text-gold-soft underline'>Back to revenue</Link>

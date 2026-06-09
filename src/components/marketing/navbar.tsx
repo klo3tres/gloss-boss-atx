@@ -247,10 +247,39 @@ export function Navbar() {
           </button>
         </div>
 
-        <div className='flex md:hidden'>{coreLinks}</div>
-
         {open ? (
-          <div className='border-t border-white/10 py-4 md:hidden'>
+          <div className='border-t border-white/10 py-4 md:hidden flex flex-col gap-4'>
+            {/* Core Links */}
+            <div className='flex flex-col gap-3 pb-3 border-b border-white/5'>
+              <Link href='/' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
+                Home
+              </Link>
+              <Link href='/book' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
+                Book Detailing
+              </Link>
+              {signedIn ? (
+                <>
+                  <Link href={dashboardHref} onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-gold-soft hover:underline'>
+                    Dashboard
+                  </Link>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      void handleLogout();
+                    }}
+                    className='text-sm font-bold uppercase tracking-wider text-zinc-400 hover:text-white text-left'
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <Link href='/login' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-gold-soft hover:underline'>
+                  Login / Sign Up
+                </Link>
+              )}
+            </div>
+
+            {/* Marketing Links */}
             <div className='flex flex-col gap-3'>
               {!isDash
                 ? marketingLinks.map((item) => (
@@ -258,7 +287,7 @@ export function Navbar() {
                       key={item.label}
                       href={toSectionLink(item.href)}
                       onClick={() => setOpen(false)}
-                      className='text-sm uppercase tracking-widest text-zinc-300'
+                      className='text-sm uppercase tracking-widest text-zinc-300 hover:text-gold-soft'
                     >
                       {item.label}
                     </a>

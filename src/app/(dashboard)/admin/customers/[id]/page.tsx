@@ -7,8 +7,10 @@ import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
 import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
-import { unarchiveCustomerAction, addManualLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
+import { unarchiveCustomerAction, addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import { workOrderPath } from '@/lib/work-order-links';
+import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
+import { Mail, Phone, MapPin, User, Award, DollarSign, Calendar } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,13 +191,46 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const { data: stampsData } = await admin
     .from('loyalty_stamps')
-    .select('id, stamp_count, reason, created_at, appointment_id')
+    .select('id, stamp_count, reason, created_at, appointment_id, voided, voided_at, voided_by, source, admin_id, technician_id')
     .eq('customer_id', id)
     .order('created_at', { ascending: false });
 
-  const stamps = (stampsData ?? []) as Array<{ id: string; stamp_count: number; reason: string | null; created_at: string; appointment_id?: string | null }>;
-  const stampsTotal = stamps.reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
-  const currentPunchCardStamps = stampsTotal % 5;
+  const stamps = (stampsData ?? []) as Array<{ id: string; stamp_count: number; reason: string | null; note?: string | null; created_at: string; appointment_id?: string | null; voided?: boolean | null; voided_at?: string | null; voided_by?: string | null; source?: string | null; admin_id?: string | null; technician_id?: string | null }>;
+  const stampsTotal = stamps.filter(s => !s.voided).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+  const currentPunchCardStamps = stampsTotal % 6;
+  const isRewardReady = stampsTotal > 0 && (stampsTotal % 6 === 0 || stampsTotal % 6 === 5);
+
+  const { data: activeMembership } = await admin
+    .from('customer_memberships')
+    .select('*, membership_plans(*)')
+    .eq('customer_id', id)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const tier = (activeMembership?.membership_plans as any)?.tier || 'default';
+  const membershipName = (activeMembership?.membership_plans as any)?.name || 'Standard Client (No Tier)';
+
+  const { data: activeCardDesign } = await admin
+    .from('loyalty_card_designs')
+    .select('*')
+    .eq('tier', tier)
+    .eq('active', true)
+    .eq('archived', false)
+    .maybeSingle();
+
+  let finalCardDesign = activeCardDesign;
+  if (!finalCardDesign && tier !== 'default') {
+    const { data: defaultDesign } = await admin
+      .from('loyalty_card_designs')
+      .select('*')
+      .eq('tier', 'default')
+      .eq('active', true)
+      .eq('archived', false)
+      .maybeSingle();
+    finalCardDesign = defaultDesign;
+  }
 
   const isArchived = Boolean(c.archived);
 
@@ -217,44 +252,103 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </div>
       ) : null}
 
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-          <h2 className='text-sm font-bold uppercase text-gold-soft'>Contact</h2>
-          <p className='mt-2 text-white'>{String(c.email ?? '')}</p>
-          {c.phone ? <p className='text-zinc-400'>{String(c.phone)}</p> : null}
-          <div className='mt-3 text-sm text-zinc-400'>
-            {[addr1, addr2].filter(Boolean).join(', ')}
-            <br />
-            {[city, state, postal].filter(Boolean).join(', ')}
+      {/* Premium CRM Profile Header & Loyalty Card Preview */}
+      <div className='grid gap-6 lg:grid-cols-2 mb-6'>
+        {/* CRM Customer Profile Details */}
+        <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-xl relative overflow-hidden'>
+          <div className="absolute top-0 right-0 h-32 w-32 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className='flex items-start gap-4'>
+            {/* Avatar Badge */}
+            <div className='flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-gold/30 via-gold/10 to-black border border-gold/45 text-gold-soft font-black text-xl shadow-[0_0_15px_rgba(212,175,55,0.2)]'>
+              {String(c.full_name ?? c.email ?? 'GB').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+            </div>
+            
+            <div className='min-w-0 flex-1'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <h1 className='text-xl font-black text-white uppercase tracking-tight truncate'>
+                  {String(c.full_name ?? 'Unnamed Client')}
+                </h1>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                  tier === 'gold' ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30' :
+                  tier === 'silver' ? 'bg-zinc-400/10 text-zinc-300 border border-zinc-500/20' :
+                  tier === 'bronze' ? 'bg-orange-700/10 text-orange-400 border border-orange-700/30' :
+                  'bg-white/5 text-zinc-400 border border-white/10'
+                }`}>
+                  <Award className="h-3 w-3" /> {membershipName}
+                </span>
+              </div>
+              <p className='text-xs text-zinc-500 font-mono mt-0.5'>ID: {String(c.id).slice(0, 8)}...</p>
+            </div>
           </div>
-          {apptRows.some((a) => a.service_address) ? (
-            <p className='mt-3 text-xs text-zinc-500'>
-              Latest service address:{' '}
-              {[apptRows.find((a) => a.service_address)?.service_address, apptRows.find((a) => a.service_address)?.service_city, apptRows.find((a) => a.service_address)?.service_state, apptRows.find((a) => a.service_address)?.service_zip]
-                .filter(Boolean)
-                .join(', ')}
-            </p>
-          ) : null}
-          <p className='mt-2 text-xs text-zinc-500'>Created {c.created_at ? new Date(String(c.created_at)).toLocaleString() : '—'}</p>
+
+          <div className='mt-6 grid gap-4 sm:grid-cols-2 border-t border-white/5 pt-5 text-sm'>
+            <div className='space-y-3.5'>
+              <div className='flex items-center gap-2.5 text-zinc-300'>
+                <Mail className='h-4 w-4 text-gold-soft shrink-0' />
+                <span className='truncate font-medium'>{String(c.email ?? '—')}</span>
+              </div>
+              <div className='flex items-center gap-2.5 text-zinc-300'>
+                <Phone className='h-4 w-4 text-gold-soft shrink-0' />
+                <span>{c.phone ? String(c.phone) : 'No phone recorded'}</span>
+              </div>
+              <div className='flex items-start gap-2.5 text-zinc-300'>
+                <MapPin className='h-4 w-4 text-gold-soft shrink-0 mt-0.5' />
+                <span className='leading-tight'>
+                  {[addr1, addr2].filter(Boolean).join(', ') ? (
+                    <>
+                      {[addr1, addr2].filter(Boolean).join(', ')}
+                      <br />
+                      <span className='text-zinc-500 text-xs'>{[city, state, postal].filter(Boolean).join(', ')}</span>
+                    </>
+                  ) : 'No address on file'}
+                </span>
+              </div>
+            </div>
+
+            <div className='bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col justify-between'>
+              <div>
+                <p className='text-[9px] font-black uppercase tracking-widest text-zinc-500'>Lifetime Spend</p>
+                <p className='text-2xl font-black text-white mt-1'>
+                  ${(headlineSpendCents / 100).toFixed(2)}
+                </p>
+              </div>
+              <div className='mt-3 flex items-center justify-between text-[10px] text-zinc-400 border-t border-white/5 pt-2'>
+                <span>Visits: <strong className='text-white'>{completedPast.length}</strong></span>
+                <span>Active Bookings: <strong className='text-amber-200'>{pendingBookings.length}</strong></span>
+              </div>
+            </div>
+          </div>
         </section>
-        <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-          <h2 className='text-sm font-bold uppercase text-gold-soft'>Lifetime stats</h2>
-          <p className='mt-2 text-3xl font-black text-white'>${(headlineSpendCents / 100).toFixed(0)}</p>
-          <p className='text-xs text-zinc-500'>Paid through Stripe (succeeded) on linked appointments — failed or unpaid checkouts are excluded.</p>
-          {completedJobValueCents > 0 ? (
-            <p className='mt-2 text-xs text-zinc-600'>
-              Completed job booked subtotal (reference, may include non-captured balances): ${(completedJobValueCents / 100).toFixed(0)}
+
+        {/* Loyalty Card interactive-like preview */}
+        <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-xl flex flex-col justify-between'>
+          <div>
+            <div className='flex justify-between items-center mb-3.5'>
+              <div>
+                <h3 className='text-xs font-black uppercase text-gold-soft tracking-wider'>Loyalty Stamp Progress</h3>
+                <p className='text-[10px] text-zinc-500 mt-0.5'>Active digital membership card (Flippable)</p>
+              </div>
+              <span className='rounded-full bg-gold/10 px-2.5 py-0.5 text-[10px] font-black uppercase text-gold-soft border border-gold/25'>
+                {stampsTotal} Total Stamps
+              </span>
+            </div>
+            
+            <LoyaltyCard3D 
+              activeCardDesign={finalCardDesign} 
+              stampsCount={stampsTotal} 
+              customerEmail={custEmailRaw || 'VIP MEMBER'} 
+            />
+          </div>
+
+          <div className='mt-4 flex items-center justify-between text-xs text-zinc-400 bg-black/30 border border-white/5 p-2.5 rounded-xl'>
+            <p>
+              Current Card Punch: <strong className='text-white'>{currentPunchCardStamps} / 5 stamps</strong>
             </p>
-          ) : null}
-          <p className='mt-3 text-sm text-zinc-300'>
-            Pending / in-flight bookings: <span className='font-semibold text-amber-200'>{pendingBookings.length}</span>
-          </p>
-          <p className='mt-2 text-sm text-zinc-400'>
-            Stripe (succeeded payments): <span className='font-semibold text-emerald-300'>${(paymentsTotalCents / 100).toFixed(2)}</span>
-          </p>
-          {paySucceeded.length === 0 ? (
-            <p className='mt-1 text-xs text-zinc-600'>No succeeded Stripe payments linked to these appointments yet.</p>
-          ) : null}
+            <p className='font-bold'>
+              {isRewardReady ? '🟢 Reward Ready' : '🔴 Accumulating'}
+            </p>
+          </div>
         </section>
       </div>
 
@@ -329,27 +423,59 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
 
           <div>
-            <h3 className='text-xs font-bold uppercase text-zinc-400 mb-2'>Stamp Ledger</h3>
+            <h3 className='text-xs font-bold uppercase text-zinc-400 mb-2.5'>Stamp Ledger</h3>
             {stamps.length === 0 ? (
               <p className='text-xs text-zinc-500 italic py-4 border border-dashed border-white/5 rounded-xl text-center'>
                 No stamps have been recorded yet.
               </p>
             ) : (
-              <ul className='space-y-2 max-h-[220px] overflow-y-auto pr-1 text-xs'>
-                {stamps.map((s) => (
-                  <li key={s.id} className='flex items-start justify-between gap-3 border-b border-white/5 pb-2'>
-                    <div>
-                      <p className='font-semibold text-zinc-300'>{s.reason || 'Loyalty stamp earned'}</p>
-                      <p className='text-[10px] text-zinc-500 mt-0.5'>
-                        {chicago(s.created_at)}
-                        {s.appointment_id && ` · Appt ${s.appointment_id.slice(0, 8)}`}
-                      </p>
-                    </div>
-                    <span className='rounded bg-gold/10 px-2 py-0.5 font-mono text-[10px] font-bold text-gold-soft'>
-                      +{s.stamp_count}
-                    </span>
-                  </li>
-                ))}
+              <ul className='space-y-3.5 max-h-[260px] overflow-y-auto pr-1 text-xs'>
+                {stamps.map((s) => {
+                  const isVoided = Boolean(s.voided);
+                  return (
+                    <li key={s.id} className={`flex items-start justify-between gap-3 border-b border-white/5 pb-2.5 last:border-b-0 ${isVoided ? 'opacity-55' : ''}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className={`font-semibold ${isVoided ? 'line-through text-zinc-500' : 'text-zinc-200'}`}>
+                            {s.reason || s.note || 'Loyalty stamp earned'}
+                          </p>
+                          {isVoided && (
+                            <span className="rounded bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 text-[8px] font-black uppercase text-red-400">
+                              Voided
+                            </span>
+                          )}
+                          {s.source && (
+                            <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.5 text-[8px] font-mono text-zinc-400 uppercase">
+                              {s.source.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+                        <p className='text-[10px] text-zinc-500 mt-1 font-mono'>
+                          {chicago(s.created_at)}
+                          {s.appointment_id && ` · Appt ${s.appointment_id.slice(0, 8)}`}
+                          {isVoided && s.voided_at && ` · Voided ${chicago(s.voided_at)}`}
+                        </p>
+                      </div>
+                      <div className='flex items-center gap-2 shrink-0'>
+                        <span className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold ${isVoided ? 'bg-zinc-800 text-zinc-500 line-through' : 'bg-gold/10 text-gold-soft border border-gold/25'}`}>
+                          {isVoided ? '0' : `+${s.stamp_count ?? 1}`}
+                        </span>
+                        {!isVoided ? (
+                          <form action={deleteLoyaltyStampAction} method="POST" className="flex items-center gap-1">
+                            <input type="hidden" name="stampId" value={s.id} />
+                            <input type="hidden" name="customerId" value={id} />
+                            <input type="text" name="voidReason" placeholder="Reason..." required className="w-16 rounded border border-zinc-700 bg-black px-1 py-0.5 text-[9px] text-white outline-none" />
+                            <button type="submit" className="text-[10px] font-black uppercase text-red-500/80 hover:text-red-400 transition-colors border border-red-500/25 bg-red-500/5 px-1 rounded">
+                              Void
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="text-[9px] text-zinc-600 font-bold uppercase">Inactive</span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

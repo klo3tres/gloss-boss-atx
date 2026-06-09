@@ -48,8 +48,8 @@ export function PremiumBadge({
   );
 }
 
-export function SectionEyebrow({ children }: { children: ReactNode }) {
-  return <p className='text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft'>{children}</p>;
+export function SectionEyebrow({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={clsx('text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft', className)}>{children}</p>;
 }
 
 export function CollapsibleSection({
