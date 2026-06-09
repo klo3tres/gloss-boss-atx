@@ -39,7 +39,7 @@ values (
   'loyalty-cards',
   'loyalty-cards',
   true,
-  5242880,
+  12582912,
   array['image/jpeg', 'image/png', 'image/webp']
 )
 on conflict (id) do update set

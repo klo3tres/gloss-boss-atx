@@ -11,6 +11,9 @@ function str(v: FormDataEntryValue | null) {
 }
 
 const PUBLIC_TIERS = new Set(['bronze', 'silver', 'gold']);
+const LOYALTY_CARD_BUCKET = 'loyalty-cards';
+const LOYALTY_CARD_MAX_BYTES = 12 * 1024 * 1024;
+const LOYALTY_CARD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 async function gate() {
   const session = await getSessionWithProfile();
@@ -105,21 +108,43 @@ export async function saveLoyaltyCardDesignAction(formData: FormData): Promise<v
   let back_image_url = str(formData.get('back_image_url_existing'));
   let back_image_path = str(formData.get('back_image_path_existing'));
 
+  const ensureBucket = async () => {
+    const existing = await g.admin.storage.getBucket(LOYALTY_CARD_BUCKET);
+    if (!existing.error) return;
+
+    const { error } = await g.admin.storage.createBucket(LOYALTY_CARD_BUCKET, {
+      public: true,
+      fileSizeLimit: LOYALTY_CARD_MAX_BYTES,
+      allowedMimeTypes: LOYALTY_CARD_MIME_TYPES,
+    });
+
+    if (error && !/already exists/i.test(error.message)) {
+      throw new Error(error.message);
+    }
+  };
+
   const uploadFile = async (file: FormDataEntryValue | null, suffix: string) => {
     if (file instanceof File && file.size > 0) {
       const mime = file.type || 'image/png';
+      if (file.size > LOYALTY_CARD_MAX_BYTES) {
+        throw new Error('Loyalty card image must be 12 MB or smaller.');
+      }
+      if (!LOYALTY_CARD_MIME_TYPES.includes(mime)) {
+        throw new Error('Loyalty card image must be PNG, JPG, or WebP.');
+      }
+      await ensureBucket();
       const buf = Buffer.from(await file.arrayBuffer());
       const timestamp = Date.now();
       const cleanName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 50);
       const path = `${tier}/${timestamp}-${suffix}-${cleanName}`;
       
       const { error: upErr } = await g.admin.storage
-        .from('loyalty-cards')
+        .from(LOYALTY_CARD_BUCKET)
         .upload(path, buf, { contentType: mime, upsert: true });
 
       if (upErr) throw new Error(upErr.message);
 
-      const { data: pub } = g.admin.storage.from('loyalty-cards').getPublicUrl(path);
+      const { data: pub } = g.admin.storage.from(LOYALTY_CARD_BUCKET).getPublicUrl(path);
       return { url: pub.publicUrl, path };
     }
     return null;

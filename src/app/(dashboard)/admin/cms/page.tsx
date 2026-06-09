@@ -171,16 +171,17 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
   let recentPhotos: any[] = [];
   try {
+    const photoDb = tryCreateAdminSupabase() ?? supabase;
     const [photosRes, mediaRes] = await Promise.all([
-      supabase.from('job_photos').select('*').order('created_at', { ascending: false }).limit(200),
-      supabase.from('job_media').select('*').order('created_at', { ascending: false }).limit(200),
+      photoDb.from('job_photos').select('*').order('created_at', { ascending: false }).limit(300),
+      photoDb.from('job_media').select('*').order('created_at', { ascending: false }).limit(300),
     ]);
     const rawPhotos = [...(photosRes.data ?? []), ...(mediaRes.data ?? [])] as Record<string, unknown>[];
     const appointmentIds = [...new Set(rawPhotos.map((p) => String(p.appointment_id ?? '')).filter(Boolean))];
     const techIds = [...new Set(rawPhotos.map((p) => String(p.technician_id ?? p.uploaded_by ?? '')).filter(Boolean))];
     const [apptMeta, techMeta] = await Promise.all([
-      appointmentIds.length ? supabase.from('appointments').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', appointmentIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      techIds.length ? supabase.from('profiles').select('id, full_name, email').in('id', techIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      appointmentIds.length ? photoDb.from('appointments').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', appointmentIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      techIds.length ? photoDb.from('profiles').select('id, full_name, email').in('id', techIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
     const apptById = new Map(((apptMeta.data ?? []) as Record<string, unknown>[]).map((a) => [String(a.id), a]));
     const techById = new Map(((techMeta.data ?? []) as Record<string, unknown>[]).map((t) => [String(t.id), t]));
