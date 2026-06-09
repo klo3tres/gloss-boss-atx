@@ -64,6 +64,13 @@ export async function customerCanReceiveSms(
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!db) return { ok: false, reason: 'No database available to verify SMS consent.' };
 
+  const phoneDigits = str(refs.phone).replace(/\D/g, '').slice(-10);
+  let targetCustomerId = str(refs.customerId);
+  let apptConsent: boolean | null = null;
+  let apptStatus: string | null = null;
+  let fallbackConsent: boolean | null = null;
+
+  // 1. Resolve Appointment consent details
   const appointmentId = str(refs.appointmentId);
   if (appointmentId) {
     const { data } = await db
@@ -71,14 +78,16 @@ export async function customerCanReceiveSms(
       .select('sms_consent, sms_status, customer_id')
       .eq('id', appointmentId)
       .maybeSingle();
-    const row = data as { sms_consent?: boolean | null; sms_status?: string | null; customer_id?: string | null } | null;
-    if (row?.sms_consent === true && row.sms_status === 'opted_in') return { ok: true };
-    if (row?.sms_consent === false || row?.sms_status === 'opted_out') {
-      return { ok: false, reason: 'Customer did not opt in to SMS for this booking.' };
+    if (data) {
+      apptConsent = data.sms_consent;
+      apptStatus = data.sms_status;
+      if (!targetCustomerId && data.customer_id) {
+        targetCustomerId = data.customer_id;
+      }
     }
-    if (!refs.customerId && row?.customer_id) refs.customerId = row.customer_id;
   }
 
+  // 2. Resolve Fallback Booking consent details
   const fallbackBookingId = str(refs.fallbackBookingId);
   if (fallbackBookingId) {
     const { data } = await db
@@ -86,37 +95,81 @@ export async function customerCanReceiveSms(
       .select('payload, customer_id')
       .eq('id', fallbackBookingId)
       .maybeSingle();
-    const row = data as { payload?: Record<string, unknown> | null; customer_id?: string | null } | null;
-    const sms = row?.payload?.walk_in_sms_consent as Record<string, unknown> | undefined;
-    if (sms?.agreed === true) return { ok: true };
-    if (sms?.agreed === false) return { ok: false, reason: 'Customer did not opt in to SMS for this walk-in booking.' };
-    if (!refs.customerId && row?.customer_id) refs.customerId = row.customer_id;
-  }
-
-  const customerId = str(refs.customerId);
-  if (customerId) {
-    const { data } = await db
-      .from('customers')
-      .select('sms_consent, sms_status')
-      .eq('id', customerId)
-      .maybeSingle();
-    const row = data as { sms_consent?: boolean | null; sms_status?: string | null } | null;
-    if (row?.sms_consent === true && row.sms_status === 'opted_in') return { ok: true };
-    if (row?.sms_consent === false || row?.sms_status === 'opted_out') {
-      return { ok: false, reason: 'Customer SMS status is opted out.' };
+    if (data) {
+      const sms = data.payload?.walk_in_sms_consent as Record<string, unknown> | undefined;
+      if (sms) {
+        fallbackConsent = sms.agreed === true;
+      }
+      if (!targetCustomerId && data.customer_id) {
+        targetCustomerId = data.customer_id;
+      }
     }
   }
 
-  const phoneDigits = str(refs.phone).replace(/\D/g, '').slice(-10);
-  if (phoneDigits) {
+  // 3. Resolve Customer record details
+  let customerConsent: boolean | null = null;
+  let customerStatus: string | null = null;
+
+  if (targetCustomerId) {
+    const { data } = await db
+      .from('customers')
+      .select('sms_consent, sms_status')
+      .eq('id', targetCustomerId)
+      .maybeSingle();
+    if (data) {
+      customerConsent = data.sms_consent;
+      customerStatus = data.sms_status;
+    }
+  }
+
+  // If no customer record yet but we have phone digits, lookup customer by phone
+  if (customerConsent === null && phoneDigits) {
     const { data } = await db
       .from('customers')
       .select('sms_consent, sms_status')
       .ilike('phone', `%${phoneDigits}`)
       .limit(1)
       .maybeSingle();
-    const row = data as { sms_consent?: boolean | null; sms_status?: string | null } | null;
-    if (row?.sms_consent === true && row.sms_status === 'opted_in') return { ok: true };
+    if (data) {
+      customerConsent = data.sms_consent;
+      customerStatus = data.sms_status;
+    }
+  }
+
+  // 4. Strict Opt-Out Enforcement (Opt-out overrides any opt-in)
+  if (apptConsent === false || apptStatus === 'opted_out') {
+    return { ok: false, reason: 'Customer opted out of SMS on this appointment.' };
+  }
+  if (fallbackConsent === false) {
+    return { ok: false, reason: 'Customer opted out of SMS on this walk-in booking.' };
+  }
+  if (customerConsent === false || customerStatus === 'opted_out') {
+    return { ok: false, reason: 'Customer opted out of SMS at the profile level.' };
+  }
+
+  // Check by phone digits specifically if any matching customer profile has opted out
+  if (phoneDigits) {
+    const { data: matches } = await db
+      .from('customers')
+      .select('sms_consent, sms_status')
+      .ilike('phone', `%${phoneDigits}`);
+    if (matches) {
+      const hasOptOut = matches.some((m) => m.sms_consent === false || m.sms_status === 'opted_out');
+      if (hasOptOut) {
+        return { ok: false, reason: 'Customer phone number is marked as opted-out.' };
+      }
+    }
+  }
+
+  // 5. Explicit Opt-In Verification
+  if (apptConsent === true && apptStatus === 'opted_in') {
+    return { ok: true };
+  }
+  if (fallbackConsent === true) {
+    return { ok: true };
+  }
+  if (customerConsent === true && customerStatus === 'opted_in') {
+    return { ok: true };
   }
 
   return { ok: false, reason: 'SMS consent is not opted in.' };

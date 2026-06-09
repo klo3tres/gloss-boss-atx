@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Search, Sparkles, Tag, Car, Calendar, SlidersHorizontal, ArrowRight, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Search, Sparkles, Tag, Car, Calendar, SlidersHorizontal, ArrowRight, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
@@ -390,10 +390,6 @@ function GalleryModal({
   item,
   index,
   total,
-  slider,
-  zoomed,
-  onSlider,
-  onZoom,
   onClose,
   onPrev,
   onNext,
@@ -414,50 +410,297 @@ function GalleryModal({
   const caption = publicGalleryDisplayTitle(item) || 'Gloss Boss transformation';
   const hasPair = before && after && before !== after;
 
+  // Local Zoom/Pan/ViewMode states
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [sliderVal, setSliderVal] = useState(50);
+  const [viewMode, setViewMode] = useState<'slider' | 'before' | 'after'>(hasPair ? 'slider' : 'after');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Reset zoom/pan when active item changes
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setSliderVal(50);
+    setViewMode(hasPair ? 'slider' : 'after');
+  }, [item.id, hasPair]);
+
+  // Track container width for slider alignment
+  useEffect(() => {
+    if (containerRef.current) {
+      setContainerWidth(containerRef.current.clientWidth);
+    }
+    const handleResize = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [item.id]);
+
+  const handleZoomIn = () => {
+    setZoom((z) => Math.min(3, z + 0.5));
+  };
+
+  const handleZoomOut = () => {
+    setZoom((z) => {
+      const nextZ = Math.max(1, z - 0.5);
+      if (nextZ === 1) setPan({ x: 0, y: 0 });
+      return nextZ;
+    });
+  };
+
+  const handleReset = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Drag and Pan handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (zoom <= 1 || e.touches.length !== 1) return;
+    setIsDragging(true);
+    const touch = e.touches[0]!;
+    setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    const touch = e.touches[0]!;
+    setPan({
+      x: touch.clientX - dragStart.x,
+      y: touch.clientY - dragStart.y,
+    });
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
+  const cursorClass = zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default';
+
   return (
     <div className="fixed inset-0 z-[120] bg-black/95 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true">
       <div className="mx-auto flex h-full max-w-7xl flex-col">
+        {/* Header Controls */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">{index + 1} / {total}</p>
             <h3 className="mt-1 text-lg font-black uppercase text-white sm:text-2xl">{caption}</h3>
             <p className="text-xs text-zinc-500">{item.vehicleLabel || 'Vehicle'} - {item.serviceLabel || 'Detailing'}</p>
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={onZoom} className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40">
-              {zoomed ? <ZoomOut className="h-4 w-4" /> : <ZoomIn className="h-4 w-4" />}
-            </button>
-            <button type="button" onClick={onClose} className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40">
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Before / After toggle controls */}
+            {hasPair && (
+              <div className="flex rounded-xl border border-white/10 bg-black/60 p-1">
+                {(['before', 'after', 'slider'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition ${
+                      viewMode === mode ? 'bg-gold text-black' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Zoom Controls */}
+            <div className="flex rounded-xl border border-white/10 bg-black/60 p-1">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                disabled={zoom <= 1}
+                className="rounded-lg p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
+                title="Zoom Out"
+              >
+                <ZoomOut className="h-4 w-4" />
+              </button>
+              <span className="px-2 text-xs font-mono font-bold text-white flex items-center justify-center min-w-[40px]">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                disabled={zoom >= 3}
+                className="rounded-lg p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
+                title="Zoom In"
+              >
+                <ZoomIn className="h-4 w-4" />
+              </button>
+            </div>
+
+            {zoom > 1 && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40 hover:text-white transition flex items-center gap-1.5 text-xs font-bold uppercase"
+                title="Reset Pan & Zoom"
+              >
+                <RefreshCw className="h-4 w-4" /> Reset
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40 hover:text-white transition"
+              title="Close modal"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-gold/20 bg-zinc-950">
-          {hasPair ? (
+        {/* Viewport container */}
+        <div
+          ref={containerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className={`relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-gold/20 bg-zinc-950 select-none ${cursorClass}`}
+        >
+          {viewMode === 'slider' && hasPair ? (
             <>
-              <img src={before} alt="Before" className={`absolute inset-0 h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} />
-              <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${slider}%` }}>
-                <img src={after} alt="After" className={`h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} style={{ width: '100vw', maxWidth: 'none' }} />
+              {/* Underneath (Before Image) */}
+              <img
+                src={before}
+                alt="Before"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
+                style={{
+                  transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                  transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                }}
+              />
+              
+              {/* Clipped Container (After Image) */}
+              <div
+                className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none select-none"
+                style={{
+                  width: `${sliderVal}%`,
+                }}
+              >
+                <img
+                  src={after}
+                  alt="After"
+                  draggable={false}
+                  className="h-full object-contain pointer-events-none select-none max-w-none"
+                  style={{
+                    width: containerWidth ? `${containerWidth}px` : '100vw',
+                    height: '100%',
+                    transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                    transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                  }}
+                />
               </div>
-              <div className="absolute inset-y-0 w-[2px] bg-gold shadow-[0_0_18px_rgba(212,175,55,0.9)]" style={{ left: `${slider}%` }}>
-                <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-gold bg-black px-3 py-2 text-xs font-black text-gold-soft">DRAG</span>
+
+              {/* Slider Line Overlay */}
+              <div
+                className="absolute inset-y-0 w-[2px] bg-gold shadow-[0_0_18px_rgba(212,175,55,0.9)] z-10"
+                style={{ left: `${sliderVal}%` }}
+              >
+                <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-gold bg-black px-3 py-2 text-xs font-black text-gold-soft">
+                  DRAG
+                </span>
               </div>
-              <input type="range" min="0" max="100" value={slider} onChange={(e) => onSlider(Number(e.target.value))} className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0" />
-              <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200">Before</span>
-              <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black">After</span>
+
+              {/* Range Input (only interactive when not zoomed to avoid click-conflict with pan drag) */}
+              {zoom <= 1 && (
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={sliderVal}
+                  onChange={(e) => setSliderVal(Number(e.target.value))}
+                  className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0"
+                />
+              )}
+              
+              <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200 z-10 pointer-events-none select-none">
+                Before
+              </span>
+              <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black z-10 pointer-events-none select-none">
+                After
+              </span>
             </>
+          ) : viewMode === 'before' && hasPair ? (
+            <img
+              src={before}
+              alt="Before"
+              draggable={false}
+              className="h-full w-full object-contain pointer-events-none select-none"
+              style={{
+                transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              }}
+            />
           ) : (
-            <img src={after} alt={caption} className={`h-full w-full object-contain transition ${zoomed ? 'scale-150 cursor-zoom-out' : ''}`} />
+            <img
+              src={after}
+              alt={caption}
+              draggable={false}
+              className="h-full w-full object-contain pointer-events-none select-none"
+              style={{
+                transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              }}
+            />
           )}
-          {item.watermark ? <img src="/brand/glossboss-clean-logo.png" alt="" className="pointer-events-none absolute bottom-4 right-4 h-10 w-auto opacity-20" /> : null}
+
+          {item.watermark && (
+            <img
+              src="/brand/glossboss-clean-logo.png"
+              alt=""
+              className="pointer-events-none absolute bottom-4 right-4 h-10 w-auto opacity-20 z-10 select-none"
+            />
+          )}
         </div>
 
+        {/* Footer controls */}
         <div className="mt-3 flex items-center justify-between gap-3">
-          <button type="button" onClick={onPrev} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-xs font-black uppercase text-zinc-200 hover:border-gold/40">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-xs font-black uppercase text-zinc-200 hover:border-gold/40 hover:text-white transition"
+          >
             <ChevronLeft className="h-4 w-4" /> Previous
           </button>
-          <button type="button" onClick={onNext} className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase text-black">
+          <button
+            type="button"
+            onClick={onNext}
+            className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase text-black hover:bg-gold-light transition"
+          >
             Next <ChevronRight className="h-4 w-4" />
           </button>
         </div>

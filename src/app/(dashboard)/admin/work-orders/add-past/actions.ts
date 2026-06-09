@@ -155,6 +155,19 @@ export async function addPastJobAction(formData: FormData) {
   ];
   if (mediaRows.length > 0) await admin.from('job_media').insert(mediaRows);
 
+  // Automatically insert loyalty stamp for past job
+  if (customerId && appointmentId) {
+    const { error: stampError } = await admin.from('loyalty_stamps').insert({
+      customer_id: customerId,
+      appointment_id: appointmentId,
+      stamp_count: 1,
+      reason: `Completed service (past job): ${serviceSlug.replace(/-/g, ' ')}`,
+    });
+    if (stampError) {
+      console.warn('[add-past-job] failed to insert loyalty stamp', stampError.message);
+    }
+  }
+
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/revenue');
   revalidatePath('/admin/reports');

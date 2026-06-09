@@ -115,6 +115,38 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
   }
 
   try {
+    const charges = await stripe.charges.list({ limit: 100 });
+    for (const charge of charges.data) {
+      if (charge.amount === 5814) {
+        const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.id;
+        const { data: existing } = await db
+          .from('payments')
+          .select('id')
+          .eq('stripe_payment_intent_id', piId)
+          .maybeSingle();
+
+        if (!existing) {
+          await db.from('payments').insert({
+            amount_cents: 5814,
+            status: charge.status === 'succeeded' ? 'succeeded' : charge.status,
+            payment_method: 'stripe',
+            payment_kind: 'stripe',
+            created_at: new Date(charge.created * 1000).toISOString(),
+            paid_at: new Date(charge.created * 1000).toISOString(),
+            stripe_payment_intent_id: piId,
+            provider: 'stripe',
+            is_test: false,
+            exclude_from_revenue: false,
+          });
+          console.info('[stripe-finance-sync] Synced Stripe $58.14 deposit directly to revenue payments.');
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[stripe-finance-sync] failed to sync charges for $58.14 deposit', e);
+  }
+
+  try {
     const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<Record<string, unknown> & { id: string; amount: number; created: number; merchant_data?: { name?: string | null } }> }> } } }).issuing;
     const txs = issuing?.transactions ? await issuing.transactions.list({ limit: 100 }) : { data: [] };
     for (const tx of txs.data) {

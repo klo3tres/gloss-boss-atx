@@ -123,23 +123,25 @@ export function normalizeGalleryRowPublic(row: Record<string, unknown>): PublicG
         ? row.sort_order
         : null;
   const published = (row.published ?? row.active ?? true) as boolean | undefined;
-  const featured = typeof row.featured === 'boolean' ? row.featured : false;
+  const destination = galleryMetaField(row, 'destination') || str(row.destination) || null;
+  const featured = Boolean(row.featured) || (destination === 'homepage' || destination === 'all');
   const beforeUrl =
+    str(row.before_photo_url) ||
     galleryMetaField(row, 'before_url') ||
     galleryMetaField(row, 'beforeUrl') ||
     galleryMetaField(row, 'before_image_url') ||
     null;
   const afterUrl =
+    str(row.after_photo_url) ||
     galleryMetaField(row, 'after_url') ||
     galleryMetaField(row, 'afterUrl') ||
     galleryMetaField(row, 'after_image_url') ||
     url;
-  const vehicleLabel = galleryMetaField(row, 'vehicle_label') || galleryMetaField(row, 'vehicleLabel') || null;
-  const serviceLabel = galleryMetaField(row, 'service_label') || galleryMetaField(row, 'serviceLabel') || null;
-  const jobId = galleryMetaField(row, 'job_id') || galleryMetaField(row, 'jobId') || null;
-  const vehicleClass = galleryMetaField(row, 'vehicle_class') || galleryMetaField(row, 'vehicleClass') || null;
-  const serviceCategory = galleryMetaField(row, 'service_category') || galleryMetaField(row, 'serviceCategory') || null;
-  const destination = galleryMetaField(row, 'destination') || null;
+  const vehicleLabel = galleryMetaField(row, 'vehicle_label') || galleryMetaField(row, 'vehicleLabel') || str(row.vehicle_label) || null;
+  const serviceLabel = galleryMetaField(row, 'service_label') || galleryMetaField(row, 'serviceLabel') || str(row.service_label) || null;
+  const jobId = galleryMetaField(row, 'job_id') || galleryMetaField(row, 'jobId') || str(row.job_id) || null;
+  const vehicleClass = galleryMetaField(row, 'vehicle_class') || galleryMetaField(row, 'vehicleClass') || str(row.vehicle_class) || null;
+  const serviceCategory = galleryMetaField(row, 'service_category') || galleryMetaField(row, 'serviceCategory') || str(row.service_category) || null;
   const rawTags =
     Array.isArray(row.tags)
       ? row.tags

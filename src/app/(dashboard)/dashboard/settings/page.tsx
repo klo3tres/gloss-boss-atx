@@ -30,7 +30,7 @@ export default async function CustomerSettingsPage() {
     admin && row?.id
       ? await admin
           .from('customer_memberships')
-          .select('id, status, started_at, ends_at, stripe_subscription_id, membership_plans(name,tier)')
+          .select('id, status, started_at, ends_at, stripe_subscription_id, stripe_checkout_session_id, membership_plans(name,tier)')
           .eq('customer_id', row.id)
           .order('created_at', { ascending: false })
           .limit(10)
@@ -41,6 +41,7 @@ export default async function CustomerSettingsPage() {
     started_at?: string | null;
     ends_at?: string | null;
     stripe_subscription_id?: string | null;
+    stripe_checkout_session_id?: string | null;
     membership_plans?: { name?: string | null; tier?: string | null } | null;
   }>;
 
@@ -102,30 +103,58 @@ export default async function CustomerSettingsPage() {
       </section>
 
       <section className='rounded-3xl border border-gold/20 bg-zinc-950 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Membership subscription</p>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Membership subscription</p>
         {memberships.length === 0 ? (
           <p className='mt-3 text-sm text-zinc-400'>No membership is attached to this customer profile yet.</p>
         ) : (
           <div className='mt-4 grid gap-3'>
             {memberships.map((m) => {
               const active = ['active', 'trialing', 'past_due'].includes(String(m.status).toLowerCase());
+              const isPending = ['pending', 'pending_payment', 'incomplete'].includes(String(m.status).toLowerCase());
               return (
                 <div key={m.id} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
-                  <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-                    <div>
-                      <p className='font-black text-white'>{m.membership_plans?.name ?? 'Gloss Boss membership'}</p>
-                      <p className='mt-1 text-xs text-zinc-500'>
-                        Status: {m.status}
-                        {m.ends_at ? ` · Ends ${new Date(m.ends_at).toLocaleDateString()}` : ''}
-                      </p>
+                  <div className='flex flex-col gap-3'>
+                    <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                      <div>
+                        <p className='font-black text-white'>{m.membership_plans?.name ?? 'Gloss Boss membership'}</p>
+                        <p className='mt-1 text-xs text-zinc-500'>
+                          Status:{' '}
+                          <span className={`font-semibold ${isPending ? 'text-amber-400' : active ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                            {m.status}
+                          </span>
+                          {m.ends_at ? ` · Ends ${new Date(m.ends_at).toLocaleDateString()}` : ''}
+                        </p>
+                      </div>
+                      {active ? (
+                        <form action={cancelCustomerMembershipAction}>
+                          <input type='hidden' name='membershipId' value={m.id} />
+                          <button className='rounded-xl border border-red-500/40 px-4 py-2 text-xs font-black uppercase text-red-200 hover:bg-red-500/10 transition'>
+                            Cancel renewal
+                          </button>
+                        </form>
+                      ) : null}
                     </div>
-                    {active ? (
-                      <form action={cancelCustomerMembershipAction}>
-                        <input type='hidden' name='membershipId' value={m.id} />
-                        <button className='rounded-xl border border-red-500/40 px-4 py-2 text-xs font-black uppercase text-red-200'>
-                          Cancel renewal
-                        </button>
-                      </form>
+
+                    {isPending ? (
+                      <div className='mt-3 rounded-xl border border-gold/30 bg-gold/5 p-4'>
+                        <p className='text-xs font-bold uppercase tracking-wider text-gold-soft mb-1'>Next Action Required</p>
+                        <p className='text-xs leading-relaxed text-zinc-300'>
+                          Your membership subscription setup is incomplete or awaiting payment.
+                        </p>
+                        <ul className='mt-2 list-disc list-inside text-xs text-zinc-400 space-y-1'>
+                          <li>Check your email inbox for the Stripe checkout session link.</li>
+                          <li>If you just completed payment, it may take a few moments to sync.</li>
+                          <li>If you are paying in person or using a custom fleet account, our admin team will manually review and activate your subscription.</li>
+                        </ul>
+                        <div className='mt-3 flex gap-2'>
+                          <Link href='/memberships' className='inline-flex rounded-lg bg-gold px-3 py-1.5 text-[10px] font-black uppercase text-black hover:bg-gold-soft transition'>
+                            View membership options
+                          </Link>
+                          <a href='mailto:support@glossbossatx.com?subject=Gloss%20Boss%20Membership%20Activation' className='inline-flex rounded-lg border border-white/20 bg-black/40 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-300 hover:bg-white/10 transition'>
+                            Contact support
+                          </a>
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 </div>

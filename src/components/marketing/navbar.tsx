@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, ChevronDown } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { clearAuthUxSession } from '@/lib/auth/auth-session-ux';
@@ -37,6 +37,7 @@ export function Navbar() {
   const [signedIn, setSignedIn] = useState(false);
   const [dashboardHref, setDashboardHref] = useState('/login');
   const [navLogoSrc, setNavLogoSrc] = useState(DEFAULT_NAV_LOGO);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const isDash = isDashboardPath(pathname);
 
@@ -44,6 +45,14 @@ export function Navbar() {
     if (section.startsWith('/')) return section;
     return pathname === '/' ? section : `/${section}`;
   };
+
+  const primaryMarketingLinks = marketingLinks.filter((l) =>
+    ['Services', 'Memberships', 'Fleet'].includes(l.label)
+  );
+
+  const dropdownMarketingLinks = marketingLinks.filter((l) =>
+    ['Gallery', 'About', 'Gift Cards', 'FAQ', 'Contact'].includes(l.label)
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -193,14 +202,37 @@ export function Navbar() {
           <div className='hidden items-center gap-6 md:flex md:flex-1 md:justify-end lg:gap-8'>
             {coreLinks}
             {!isDash ? (
-              <div className='ml-4 flex flex-wrap items-center gap-4 border-l border-white/10 pl-6'>
-                {marketingLinks
-                  .filter((l) => l.href !== '/' && l.href !== '/book')
-                  .map((item) => (
-                    <a key={item.label} href={toSectionLink(item.href)} className='text-sm uppercase tracking-widest text-zinc-300 transition hover:text-gold-soft'>
-                      {item.label}
-                    </a>
-                  ))}
+              <div className='ml-4 flex items-center gap-4 border-l border-white/10 pl-6 text-xs uppercase tracking-widest text-zinc-300'>
+                {primaryMarketingLinks.map((item) => (
+                  <a key={item.label} href={toSectionLink(item.href)} className='transition hover:text-gold-soft'>
+                    {item.label}
+                  </a>
+                ))}
+                
+                <div className='relative' onMouseLeave={() => setMoreOpen(false)}>
+                  <button
+                    type='button'
+                    onClick={() => setMoreOpen(!moreOpen)}
+                    onMouseEnter={() => setMoreOpen(true)}
+                    className='flex items-center gap-1 transition hover:text-gold-soft uppercase font-bold text-xs tracking-widest'
+                  >
+                    More <ChevronDown size={14} />
+                  </button>
+                  {moreOpen && (
+                    <div className='absolute right-0 mt-2 w-48 rounded-xl border border-gold/20 bg-zinc-950 p-2 shadow-2xl z-50 flex flex-col gap-1'>
+                      {dropdownMarketingLinks.map((item) => (
+                        <a
+                          key={item.label}
+                          href={toSectionLink(item.href)}
+                          onClick={() => setMoreOpen(false)}
+                          className='block rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-gold/10 hover:text-gold-soft transition text-left'
+                        >
+                          {item.label}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>

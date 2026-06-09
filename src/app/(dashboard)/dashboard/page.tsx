@@ -280,11 +280,16 @@ export default async function CustomerDashboardRootPage() {
 
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
+  let loyaltyStampsCount = 0;
   if (adminDb && userEmail) {
     const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
     if (cust?.id) {
-      const { count } = await adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id);
+      const [{ count }, { data: stamps }] = await Promise.all([
+        adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id),
+        adminDb.from('loyalty_stamps').select('stamp_count').eq('customer_id', cust.id),
+      ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
+      loyaltyStampsCount = (stamps ?? []).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
     }
   }
   const receiptTotal = Array.from(receiptsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0) || Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);
@@ -361,6 +366,7 @@ export default async function CustomerDashboardRootPage() {
         agreementTotal={agreementTotal}
         appointmentCount={appointments.length}
         snapshotByAppt={snapshotByAppt}
+        loyaltyStampsCount={loyaltyStampsCount}
       />
     </DashboardShell>
   );

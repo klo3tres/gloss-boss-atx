@@ -17,7 +17,7 @@ async function requireTechnicianSupabase() {
     const em = (session.user.email ?? '').trim().toLowerCase();
     if (em === OWNER_LOGIN_EMAIL) role = 'super_admin';
   }
-  if (role !== 'technician') {
+  if (role !== 'technician' && role !== 'admin' && role !== 'super_admin') {
     return { ok: false as const, supabase: null, userId: null };
   }
   return { ok: true as const, supabase, userId: session.user.id };

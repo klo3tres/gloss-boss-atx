@@ -120,17 +120,32 @@ export default async function AdminSupplyRequestsPage() {
                   </p>
                   {managerNote(row) ? <p className='mt-3 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-xs text-zinc-300'>{managerNote(row)}</p> : null}
                 </div>
-                <form action={updateSupplyRequestAction} className='grid min-w-[260px] gap-2 sm:grid-cols-[1fr_auto]'>
+                <form action={updateSupplyRequestAction} className='flex flex-col gap-2 min-w-[320px]'>
                   <input type='hidden' name='id' value={row.id} />
                   <input type='hidden' name='existingNotes' value={row.notes ?? ''} />
-                  <select name='status' defaultValue={status} className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
-                    <option value='new'>Needs review</option>
-                    <option value='ordered'>Ordered</option>
-                    <option value='fulfilled'>Fulfilled</option>
-                    <option value='denied'>Denied</option>
-                  </select>
-                  <button className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Save</button>
-                  <input name='managerNote' placeholder='Manager note' className='rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white sm:col-span-2' />
+                  <input name='managerNote' placeholder='Add a manager note before acting...' className='w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                  <div className='flex flex-wrap gap-2 mt-1 justify-end'>
+                    {status !== 'ordered' && status !== 'fulfilled' && (
+                      <button name="status" value="ordered" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-amber-200 hover:bg-amber-500/20 transition duration-200">
+                        Order / Purchase
+                      </button>
+                    )}
+                    {status !== 'fulfilled' && (
+                      <button name="status" value="fulfilled" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-emerald-200 hover:bg-emerald-500/20 transition duration-200">
+                        Deliver / Fulfill
+                      </button>
+                    )}
+                    {status !== 'denied' && (
+                      <button name="status" value="denied" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-red-200 hover:bg-red-500/20 transition duration-200">
+                        Deny
+                      </button>
+                    )}
+                    {status !== 'new' && (
+                      <button name="status" value="new" className="rounded-lg border border-zinc-500/30 bg-zinc-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-300 hover:bg-zinc-500/20 transition duration-200">
+                        Re-Open
+                      </button>
+                    )}
+                  </div>
                 </form>
               </div>
             </article>

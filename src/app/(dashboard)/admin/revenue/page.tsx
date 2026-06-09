@@ -21,8 +21,22 @@ import Stripe from 'stripe';
 import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
+import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
 
 export const dynamic = 'force-dynamic';
+
+type AnyRow = any;
+
+function paymentDuplicateKey(row: any): string {
+  const stripeId = String(row.stripe_payment_intent_id || row.stripe_checkout_session_id || '').trim();
+  if (stripeId) return `stripe:${stripeId}`;
+  return [
+    String(row.appointment_id || ''),
+    String(row.customer_id || ''),
+    String(row.amount_cents || ''),
+    String(row.payment_method || row.payment_kind || ''),
+  ].join('::');
+}
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -274,6 +288,18 @@ export default async function AdminRevenuePage({
     .order('scheduled_start', { ascending: true })
     .limit(6);
 
+  const duplicateMap = new Map<string, AnyRow[]>();
+  for (const p of sixMonthRows) {
+    const key = paymentDuplicateKey(p);
+    if (!key || key.includes('||')) continue;
+    const list = duplicateMap.get(key) ?? [];
+    list.push(p);
+    duplicateMap.set(key, list);
+  }
+  const duplicateGroups = Array.from(duplicateMap.entries())
+    .filter(([, rows]) => rows.length > 1)
+    .map(([key, rows]) => ({ key, rows }));
+
   return (
     <DashboardShell title='Revenue Command Center' subtitle='SaaS-quality transaction analytics and business profit ledger.' role='admin'>
       <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
@@ -427,11 +453,11 @@ export default async function AdminRevenuePage({
       <section className='mb-8 space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Gross revenue' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed MTD' />
+          <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed MTD' />
           <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
           <StatBlock label='Stripe fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
           <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
-          <StatBlock label='Net profit' value={money(financial.netProfitCents)} hint='Gross - refunds - fees - expenses' />
+          <StatBlock label='Net Profit' value={money(financial.netProfitCents)} hint='Gross - refunds - fees - expenses' />
           <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} hint='Disbursed bank transfers' />
           <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' hint='Accounts receivable' />
           <StatBlock label='Pending deposits' value={money(financial.pendingDepositsCents)} href='/admin/work-orders' hint='Jobs awaiting deposit' />
@@ -539,6 +565,10 @@ export default async function AdminRevenuePage({
           </ul>
         </section>
       ) : null}
+
+      <div className='mt-8'>
+        <DuplicatePaymentsPanel initialGroups={duplicateGroups} />
+      </div>
 
       <section className='mt-8 rounded-2xl border border-white/10 bg-black/40 p-5'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · this month</p>

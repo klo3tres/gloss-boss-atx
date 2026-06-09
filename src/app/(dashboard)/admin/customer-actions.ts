@@ -133,3 +133,31 @@ export async function deleteCustomerAction(formData: FormData) {
   revalidatePath('/admin');
   revalidatePath('/admin/super');
 }
+
+export async function addManualLoyaltyStampAction(formData: FormData) {
+  const customerId = String(formData.get('customerId') ?? '').trim();
+  const stampCount = Number(formData.get('stampCount') ?? 1);
+  const reason = String(formData.get('reason') ?? 'Manual adjustment').trim();
+  if (!customerId || isNaN(stampCount) || stampCount < 1) return;
+
+  const gate = await requireAdminGate();
+  if (!gate.ok) return;
+
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+
+  const { error } = await client.from('loyalty_stamps').insert({
+    customer_id: customerId,
+    stamp_count: stampCount,
+    reason,
+  });
+
+  if (error) {
+    console.warn('[CRM_DEBUG_DB]', 'add_manual_loyalty_stamp_failed', error.message);
+    return;
+  }
+
+  revalidatePath('/admin/customers');
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/dashboard');
+}

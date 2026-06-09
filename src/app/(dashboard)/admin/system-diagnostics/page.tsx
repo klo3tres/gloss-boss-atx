@@ -9,6 +9,7 @@ import { buildRevenueDiagnostics, fetchPaymentsSince } from '@/lib/revenue-metri
 import { startOfMonthIso } from '@/lib/revenue-metrics';
 import { displayMoney } from '@/lib/display-format';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
+import { resendConfigured } from '@/lib/email-send';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,6 +242,7 @@ export default async function SystemDiagnosticsPage() {
   if (expenses.rows.length + businessExpenses.rows.length + mileage.rows.length > 0 && revenueDiagnostics.grossCents === 0) warnings.push({ title: 'Expenses exist while revenue is zero', fix: 'Check date filters, excluded/test flags, and payment status. Expenses still subtract from net profit once revenue rows are counted.' });
   if (allPhotos.length > 0 && photosMissingUrl.length > 0) warnings.push({ title: 'Work-order photos missing URLs', fix: 'Repair job_media/job_photos rows with public_url/media_url/file_url/storage_path so CMS can display them.' });
   if (featuredGallery.length > 0 && publishedHomepage.length === 0) warnings.push({ title: 'Featured gallery rows not visible on homepage', fix: 'Mark featured rows as published/active or republish through Website & Gallery → Before/After Publisher.' });
+  if (!resendConfigured()) warnings.push({ title: 'Missing Resend email keys', fix: 'Add RESEND_API_KEY and RESEND_FROM_EMAIL in environmental configuration to enable email sending.' });
 
   return (
     <DashboardShell title='System diagnostics' subtitle='Root-cause audit for Stripe, revenue, gallery, goals, loyalty, and production data health.' role='super_admin'>

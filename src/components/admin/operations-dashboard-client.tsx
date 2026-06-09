@@ -9,8 +9,6 @@ import {
   deleteJobMileageLogActionState,
   updateJobMileageLogActionState,
 } from '@/app/(dashboard)/admin/operations/operations-actions';
-import { setFleetPricingAction, setFleetServicesSettingAction } from '@/app/(dashboard)/admin/operations/fleet-actions';
-import type { FleetPricingConfig } from '@/lib/fleet-pricing';
 import { ExpenseReceiptUpload } from '@/components/admin/expense-receipt-upload';
 
 function money(cents: unknown) {
@@ -23,18 +21,12 @@ export function OperationsDashboardClient({
   mileage,
   mileageSummary,
   mapsAutoNote,
-  fleetEnabled,
-  fleetBlurb,
-  fleetPricing,
   schemaReady,
 }: {
   expenses: Record<string, unknown>[];
   mileage: Record<string, unknown>[];
   mileageSummary?: { today: number; month: number; year: number; lifetime: number };
   mapsAutoNote?: boolean;
-  fleetEnabled: boolean;
-  fleetBlurb: string;
-  fleetPricing: FleetPricingConfig;
   schemaReady: boolean;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
@@ -46,69 +38,6 @@ export function OperationsDashboardClient({
           {msg}
         </p>
       ) : null}
-
-      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Fleet & business (public /services)</p>
-        <form
-          action={setFleetServicesSettingAction}
-          className='mt-4 space-y-3'
-        >
-          <label className='flex items-center gap-2 text-sm text-zinc-200'>
-            <input name='fleetEnabled' type='checkbox' defaultChecked={fleetEnabled} />
-            Show fleet section on Services page
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Blurb
-            <textarea
-              name='fleetBlurb'
-              rows={3}
-              defaultValue={fleetBlurb}
-              className='mt-1 w-full max-w-xl rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white'
-              placeholder='Fleet, dealership, and business accounts — call for volume pricing.'
-            />
-          </label>
-          <button type='submit' className='rounded-xl border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-black uppercase text-gold-soft'>
-            Save fleet visibility
-          </button>
-        </form>
-        <form action={setFleetPricingAction} className='mt-6 grid gap-3 border-t border-white/10 pt-5 md:grid-cols-2'>
-          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft md:col-span-2'>Fleet pricing editor</p>
-          {(
-            [
-              ['smallLabel', 'Small tier label'],
-              ['smallDetail', 'Small tier detail'],
-              ['mediumLabel', 'Medium tier label'],
-              ['mediumDetail', 'Medium tier detail'],
-              ['largeLabel', 'Large tier label'],
-              ['largeDetail', 'Large tier detail'],
-              ['weeklyDiscount', 'Weekly recurring discount'],
-              ['biweeklyDiscount', 'Biweekly discount'],
-              ['monthlyDiscount', 'Monthly discount'],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className='block text-xs text-zinc-400'>
-              {label}
-              <input
-                name={key}
-                defaultValue={fleetPricing[key]}
-                className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white'
-              />
-            </label>
-          ))}
-          <label className='block text-xs text-zinc-400 md:col-span-2'>
-            Commercial account notes
-            <textarea
-              name='commercialNotes'
-              rows={2}
-              defaultValue={fleetPricing.commercialNotes}
-              className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white'
-            />
-          </label>
-          <button type='submit' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black md:col-span-2'>
-            Save fleet pricing
-          </button>
-        </form>
-      </section>
 
       {schemaReady ? (
         <>

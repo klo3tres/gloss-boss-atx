@@ -7,7 +7,7 @@ import { CustomerEditForm } from '@/components/admin/customer-edit-form';
 import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-manager';
 import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
-import { unarchiveCustomerAction } from '@/app/(dashboard)/admin/customer-actions';
+import { unarchiveCustomerAction, addManualLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import { workOrderPath } from '@/lib/work-order-links';
 
 export const dynamic = 'force-dynamic';
@@ -187,6 +187,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const state = typeof c.state === 'string' ? c.state : '';
   const postal = typeof c.postal_code === 'string' ? c.postal_code : '';
 
+  const { data: stampsData } = await admin
+    .from('loyalty_stamps')
+    .select('id, stamp_count, reason, created_at, appointment_id')
+    .eq('customer_id', id)
+    .order('created_at', { ascending: false });
+
+  const stamps = (stampsData ?? []) as Array<{ id: string; stamp_count: number; reason: string | null; created_at: string; appointment_id?: string | null }>;
+  const stampsTotal = stamps.reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+  const currentPunchCardStamps = stampsTotal % 5;
+
   const isArchived = Boolean(c.archived);
 
   return (
@@ -247,6 +257,104 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ) : null}
         </section>
       </div>
+
+      <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
+        <div className='flex items-center justify-between border-b border-white/10 pb-3 mb-4'>
+          <h2 className='text-sm font-bold uppercase text-gold-soft'>Loyalty Program & Punch Card</h2>
+          <span className='rounded-full bg-gold/10 px-2.5 py-0.5 text-[10px] font-black uppercase text-gold-soft border border-gold/25'>
+            {stampsTotal} Total Stamps
+          </span>
+        </div>
+
+        <div className='grid gap-6 md:grid-cols-2'>
+          <div>
+            <p className='text-xs text-zinc-400'>
+              The customer currently has <strong className='text-white'>{currentPunchCardStamps} / 5 stamps</strong> on their active punch card.
+            </p>
+
+            {/* Micro visual representation of the active punch card */}
+            <div className='mt-3 flex gap-2'>
+              {[1, 2, 3, 4, 5].map((i) => {
+                const isStamped = currentPunchCardStamps >= i;
+                return (
+                  <div
+                    key={i}
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border text-xs font-black transition duration-200 ${
+                      isStamped
+                        ? 'border-gold bg-gold/15 text-gold-soft shadow-[0_0_10px_rgba(212,175,55,0.1)]'
+                        : 'border-white/10 bg-black/40 text-zinc-600'
+                    }`}
+                  >
+                    {isStamped ? '★' : i}
+                  </div>
+                );
+              })}
+              <div
+                className={`flex h-10 px-3 items-center justify-center rounded-xl border text-[10px] font-black tracking-wider transition duration-200 ${
+                  stampsTotal > 0 && stampsTotal % 5 === 0
+                    ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300 animate-pulse'
+                    : 'border-white/10 bg-black/40 text-zinc-600'
+                }`}
+              >
+                REWARD
+              </div>
+            </div>
+
+            {/* Quick manual stamp form */}
+            <form action={addManualLoyaltyStampAction} className='mt-5 space-y-3 rounded-xl border border-white/10 bg-black/35 p-4'>
+              <input type='hidden' name='customerId' value={id} />
+              <p className='text-[10px] font-black uppercase tracking-wider text-zinc-400'>Record Manual Loyalty Stamp</p>
+              
+              <div className='grid gap-2 sm:grid-cols-[100px_1fr]'>
+                <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                  Count
+                  <select name='stampCount' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'>
+                    <option value='1'>+1 Stamp</option>
+                    <option value='2'>+2 Stamps</option>
+                    <option value='3'>+3 Stamps</option>
+                    <option value='4'>+4 Stamps</option>
+                    <option value='5'>+5 Stamps</option>
+                  </select>
+                </label>
+                <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                  Reason
+                  <input name='reason' placeholder='e.g., Promotion adjustment, referral bonus...' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white' />
+                </label>
+              </div>
+
+              <button type='submit' className='w-full rounded border border-gold/45 bg-gold/5 py-1.5 text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/10 transition'>
+                Award Loyalty Stamp
+              </button>
+            </form>
+          </div>
+
+          <div>
+            <h3 className='text-xs font-bold uppercase text-zinc-400 mb-2'>Stamp Ledger</h3>
+            {stamps.length === 0 ? (
+              <p className='text-xs text-zinc-500 italic py-4 border border-dashed border-white/5 rounded-xl text-center'>
+                No stamps have been recorded yet.
+              </p>
+            ) : (
+              <ul className='space-y-2 max-h-[220px] overflow-y-auto pr-1 text-xs'>
+                {stamps.map((s) => (
+                  <li key={s.id} className='flex items-start justify-between gap-3 border-b border-white/5 pb-2'>
+                    <div>
+                      <p className='font-semibold text-zinc-300'>{s.reason || 'Loyalty stamp earned'}</p>
+                      <p className='text-[10px] text-zinc-500 mt-0.5'>
+                        {chicago(s.created_at)}
+                        {s.appointment_id && ` · Appt ${s.appointment_id.slice(0, 8)}`}
+                      </p>
+                    </div>
+                    <span className='rounded bg-gold/10 px-2 py-0.5 font-mono text-[10px] font-bold text-gold-soft'>
+                      +{s.stamp_count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <h2 className='text-sm font-bold uppercase text-gold-soft'>Edit customer</h2>

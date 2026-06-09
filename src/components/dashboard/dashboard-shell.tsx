@@ -104,10 +104,10 @@ const techLinks = [
 const customerLinks = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/messages', label: 'Messages' },
-  { href: '/dashboard/settings', label: 'Settings' },
   { href: '/book', label: 'Book again' },
-  { href: '/gift-cards', label: 'Gift cards' },
   { href: '/services', label: 'Services' },
+  { href: '/gift-cards', label: 'Gift cards' },
+  { href: '/dashboard/settings', label: 'Settings' },
 ];
 
 export function DashboardShell({
@@ -172,12 +172,16 @@ export function DashboardShell({
       ? `${panelLabel[simNav]} view (simulated)`
       : `${panelLabel[role]} panel`;
 
-  const linkClass = (href: string) =>
-    `block rounded-lg border px-3 py-2 text-sm transition ${
-      pathname === href || pathname.startsWith(`${href}/`)
+  const linkClass = (href: string) => {
+    const isActive =
+      pathname === href ||
+      (href !== '/dashboard' && href !== '/admin' && href !== '/tech' && pathname.startsWith(`${href}/`));
+    return `block rounded-lg border px-3 py-2 text-sm transition ${
+      isActive
         ? 'border-gold/50 bg-gold/10 text-gold-soft'
         : 'border-transparent text-zinc-300 hover:border-gold/30 hover:bg-black/40 hover:text-gold-soft'
     }`;
+  };
 
   const NavLinks =
     navRole === 'admin' || navRole === 'super_admin' ? (

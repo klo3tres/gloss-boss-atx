@@ -1441,6 +1441,29 @@ export async function techCompleteJobAction(
   const adminClient = tryCreateAdminSupabase();
   if (adminClient) void syncVehiclesForAppointment(adminClient, appointmentId);
 
+  // Automatically insert loyalty stamp on completion
+  if (appt.customer_id) {
+    const dbClient = admin ?? gate.supabase;
+    // Check if a stamp was already logged for this appointment to avoid duplicates
+    const { data: existingStamp } = await dbClient
+      .from('loyalty_stamps')
+      .select('id')
+      .eq('appointment_id', appointmentId)
+      .maybeSingle();
+
+    if (!existingStamp) {
+      const { error: stampError } = await dbClient.from('loyalty_stamps').insert({
+        customer_id: appt.customer_id,
+        appointment_id: appointmentId,
+        stamp_count: 1,
+        reason: `Completed service: ${String(appt.service_slug ?? '').replace(/-/g, ' ')}`,
+      });
+      if (stampError) {
+        console.warn('[tech-complete] failed to insert loyalty stamp', stampError.message);
+      }
+    }
+  }
+
   const vis = await gate.supabase
     .from('job_media')
     .update({ visible_to_customer: true })

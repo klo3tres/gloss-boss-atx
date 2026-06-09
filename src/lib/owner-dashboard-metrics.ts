@@ -126,7 +126,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   );
   const sumOpts = { excludeTest: true as const, apptById };
 
-  const [todayPay, weekPay, monthPay, leadRowsRes, paymentRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes] = await Promise.all([
+  const [todayPay, weekPay, monthPay, leadRowsRes, paymentRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
@@ -135,6 +135,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     admin.from('job_timeline_events').select('appointment_id, event_type, created_at').order('created_at', { ascending: false }).limit(10),
     admin.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     admin.from('loyalty_stamps').select('customer_id'),
+    admin.from('business_expenses').select('id, category, notes').or('category.ilike.%supply%,notes.ilike.%Supply Request by tech%'),
   ]);
   
   const today = summarizePayments(todayPay, sumOpts);
@@ -328,6 +329,18 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   if (balanceDueCents > 0) alerts.push(`${displayMoney(balanceDueCents)} open balances across live jobs`);
   const unassigned = todayJobs.filter((j) => j.techName === 'Unassigned').length;
   if (unassigned > 0) alerts.push(`${unassigned} job(s) today still unassigned`);
+
+  const pendingSuppliesCount = (supplyReqsRes.data ?? []).filter((r) => {
+    const note = String(r.notes ?? '').toLowerCase();
+    const cat = String(r.category ?? '').toLowerCase();
+    const isFulfilled = cat.includes('fulfilled') || note.includes('[manager:fulfilled');
+    const isDenied = cat.includes('denied') || note.includes('[manager:denied');
+    const isOrdered = note.includes('[manager:ordered');
+    return !isFulfilled && !isDenied && !isOrdered;
+  }).length;
+  if (pendingSuppliesCount > 0) {
+    alerts.push(`${pendingSuppliesCount} pending technician supply request(s) need review — check Admin > Supply Requests`);
+  }
 
   return {
     revenueToday: displayMoney(today.grossCents),

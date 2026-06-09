@@ -227,6 +227,37 @@ export function TechPremiumShell({
   const [supplyBusy, setSupplyBusy] = useState(false);
   const [leadBusy, setLeadBusy] = useState(false);
 
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash) {
+        const cleanHash = hash.replace('#', '');
+        
+        if (['routes', 'mileage', 'supplies', 'leads'].includes(cleanHash)) {
+          setOpsTab(cleanHash as 'routes' | 'mileage' | 'supplies' | 'leads');
+          setTimeout(() => {
+            const element = document.getElementById('routes');
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 50);
+        } else {
+          const element = document.getElementById(cleanHash);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+      }
+    };
+
+    const timeoutId = setTimeout(handleHashChange, 100);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
   return (
     <div className='relative min-h-screen overflow-hidden pb-24'>
       <div
@@ -370,163 +401,165 @@ export function TechPremiumShell({
         </div>
       </section>
 
-      {activeJob ? (
-        <section className='mb-10 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
-          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
-            <div>
-              <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Live Work Order</p>
-              <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
-                {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
-              </h2>
-              <p className='mt-1 text-sm text-zinc-400'>
-                {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
-              </p>
-              <p className='mt-1 text-xs text-zinc-500'>
-                {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
-                {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
-                {activeJob.payment_status ?? 'payment pending'}
-              </p>
-              <p className='mt-1 text-xs text-zinc-500'>
-                Directions:{' '}
-                {activeJob.service_address ? (
-                  <a
-                    href={directionsHref(activeJob.service_address)}
-                    target='_blank'
-                    rel='noreferrer'
-                    className='text-gold-soft underline underline-offset-4'
-                  >
-                    {activeJob.service_address}
-                  </a>
-                ) : (
-                  <span className='text-zinc-600'>No service address on file — contact customer.</span>
-                )}
-              </p>
-            </div>
-            <div className='flex flex-wrap items-center gap-3'>
-              <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
-                <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
-                <LiveTimer startedAt={activeJob.timerStartedAt} />
+      <div id="active-work-orders" className="scroll-mt-28">
+        {activeJob ? (
+          <section className='mb-10 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
+            <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+              <div>
+                <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Live Work Order</p>
+                <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
+                  {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
+                </h2>
+                <p className='mt-1 text-sm text-zinc-400'>
+                  {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
+                </p>
+                <p className='mt-1 text-xs text-zinc-500'>
+                  {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
+                  {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
+                  {activeJob.payment_status ?? 'payment pending'}
+                </p>
+                <p className='mt-1 text-xs text-zinc-500'>
+                  Directions:{' '}
+                  {activeJob.service_address ? (
+                    <a
+                      href={directionsHref(activeJob.service_address)}
+                      target='_blank'
+                      rel='noreferrer'
+                      className='text-gold-soft underline underline-offset-4'
+                    >
+                      {activeJob.service_address}
+                    </a>
+                  ) : (
+                    <span className='text-zinc-600'>No service address on file — contact customer.</span>
+                  )}
+                </p>
               </div>
-              <TechTimerControls
-                appointmentId={activeJob.isFallback ? null : activeJob.id}
-                fallbackBookingId={activeJob.fallback_booking_id ?? null}
-                workflowSessionId={activeJob.workflowSessionId ?? null}
-                initialTimerId={activeJob.timerId ?? null}
-              />
-              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-                Open Work Order
-              </Link>
-            </div>
-          </div>
-          <div className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
-            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Agreement: <span className={activeJob.hasIntake ? 'text-emerald-300' : 'text-amber-300'}>{activeJob.hasIntake ? 'signed/on file' : 'needs review'}</span></div>
-            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Notes: <span className={activeJob.fieldNotesPreview ? 'text-emerald-300' : 'text-zinc-500'}>{activeJob.fieldNotesPreview ? 'saved' : 'ready'}</span></div>
-            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
-            <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
-          </div>
-          <div className='mt-4 grid gap-4 lg:grid-cols-2'>
-            <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
-              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Before Photos</p>
-              {activeJob.beforePhotos?.length ? (
-                <div className='mt-3 grid grid-cols-4 gap-2'>
-                  {activeJob.beforePhotos.map((photo) => (
-                    <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                      <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
-                      <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
-                    </div>
-                  ))}
+              <div className='flex flex-wrap items-center gap-3'>
+                <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
+                  <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
+                  <LiveTimer startedAt={activeJob.timerStartedAt} />
                 </div>
-              ) : (
-                <div className='mt-2 space-y-2'>
-                  <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
-                  <Link href={workOrderHref(activeJob)} className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
-                    Upload before photo now
-                  </Link>
-                </div>
-              )}
-            </div>
-            <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
-              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>After Photos</p>
-              {activeJob.afterPhotos?.length ? (
-                <div className='mt-3 grid grid-cols-4 gap-2'>
-                  {activeJob.afterPhotos.map((photo) => (
-                    <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                      <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
-                      <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className='mt-2 text-xs text-zinc-500'>Use Upload After Photos when the job is ready for closeout.</p>
-              )}
-            </div>
-          </div>
-          <div className='mt-4 flex flex-wrap gap-2'>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</Link>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
-            <div className='flex w-full flex-col gap-2 sm:w-auto'>
-              {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-                <div key={`top-${kind}`} className='flex flex-col gap-0.5'>
-                  <NotificationSendForm
-                    kind={kind}
-                    appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
-                    fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
-                    buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
-                  >
-                    {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-                  </NotificationSendForm>
-                  <p className='text-[10px] text-zinc-500'>
-                    {kind === 'last_touches'
-                      ? 'SMS/email customer that service is wrapping up.'
-                      : kind === 'payment_link'
-                        ? 'Stripe balance link — logs to notification outbox.'
-                        : 'Google review link after job (SMS if configured).'}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
-              {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-              {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-              <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
-              <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
-              <button type='submit' className='rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/15'>
-                Paid Cash
-              </button>
-            </form>
-            <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</Link>
-            <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
-              {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-              {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-              <ConfirmSubmitButton message='Archive this test job?' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
-                Archive Test Job
-              </ConfirmSubmitButton>
-            </form>
-          </div>
-        </section>
-      ) : null}
-
-      <section className='mb-10'>
-        <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Today ({todayJobs.length})</h2>
-        {todayJobs.length === 0 ? (
-          <p className='text-sm text-zinc-500'>No jobs scheduled for today.</p>
-        ) : (
-          <ul className='space-y-3'>
-            {todayJobs.map((j) => (
-              <li key={j.id} className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-                <div>
-                  <p className='font-bold text-white'>{j.guest_name ?? 'Customer'}</p>
-                  <p className='text-xs text-zinc-500'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {j.service_slug.replace(/-/g, ' ')}</p>
-                </div>
-                <Link href={workOrderHref(j)} className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'>
-                  Open
+                <TechTimerControls
+                  appointmentId={activeJob.isFallback ? null : activeJob.id}
+                  fallbackBookingId={activeJob.fallback_booking_id ?? null}
+                  workflowSessionId={activeJob.workflowSessionId ?? null}
+                  initialTimerId={activeJob.timerId ?? null}
+                />
+                <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+                  Open Work Order
                 </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+              </div>
+            </div>
+            <div className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
+              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Agreement: <span className={activeJob.hasIntake ? 'text-emerald-300' : 'text-amber-300'}>{activeJob.hasIntake ? 'signed/on file' : 'needs review'}</span></div>
+              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Notes: <span className={activeJob.fieldNotesPreview ? 'text-emerald-300' : 'text-zinc-500'}>{activeJob.fieldNotesPreview ? 'saved' : 'ready'}</span></div>
+              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
+              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
+            </div>
+            <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+              <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Before Photos</p>
+                {activeJob.beforePhotos?.length ? (
+                  <div className='mt-3 grid grid-cols-4 gap-2'>
+                    {activeJob.beforePhotos.map((photo) => (
+                      <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                        <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                        <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className='mt-2 space-y-2'>
+                    <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
+                    <Link href={workOrderHref(activeJob)} className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                      Upload before photo now
+                    </Link>
+                  </div>
+                )}
+              </div>
+              <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>After Photos</p>
+                {activeJob.afterPhotos?.length ? (
+                  <div className='mt-3 grid grid-cols-4 gap-2'>
+                    {activeJob.afterPhotos.map((photo) => (
+                      <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                        <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                        <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className='mt-2 text-xs text-zinc-500'>Use Upload After Photos when the job is ready for closeout.</p>
+                )}
+              </div>
+            </div>
+            <div className='mt-4 flex flex-wrap gap-2'>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</Link>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
+              <div className='flex w-full flex-col gap-2 sm:w-auto'>
+                {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+                  <div key={`top-${kind}`} className='flex flex-col gap-0.5'>
+                    <NotificationSendForm
+                      kind={kind}
+                      appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                      fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                      buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
+                    >
+                      {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
+                    </NotificationSendForm>
+                    <p className='text-[10px] text-zinc-500'>
+                      {kind === 'last_touches'
+                        ? 'SMS/email customer that service is wrapping up.'
+                        : kind === 'payment_link'
+                          ? 'Stripe balance link — logs to notification outbox.'
+                          : 'Google review link after job (SMS if configured).'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
+                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
+                <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
+                <button type='submit' className='rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/15'>
+                  Paid Cash
+                </button>
+              </form>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</Link>
+              <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
+                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                <ConfirmSubmitButton message='Archive this test job?' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
+                  Archive Test Job
+                </ConfirmSubmitButton>
+              </form>
+            </div>
+          </section>
+        ) : null}
+
+        <section className='mb-10'>
+          <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Today ({todayJobs.length})</h2>
+          {todayJobs.length === 0 ? (
+            <p className='text-sm text-zinc-500'>No jobs scheduled for today.</p>
+          ) : (
+            <ul className='space-y-3'>
+              {todayJobs.map((j) => (
+                <li key={j.id} className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
+                  <div>
+                    <p className='font-bold text-white'>{j.guest_name ?? 'Customer'}</p>
+                    <p className='text-xs text-zinc-500'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {j.service_slug.replace(/-/g, ' ')}</p>
+                  </div>
+                  <Link href={workOrderHref(j)} className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'>
+                    Open
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
 
       <section className='mb-10'>
         <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs ({assignedJobs.length})</h2>

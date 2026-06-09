@@ -44,8 +44,9 @@ export async function POST(req: Request) {
   };
 
   const { error } = await admin.from('fleet_inquiries').insert(row);
-  if (error && !/fleet_inquiries|does not exist/i.test(error.message)) {
+  if (error) {
     console.warn('[fleet-inquiry] insert', error.message);
+    return NextResponse.json({ error: `Database insert failed: ${error.message}` }, { status: 500 });
   }
 
   try {
