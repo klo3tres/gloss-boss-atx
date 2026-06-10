@@ -59,20 +59,35 @@ export async function POST(request: Request) {
   if (amount < 50) return NextResponse.json({ error: 'This membership plan needs a Stripe price above $0.50.' }, { status: 400 });
 
   const email = user.email.trim().toLowerCase();
-  let { data: customer } = await admin.from('customers').select('id').eq('email', email).maybeSingle();
+  let { data: customer } = await admin.from('customers').select('id, stripe_customer_id').eq('email', email).maybeSingle();
   if (!customer?.id) {
-    const inserted = await admin.from('customers').insert({ email, full_name: user.user_metadata?.full_name ?? email }).select('id').maybeSingle();
+    const inserted = await admin.from('customers').insert({ email, full_name: user.user_metadata?.full_name ?? email }).select('id, stripe_customer_id').maybeSingle();
     customer = inserted.data;
   }
   if (!customer?.id) {
     return NextResponse.json({ error: 'Could not create your customer profile. Please try again.' }, { status: 500 });
   }
 
+  let stripeCustomerId = String(customer.stripe_customer_id ?? '').trim();
+  if (!stripeCustomerId) {
+    const stripeCustomer = await stripe.customers.create({
+      email,
+      name: String(user.user_metadata?.full_name ?? '').trim() || undefined,
+      metadata: {
+        customer_id: String(customer.id),
+        user_id: user.id,
+        source: 'public_membership_checkout',
+      },
+    });
+    stripeCustomerId = stripeCustomer.id;
+    await admin.from('customers').update({ stripe_customer_id: stripeCustomerId }).eq('id', customer.id);
+  }
+
   const recurring = recurringFor(interval);
   const origin = getAppOrigin(request);
   const session = await stripe.checkout.sessions.create({
     mode: recurring ? 'subscription' : 'payment',
-    customer_email: email,
+    customer: stripeCustomerId,
     line_items: [
       {
         price_data: {
@@ -93,6 +108,7 @@ export async function POST(request: Request) {
       kind: 'membership',
       membership_plan_id: String(plan.id),
       customer_id: String(customer.id),
+      stripe_customer_id: stripeCustomerId,
       user_id: user.id,
       customer_email: email,
       billing_interval: interval,
@@ -105,6 +121,7 @@ export async function POST(request: Request) {
     membership_plan_id: plan.id,
     status: 'pending_payment',
     stripe_checkout_session_id: session.id,
+    stripe_customer_id: stripeCustomerId,
     billing_interval: interval,
     price_cents: amount,
     notes: `Created from public membership checkout. Interval: ${interval}`,

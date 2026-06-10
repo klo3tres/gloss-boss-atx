@@ -161,6 +161,16 @@ export async function POST(request: Request) {
         vehicleLabel: body.vehicleLabel,
         serviceLabel: body.serviceLabel,
         transformationPhase: body.transformationPhase,
+        vehicleClass: body.vehicleClass,
+        serviceCategory: body.serviceCategory,
+        destination: body.destination,
+        tags: Array.isArray(body.tags)
+          ? body.tags
+          : String(body.tags ?? '')
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+        publicCaption: body.publicCaption,
         watermark: body.watermark,
         published: body.published,
         featured: body.featured,

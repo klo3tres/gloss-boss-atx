@@ -310,6 +310,11 @@ export async function dbUpdateGalleryFields(
     vehicleLabel?: string;
     serviceLabel?: string;
     transformationPhase?: string;
+    vehicleClass?: string;
+    serviceCategory?: string;
+    destination?: string;
+    tags?: string[];
+    publicCaption?: string;
     watermark?: boolean;
     published?: boolean;
     featured?: boolean;
@@ -341,6 +346,22 @@ export async function dbUpdateGalleryFields(
   if (params.transformationPhase !== undefined) {
     metadata.transformation_phase = params.transformationPhase || null;
   }
+  if (params.vehicleClass !== undefined) {
+    metadata.vehicle_class = params.vehicleClass || null;
+    metadata.vehicle_type = params.vehicleClass || null;
+  }
+  if (params.serviceCategory !== undefined) {
+    metadata.service_category = params.serviceCategory || null;
+  }
+  if (params.destination !== undefined) {
+    metadata.destination = params.destination || null;
+  }
+  if (params.tags !== undefined) {
+    metadata.tags = params.tags;
+  }
+  if (params.publicCaption !== undefined) {
+    metadata.public_caption = params.publicCaption || null;
+  }
   if (params.watermark !== undefined) {
     metadata.watermark = params.watermark;
   }
@@ -363,12 +384,32 @@ export async function dbUpdateGalleryFields(
   if (params.watermark !== undefined) {
     patch.watermark = params.watermark;
   }
+  if (params.vehicleClass !== undefined) {
+    patch.vehicle_type = params.vehicleClass || null;
+  }
+  if (params.serviceCategory !== undefined) {
+    patch.service_category = params.serviceCategory || null;
+  }
+  if (params.destination !== undefined) {
+    patch.destination = params.destination || null;
+  }
+  if (params.tags !== undefined) {
+    patch.tags = params.tags;
+  }
+  if (params.publicCaption !== undefined) {
+    patch.public_caption = params.publicCaption || null;
+  }
 
   const { error } = await supabase.from('gallery_images').update(patch).eq('id', id);
   if (error) {
     const fallbackPatch = { ...patch };
     delete fallbackPatch.metadata;
     delete fallbackPatch.watermark;
+    delete fallbackPatch.vehicle_type;
+    delete fallbackPatch.service_category;
+    delete fallbackPatch.destination;
+    delete fallbackPatch.tags;
+    delete fallbackPatch.public_caption;
     const { error: error2 } = await supabase.from('gallery_images').update(fallbackPatch).eq('id', id);
     if (error2) return { ok: false, error: error2.message };
   }

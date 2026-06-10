@@ -1360,30 +1360,30 @@ export function WorkOrderConsoleClient({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
               {[
                 {
-                  name: 'Basic Care',
-                  price: '$149/mo',
-                  slug: 'basic',
-                  features: ['Exterior Gloss Wash', 'Express Interior Vacuum', 'Tire & Trim Protection'],
-                  pitch: `Gloss Boss ATX: Keep your vehicle looking sharp with our monthly Basic Care plan for just $149/mo. Sign up here: `,
+                  name: 'Bronze',
+                  price: '$24/mo',
+                  slug: 'bronze',
+                  features: ['10% off services', 'Digital punch card', 'Priority scheduling access'],
+                  pitch: `Gloss Boss ATX: Your Bronze membership keeps every detail easier with 10% off, priority scheduling, and loyalty rewards. Join here: `,
                 },
                 {
-                  name: 'Plus Plan',
-                  price: '$249/mo',
-                  slug: 'plus',
-                  features: ['Premium Interior Cleanse', 'Exterior Wax Restoration', 'Glass & Mirror Clarifier'],
-                  pitch: `Gloss Boss ATX: Upgrade your protection with the monthly Plus Plan for $249/mo. Keep interior and exterior flawless. Sign up here: `,
+                  name: 'Silver',
+                  price: '$49/mo',
+                  slug: 'silver',
+                  features: ['15% off services', 'Quarterly upgrade credit', 'Silver loyalty rewards'],
+                  pitch: `Gloss Boss ATX: Silver membership adds 15% off, priority scheduling, quarterly upgrade credit, and loyalty rewards. Join here: `,
                 },
                 {
-                  name: 'Elite Detail',
-                  price: '$399/mo',
-                  slug: 'elite',
-                  features: ['Monthly Ceramic Booster', 'Leather Conditioning Deep Clean', 'Engine Bay Touchup & Gloss'],
-                  pitch: `Gloss Boss ATX: The ultimate concierge treatment. Monthly Elite Detail for $399/mo including ceramic maintenance. Sign up here: `,
+                  name: 'Gold',
+                  price: '$79/mo',
+                  slug: 'gold',
+                  features: ['20% off services', 'Front-of-line scheduling', 'VIP upgrade and annual credits'],
+                  pitch: `Gloss Boss ATX: Gold membership is the VIP lane with 20% off, front-of-line scheduling, upgrade credits, and punch-card rewards. Join here: `,
                 },
               ].map((plan) => {
                 const bookLink = typeof window !== 'undefined'
-                  ? `${window.location.origin}/book?ref=maintenance&plan=${plan.slug}&customer=${data.customerId || ''}`
-                  : `/book?plan=${plan.slug}`;
+                  ? `${window.location.origin}/memberships?plan=${plan.slug}&customer=${data.customerId || ''}`
+                  : `/memberships?plan=${plan.slug}`;
                 const fullPitch = `${plan.pitch}${bookLink}`;
 
                 return (

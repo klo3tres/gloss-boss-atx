@@ -34,11 +34,18 @@ export function LoyaltyCard3D({
   const [rotateY, setRotateY] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [isFlipped, setIsFlipped] = useState(forceState === 'back');
+  const [frontImageFailed, setFrontImageFailed] = useState(false);
+  const [backImageFailed, setBackImageFailed] = useState(false);
 
   useEffect(() => {
     if (forceState === 'front') setIsFlipped(false);
     if (forceState === 'back') setIsFlipped(true);
   }, [forceState]);
+
+  useEffect(() => {
+    setFrontImageFailed(false);
+    setBackImageFailed(false);
+  }, [activeCardDesign?.front_image_url, activeCardDesign?.back_image_url]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (forceState) return; // Disable tilt if it's static preview
@@ -72,8 +79,10 @@ export function LoyaltyCard3D({
     return { index: i, isRewardSlot, isPunched };
   });
 
-  const frontImg = activeCardDesign?.front_image_url;
-  const backImg = activeCardDesign?.back_image_url;
+  const frontImg = activeCardDesign?.front_image_url || '';
+  const backImg = activeCardDesign?.back_image_url || '';
+  const showFrontImage = Boolean(frontImg && !frontImageFailed);
+  const showBackImage = Boolean(backImg && !backImageFailed);
 
   return (
     <div className={`perspective-[1000px] w-full ${className}`}>
@@ -115,10 +124,11 @@ export function LoyaltyCard3D({
             display: isFlipped ? 'none' : 'flex'
           }}
         >
-          {frontImg ? (
+          {showFrontImage ? (
             <img 
               src={frontImg} 
               alt="Card Front" 
+              onError={() => setFrontImageFailed(true)}
               className="absolute inset-0 w-full h-full object-contain rounded-2xl pointer-events-none z-0" 
             />
           ) : (
@@ -156,10 +166,11 @@ export function LoyaltyCard3D({
             display: isFlipped ? 'flex' : 'none'
           }}
         >
-          {backImg ? (
+          {showBackImage ? (
             <img 
               src={backImg} 
               alt="Card Back" 
+              onError={() => setBackImageFailed(true)}
               className="absolute inset-0 w-full h-full object-contain rounded-2xl pointer-events-none z-0" 
             />
           ) : (
