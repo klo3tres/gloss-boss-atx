@@ -50,8 +50,9 @@ export default async function StripeSyncPage() {
   const diagnostics = livePayments.map((liveCharge) => {
     const matches = dbPayments.filter(
       (p) =>
+        p.stripe_payment_intent_id === liveCharge.paymentIntentId ||
         p.stripe_payment_intent_id === liveCharge.id ||
-        p.stripe_checkout_session_id === liveCharge.id ||
+        p.stripe_checkout_session_id === liveCharge.checkoutSessionId ||
         p.id === liveCharge.id ||
         (p.stripe_payment_intent_id && liveCharge.description?.includes(p.stripe_payment_intent_id))
     );
@@ -77,6 +78,10 @@ export default async function StripeSyncPage() {
 
     return {
       chargeId: liveCharge.id,
+      paymentIntentId: liveCharge.paymentIntentId ?? null,
+      checkoutSessionId: liveCharge.checkoutSessionId ?? null,
+      customerEmail: liveCharge.customerEmail ?? null,
+      customerNameFromStripe: liveCharge.customerName ?? null,
       amount: liveCharge.amount,
       status: liveCharge.status,
       created: liveCharge.created,
@@ -88,6 +93,7 @@ export default async function StripeSyncPage() {
       serviceSlug: appointment?.service_slug || null,
       customerId: customer?.id || null,
       customerName: customer?.full_name || customer?.email || null,
+      action: isDuplicate ? 'REVIEW DUPLICATE' : !dbInserted ? 'FIX' : !appointment?.id ? 'LINK' : 'VERIFIED',
     };
   });
 
@@ -171,26 +177,36 @@ export default async function StripeSyncPage() {
                 <th className='pb-2.5 pr-4'>Charge / PI ID</th>
                 <th className='pb-2.5 pr-4'>Amount</th>
                 <th className='pb-2.5 pr-4'>Status</th>
+                <th className='pb-2.5 pr-4'>Stripe Customer</th>
                 <th className='pb-2.5 pr-4'>DB Sync</th>
                 <th className='pb-2.5 pr-4'>Excluded</th>
                 <th className='pb-2.5 pr-4'>Duplicate</th>
-                <th className='pb-2.5'>Linked Work Order / Customer</th>
+                <th className='pb-2.5 pr-4'>Linked Work Order / Customer</th>
+                <th className='pb-2.5'>Action</th>
               </tr>
             </thead>
             <tbody>
               {diagnostics.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className='py-4 text-center text-zinc-500 italic'>No recent charges retrieved from Stripe API.</td>
+                  <td colSpan={9} className='py-4 text-center text-zinc-500 italic'>No recent charges retrieved from Stripe API.</td>
                 </tr>
               ) : (
                 diagnostics.map((d) => (
                   <tr key={d.chargeId} className='border-b border-white/5 hover:bg-white/5 transition'>
-                    <td className='py-2.5 pr-4 font-mono select-all text-[11px]'>{d.chargeId}</td>
+                    <td className='py-2.5 pr-4 font-mono select-all text-[11px]'>
+                      <p>{d.chargeId}</p>
+                      <p className='text-zinc-500'>{d.paymentIntentId ?? 'no payment intent'}</p>
+                      {d.checkoutSessionId ? <p className='text-zinc-600'>{d.checkoutSessionId}</p> : null}
+                    </td>
                     <td className='py-2.5 pr-4 font-semibold text-white'>{displayMoney(d.amount)}</td>
                     <td className='py-2.5 pr-4'>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${d.status === 'succeeded' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-400'}`}>
                         {d.status}
                       </span>
+                    </td>
+                    <td className='py-2.5 pr-4'>
+                      <p className='text-white'>{d.customerNameFromStripe ?? 'Unknown'}</p>
+                      <p className='text-[10px] text-zinc-500'>{d.customerEmail ?? 'No email returned'}</p>
                     </td>
                     <td className='py-2.5 pr-4'>
                       {d.dbInserted ? (
@@ -227,6 +243,18 @@ export default async function StripeSyncPage() {
                         </div>
                       ) : (
                         <span className='text-zinc-500 italic'>None</span>
+                      )}
+                    </td>
+                    <td className='py-2.5'>
+                      {d.action === 'FIX' ? (
+                        <form action={resyncStripeTransactionsAction}>
+                          <input type='hidden' name='scope' value='payments_payouts' />
+                          <button className='rounded-lg bg-gold px-3 py-1.5 text-[10px] font-black uppercase text-black'>Fix</button>
+                        </form>
+                      ) : d.action === 'LINK' ? (
+                        <Link href='/admin/payments' className='rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft'>Link</Link>
+                      ) : (
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${d.action === 'VERIFIED' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-200'}`}>{d.action}</span>
                       )}
                     </td>
                   </tr>

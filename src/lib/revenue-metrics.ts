@@ -65,12 +65,28 @@ export type RevenueExclusion = {
   method: string;
 };
 
+export type RevenueAuditRow = {
+  id: string;
+  sourceTable: 'payments' | 'receipts';
+  amountCents: number;
+  method: string;
+  status: string;
+  occurredAt: string;
+  included: boolean;
+  reason: string;
+  revenueKey: string;
+  appointmentId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+};
+
 export type RevenueDiagnostics = {
   rowsLoaded: number;
   rowsCounted: number;
   rowsExcluded: number;
   grossCents: number;
   byMethod: Record<string, number>;
+  auditRows: RevenueAuditRow[];
   exclusions: RevenueExclusion[];
   duplicateGroups: Array<{ key: string; ids: string[]; amountCents: number }>;
   duplicateExtraCount: number;
@@ -162,8 +178,26 @@ export function buildRevenueDiagnostics(
   const byMethod: Record<string, number> = {};
   const duplicateMap = new Map<string, PayRow[]>();
   const seenRevenueKeys = new Set<string>();
+  const auditRows: RevenueAuditRow[] = [];
   let rowsCounted = 0;
   let grossCents = 0;
+
+  const pushAudit = (p: PayRow, included: boolean, reason: string) => {
+    auditRows.push({
+      id: str(p.id) || 'unknown',
+      sourceTable: p.source_table ?? 'payments',
+      amountCents: typeof p.amount_cents === 'number' ? p.amount_cents : 0,
+      method: str(p.payment_method || p.payment_kind) || 'unknown',
+      status: str(p.status) || 'unknown',
+      occurredAt: payTimestamp(p),
+      included,
+      reason,
+      revenueKey: revenueIdentityKey(p),
+      appointmentId: str(p.appointment_id) || null,
+      stripePaymentIntentId: str(p.stripe_payment_intent_id) || null,
+      stripeCheckoutSessionId: str(p.stripe_checkout_session_id) || null,
+    });
+  };
 
   for (const p of rows) {
     const id = str(p.id) || 'unknown';
@@ -173,34 +207,42 @@ export function buildRevenueDiagnostics(
 
     if (opts?.fromIso && ts && ts < opts.fromIso) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Outside date range (before period start)' });
+      pushAudit(p, false, 'Outside date range (before period start)');
       continue;
     }
     if (opts?.toIso && ts && ts > opts.toIso) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Outside date range (after period end)' });
+      pushAudit(p, false, 'Outside date range (after period end)');
       continue;
     }
     if (isPaymentVoided(p)) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Voided payment' });
+      pushAudit(p, false, 'Voided payment');
       continue;
     }
     if (!isPaymentSucceeded(p)) {
       exclusions.push({ id, amountCents: amt, method, reason: `Status not collected: ${str(p.status)}` });
+      pushAudit(p, false, `Status not collected: ${str(p.status)}`);
       continue;
     }
     if (p.exclude_from_revenue === true) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Manually excluded from revenue' });
+      pushAudit(p, false, 'Manually excluded from revenue');
       continue;
     }
     if (p.refunded_at) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Refunded payment' });
+      pushAudit(p, false, 'Refunded payment');
       continue;
     }
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Test booking or test payment metadata' });
+      pushAudit(p, false, 'Test booking or test payment metadata');
       continue;
     }
     if (amt <= 0) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Zero or missing amount' });
+      pushAudit(p, false, 'Zero or missing amount');
       continue;
     }
 
@@ -211,6 +253,7 @@ export function buildRevenueDiagnostics(
       duplicateMap.set(key, group);
       if (seenRevenueKeys.has(key)) {
         exclusions.push({ id, amountCents: amt, method, reason: `Duplicate revenue identity: ${key}` });
+        pushAudit(p, false, `Duplicate revenue identity: ${key}`);
         continue;
       }
       seenRevenueKeys.add(key);
@@ -218,6 +261,7 @@ export function buildRevenueDiagnostics(
 
     rowsCounted += 1;
     grossCents += amt;
+    pushAudit(p, true, 'Counted in revenue');
     const channel = classifyPaymentChannel(method, str(p.payment_kind), p);
     byMethod[channel] = (byMethod[channel] ?? 0) + amt;
   }
@@ -236,6 +280,7 @@ export function buildRevenueDiagnostics(
     rowsExcluded: exclusions.length,
     grossCents,
     byMethod,
+    auditRows: auditRows.slice(0, 120),
     exclusions: exclusions.slice(0, 40),
     duplicateGroups: duplicateGroups.slice(0, 20),
     duplicateExtraCount: duplicateGroups.reduce((sum, group) => sum + Math.max(0, group.ids.length - 1), 0),

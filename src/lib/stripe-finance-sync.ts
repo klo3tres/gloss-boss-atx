@@ -9,7 +9,17 @@ export type StripeFinanceSnapshot = {
   treasuryPendingCents: number | null;
   treasuryUnavailableReason: string | null;
   issuingUnavailableReason: string | null;
-  recentPayments: Array<{ id: string; amount: number; status: string; created: number; description?: string | null }>;
+  recentPayments: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    created: number;
+    description?: string | null;
+    paymentIntentId?: string | null;
+    checkoutSessionId?: string | null;
+    customerEmail?: string | null;
+    customerName?: string | null;
+  }>;
   recentTransfers: Array<{ id: string; amount: number; created: number; destination?: string | null; description?: string | null }>;
   recentCardSpends: Array<{ id: string; amount: number; created: number; merchant?: string | null; status?: string | null }>;
 };
@@ -43,13 +53,17 @@ export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFi
   }
 
   try {
-    const charges = await stripe.charges.list({ limit: 10 });
+    const charges = await stripe.charges.list({ limit: 25 });
     recentPayments = charges.data.map((c) => ({
       id: c.id,
       amount: c.amount,
       status: c.status,
       created: c.created,
       description: c.description ?? c.billing_details?.name ?? null,
+      paymentIntentId: typeof c.payment_intent === 'string' ? c.payment_intent : c.payment_intent?.id ?? null,
+      checkoutSessionId: typeof c.metadata?.checkout_session_id === 'string' ? c.metadata.checkout_session_id : null,
+      customerEmail: c.billing_details?.email ?? null,
+      customerName: c.billing_details?.name ?? null,
     }));
   } catch {
     recentPayments = [];
@@ -117,33 +131,53 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
   try {
     const charges = await stripe.charges.list({ limit: 100 });
     for (const charge of charges.data) {
-      if (charge.amount === 5814) {
-        const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.id;
-        const { data: existing } = await db
-          .from('payments')
-          .select('id')
-          .eq('stripe_payment_intent_id', piId)
-          .maybeSingle();
+      if (charge.status !== 'succeeded' || charge.amount <= 0) continue;
+      const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? charge.id;
+      const sessionId = typeof charge.metadata?.checkout_session_id === 'string' ? charge.metadata.checkout_session_id : null;
+      const appointmentId = typeof charge.metadata?.appointment_id === 'string' ? charge.metadata.appointment_id : null;
+      const fallbackBookingId = typeof charge.metadata?.fallback_booking_id === 'string' ? charge.metadata.fallback_booking_id : null;
+      const paidAt = new Date(charge.created * 1000).toISOString();
 
-        if (!existing) {
-          await db.from('payments').insert({
-            amount_cents: 5814,
-            status: charge.status === 'succeeded' ? 'succeeded' : charge.status,
+      const row: Record<string, unknown> = {
+        amount_cents: charge.amount,
+        status: 'succeeded',
+        payment_method: 'stripe',
+        payment_kind: charge.metadata?.stripe_checkout_kind ?? 'stripe_charge',
+        created_at: paidAt,
+        paid_at: paidAt,
+        stripe_payment_intent_id: piId,
+        stripe_checkout_session_id: sessionId,
+        appointment_id: appointmentId,
+        fallback_booking_id: fallbackBookingId,
+        provider: 'stripe',
+        is_test: false,
+        exclude_from_revenue: false,
+        metadata: {
+          source: 'stripe_finance_sync',
+          stripe_charge_id: charge.id,
+          customer_email: charge.billing_details?.email ?? null,
+          customer_name: charge.billing_details?.name ?? null,
+          receipt_url: charge.receipt_url ?? null,
+        },
+      };
+
+      let up = await db.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
+      if (up.error && /fallback_booking_id|appointment_id|stripe_checkout_session_id|paid_at|payment_kind|provider|metadata|is_test|exclude_from_revenue|schema cache|Could not find/i.test(up.error.message)) {
+        up = await db.from('payments').upsert(
+          {
+            amount_cents: charge.amount,
+            status: 'succeeded',
             payment_method: 'stripe',
-            payment_kind: 'stripe',
-            created_at: new Date(charge.created * 1000).toISOString(),
-            paid_at: new Date(charge.created * 1000).toISOString(),
+            created_at: paidAt,
             stripe_payment_intent_id: piId,
-            provider: 'stripe',
-            is_test: false,
-            exclude_from_revenue: false,
-          });
-          console.info('[stripe-finance-sync] Synced Stripe $58.14 deposit directly to revenue payments.');
-        }
+          },
+          { onConflict: 'stripe_payment_intent_id' },
+        );
       }
+      if (up.error) console.warn('[stripe-finance-sync] charge payment upsert failed', charge.id, up.error.message);
     }
   } catch (e) {
-    console.warn('[stripe-finance-sync] failed to sync charges for $58.14 deposit', e);
+    console.warn('[stripe-finance-sync] failed to sync charges into payments', e);
   }
 
   try {

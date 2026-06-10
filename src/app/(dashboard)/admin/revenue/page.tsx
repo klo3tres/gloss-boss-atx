@@ -248,29 +248,16 @@ export default async function AdminRevenuePage({
     monthsData.push({ label, year: d.getFullYear(), month: d.getMonth(), value: 0 });
   }
 
-  for (const p of sixMonthRows) {
-    const pRow = p as any;
-    const st = String(pRow.status ?? '').toLowerCase();
-    const isSucceeded = st === 'succeeded' || st === 'paid' || st === 'comped' || st === 'manual_comped';
-    const isVoided = Boolean(pRow.voided_at || pRow.voided === true) || st === 'voided';
-    if (!isSucceeded || isVoided) continue;
-    
-    // Check if test payment
-    const meta = pRow.metadata;
-    const isTest = (meta && (meta.is_test === true || meta.test === true)) || 
-      (pRow.appointment_id && apptById.get(String(pRow.appointment_id)) && isTestLikeJob(apptById.get(String(pRow.appointment_id)) as any));
-    if (!includeTest && isTest) continue;
-
-    const amt = typeof pRow.amount_cents === 'number' ? pRow.amount_cents : 0;
-    const pDate = new Date(pRow.created_at || '');
-    if (!Number.isNaN(pDate.getTime())) {
-      const mIdx = monthsData.findIndex(
-        (m) => m.year === pDate.getFullYear() && m.month === pDate.getMonth()
-      );
-      if (mIdx !== -1) {
-        monthsData[mIdx].value += amt;
-      }
-    }
+  for (const monthBucket of monthsData) {
+    const from = new Date(monthBucket.year, monthBucket.month, 1, 0, 0, 0, 0);
+    const to = new Date(monthBucket.year, monthBucket.month + 1, 0, 23, 59, 59, 999);
+    const summary = summarizePayments(
+      sixMonthRows,
+      includeTest
+        ? { fromIso: from.toISOString(), toIso: to.toISOString() }
+        : { excludeTest: true, apptById, fromIso: from.toISOString(), toIso: to.toISOString() },
+    );
+    monthBucket.value = summary.grossCents;
   }
 
   const { data: debugEvents } = await admin
@@ -652,6 +639,49 @@ export default async function AdminRevenuePage({
         ) : (
           <p className='mt-3 text-xs text-zinc-500'>No excluded rows in this period (or all rows counted).</p>
         )}
+        <div className='mt-5 overflow-x-auto rounded-2xl border border-white/10'>
+          <table className='min-w-[980px] w-full text-left text-xs'>
+            <thead className='bg-white/[0.03] text-[10px] uppercase tracking-[0.16em] text-zinc-500'>
+              <tr>
+                <th className='px-3 py-2'>Source</th>
+                <th className='px-3 py-2'>Amount</th>
+                <th className='px-3 py-2'>Status</th>
+                <th className='px-3 py-2'>Included?</th>
+                <th className='px-3 py-2'>Reason</th>
+                <th className='px-3 py-2'>Revenue key</th>
+                <th className='px-3 py-2'>Stripe IDs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthDiagnostics.auditRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className='px-3 py-6 text-center text-zinc-500'>No payment or receipt rows loaded for this period.</td>
+                </tr>
+              ) : (
+                monthDiagnostics.auditRows.map((row) => (
+                  <tr key={`${row.sourceTable}-${row.id}-${row.reason}`} className='border-t border-white/5'>
+                    <td className='px-3 py-2'>
+                      <p className='font-mono text-zinc-300'>{row.sourceTable}</p>
+                      <p className='font-mono text-[10px] text-zinc-600'>{row.id.slice(0, 18)}</p>
+                    </td>
+                    <td className='px-3 py-2 font-mono font-bold text-white'>{money(row.amountCents)}</td>
+                    <td className='px-3 py-2 text-zinc-400'>{row.method} / {row.status}</td>
+                    <td className='px-3 py-2'>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${row.included ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-200'}`}>
+                        {row.included ? 'Included' : 'Excluded'}
+                      </span>
+                    </td>
+                    <td className='px-3 py-2 text-zinc-400'>{row.reason}</td>
+                    <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>{row.revenueKey || 'manual/no key'}</td>
+                    <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>
+                      {row.stripePaymentIntentId || row.stripeCheckoutSessionId || 'none'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
         {month.grossCents === 0 && monthDiagnostics.rowsCounted > 0 ? (
           <p className='mt-3 text-xs text-amber-200'>
             Warning: summarize mismatch — diagnostics counted {monthDiagnostics.rowsCounted} rows but summary shows $0. Report this.

@@ -227,7 +227,7 @@ export async function dbCreateBeforeAfterPost(
   const featured = destinationKey === 'homepage featured' || destinationKey === 'homepage_featured' || destinationKey === 'all';
 
   const now = new Date().toISOString();
-  const payload = {
+  const fullPayload = {
     url: params.afterUrl,
     image_url: params.afterUrl,
     caption: params.caption.trim() || null,
@@ -247,36 +247,59 @@ export async function dbCreateBeforeAfterPost(
     created_at: now,
   };
 
-  const { error } = await supabase.from('gallery_images').insert(payload);
-  if (error) {
-    const payloadWithoutWatermark = {
-      url: params.afterUrl,
-      image_url: params.afterUrl,
-      caption: params.caption.trim() || null,
-      title: params.caption.trim() || null,
-      sort_order: nextOrder,
-      order_index: nextOrder,
-      published: params.published,
-      active: params.published,
-      featured,
-      metadata,
-      created_at: now,
-    };
-    const { error: error2 } = await supabase.from('gallery_images').insert(payloadWithoutWatermark);
-    if (error2) {
-      const payloadMinimal = {
-        image_url: params.afterUrl,
-        caption: params.caption.trim() || null,
-        sort_order: nextOrder,
-        metadata,
-        featured,
-      };
-      const { error: error3 } = await supabase.from('gallery_images').insert(payloadMinimal);
-      if (error3) return { ok: false, error: error3.message };
+  const noMetadataPayload = {
+    url: params.afterUrl,
+    image_url: params.afterUrl,
+    caption: params.caption.trim() || null,
+    title: params.caption.trim() || null,
+    sort_order: nextOrder,
+    order_index: nextOrder,
+    published: params.published,
+    active: params.published,
+    featured,
+    watermark: params.watermark,
+    vehicle_type: params.vehicleClass || null,
+    service_category: params.serviceCategory || null,
+    destination: params.destination || 'gallery',
+    tags: params.tags || [],
+    public_caption: params.publicCaption || null,
+    created_at: now,
+  };
+
+  const legacyPayload = {
+    image_url: params.afterUrl,
+    caption: params.caption.trim() || null,
+    sort_order: nextOrder,
+    published: params.published,
+    featured,
+  };
+
+  const minimalPayload = {
+    image_url: params.afterUrl,
+    caption: params.caption.trim() || null,
+    sort_order: nextOrder,
+  };
+
+  const variants: Record<string, unknown>[] = [
+    fullPayload,
+    noMetadataPayload,
+    { ...noMetadataPayload, watermark: undefined },
+    { image_url: params.afterUrl, url: params.afterUrl, caption: params.caption.trim() || null, sort_order: nextOrder, published: params.published, featured },
+    legacyPayload,
+    minimalPayload,
+  ].map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
+
+  let lastError = 'Insert failed';
+  for (const row of variants) {
+    const { error } = await supabase.from('gallery_images').insert(row);
+    if (!error) return { ok: true };
+    lastError = error.message;
+    if (!/metadata|watermark|vehicle_type|service_category|destination|tags|public_caption|title|url|active|featured|published|order_index|schema cache|Could not find|column/i.test(error.message)) {
+      return { ok: false, error: error.message };
     }
   }
 
-  return { ok: true };
+  return { ok: false, error: lastError };
 }
 
 export async function dbUpdateGalleryFields(
@@ -343,10 +366,10 @@ export async function dbUpdateGalleryFields(
 
   const { error } = await supabase.from('gallery_images').update(patch).eq('id', id);
   if (error) {
-    if (patch.watermark !== undefined) {
-      delete patch.watermark;
-    }
-    const { error: error2 } = await supabase.from('gallery_images').update(patch).eq('id', id);
+    const fallbackPatch = { ...patch };
+    delete fallbackPatch.metadata;
+    delete fallbackPatch.watermark;
+    const { error: error2 } = await supabase.from('gallery_images').update(fallbackPatch).eq('id', id);
     if (error2) return { ok: false, error: error2.message };
   }
 

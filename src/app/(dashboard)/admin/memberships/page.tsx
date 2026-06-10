@@ -188,7 +188,7 @@ export default async function MembershipsAdminPage() {
 
         <form action={assignCustomerMembershipAction} className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
           <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Assign Customer Membership</p>
-          <p className='mt-1 text-xs text-zinc-500'>Search support is coming next; start typing in the browser select to find a customer by name/email.</p>
+          <p className='mt-1 text-xs text-zinc-500'>Choose a customer by name or email and assign one of the active public plans.</p>
           <select name='customer_id' className='mt-3 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
           </select>
