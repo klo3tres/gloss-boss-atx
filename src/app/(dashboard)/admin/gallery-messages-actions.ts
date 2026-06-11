@@ -233,10 +233,23 @@ export async function saveHomepageVisualsAction(formData: FormData) {
   if (!gate.ok) return;
   const admin = tryCreateAdminSupabase();
   const client = admin ?? gate.supabase;
-  const { error } = await client.from('site_settings').upsert({
-    key: 'homepage_visuals',
-    value: raw,
-  });
+  let { error } = await client.from('site_settings').upsert(
+    {
+      key: 'homepage_visuals',
+      value: raw,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  );
+  if (error && /updated_at|column|schema cache|Could not find/i.test(error.message)) {
+    ({ error } = await client.from('site_settings').upsert(
+      {
+        key: 'homepage_visuals',
+        value: raw,
+      },
+      { onConflict: 'key' },
+    ));
+  }
   if (error) {
     console.warn('[CRM_DEBUG_DB]', 'homepage_visuals_save', error.message);
     return;

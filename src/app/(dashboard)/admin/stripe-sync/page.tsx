@@ -17,8 +17,21 @@ function fmt(v: unknown) {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(String(v)));
 }
 
-export default async function StripeSyncPage() {
+function safeDecode(v: string) {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
+export default async function StripeSyncPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getSessionWithProfile();
+  const sp = searchParams ? await searchParams : {};
+  const syncOkRaw = typeof sp.syncOk === 'string' ? sp.syncOk : Array.isArray(sp.syncOk) ? sp.syncOk[0] : '';
+  const syncErrRaw = typeof sp.syncErr === 'string' ? sp.syncErr : Array.isArray(sp.syncErr) ? sp.syncErr[0] : '';
+  const syncOk = syncOkRaw ? safeDecode(syncOkRaw) : '';
+  const syncErr = syncErrRaw ? safeDecode(syncErrRaw) : '';
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
@@ -99,6 +112,16 @@ export default async function StripeSyncPage() {
 
   return (
     <DashboardShell title='Stripe sync' subtitle='Payments, fees, refunds, payouts, and Stripe balance status.' role='admin'>
+      {syncOk ? (
+        <section className='rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100'>
+          {syncOk}
+        </section>
+      ) : null}
+      {syncErr ? (
+        <section className='rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm font-bold text-rose-100'>
+          {syncErr}
+        </section>
+      ) : null}
       <section className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Last successful Stripe sync</p><p className='mt-2 text-sm font-bold text-white'>{fmt(latestLedger?.created_at)}</p></div>
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Payment available balance</p><p className='mt-2 text-2xl font-black text-white'>{stripeSnapshot?.paymentAvailableCents == null ? 'Unavailable' : displayMoney(stripeSnapshot.paymentAvailableCents)}</p></div>

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import Stripe from 'stripe';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
@@ -11,12 +12,18 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 export async function resyncStripeTransactionsAction(formData?: FormData) {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
-  if (!session.user || !isStaffRole(session.profile?.role) || !admin) return;
+  if (!session.user || !isStaffRole(session.profile?.role) || !admin) redirect('/admin/stripe-sync?syncErr=Unauthorized%20or%20database%20not%20configured');
   const secrets = await getStripeSecrets(admin);
-  if (!secrets.secretKey) return;
-  const stripe = new Stripe(secrets.secretKey);
-  await syncRecentStripeFinance(stripe, admin);
   const scope = String(formData?.get('scope') ?? 'all').trim() || 'all';
+  if (!secrets.secretKey) redirect('/admin/stripe-sync?syncErr=Stripe%20secret%20key%20is%20missing.%20Add%20it%20in%20Settings%20or%20Vercel%20env.');
+  const stripe = new Stripe(secrets.secretKey);
+  let summary: Awaited<ReturnType<typeof syncRecentStripeFinance>>;
+  try {
+    summary = await syncRecentStripeFinance(stripe, admin);
+  } catch (err) {
+    const msg = encodeURIComponent(err instanceof Error ? err.message : 'Stripe sync failed');
+    redirect(`/admin/stripe-sync?syncErr=${msg}`);
+  }
   await admin.from('financial_ledger').insert({
     source: 'stripe',
     type: 'adjustment',
@@ -24,12 +31,19 @@ export async function resyncStripeTransactionsAction(formData?: FormData) {
     gross_amount: 0,
     fee_amount: 0,
     net_amount: 0,
-    description: `Manual Stripe resync completed (${scope})`,
+    description: `Manual Stripe resync completed (${scope}) - ${summary.balanceTransactions} balance tx, ${summary.charges} charges, ${summary.issuingTransactions} issuing tx`,
     category: 'sync_marker',
     occurred_at: new Date().toISOString(),
+    metadata: { scope, summary },
   });
   revalidatePath('/admin/stripe-sync');
   revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+  revalidatePath('/admin/card-activity');
+  const label = encodeURIComponent(
+    `Synced ${summary.balanceTransactions} balance transactions, ${summary.charges} charges, and ${summary.issuingTransactions} card spend rows.${summary.errors.length ? ` Blockers: ${summary.errors.slice(0, 2).join(' | ')}` : ''}`,
+  );
+  redirect(`/admin/stripe-sync?syncOk=${label}`);
 }
 
 export async function addManualExpenseAction(formData: FormData) {

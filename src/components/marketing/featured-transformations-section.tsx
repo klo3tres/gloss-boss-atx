@@ -65,6 +65,19 @@ export interface FeaturedTransformationsSectionProps {
   visuals?: any;
 }
 
+function isUsableVisualTransformation(item: any) {
+  const before = typeof item?.before === 'string' ? item.before.trim() : '';
+  const after = typeof item?.after === 'string' ? item.after.trim() : '';
+  const title = typeof item?.title === 'string' ? item.title.trim().toLowerCase() : '';
+  const id = typeof item?.id === 'string' ? item.id.trim().toLowerCase() : '';
+  const isDefaultPlaceholder =
+    id === 'tf-1' ||
+    title === 'paint correction & ceramic coat' ||
+    (before.includes('images.unsplash.com/photo-1503376780353') && after.includes('images.unsplash.com/photo-1549317336'));
+
+  return item?.published !== false && before && after && before !== after && !isDefaultPlaceholder;
+}
+
 export function FeaturedTransformationsSection({ visuals }: FeaturedTransformationsSectionProps) {
   const [items, setItems] = useState<PublicGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,12 +131,17 @@ export function FeaturedTransformationsSection({ visuals }: FeaturedTransformati
     );
   }
 
-  // Resolve the display items based on: Owner Selected -> CMS Featured -> Fallback
+  // Resolve display items based on real featured gallery first. Homepage visuals are an optional
+  // manual fallback only, so default visual-manager placeholders cannot override published work.
   let displayItems: PublicGalleryItem[] = [];
-  
+
+  if (items.length > 0) {
+    displayItems = items;
+  }
+
   if (visuals?.featuredTransformations?.items && Array.isArray(visuals.featuredTransformations.items)) {
-    const publishedVisuals = visuals.featuredTransformations.items.filter((x: any) => x.published !== false);
-    if (publishedVisuals.length > 0) {
+    const publishedVisuals = visuals.featuredTransformations.items.filter(isUsableVisualTransformation);
+    if (displayItems.length === 0 && publishedVisuals.length > 0) {
       displayItems = publishedVisuals.map((item: any) => ({
         id: item.id,
         url: item.after,
@@ -145,7 +163,7 @@ export function FeaturedTransformationsSection({ visuals }: FeaturedTransformati
   }
 
   if (displayItems.length === 0) {
-    displayItems = items.length > 0 ? items : fallbackItems;
+    displayItems = fallbackItems;
   }
 
   return (

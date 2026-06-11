@@ -23,6 +23,8 @@ type Photo = {
   id: string;
   url: string;
   category: string;
+  phase?: string;
+  photo_type?: string;
   created_at: string;
   uploader?: string;
   appointment_id?: string | null;
@@ -152,8 +154,8 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
     setSelectedGroupKey(job.groupKey);
     
     // Auto-pre-select before and after photos if they exist
-    const befores = job.photos.filter((p) => p.category === 'before' || p.category === 'front' || p.category === 'driver_side' || p.category === 'passenger_side' || p.category === 'rear');
-    const afters = job.photos.filter((p) => p.category === 'after');
+    const befores = job.photos.filter((p) => p.phase === 'before' || p.category === 'before' || p.category === 'front' || p.category === 'driver_side' || p.category === 'passenger_side' || p.category === 'rear');
+    const afters = job.photos.filter((p) => p.phase === 'after' || p.category === 'after');
     setSelectedBeforeUrl(befores[0]?.url || job.photos[0]?.url || null);
     setSelectedAfterUrl(afters[0]?.url || job.photos[1]?.url || null);
 

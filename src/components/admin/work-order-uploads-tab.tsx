@@ -4,8 +4,11 @@ import { useMemo, useState } from 'react';
 
 type Photo = {
   id: string;
+  table?: string;
   url: string;
   category: string;
+  phase?: string;
+  photo_type?: string;
   created_at: string;
   uploader?: string;
   appointment_id?: string | null;
@@ -19,7 +22,8 @@ type Photo = {
   service_type?: string | null;
 };
 
-const PHOTO_CATEGORIES = ['before', 'after', 'interior', 'exterior', 'damage', 'wheels', 'misc'] as const;
+const PHOTO_CATEGORIES = ['before', 'after', 'interior', 'exterior', 'damage', 'wheels', 'product', 'process', 'misc'] as const;
+const PHOTO_TYPE_OPTIONS = ['before', 'after', 'interior', 'exterior', 'damage', 'wheels', 'product', 'process', 'front', 'rear', 'driver_side', 'passenger_side', 'roof', 'existing_damage', 'other'];
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -29,6 +33,8 @@ function normalizeCategory(raw: unknown) {
   const c = str(raw).toLowerCase().replace(/\s+/g, '_');
   if (c.includes('after') || c.includes('complete') || c.includes('finish')) return 'after';
   if (c.includes('damage') || c.includes('scratch') || c.includes('dent')) return 'damage';
+  if (c.includes('product')) return 'product';
+  if (c.includes('process')) return 'process';
   if (c.includes('wheel') || c.includes('tire') || c.includes('rim')) return 'wheels';
   if (c.includes('interior') || c.includes('seat') || c.includes('dash')) return 'interior';
   if (c.includes('exterior') || c.includes('front') || c.includes('rear') || c.includes('driver') || c.includes('passenger') || c.includes('roof')) return 'exterior';
@@ -37,11 +43,13 @@ function normalizeCategory(raw: unknown) {
 }
 
 function isBeforeCandidate(photo: Photo) {
+  if (str(photo.phase).toLowerCase() === 'before') return true;
   const c = normalizeCategory(photo.category);
   return c === 'before' || c === 'exterior' || c === 'damage' || c === 'wheels';
 }
 
 function isAfterCandidate(photo: Photo) {
+  if (str(photo.phase).toLowerCase() === 'after') return true;
   return normalizeCategory(photo.category) === 'after';
 }
 
@@ -79,6 +87,8 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: unknown[] 
   const [creatingPost, setCreatingPost] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [postSuccess, setPostSuccess] = useState<string | null>(null);
+  const [photoOverrides, setPhotoOverrides] = useState<Record<string, { phase?: string; type?: string }>>({});
+  const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
 
   const filteredPhotos = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -123,6 +133,41 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: unknown[] 
   }, [filteredPhotos]);
 
   const activeGroup = groups.find((g) => g.groupKey === activeGroupKey) ?? null;
+
+  async function updatePhotoType(photo: Photo, phase: string, photoType: string) {
+    setBusyPhotoId(photo.id);
+    setPostError(null);
+    try {
+      const response = await fetch('/api/admin/work-order-photo-type', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: photo.id,
+          table: photo.table || 'job_media',
+          phase,
+          photoType,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) {
+        setPostError(data.error || 'Photo type update failed.');
+        return;
+      }
+      setPhotoOverrides((prev) => ({ ...prev, [photo.id]: { phase, type: photoType } }));
+    } catch (e) {
+      setPostError(e instanceof Error ? e.message : 'Photo type update failed.');
+    } finally {
+      setBusyPhotoId(null);
+    }
+  }
+
+  function displayPhase(photo: Photo) {
+    return photoOverrides[photo.id]?.phase || photo.phase || (normalizeCategory(photo.category) === 'after' ? 'after' : 'before');
+  }
+
+  function displayType(photo: Photo) {
+    return photoOverrides[photo.id]?.type || photo.photo_type || photo.category || 'other';
+  }
 
   function openPublisher(group: NonNullable<typeof activeGroup>) {
     const before = group.photos.filter(isBeforeCandidate);
@@ -249,7 +294,11 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: unknown[] 
 
               <div className='mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
                 {PHOTO_CATEGORIES.map((category) => {
-                  const categoryPhotos = group.photos.filter((p) => normalizeCategory(p.category) === category);
+                  const categoryPhotos = group.photos.filter((p) => {
+                    const phase = displayPhase(p);
+                    if (category === 'before' || category === 'after') return phase === category;
+                    return normalizeCategory(displayType(p)) === category;
+                  });
                   return (
                     <div key={category} className='rounded-2xl border border-white/10 bg-zinc-950/70 p-3'>
                       <p className='text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400'>{category} ({categoryPhotos.length})</p>
@@ -258,10 +307,31 @@ export function WorkOrderUploadsTab({ recentPhotos }: { recentPhotos: unknown[] 
                       ) : (
                         <div className='mt-2 flex gap-2 overflow-x-auto pb-1'>
                           {categoryPhotos.map((photo) => (
-                            <a key={photo.id} href={photo.url} target='_blank' rel='noreferrer' className='group relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-gold/50'>
-                              <img src={photo.url} alt={`${category} photo`} className='h-full w-full object-cover transition group-hover:scale-105' />
-                              <span className='absolute bottom-1 left-1 rounded bg-black/75 px-1 text-[8px] uppercase text-zinc-300'>{photo.category}</span>
-                            </a>
+                            <div key={photo.id} className='w-32 shrink-0 rounded-xl border border-white/10 bg-black/70 p-1.5'>
+                              <a href={photo.url} target='_blank' rel='noreferrer' className='group relative block h-20 overflow-hidden rounded-lg border border-white/10 hover:border-gold/50'>
+                                <img src={photo.url} alt={`${category} photo`} className='h-full w-full object-cover transition group-hover:scale-105' />
+                                <span className='absolute bottom-1 left-1 rounded bg-black/75 px-1 text-[8px] uppercase text-zinc-300'>{displayPhase(photo)}</span>
+                              </a>
+                              <div className='mt-1 grid gap-1'>
+                                <select
+                                  value={displayPhase(photo)}
+                                  disabled={busyPhotoId === photo.id}
+                                  onChange={(e) => void updatePhotoType(photo, e.target.value, displayType(photo))}
+                                  className='w-full rounded border border-white/10 bg-black px-1 py-1 text-[9px] uppercase text-white'
+                                >
+                                  <option value='before'>Before</option>
+                                  <option value='after'>After</option>
+                                </select>
+                                <select
+                                  value={displayType(photo)}
+                                  disabled={busyPhotoId === photo.id}
+                                  onChange={(e) => void updatePhotoType(photo, displayPhase(photo), e.target.value)}
+                                  className='w-full rounded border border-white/10 bg-black px-1 py-1 text-[9px] uppercase text-white'
+                                >
+                                  {PHOTO_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option.replace(/_/g, ' ')}</option>)}
+                                </select>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}

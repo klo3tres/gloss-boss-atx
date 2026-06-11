@@ -22,6 +22,7 @@ import { submitHomepageLogoForm, submitNavbarLogoForm } from '@/lib/admin/site-b
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { WorkOrderUploadsTab } from '@/components/admin/work-order-uploads-tab';
 import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-manager';
+import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,7 +180,10 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       photoDb.from('job_photos').select('*').order('created_at', { ascending: false }).limit(300),
       photoDb.from('job_media').select('*').order('created_at', { ascending: false }).limit(300),
     ]);
-    const rawPhotos = [...(photosRes.data ?? []), ...(mediaRes.data ?? [])] as Record<string, unknown>[];
+    const rawPhotos = [
+      ...((photosRes.data ?? []) as Record<string, unknown>[]).map((row) => ({ ...row, __table: 'job_photos' })),
+      ...((mediaRes.data ?? []) as Record<string, unknown>[]).map((row) => ({ ...row, __table: 'job_media' })),
+    ] as Record<string, unknown>[];
     const appointmentIds = [...new Set(rawPhotos.map((p) => String(p.appointment_id ?? '')).filter(Boolean))];
     const fallbackBookingIds = [...new Set(rawPhotos.map((p) => String(p.fallback_booking_id ?? '')).filter(Boolean))];
     const techIds = [...new Set(rawPhotos.map((p) => String(p.technician_id ?? p.uploaded_by ?? '')).filter(Boolean))];
@@ -213,13 +217,16 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           indexedLabel ||
           String(appt.vehicle_description ?? '').trim() ||
           `Vehicle ${vehicleIndex != null ? vehicleIndex + 1 : ''}`.trim();
-        const phase = String(p.category ?? 'before').trim().toLowerCase() === 'after' ? 'after' : 'before';
+        const phase = resolvePhotoPhase(p);
+        const slot = resolvePhotoSlot(p);
         return {
           ...p,
           id: String(p.id ?? url),
+          table: String(p.__table ?? ''),
           url,
           phase,
-          category: String(p.photo_category ?? p.category ?? 'photo'),
+          category: slot,
+          photo_type: slot,
           created_at: String(p.created_at ?? ''),
           uploader: String(tech.full_name ?? tech.email ?? p.uploader ?? ''),
           customer_name: String(appt.guest_name ?? ''),

@@ -164,10 +164,20 @@ export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFi
 }
 
 export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient) {
+  const summary = {
+    balanceTransactions: 0,
+    charges: 0,
+    issuingTransactions: 0,
+    errors: [] as string[],
+  };
   try {
     const balanceTxs = await stripe.balanceTransactions.list({ limit: 100 });
-    for (const tx of balanceTxs.data) await upsertLedgerFromBalanceTransaction(db, tx);
+    for (const tx of balanceTxs.data) {
+      await upsertLedgerFromBalanceTransaction(db, tx);
+      summary.balanceTransactions += 1;
+    }
   } catch (e) {
+    summary.errors.push(`Balance transactions: ${errorMessage(e)}`);
     console.warn('[stripe-finance-sync] balance transactions sync failed or unavailable', e);
   }
 
@@ -212,13 +222,19 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
         stripe_payment_intent_id: piId,
       };
       const up = await writeStripeChargePayment(db, row, fallbackRow);
-      if (up.error) console.warn('[stripe-finance-sync] charge payment upsert failed', charge.id, up.error.message);
+      if (up.error) {
+        summary.errors.push(`Charge ${charge.id}: ${up.error.message}`);
+        console.warn('[stripe-finance-sync] charge payment upsert failed', charge.id, up.error.message);
+      } else {
+        summary.charges += 1;
+      }
     }
   } catch (e) {
+    summary.errors.push(`Charges: ${errorMessage(e)}`);
     console.warn('[stripe-finance-sync] failed to sync charges into payments', e);
   }
 
-  if (process.env.STRIPE_ENABLE_ISSUING_SYNC !== 'true') return;
+  if (process.env.STRIPE_ENABLE_ISSUING_SYNC !== 'true') return summary;
 
   try {
     const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<Record<string, unknown> & { id: string; amount: number; created: number; merchant_data?: { name?: string | null } }> }> } } }).issuing;
@@ -240,8 +256,11 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
         },
         { onConflict: 'stripe_issuing_transaction_id' },
       );
+      summary.issuingTransactions += 1;
     }
   } catch (e) {
+    summary.errors.push(`Issuing card spend: ${errorMessage(e)}`);
     console.warn('[stripe-finance-sync] issuing sync unavailable', e);
   }
+  return summary;
 }

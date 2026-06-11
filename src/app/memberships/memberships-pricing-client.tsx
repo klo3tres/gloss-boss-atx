@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Check, ChevronDown, Zap, HelpCircle } from 'lucide-react';
 import { MembershipJoinButton } from './membership-join-button';
@@ -19,11 +19,33 @@ interface Plan {
   benefits: string[];
   included_services: string[];
   billing_interval: string;
+  enable_biweekly?: boolean;
+  biweekly_enabled?: boolean;
+  show_biweekly?: boolean;
 }
 
 export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
   const [interval, setInterval] = useState<'biweekly' | 'monthly' | 'yearly'>('monthly');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const biweeklyEnabled = useMemo(
+    () =>
+      plans.some(
+        (plan) =>
+          plan.enable_biweekly === true ||
+          plan.biweekly_enabled === true ||
+          plan.show_biweekly === true ||
+          /bi[-_\s]?weekly/i.test(String(plan.billing_interval ?? '')),
+      ),
+    [plans],
+  );
+  const intervalOptions = useMemo(
+    () => (biweeklyEnabled ? (['biweekly', 'monthly', 'yearly'] as const) : (['monthly', 'yearly'] as const)),
+    [biweeklyEnabled],
+  );
+
+  useEffect(() => {
+    if (interval === 'biweekly' && !biweeklyEnabled) setInterval('monthly');
+  }, [biweeklyEnabled, interval]);
 
   const getPrice = (plan: Plan) => {
     let price = 0;
@@ -75,7 +97,9 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
   const faqs = [
     {
       q: 'How does the billing interval work?',
-      a: 'Depending on your selection, you can pay weekly, bi-weekly, monthly, or yearly. Bi-weekly billing schedules detailing visits every two weeks, whereas monthly plans charge once per calendar month and secure priority reservation slots.'
+      a: biweeklyEnabled
+        ? 'Depending on the active admin settings, you can choose bi-weekly, monthly, or yearly billing. Monthly plans charge once per calendar month and secure priority reservation slots.'
+        : 'Public memberships are currently offered monthly or yearly. Monthly plans charge once per calendar month and secure priority reservation slots.'
     },
     {
       q: 'Can I change my billing interval later?',
@@ -100,7 +124,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
       {/* Interval Selector Section */}
       <div className="flex justify-center mb-16">
         <div className="inline-flex rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md shadow-[0_0_25px_rgba(0,0,0,0.5)]">
-          {(['biweekly', 'monthly', 'yearly'] as const).map((mode) => (
+          {intervalOptions.map((mode) => (
             <button
               key={mode}
               type="button"
@@ -225,7 +249,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
                 <td className="p-5 font-bold text-white">Available Billing</td>
                 {plans.map((plan) => {
                   const intervals = [
-                    plan.price_biweekly_cents > 0 ? 'Bi-weekly' : '',
+                    biweeklyEnabled && plan.price_biweekly_cents > 0 ? 'Bi-weekly' : '',
                     (plan.price_monthly_cents || plan.price_cents) > 0 ? 'Monthly' : '',
                     plan.price_yearly_cents > 0 ? 'Yearly' : '',
                   ].filter(Boolean);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, Eye, Monitor, Smartphone, Plus, Trash, ArrowUp, ArrowDown, HelpCircle, Image as ImageIcon } from 'lucide-react';
+import { Save, Monitor, Smartphone, Plus, Trash, Upload, Image as ImageIcon } from 'lucide-react';
 import { saveHomepageVisualsAction } from '@/app/(dashboard)/admin/gallery-messages-actions';
 
 // Types for visuals editor
@@ -70,6 +70,7 @@ const defaultConfig: HomepageVisualsConfig = {
     covers: {
       'full-detail': { image: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=800&q=80', fit: 'cover', position: 'center' },
       'exterior-wash': { image: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=800&q=80', fit: 'cover', position: 'center' },
+      'exterior-detail': { image: 'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=800&q=80', fit: 'cover', position: 'center' },
       'interior-detail': { image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=800&q=80', fit: 'cover', position: 'center' },
       'ceramic-coating': { image: 'https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&w=800&q=80', fit: 'cover', position: 'center' }
     }
@@ -77,18 +78,7 @@ const defaultConfig: HomepageVisualsConfig = {
   featuredTransformations: {
     published: true,
     title: 'Featured Transformations',
-    items: [
-      {
-        id: 'tf-1',
-        before: 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=1200&q=80',
-        after: 'https://images.unsplash.com/photo-1549317336-206569e8475c?auto=format&fit=crop&w=1200&q=80',
-        title: 'Paint Correction & Ceramic Coat',
-        caption: 'Multi-stage polish removing 90%+ imperfections, topped with professional grade 5-year ceramic.',
-        tags: 'Paint Correction, Ceramic Coating, Exterior Detail',
-        layoutSize: 'wide',
-        published: true
-      }
-    ]
+    items: []
   },
   membership: {
     published: true,
@@ -131,6 +121,18 @@ const defaultConfig: HomepageVisualsConfig = {
   }
 };
 
+function isDefaultTransformationPlaceholder(item: any) {
+  const id = String(item?.id ?? '').trim().toLowerCase();
+  const title = String(item?.title ?? '').trim().toLowerCase();
+  const before = String(item?.before ?? '');
+  const after = String(item?.after ?? '');
+  return (
+    id === 'tf-1' ||
+    title === 'paint correction & ceramic coat' ||
+    (before.includes('images.unsplash.com/photo-1503376780353') && after.includes('images.unsplash.com/photo-1549317336'))
+  );
+}
+
 export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
   const router = useRouter();
   const [config, setConfig] = useState<HomepageVisualsConfig>(defaultConfig);
@@ -138,6 +140,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isBusy, setIsBusy] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
     if (initialJson) {
@@ -154,7 +157,9 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
           featuredTransformations: {
             ...defaultConfig.featuredTransformations,
             ...parsed.featuredTransformations,
-            items: parsed.featuredTransformations?.items ?? defaultConfig.featuredTransformations.items
+            items: Array.isArray(parsed.featuredTransformations?.items)
+              ? parsed.featuredTransformations.items.filter((item: any) => !isDefaultTransformationPlaceholder(item))
+              : []
           },
           membership: { ...defaultConfig.membership, ...parsed.membership },
           fleet: { ...defaultConfig.fleet, ...parsed.fleet },
@@ -290,6 +295,42 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
     }
   };
 
+  const uploadVisualFile = async (file: File, slot: string, onUploaded: (url: string) => void) => {
+    setUploadStatus(null);
+    const fd = new FormData();
+    fd.set('file', file);
+    fd.set('slot', slot);
+    try {
+      const res = await fetch('/api/admin/homepage-visual-upload', { method: 'POST', body: fd });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
+      if (!res.ok || !data.ok || !data.url) {
+        setUploadStatus({ kind: 'err', text: data.error || `Upload failed (${res.status}).` });
+        return;
+      }
+      onUploaded(data.url);
+      setUploadStatus({ kind: 'ok', text: 'Image uploaded. Save Visuals to publish it on the homepage.' });
+    } catch (err) {
+      setUploadStatus({ kind: 'err', text: err instanceof Error ? err.message : 'Upload failed.' });
+    }
+  };
+
+  const UploadControl = ({ slot, onUploaded }: { slot: string; onUploaded: (url: string) => void }) => (
+    <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gold/30 bg-gold/5 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/10">
+      <Upload className="h-3.5 w-3.5" />
+      Upload from device
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.currentTarget.files?.[0];
+          e.currentTarget.value = '';
+          if (file) void uploadVisualFile(file, slot, onUploaded);
+        }}
+      />
+    </label>
+  );
+
   const configKeyMap: Record<'hero' | 'services' | 'featured' | 'membership' | 'fleet' | 'process' | 'finalCta', keyof HomepageVisualsConfig> = {
     hero: 'hero',
     services: 'services',
@@ -347,6 +388,12 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
       {saveStatus && (
         <div className={`p-4 rounded-xl border ${saveStatus.kind === 'ok' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>
           <p className="text-sm font-bold">{saveStatus.text}</p>
+        </div>
+      )}
+
+      {uploadStatus && (
+        <div className={`p-4 rounded-xl border ${uploadStatus.kind === 'ok' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>
+          <p className="text-sm font-bold">{uploadStatus.text}</p>
         </div>
       )}
 
@@ -445,6 +492,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                     placeholder="https://images.unsplash.com/..."
                     className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-2.5 text-sm text-white"
                   />
+                  <UploadControl slot="hero" onUploaded={(url) => updateSectionField('hero', 'image', url)} />
                 </div>
                 {/* Crop alignment tools */}
                 <div className="grid grid-cols-2 gap-3 bg-zinc-950 p-4 rounded-2xl border border-white/5">
@@ -458,6 +506,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                       <option value="cover">Cover (Fill aspect)</option>
                       <option value="contain">Contain (Full image)</option>
                     </select>
+                    <p className="mt-1 text-[9px] leading-snug text-zinc-500">Cover fills the card and crops edges. Contain shows the full image with possible empty space.</p>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Align Position</label>
@@ -472,6 +521,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                       <option value="left">Left</option>
                       <option value="right">Right</option>
                     </select>
+                    <p className="mt-1 text-[9px] leading-snug text-zinc-500">Center/top/bottom choose the focal point when Cover crops the photo.</p>
                   </div>
                 </div>
               </div>
@@ -519,9 +569,10 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
 
               <div className="grid gap-4 md:grid-cols-2">
                 {[
-                  { slug: 'full-detail', label: 'Full Detail Package' },
                   { slug: 'exterior-wash', label: 'Exterior Wash' },
+                  { slug: 'exterior-detail', label: 'Exterior Detail' },
                   { slug: 'interior-detail', label: 'Interior Detail' },
+                  { slug: 'full-detail', label: 'Full Detail Package' },
                   { slug: 'ceramic-coating', label: 'Ceramic Coating' },
                 ].map((svc) => {
                   const cover = config.services.covers[svc.slug] || { image: '', fit: 'cover', position: 'center' };
@@ -547,6 +598,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                           placeholder="Image URL"
                           className="w-full rounded-lg border border-zinc-850 bg-black px-3 py-1.5 text-xs text-white"
                         />
+                        <UploadControl slot={`service-${svc.slug}`} onUploaded={(url) => updateServiceCover(svc.slug, 'image', url)} />
                         <div className="grid grid-cols-2 gap-2">
                           <select
                             value={cover.fit}
@@ -566,6 +618,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                             <option value="bottom">Bottom</option>
                           </select>
                         </div>
+                        <p className="text-[9px] leading-snug text-zinc-500">Preview uses the exact same fit and position the homepage service card uses.</p>
                       </div>
                     </div>
                   );
@@ -674,6 +727,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                             onChange={(e) => updateTransformation(idx, 'before', e.target.value)}
                             className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-1.5 text-xs text-white"
                           />
+                          <UploadControl slot={`featured-${item.id}-before`} onUploaded={(url) => updateTransformation(idx, 'before', url)} />
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">After Image URL</label>
@@ -683,6 +737,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                             onChange={(e) => updateTransformation(idx, 'after', e.target.value)}
                             className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-1.5 text-xs text-white"
                           />
+                          <UploadControl slot={`featured-${item.id}-after`} onUploaded={(url) => updateTransformation(idx, 'after', url)} />
                         </div>
 
                         {/* Staggered aspect ratio tester */}
@@ -737,6 +792,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                     onChange={(e) => updateSectionField('membership', 'image', e.target.value)}
                     className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-2.5 text-sm text-white"
                   />
+                  <UploadControl slot="membership-cover" onUploaded={(url) => updateSectionField('membership', 'image', url)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -818,6 +874,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                     onChange={(e) => updateSectionField('fleet', 'image', e.target.value)}
                     className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-2.5 text-sm text-white"
                   />
+                  <UploadControl slot="fleet-cover" onUploaded={(url) => updateSectionField('fleet', 'image', url)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -931,6 +988,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                               onChange={(e) => updateProcessStep(idx, 'image', e.target.value)}
                               className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-1.5 text-xs text-white"
                             />
+                            <UploadControl slot={`process-step-${idx + 1}`} onUploaded={(url) => updateProcessStep(idx, 'image', url)} />
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
@@ -1015,6 +1073,7 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                     onChange={(e) => updateSectionField('finalCta', 'image', e.target.value)}
                     className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-2.5 text-sm text-white"
                   />
+                  <UploadControl slot="final-cta" onUploaded={(url) => updateSectionField('finalCta', 'image', url)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
