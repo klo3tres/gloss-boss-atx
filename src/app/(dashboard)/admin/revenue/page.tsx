@@ -6,7 +6,6 @@ import { displayMoney } from '@/lib/display-format';
 import {
   buildRevenueDiagnostics,
   fetchPaymentsSince,
-  startOfMonthIso,
   startOfTodayIso,
   startOfWeekIso,
   startOfYearIso,
@@ -49,6 +48,13 @@ function startOfSixMonthsAgoIso(): string {
   return d.toISOString();
 }
 
+function startOfRolling30Iso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
 function StatBlock({ label, value, hint, href }: { label: string; value: string; hint?: string; href?: string }) {
   const inner = (
     <div className='gb-premium-card rounded-2xl border border-gold/15 bg-black/50 p-5 shadow-md backdrop-blur-sm hover:border-gold/45 hover:shadow-[0_0_20px_rgba(212,175,55,0.12)] transition duration-300'>
@@ -77,6 +83,7 @@ export default async function AdminRevenuePage({
 
   const sp = searchParams ? await searchParams : {};
   const includeTest = sp.includeTest === '1';
+  const periodStartIso = startOfRolling30Iso();
 
   const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
   const apptById = new Map(
@@ -90,7 +97,7 @@ export default async function AdminRevenuePage({
   const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes, techsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
-    fetchPaymentsSince(admin, startOfMonthIso(), now),
+    fetchPaymentsSince(admin, periodStartIso, now),
     fetchPaymentsSince(admin, startOfYearIso(), now),
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
     admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class').order('scheduled_start', { ascending: false }).limit(800),
@@ -104,14 +111,14 @@ export default async function AdminRevenuePage({
   }
 
   const sumOpts = includeTest
-    ? { fromIso: startOfMonthIso(), toIso: now }
-    : { excludeTest: true as const, apptById, fromIso: startOfMonthIso(), toIso: now };
+    ? { fromIso: periodStartIso, toIso: now }
+    : { excludeTest: true as const, apptById, fromIso: periodStartIso, toIso: now };
   const today = summarizePayments(todayRows, includeTest ? { fromIso: startOfTodayIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfTodayIso(), toIso: now });
   const week = summarizePayments(weekRows, includeTest ? { fromIso: startOfWeekIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfWeekIso(), toIso: now });
   const month = summarizePayments(monthRows, sumOpts);
   const year = summarizePayments(yearRows, includeTest ? { fromIso: startOfYearIso(), toIso: now } : { excludeTest: true, apptById, fromIso: startOfYearIso(), toIso: now });
   const monthDiagnostics = buildRevenueDiagnostics(monthRows, sumOpts);
-  const financial = await getFinancialSnapshot(admin, { startDate: startOfMonthIso(), endDate: now, includeTest });
+  const financial = await getFinancialSnapshot(admin, { startDate: periodStartIso, endDate: now, includeTest });
   const sourceBreakdown = [
     { label: 'Stripe/card', cents: financial.stripeRevenueCents, hint: 'Succeeded card payments saved locally' },
     { label: 'Cash', cents: financial.cashRevenueCents, hint: 'Manual cash payments' },
@@ -147,7 +154,7 @@ export default async function AdminRevenuePage({
     .from('appointments')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'completed')
-    .gte('job_completed_at', startOfMonthIso());
+    .gte('job_completed_at', periodStartIso);
 
   // Deposit collection rate
   const apptsWithDeposits = allAppts.filter((a) => (a.deposit_amount_cents ?? 0) > 0);
@@ -298,9 +305,9 @@ export default async function AdminRevenuePage({
   return (
     <DashboardShell title='Revenue Command Center' subtitle='SaaS-quality transaction analytics and business profit ledger.' role='admin'>
       <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner MTD Revenue</p>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner 30-Day Revenue</p>
         <p className='mt-2 font-mono text-4xl font-black text-gold-soft sm:text-5xl'>{money(month.grossCents)}</p>
-        <p className='mt-1 text-sm text-zinc-400'>Collected this month · {month.paymentCount} payments</p>
+        <p className='mt-1 text-sm text-zinc-400'>Collected in the last 30 days · {month.paymentCount} payments</p>
         <div className='mt-6 flex flex-wrap gap-2'>
           <Link href='/admin' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
             ← Command center
@@ -410,15 +417,15 @@ export default async function AdminRevenuePage({
       <section className='space-y-3 mb-8'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collected Cashflow</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Stripe (month)' value={money(month.stripeCents)} hint='Succeeded card payments' />
-          <StatBlock label='Cash (month)' value={money(month.cashCents)} hint='Hand-collected cash' />
-          <StatBlock label='Zelle/Venmo (month)' value={money(month.zelleCents)} hint='Electronic direct deposits' />
-          <StatBlock label='Other (month)' value={money(month.otherCents)} hint='Comp/manual ledger rows' />
+          <StatBlock label='Stripe (30 days)' value={money(month.stripeCents)} hint='Succeeded card payments' />
+          <StatBlock label='Cash (30 days)' value={money(month.cashCents)} hint='Hand-collected cash' />
+          <StatBlock label='Zelle/Venmo (30 days)' value={money(month.zelleCents)} hint='Electronic direct deposits' />
+          <StatBlock label='Other (30 days)' value={money(month.otherCents)} hint='Comp/manual ledger rows' />
         </div>
         <div className='mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
           <StatBlock label='This week' value={money(week.grossCents)} hint={`${week.paymentCount} payment(s)`} href='/admin/payments?range=week' />
-          <StatBlock label='This month' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
+          <StatBlock label='Last 30 days' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
           <StatBlock label='Year to date' value={money(year.grossCents)} hint={`${year.paymentCount} payment(s)`} />
         </div>
       </section>
@@ -448,7 +455,7 @@ export default async function AdminRevenuePage({
       <section className='mb-8 space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed MTD' />
+          <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed 30 days' />
           <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
           <StatBlock label='Fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
           <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
@@ -466,7 +473,7 @@ export default async function AdminRevenuePage({
       <section className='mb-8 grid gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]'>
         <div className='rounded-3xl border border-gold/20 bg-black/45 p-5'>
           <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue source breakdown</p>
-          <p className='mt-1 text-xs text-zinc-500'>Canonical month-to-date sources from payments and receipt-backed records.</p>
+          <p className='mt-1 text-xs text-zinc-500'>Canonical last-30-day sources from payments and receipt-backed records.</p>
           <div className='mt-4 space-y-2'>
             {sourceBreakdown.map((row) => (
               <div key={row.label} className='rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3'>
@@ -495,7 +502,7 @@ export default async function AdminRevenuePage({
                     <p className='mt-0.5 text-[10px] text-zinc-500'>{row.method ?? row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
                   </Link>
                 ))}
-                {financial.recentPayments.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No counted payment rows this month.</p> : null}
+                {financial.recentPayments.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No counted payment rows in this 30-day period.</p> : null}
               </div>
             </div>
             <div>
@@ -510,7 +517,7 @@ export default async function AdminRevenuePage({
                     <p className='mt-0.5 text-[10px] text-zinc-500'>{row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
                   </div>
                 ))}
-                {financial.recentExpenses.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No expense rows this month.</p> : null}
+                {financial.recentExpenses.length === 0 ? <p className='px-3 py-8 text-center text-xs text-zinc-500'>No expense rows in this 30-day period.</p> : null}
               </div>
             </div>
           </div>
@@ -566,7 +573,7 @@ export default async function AdminRevenuePage({
       </div>
 
       <section className='mt-8 rounded-2xl border border-white/10 bg-black/40 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · this month</p>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · last 30 days</p>
         <dl className='mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
           <div className='rounded-xl border border-white/10 px-3 py-2'>
             <dt className='text-zinc-500'>Payment rows loaded</dt>

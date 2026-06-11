@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image } from 'lucide-react';
+import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
@@ -48,6 +48,22 @@ export type CustomerDashboardProps = {
   snapshotByAppt?: Record<string, CustomerApptSnapshotView>;
   loyaltyStampsCount?: number;
   activeCardDesign?: any;
+  membership?: CustomerMembershipView | null;
+  activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
+};
+
+export type CustomerMembershipView = {
+  status: string;
+  tier: string;
+  name: string;
+  billingInterval: string;
+  priceCents: number;
+  discountPercent: number;
+  creditBalanceCents: number;
+  currentPeriodEnd: string | null;
+  endsAt: string | null;
+  benefits: string[];
+  includedServices: string[];
 };
 
 function money(cents: number) {
@@ -98,6 +114,38 @@ function vehiclesFrom(appt: CustomerAppt) {
   return ['Vehicle on file'];
 }
 
+function tierTheme(tier?: string) {
+  const t = String(tier ?? '').toLowerCase();
+  if (t.includes('gold')) return {
+    label: 'Gold Member',
+    border: 'border-amber-300/45',
+    glow: 'shadow-[0_0_42px_rgba(245,197,66,0.16)]',
+    chip: 'bg-amber-300 text-black',
+    text: 'text-amber-200',
+  };
+  if (t.includes('silver')) return {
+    label: 'Silver Member',
+    border: 'border-zinc-300/35',
+    glow: 'shadow-[0_0_38px_rgba(212,212,216,0.12)]',
+    chip: 'bg-zinc-200 text-black',
+    text: 'text-zinc-200',
+  };
+  if (t.includes('bronze')) return {
+    label: 'Bronze Member',
+    border: 'border-orange-300/35',
+    glow: 'shadow-[0_0_38px_rgba(251,146,60,0.12)]',
+    chip: 'bg-orange-300 text-black',
+    text: 'text-orange-200',
+  };
+  return {
+    label: 'Gloss Boss Member',
+    border: 'border-gold/30',
+    glow: 'shadow-[0_0_34px_rgba(212,175,55,0.12)]',
+    chip: 'bg-gold text-black',
+    text: 'text-gold-soft',
+  };
+}
+
 export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const loyaltyVisits = typeof props.loyaltyStampsCount === 'number'
     ? props.loyaltyStampsCount
@@ -107,6 +155,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const [rotateY, setRotateY] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [memberTab, setMemberTab] = useState<'benefits' | 'credits' | 'deals'>('benefits');
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const card = e.currentTarget;
@@ -177,6 +226,12 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     : null;
 
   const reviewUrl = props.googleReviewUrl?.trim() || '';
+  const membership = props.membership ?? null;
+  const theme = tierTheme(membership?.tier);
+  const lastCompleted = props.history[0] ? apptFromSnapshot(props.history[0], props.snapshotByAppt?.[props.history[0].id]) : null;
+  const nextRecommended = lastCompleted
+    ? new Date(new Date(lastCompleted.scheduled_start).getTime() + 21 * 24 * 60 * 60 * 1000)
+    : null;
 
   // Loyalty stepper variables
   const loyaltyTarget = 5;
@@ -185,6 +240,133 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
 
   return (
     <div className="space-y-8 rounded-3xl p-1 sm:p-2">
+      <section className={`overflow-hidden rounded-3xl border ${theme.border} bg-[radial-gradient(circle_at_top_left,rgba(212,175,55,0.18),transparent_34%),linear-gradient(135deg,rgba(24,24,27,0.96),rgba(0,0,0,0.96))] p-6 ${theme.glow}`}>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${theme.chip}`}>
+                {membership ? theme.label : 'Member Pricing Available'}
+              </span>
+              <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                {membership?.status ?? 'Sign in upgrade ready'}
+              </span>
+            </div>
+            <h2 className="mt-4 text-3xl font-black uppercase leading-none tracking-tight text-white sm:text-4xl">
+              {membership ? membership.name : 'Unlock Gloss Boss Memberships'}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+              {membership
+                ? `Your ${membership.billingInterval} plan keeps your vehicle on schedule with member pricing, loyalty progress, and priority booking in one place.`
+                : 'Join a monthly plan to unlock member pricing, loyalty stamps, priority scheduling, credits, and simpler repeat booking.'}
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Discount</p>
+                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{membership ? `${membership.discountPercent}%` : 'Members'}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Credits</p>
+                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{money(membership?.creditBalanceCents ?? 0)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Punches</p>
+                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{currentStep}/{loyaltyTarget}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Renews</p>
+                <p className={`mt-1 text-sm font-black ${theme.text}`}>
+                  {membership?.currentPeriodEnd ? new Date(membership.currentPeriodEnd).toLocaleDateString() : membership?.endsAt ? `Ends ${new Date(membership.endsAt).toLocaleDateString()}` : 'On file'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex min-w-[260px] flex-col justify-between rounded-3xl border border-white/10 bg-black/50 p-5">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft">Next best action</p>
+              <p className="mt-2 text-lg font-black uppercase text-white">
+                {nextRecommended ? `Recommended ${nextRecommended.toLocaleDateString()}` : 'Start your shine schedule'}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
+              </p>
+            </div>
+            <div className="mt-5 grid gap-2">
+              <Link href="/book" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110">
+                Book with member pricing <ArrowUpRight className="h-4 w-4" />
+              </Link>
+              <Link href="/memberships" className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-black/35 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:border-gold/40 hover:text-gold-soft">
+                {membership ? 'Upgrade membership' : 'View memberships'}
+              </Link>
+              {membership ? (
+                <Link href="/dashboard/settings" className="inline-flex items-center justify-center rounded-2xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs font-black uppercase tracking-wider text-rose-100 hover:bg-rose-500/15">
+                  Manage renewal
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-white/10 bg-black/35 p-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ['benefits', 'Benefits', ShieldCheck],
+              ['credits', 'Credits', CreditCard],
+              ['deals', 'Deals', Tag],
+            ].map(([key, label, Icon]) => (
+              <button
+                key={String(key)}
+                type="button"
+                onClick={() => setMemberTab(key as typeof memberTab)}
+                className={`flex items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[10px] font-black uppercase tracking-wider transition ${memberTab === key ? 'bg-gold text-black' : 'bg-zinc-950/60 text-zinc-400 hover:text-white'}`}
+              >
+                <Icon className="h-4 w-4" /> {String(label)}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+            {memberTab === 'benefits' ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {(membership?.benefits?.length ? membership.benefits : ['Member pricing on eligible details', 'Priority scheduling window', 'Digital punch-card rewards', 'Cleaner repeat-booking experience']).slice(0, 6).map((item) => (
+                  <div key={item} className="flex items-start gap-2 text-sm text-zinc-200">
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-gold-soft" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            ) : memberTab === 'credits' ? (
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Available credit</p>
+                  <p className="mt-1 font-mono text-2xl font-black text-gold-soft">{money(membership?.creditBalanceCents ?? 0)}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Reward progress</p>
+                  <p className="mt-1 font-mono text-2xl font-black text-white">{currentStep}/{loyaltyTarget}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Reward menu</p>
+                  <p className="mt-1 text-sm font-bold text-zinc-200">Free wash reward unlocks when your punch card is full.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {(props.activeDeals ?? []).length === 0 ? (
+                  <p className="text-sm text-zinc-500">No active promos are published right now. Member pricing still applies when eligible.</p>
+                ) : (
+                  (props.activeDeals ?? []).slice(0, 4).map((deal) => (
+                    <div key={deal.id} className="rounded-2xl border border-gold/20 bg-gold/5 p-4">
+                      <p className="text-sm font-black uppercase text-white">{deal.title}</p>
+                      <p className="mt-1 text-xs text-zinc-400">{deal.description}</p>
+                      <p className="mt-2 text-xs font-black uppercase text-gold-soft">{deal.discount}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Review Callout */}
       <section className="gb-premium-card rounded-3xl border border-gold/30 p-6 shadow-[0_0_40px_rgba(212,175,55,0.15)] backdrop-blur">
         <SectionEyebrow>Thank you</SectionEyebrow>

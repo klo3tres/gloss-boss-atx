@@ -32,6 +32,42 @@ function errorMessage(e: unknown) {
   return e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unavailable';
 }
 
+async function writeStripeChargePayment(db: SupabaseClient, row: Record<string, unknown>, fallbackRow: Record<string, unknown>) {
+  const piId = typeof row.stripe_payment_intent_id === 'string' ? row.stripe_payment_intent_id : '';
+  let up = await db.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
+  if (!up.error) return up;
+
+  if (piId) {
+    const existing = await db
+      .from('payments')
+      .select('id')
+      .eq('stripe_payment_intent_id', piId)
+      .maybeSingle();
+    if (!existing.error && existing.data?.id) {
+      return db.from('payments').update(row).eq('id', existing.data.id);
+    }
+  }
+
+  up = await db.from('payments').insert(row);
+  if (!up.error) return up;
+
+  if (/fallback_booking_id|appointment_id|stripe_checkout_session_id|paid_at|payment_kind|provider|metadata|is_test|exclude_from_revenue|schema cache|Could not find|unique|constraint/i.test(up.error.message)) {
+    if (piId) {
+      const existing = await db
+        .from('payments')
+        .select('id')
+        .eq('stripe_payment_intent_id', piId)
+        .maybeSingle();
+      if (!existing.error && existing.data?.id) {
+        return db.from('payments').update(fallbackRow).eq('id', existing.data.id);
+      }
+    }
+    return db.from('payments').insert(fallbackRow);
+  }
+
+  return up;
+}
+
 export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFinanceSnapshot> {
   let paymentAvailableCents: number | null = null;
   let paymentPendingCents: number | null = null;
@@ -82,29 +118,36 @@ export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFi
     recentTransfers = [];
   }
 
-  try {
-    const treasury = (stripe as unknown as { treasury?: { financialAccounts?: { list: (args: { limit: number }) => Promise<{ data: Array<{ id: string; balance?: { cash?: { usd?: number }; inbound_pending?: { usd?: number }; outbound_pending?: { usd?: number } } }> }> } } }).treasury;
-    if (!treasury?.financialAccounts?.list) throw new Error('Stripe Treasury API is not enabled for this key.');
-    const accounts = await treasury.financialAccounts.list({ limit: 10 });
-    treasuryAvailableCents = accounts.data.reduce((s, a) => s + (a.balance?.cash?.usd ?? 0), 0);
-    treasuryPendingCents = accounts.data.reduce((s, a) => s + (a.balance?.inbound_pending?.usd ?? 0) - Math.abs(a.balance?.outbound_pending?.usd ?? 0), 0);
-  } catch (e) {
-    treasuryUnavailableReason = `Stripe Treasury/financial account access unavailable: ${errorMessage(e)}`;
+  const syncTreasury = process.env.STRIPE_ENABLE_TREASURY_SYNC === 'true';
+  const syncIssuing = process.env.STRIPE_ENABLE_ISSUING_SYNC === 'true';
+
+  if (syncTreasury) {
+    try {
+      const treasury = (stripe as unknown as { treasury?: { financialAccounts?: { list: (args: { limit: number }) => Promise<{ data: Array<{ id: string; balance?: { cash?: { usd?: number }; inbound_pending?: { usd?: number }; outbound_pending?: { usd?: number } } }> }> } } }).treasury;
+      if (!treasury?.financialAccounts?.list) throw new Error('Stripe Treasury API is not enabled for this key.');
+      const accounts = await treasury.financialAccounts.list({ limit: 10 });
+      treasuryAvailableCents = accounts.data.reduce((s, a) => s + (a.balance?.cash?.usd ?? 0), 0);
+      treasuryPendingCents = accounts.data.reduce((s, a) => s + (a.balance?.inbound_pending?.usd ?? 0) - Math.abs(a.balance?.outbound_pending?.usd ?? 0), 0);
+    } catch (e) {
+      treasuryUnavailableReason = `Stripe Treasury/financial account access unavailable: ${errorMessage(e)}`;
+    }
   }
 
-  try {
-    const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<{ id: string; amount: number; created: number; merchant_data?: { name?: string | null }; status?: string | null }> }> } } }).issuing;
-    if (!issuing?.transactions?.list) throw new Error('Stripe Issuing API is not enabled for this key.');
-    const txs = await issuing.transactions.list({ limit: 20 });
-    recentCardSpends = txs.data.map((tx) => ({
-      id: tx.id,
-      amount: tx.amount,
-      created: tx.created,
-      merchant: tx.merchant_data?.name ?? null,
-      status: tx.status ?? null,
-    }));
-  } catch (e) {
-    issuingUnavailableReason = `Stripe Treasury/Issuing access unavailable: ${errorMessage(e)}`;
+  if (syncIssuing) {
+    try {
+      const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<{ id: string; amount: number; created: number; merchant_data?: { name?: string | null }; status?: string | null }> }> } } }).issuing;
+      if (!issuing?.transactions?.list) throw new Error('Stripe Issuing API is not enabled for this key.');
+      const txs = await issuing.transactions.list({ limit: 20 });
+      recentCardSpends = txs.data.map((tx) => ({
+        id: tx.id,
+        amount: tx.amount,
+        created: tx.created,
+        merchant: tx.merchant_data?.name ?? null,
+        status: tx.status ?? null,
+      }));
+    } catch (e) {
+      issuingUnavailableReason = `Stripe Treasury/Issuing access unavailable: ${errorMessage(e)}`;
+    }
   }
 
   return {
@@ -161,24 +204,21 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
         },
       };
 
-      let up = await db.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
-      if (up.error && /fallback_booking_id|appointment_id|stripe_checkout_session_id|paid_at|payment_kind|provider|metadata|is_test|exclude_from_revenue|schema cache|Could not find/i.test(up.error.message)) {
-        up = await db.from('payments').upsert(
-          {
-            amount_cents: charge.amount,
-            status: 'succeeded',
-            payment_method: 'stripe',
-            created_at: paidAt,
-            stripe_payment_intent_id: piId,
-          },
-          { onConflict: 'stripe_payment_intent_id' },
-        );
-      }
+      const fallbackRow = {
+        amount_cents: charge.amount,
+        status: 'succeeded',
+        payment_method: 'stripe',
+        created_at: paidAt,
+        stripe_payment_intent_id: piId,
+      };
+      const up = await writeStripeChargePayment(db, row, fallbackRow);
       if (up.error) console.warn('[stripe-finance-sync] charge payment upsert failed', charge.id, up.error.message);
     }
   } catch (e) {
     console.warn('[stripe-finance-sync] failed to sync charges into payments', e);
   }
+
+  if (process.env.STRIPE_ENABLE_ISSUING_SYNC !== 'true') return;
 
   try {
     const issuing = (stripe as unknown as { issuing?: { transactions?: { list: (args: { limit: number }) => Promise<{ data: Array<Record<string, unknown> & { id: string; amount: number; created: number; merchant_data?: { name?: string | null } }> }> } } }).issuing;

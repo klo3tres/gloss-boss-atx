@@ -94,6 +94,27 @@ type AgreementRow = {
   signed_at: string | null;
 };
 
+type CustomerMembershipView = {
+  status: string;
+  tier: string;
+  name: string;
+  billingInterval: string;
+  priceCents: number;
+  discountPercent: number;
+  creditBalanceCents: number;
+  currentPeriodEnd: string | null;
+  endsAt: string | null;
+  benefits: string[];
+  includedServices: string[];
+};
+
+type ActiveDealView = {
+  id: string;
+  title: string;
+  description: string;
+  discount: string;
+};
+
 
 
 function friendlyEventLabel(t: string): string {
@@ -108,6 +129,95 @@ function chicago(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function toStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean);
+    } catch {
+      return value.split('\n').map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+async function loadActiveCustomerMembership(adminDb: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, customerId: string): Promise<CustomerMembershipView | null> {
+  const baseSelect =
+    'id, membership_plan_id, status, ends_at, current_period_end, credit_balance_cents, billing_interval';
+  let membershipRes = await adminDb
+    .from('customer_memberships')
+    .select(baseSelect)
+    .eq('customer_id', customerId)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipRes.error) {
+    membershipRes = await adminDb
+      .from('customer_memberships')
+      .select('id, membership_plan_id, status, ends_at')
+      .eq('customer_id', customerId)
+      .in('status', ['active', 'trialing', 'past_due'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+  }
+
+  const membership = membershipRes.data as Record<string, unknown> | null;
+  if (!membership?.membership_plan_id) return null;
+
+  const planRes = await adminDb
+    .from('membership_plans')
+    .select('id, name, tier, price_cents, billing_interval, discount_percent, benefits, included_services')
+    .eq('id', String(membership.membership_plan_id))
+    .maybeSingle();
+  const plan = (planRes.data ?? {}) as Record<string, unknown>;
+
+  return {
+    status: String(membership.status ?? 'active'),
+    tier: String(plan.tier ?? 'member'),
+    name: String(plan.name ?? 'Gloss Boss Membership'),
+    billingInterval: String(membership.billing_interval ?? plan.billing_interval ?? 'monthly'),
+    priceCents: typeof plan.price_cents === 'number' ? plan.price_cents : 0,
+    discountPercent: typeof plan.discount_percent === 'number' ? plan.discount_percent : 0,
+    creditBalanceCents: typeof membership.credit_balance_cents === 'number' ? membership.credit_balance_cents : 0,
+    currentPeriodEnd: typeof membership.current_period_end === 'string' ? membership.current_period_end : null,
+    endsAt: typeof membership.ends_at === 'string' ? membership.ends_at : null,
+    benefits: toStringList(plan.benefits),
+    includedServices: toStringList(plan.included_services),
+  };
+}
+
+async function loadCustomerDeals(adminDb: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>): Promise<ActiveDealView[]> {
+  const now = new Date().toISOString();
+  const { data, error } = await adminDb
+    .from('promo_codes')
+    .select('id, code, description, discount_type, discount_value, enabled, starts_at, ends_at, archived_at')
+    .eq('enabled', true)
+    .is('archived_at', null)
+    .limit(8);
+  if (error) return [];
+  return ((data ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => {
+      const starts = typeof row.starts_at === 'string' ? row.starts_at : '';
+      const ends = typeof row.ends_at === 'string' ? row.ends_at : '';
+      return (!starts || starts <= now) && (!ends || ends >= now);
+    })
+    .map((row) => {
+      const type = String(row.discount_type ?? 'percent');
+      const value = Number(row.discount_value ?? 0);
+      const discount = type === 'amount' ? `$${value.toFixed(2)} off` : type === 'comp' ? 'Free/comp offer' : `${value}% off`;
+      return {
+        id: String(row.id),
+        title: String(row.code ?? 'Member offer'),
+        description: String(row.description ?? 'Active Gloss Boss promotion'),
+        discount,
+      };
+    });
 }
 
 
@@ -281,26 +391,22 @@ export default async function CustomerDashboardRootPage() {
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
   let loyaltyStampsCount = 0;
+  let customerMembership: CustomerMembershipView | null = null;
+  let activeDeals: ActiveDealView[] = [];
   let activeCardDesign = null;
   if (adminDb && userEmail) {
     const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
     if (cust?.id) {
-      const [{ count }, { data: stamps }, { data: activeMembership }] = await Promise.all([
+      const [{ count }, { data: stamps }] = await Promise.all([
         adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id),
         adminDb.from('loyalty_stamps').select('stamp_count').eq('customer_id', cust.id),
-        adminDb
-          .from('customer_memberships')
-          .select('membership_plans(tier)')
-          .eq('customer_id', cust.id)
-          .in('status', ['active', 'trialing', 'past_due'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
       ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
       loyaltyStampsCount = (stamps ?? []).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+      customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
+      activeDeals = await loadCustomerDeals(adminDb);
 
-      const tier = (activeMembership?.membership_plans as any)?.tier || 'default';
+      const tier = customerMembership?.tier || 'default';
       const { data: design } = await adminDb
         .from('loyalty_card_designs')
         .select('*')
@@ -398,6 +504,8 @@ export default async function CustomerDashboardRootPage() {
         snapshotByAppt={snapshotByAppt}
         loyaltyStampsCount={loyaltyStampsCount}
         activeCardDesign={activeCardDesign}
+        membership={customerMembership}
+        activeDeals={activeDeals}
       />
     </DashboardShell>
   );
