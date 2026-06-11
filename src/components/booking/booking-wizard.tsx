@@ -1916,11 +1916,17 @@ export function BookingWizard() {
                       ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
                     </span>
                   </p>
+                  {creditAppliedCents > 0 ? (
+                    <p className='mt-2 flex justify-between text-xs font-black uppercase tracking-wider text-cyan-300'>
+                      <span>Credit applied</span>
+                      <span className='tabular-nums'>-${(creditAppliedCents / 100).toFixed(2)}</span>
+                    </p>
+                  ) : null}
                   <p className='mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gold/45 bg-gold/10 px-3 py-2.5 text-sm font-bold text-gold-soft shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'>
                     <span className='max-w-[62%] text-[11px] font-black uppercase leading-tight tracking-wide text-gold-soft'>
-                      Deposit ({priceSummary.breakdown.depositPercent}%)
+                      {paymentChoice === 'full' ? 'Amount due today' : `Card deposit due today (${priceSummary.breakdown.depositPercent}%)`}
                     </span>
-                    <span className='tabular-nums text-base font-black tracking-tight'>${(priceSummary.breakdown.depositCents / 100).toFixed(2)}</span>
+                    <span className='tabular-nums text-base font-black tracking-tight'>${(cardDueCents / 100).toFixed(2)}</span>
                   </p>
                 </div>
               </div>
@@ -1933,6 +1939,7 @@ export function BookingWizard() {
                 {bookingLines
                   .map((line, i) => {
                     const labels = (line.addOnSlugs ?? []).map((s) => addonOptions.find((a) => a.slug === s)?.label ?? s);
+
                     return labels.length ? `V${i + 1}: ${labels.join(', ')}` : '';
                   })
                   .filter(Boolean)
@@ -1963,7 +1970,8 @@ export function BookingWizard() {
                 ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
               </p>
               <p className='text-[10px] text-zinc-400'>
-                Deposit ${(priceSummary.breakdown.depositCents / 100).toFixed(2)} ·{' '}
+                {creditAppliedCents > 0 ? `Credit: -$${(creditAppliedCents / 100).toFixed(2)} · ` : ''}
+                Due: ${(cardDueCents / 100).toFixed(2)} ·{' '}
                 {paymentChoice === 'full' || freePromoEligible ? 'Pay full' : 'Pay deposit'}
               </p>
             </div>

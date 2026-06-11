@@ -30,6 +30,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     featuredShowcase: defaultFeaturedShowcaseSlides(),
     featuredShowcaseFromCms: false,
     googleReviewUrl: '',
+    homepageVisuals: null,
   };
 }
 
@@ -55,7 +56,7 @@ export async function GET() {
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -67,6 +68,7 @@ export async function GET() {
       client.from('review_settings').select('value').eq('key', 'google_business').maybeSingle(),
       client.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
       client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb', 'fleet_pricing']),
+      client.from('site_settings').select('value').eq('key', 'homepage_visuals').maybeSingle(),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -187,6 +189,7 @@ export async function GET() {
       featuredShowcase,
       featuredShowcaseFromCms,
       googleReviewUrl,
+      homepageVisuals: visualsRes.data?.value ? (typeof visualsRes.data.value === 'string' ? JSON.parse(visualsRes.data.value) : visualsRes.data.value) : null,
       fleetServicesEnabled,
       fleetServicesBlurb,
       fleetPricing,

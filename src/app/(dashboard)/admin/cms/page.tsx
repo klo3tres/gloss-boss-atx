@@ -21,6 +21,7 @@ import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normali
 import { submitHomepageLogoForm, submitNavbarLogoForm } from '@/lib/admin/site-branding-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { WorkOrderUploadsTab } from '@/components/admin/work-order-uploads-tab';
+import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-manager';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,13 +86,15 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   let navbarLogoUrl = '';
   let homepageLogoUrl = '';
   let bookingAvail = parseBookingAvailabilityConfig(DEFAULT_BOOKING_AVAILABILITY);
+  let homepageVisualsJson = '';
   try {
-    const settingsRes = await supabase.from('site_settings').select('key, value').in('key', ['navbar_logo', 'homepage_logo', 'booking_availability']);
+    const settingsRes = await supabase.from('site_settings').select('key, value').in('key', ['navbar_logo', 'homepage_logo', 'booking_availability', 'homepage_visuals']);
     for (const row of settingsRes.data ?? []) {
       const key = typeof row?.key === 'string' ? row.key : '';
       const val = typeof row?.value === 'string' ? row.value.trim() : '';
       if (key === 'navbar_logo' && val) navbarLogoUrl = val;
       if (key === 'homepage_logo' && val) homepageLogoUrl = val;
+      if (key === 'homepage_visuals' && val) homepageVisualsJson = val;
       if (key === 'booking_availability' && val) {
         try {
           bookingAvail = parseBookingAvailabilityConfig(JSON.parse(val));
@@ -278,6 +281,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         {[
           { id: 'gallery', label: 'Gallery CMS' },
           { id: 'uploads', label: 'Work Order Photos' },
+          { id: 'visuals', label: 'Homepage Visuals' },
           { id: 'hours', label: 'Hours & Settings' },
           { id: 'documents', label: 'Documents' },
           { id: 'featured', label: 'Featured Transformations' },
@@ -328,6 +332,12 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
       {currentTab === 'uploads' && (
         <WorkOrderUploadsTab recentPhotos={recentPhotos} />
+      )}
+
+      {currentTab === 'visuals' && (
+        <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md bg-black/40'>
+          <HomepageVisualsManager initialJson={homepageVisualsJson} />
+        </section>
       )}
 
       {currentTab === 'hours' && (

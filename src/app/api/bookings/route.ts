@@ -675,6 +675,56 @@ export async function POST(request: Request) {
 
     /* Booking confirmation + deposit receipt emails send after Stripe checkout via notifyBookingCheckoutPaid. */
 
+    const isFullCovered = paymentChoice === 'full' ? (appliedCreditCents >= totalBaseCents) : (appliedCreditCents >= depositAmountCents);
+
+    if (isFullCovered) {
+      const newStatus = paymentChoice === 'full' ? 'confirmed' : 'deposit_paid';
+      const newPaymentStatus = paymentChoice === 'full' ? 'full_paid' : 'deposit_paid';
+      await admin
+        .from('appointments')
+        .update({
+          status: newStatus,
+          payment_status: newPaymentStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', appointment.id);
+
+      void notifyBookingConfirmationQueued({
+        toEmail: emailNorm,
+        toPhone: phoneDigits,
+        guestName: guestName.trim(),
+        whenIso: scheduled.toISOString(),
+        totalCents: totalBaseCents,
+        depositCents: depositAmountCents,
+        vehicles: vehicleDescriptionJoined,
+        appointmentId: appointment.id,
+      }).catch(() => {});
+
+      const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
+      void notifyBusinessNewBookingQueued({
+        eventKind: hasCeramic ? 'ceramic_quote' : 'new_booking',
+        guestName: guestName.trim(),
+        guestEmail: emailNorm,
+        guestPhone: phoneDigits,
+        whenIso: scheduled.toISOString(),
+        totalCents: priced.finalTotalCents,
+        depositCents: depositAmountCents,
+        balanceCents: Math.max(0, priced.finalTotalCents - appliedCreditCents),
+        appointmentId: appointment.id,
+        vehicles: vehicleDescriptionJoined,
+        serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
+        comped: false,
+      }).catch((e) => console.warn('[api/bookings] owner notify', e));
+
+      return NextResponse.json({
+        appointmentId: appointment.id,
+        accessToken: appointment.access_token,
+        depositAmountCents: depositAmountCents,
+        appliedCreditCents,
+        skipPayment: true,
+      });
+    }
+
     const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
     void notifyBusinessNewBookingQueued({
       eventKind: hasCeramic ? 'ceramic_quote' : 'new_booking',

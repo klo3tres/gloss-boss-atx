@@ -225,3 +225,24 @@ export async function saveFeaturedShowcaseAction(formData: FormData) {
   revalidatePath('/services');
   revalidatePath('/gallery');
 }
+
+export async function saveHomepageVisualsAction(formData: FormData) {
+  const raw = String(formData.get('json') ?? '').trim();
+  if (!raw) return;
+  const gate = await requireAdminSupabase();
+  if (!gate.ok) return;
+  const admin = tryCreateAdminSupabase();
+  const client = admin ?? gate.supabase;
+  const { error } = await client.from('site_settings').upsert({
+    key: 'homepage_visuals',
+    value: raw,
+  });
+  if (error) {
+    console.warn('[CRM_DEBUG_DB]', 'homepage_visuals_save', error.message);
+    return;
+  }
+  revalidatePath('/');
+  revalidatePath('/admin/cms');
+  revalidatePath('/services');
+  revalidatePath('/gallery');
+}

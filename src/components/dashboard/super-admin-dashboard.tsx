@@ -2,11 +2,33 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { submitPromoteRoleForm } from '@/lib/admin/super-team-actions';
 import { GB_NAV_SIM_EVENT, GB_NAV_SIM_KEY, type DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 import { parseAppRole } from '@/lib/auth/role-resolution';
 import type { AppRole } from '@/lib/auth/roles';
+import { 
+  HeartPulse, 
+  DollarSign, 
+  CreditCard, 
+  Briefcase, 
+  Users, 
+  Settings, 
+  AlertTriangle, 
+  Zap, 
+  ChevronDown, 
+  ChevronUp, 
+  ArrowRight, 
+  ShieldAlert, 
+  Award, 
+  Mail, 
+  PhoneCall, 
+  Activity,
+  FileText,
+  BarChart3,
+  CheckCircle,
+  TrendingUp
+} from 'lucide-react';
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: 'super_admin', label: 'Super admin' },
@@ -88,123 +110,15 @@ function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function SkeletonGrid() {
-  return (
-    <div className='grid animate-pulse gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className='h-28 rounded-2xl border border-gold/10 bg-zinc-900/80' />
-      ))}
-    </div>
-  );
-}
-
-function StatCard({ label, value, hint, delay, href }: { label: string; value: string | number; hint?: string; delay: number; href?: string }) {
-  const content = (
-    <>
-      <p className='text-[10px] font-bold uppercase tracking-[0.2em] text-gold-soft'>{label}</p>
-      <p className='mt-2 text-2xl font-black text-white'>{value}</p>
-      {hint ? <p className='mt-1 text-xs text-zinc-500'>{hint}</p> : null}
-    </>
-  );
-  return (
-    <motion.div
-      initial={{ opacity: 1, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, delay }}
-      whileHover={{ y: -3, transition: { duration: 0.2 } }}
-      className='rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 shadow-[0_0_22px_rgba(212,166,77,0.08)] backdrop-blur-md transition hover:border-gold/50 hover:shadow-[0_0_38px_rgba(212,166,77,0.22)]'
-    >
-      {href ? (
-        <Link href={href} className='block rounded-2xl p-4 focus:outline-none focus:ring-2 focus:ring-gold/60'>{content}</Link>
-      ) : (
-        <div className='p-4'>{content}</div>
-      )}
-    </motion.div>
-  );
-}
-
-function RevenueChart({ stats }: { stats: Stats }) {
-  const bars = [
-    { label: 'Today', cents: stats.revenueTodayCents, href: '/admin/revenue' },
-    { label: 'Week', cents: stats.revenueWeekCents, href: '/admin/revenue' },
-    { label: 'Month', cents: stats.revenueMonthCents, href: '/admin/revenue' },
-  ];
-  const max = Math.max(1, ...bars.map((b) => b.cents));
-  return (
-    <div className='rounded-3xl border border-gold/25 bg-zinc-950/90 p-6 shadow-[0_0_32px_rgba(212,166,77,0.08)] backdrop-blur-md'>
-      <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Revenue</p>
-      <p className='mt-1 text-sm text-zinc-400'>Click a bar to open payments for that period.</p>
-      <div className='mt-8 flex h-48 items-end justify-between gap-4'>
-        {bars.map((b) => (
-          <Link key={b.label} href={b.href} className='group flex flex-1 flex-col items-center gap-2'>
-            <motion.div
-              whileHover={{ scale: 1.03 }}
-              style={{ height: `${Math.max(12, Math.round((b.cents / max) * 100))}%` }}
-              className='w-full max-w-[72px] min-h-[12px] rounded-t-xl bg-gradient-to-t from-gold/25 via-gold/60 to-gold shadow-[0_0_24px_rgba(212,175,55,0.25)] transition group-hover:shadow-[0_0_36px_rgba(212,175,55,0.4)]'
-            />
-            <span className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>{b.label}</span>
-            <span className='font-mono text-sm font-bold text-gold-soft group-hover:underline'>{money(b.cents)}</span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PulseChart({ stats }: { stats: Stats }) {
-  const max = Math.max(1, stats.jobsToday + stats.activeJobs + stats.completedToday, stats.pendingDeposits);
-  const bars = [
-    { label: 'Today', h: Math.round((stats.jobsToday / max) * 100) },
-    { label: 'Active', h: Math.round((stats.activeJobs / max) * 100) },
-    { label: 'Done', h: Math.round((stats.completedToday / max) * 100) },
-    { label: 'Deposits', h: Math.round((stats.pendingDeposits / max) * 100) },
-  ];
-  return (
-    <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
-      <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Pipeline pulse</p>
-      <p className='mt-1 text-sm text-zinc-400'>Relative load across booking stages (today vs active vs awaiting deposit).</p>
-      <div className='mt-6 flex h-40 items-end justify-between gap-2'>
-        {bars.map((b) => (
-          <div key={b.label} className='flex flex-1 flex-col items-center gap-2'>
-            <div
-              style={{ height: `${Math.max(12, b.h)}%` }}
-              className='w-full max-w-[52px] min-h-[8px] rounded-t-lg bg-gradient-to-t from-gold/20 to-gold/70'
-            />
-            <span className='text-[10px] font-bold uppercase tracking-wider text-zinc-500'>{b.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ListCard({
-  title,
-  children,
-  delay,
-}: {
-  title: string;
-  children: React.ReactNode;
-  delay: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 1, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className='rounded-2xl border border-gold/20 bg-zinc-950/85 p-4 shadow-[0_0_18px_rgba(212,166,77,0.05)] backdrop-blur-md'
-    >
-      <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{title}</p>
-      <div className='mt-3 max-h-64 space-y-2 overflow-y-auto text-xs text-zinc-300'>{children}</div>
-    </motion.div>
-  );
-}
-
 export function SuperAdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
   const [promoteBanner, setPromoteBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  // Tab selections inside Command Center
+  const [currentTab, setCurrentTab] = useState<'health' | 'revenue' | 'jobs' | 'stripe'>('health');
 
   useEffect(() => {
     try {
@@ -272,397 +186,648 @@ export function SuperAdminDashboard() {
     };
   }, []);
 
+  // Compute business health score (0-100) dynamically
+  const businessHealthScore = useMemo(() => {
+    if (!stats) return 100;
+    let score = 100;
+    if (!stats.stripe.connected) score -= 40;
+    if (!stats.stripe.webhookConfigured) score -= 20;
+    if (stats.pendingDeposits > 8) score -= 10;
+    if (stats.unreadMessages > 10) score -= 10;
+    return Math.max(20, score);
+  }, [stats]);
+
+  const activeAlerts = useMemo(() => {
+    if (!stats) return [];
+    const alerts = [];
+    if (!stats.stripe.connected) {
+      alerts.push({
+        id: 'stripe-disconnected',
+        title: 'Stripe Integration Inactive',
+        desc: 'Stripe keys are not detected. Standard card checkout and deposits are disabled.',
+        severity: 'critical' as const
+      });
+    } else if (!stats.stripe.webhookConfigured) {
+      alerts.push({
+        id: 'webhook-missing',
+        title: 'Webhook Secret Missing',
+        desc: 'Webhook secret is not configured. Instant checkout reconciliation will fail.',
+        severity: 'warning' as const
+      });
+    }
+    if (stats.pendingDeposits > 0) {
+      alerts.push({
+        id: 'pending-deposits',
+        title: `${stats.pendingDeposits} Pending Deposit Invoices`,
+        desc: 'Bookings awaiting deposit confirmation before scheduling.',
+        severity: 'info' as const
+      });
+    }
+    if (stats.unreadMessages > 0) {
+      alerts.push({
+        id: 'unread-messages',
+        title: `${stats.unreadMessages} New Customer Messages`,
+        desc: 'Awaiting technician or administrator reply in the communication hub.',
+        severity: 'info' as const
+      });
+    }
+    return alerts;
+  }, [stats]);
+
   if (error) {
     return (
-      <p className='rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200'>
-        Could not load live metrics: {error}
-      </p>
+      <div className='rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-200'>
+        <p className="font-bold flex items-center gap-2">
+          <ShieldAlert className="h-5 w-5" /> Super Admin Connection Failure
+        </p>
+        <p className="mt-1 text-xs text-zinc-400">Could not compile server metrics: {error}</p>
+      </div>
     );
   }
 
   if (!stats) {
     return (
-      <div className='space-y-4'>
-        <p className='text-sm text-zinc-400'>Syncing owner metrics from Supabase…</p>
-        <SkeletonGrid />
+      <div className='space-y-4 animate-pulse'>
+        <div className="h-14 rounded-2xl bg-zinc-900/60 border border-gold/10" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className='h-28 rounded-2xl bg-zinc-900/60 border border-gold/10' />
+          ))}
+        </div>
       </div>
     );
   }
 
-  const stripeBadge =
-    stats.stripe.mode === 'live' ? 'Live' : stats.stripe.mode === 'test' ? 'Test' : 'Unknown';
-
   return (
-    <div className='relative min-h-[420px]'>
-      <div
-        className='pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden'
-        aria-hidden
-      >
-        <span className='text-center text-[clamp(3rem,14vw,11rem)] font-black uppercase leading-none tracking-[0.14em] text-white/[0.05]'>
-          Gloss Boss ATX
-        </span>
-      </div>
-      <div className='relative z-10 space-y-10'>
-      <div className='rounded-2xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm text-zinc-200'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-amber-200/90'>Navigation preview (UI only)</p>
-        <p className='mt-1 text-xs text-zinc-500'>Does not change your database role — only the sidebar link set while you navigate.</p>
-        <div className='mt-3 flex flex-wrap items-center gap-2'>
-          <label className='text-xs text-zinc-400'>
-            Act as
-            <select
-              className='ml-2 rounded-lg border border-white/15 bg-black px-2 py-1.5 text-sm text-white'
-              value={simNav ?? ''}
-              onChange={(e) => setSimulation(e.target.value)}
-            >
-              <option value=''>Default (super admin)</option>
-              <option value='super_admin'>Super admin</option>
-              <option value='admin'>Admin</option>
-              <option value='technician'>Technician</option>
-              <option value='customer'>Customer</option>
-            </select>
-          </label>
+    <div className='space-y-8'>
+      {/* Simulation Banner */}
+      {promoteBanner && (
+        <div
+          role='alert'
+          className={`rounded-xl border p-4 text-sm ${
+            promoteBanner.kind === 'ok'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+              : 'border-amber-500/45 bg-amber-500/10 text-amber-100'
+          }`}
+        >
+          {promoteBanner.text}
         </div>
-      </div>
+      )}
 
-      <div className='rounded-2xl border border-gold/30 bg-gradient-to-r from-black via-zinc-950 to-black p-5 shadow-[0_0_32px_rgba(212,166,77,0.12)] backdrop-blur-md'>
-        <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
-          <div>
-            <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>Stripe</p>
-            <p className='mt-2 text-lg font-black text-white'>Billing fabric</p>
-            <p className='mt-1 text-sm text-zinc-400'>
-              {stats.stripe.connected ? 'Secret key detected' : 'Secret key missing'} · Keys from {stats.stripe.keySource}
+      {/* TOP METRIC GRIDS: Quick Health Summary */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Business Health */}
+        <div className="rounded-2xl border border-gold/15 bg-zinc-950 p-5 flex items-center justify-between shadow-[0_0_20px_rgba(212,175,55,0.03)]">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Business Health</p>
+            <p className="text-2xl font-black text-white">{businessHealthScore}%</p>
+            <p className="text-[10px] text-zinc-400">System core operations</p>
+          </div>
+          <div className={`p-3 rounded-xl border ${businessHealthScore > 80 ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>
+            <HeartPulse className="h-6 w-6" />
+          </div>
+        </div>
+
+        {/* Revenue Today */}
+        <div className="rounded-2xl border border-gold/15 bg-zinc-950 p-5 flex items-center justify-between shadow-[0_0_20px_rgba(212,175,55,0.03)]">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Revenue Today</p>
+            <p className="text-2xl font-black text-white">{money(stats.revenueTodayCents)}</p>
+            <p className="text-[10px] text-zinc-400">{stats.paymentsTodayCount} successful payout(s)</p>
+          </div>
+          <div className="p-3 rounded-xl border border-gold/25 bg-gold/10 text-gold-soft">
+            <DollarSign className="h-6 w-6" />
+          </div>
+        </div>
+
+        {/* Stripe Sync */}
+        <div className="rounded-2xl border border-gold/15 bg-zinc-950 p-5 flex items-center justify-between shadow-[0_0_20px_rgba(212,175,55,0.03)]">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Stripe Billing</p>
+            <p className="text-lg font-black text-white uppercase tracking-tight">
+              {stats.stripe.connected ? `${stats.stripe.mode} Mode` : 'Disconnected'}
+            </p>
+            <p className="text-[10px] text-zinc-400">
+              {stats.stripe.webhookConfigured ? 'Webhook OK' : 'No Webhook Secret'}
             </p>
           </div>
-          <div className='flex flex-wrap gap-2'>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${
-                stats.stripe.connected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-200'
-              }`}
-            >
-              {stats.stripe.connected ? 'Connected' : 'Not connected'}
-            </span>
-            <span className='rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-gold-soft'>
-              {stripeBadge} mode
-            </span>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${
-                stats.stripe.webhookConfigured ? 'bg-white/10 text-zinc-200' : 'bg-red-500/15 text-red-200'
-              }`}
-            >
-              Webhook {stats.stripe.webhookConfigured ? 'configured' : 'missing'}
-            </span>
+          <div className={`p-3 rounded-xl border ${stats.stripe.connected ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-rose-500/25 bg-rose-500/10 text-rose-400'}`}>
+            <CreditCard className="h-6 w-6" />
+          </div>
+        </div>
+
+        {/* Active Jobs */}
+        <div className="rounded-2xl border border-gold/15 bg-zinc-950 p-5 flex items-center justify-between shadow-[0_0_20px_rgba(212,175,55,0.03)]">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Active Pipeline</p>
+            <p className="text-2xl font-black text-white">{stats.activeJobs}</p>
+            <p className="text-[10px] text-zinc-400">{stats.jobsToday} scheduled for today</p>
+          </div>
+          <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300">
+            <Briefcase className="h-6 w-6" />
           </div>
         </div>
       </div>
 
-      <section className='rounded-2xl border border-gold/30 bg-zinc-950/90 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>CRM control center</p>
-        <div className='mt-4 flex flex-wrap gap-2'>
-          <Link href='/admin/customers' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Customers
-          </Link>
-          <Link href='/admin/team' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Team
-          </Link>
-          <Link href='/admin/services' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Pricing
-          </Link>
-          <Link href='/admin/pricing' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Deals
-          </Link>
-          <Link href='/admin/cms' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            CMS
-          </Link>
-          <Link href='/admin/intake' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Intake
-          </Link>
-          <Link href='/admin/leads' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Leads
-          </Link>
-          <Link href='/admin/agreements' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Agreements
-          </Link>
-          <Link href='/admin/payments' className='rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-bold uppercase text-emerald-200 hover:bg-emerald-500/15'>
-            Payments / Receipts
-          </Link>
-          <Link href='/admin/work-orders' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Work Orders
-          </Link>
-          <Link href='/admin/dispatch' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Dispatch
-          </Link>
-          <Link href='/admin/booking-health' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Booking Health
-          </Link>
-          <Link href='/admin/messages' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            Messages
-          </Link>
-          <Link href='/admin/system-status' className='rounded-lg border border-gold/40 px-3 py-2 text-xs font-bold uppercase text-gold-soft hover:bg-gold/10'>
-            System Status
-          </Link>
-        </div>
-      </section>
-
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Revenue today' value={money(stats.revenueTodayCents)} hint={`${stats.paymentsTodayCount} payment(s)`} delay={0} href='/admin/revenue' />
-        <StatCard label='Revenue (week)' value={money(stats.revenueWeekCents)} hint={`${stats.paymentsWeekCount} payment(s)`} delay={0.04} href='/admin/revenue' />
-        <StatCard label='Revenue (month)' value={money(stats.revenueMonthCents)} hint={`${stats.paymentsMonthCount} payment(s)`} delay={0.08} href='/admin/revenue' />
-        <StatCard label='Completed (month)' value={stats.completedMonth} hint='Jobs closed this month' delay={0.12} />
-      </div>
-
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Jobs today' value={stats.jobsToday} hint='Scheduled start today' delay={0.14} href='/admin/work-orders?filter=today' />
-        <StatCard label='Active jobs' value={stats.activeJobs} hint='Confirmed → in progress' delay={0.16} href='/admin/work-orders?filter=active' />
-        <StatCard label='Completed today' value={stats.completedToday} delay={0.18} />
-        <StatCard label='Technicians (roster)' value={stats.techniciansRoster} hint='Presence not tracked — roster size' delay={0.2} href='/admin/team' />
-      </div>
-
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Open lead pool' value={stats.openPoolLeads} hint='Unclaimed pool leads' delay={0.29} href='/admin/leads' />
-        <StatCard label='Assigned jobs' value={stats.assignedDispatchJobs} hint='With technician · active statuses' delay={0.3} />
-        <StatCard label='Avg job time (timers)' value={stats.avgJobMinutesAll != null ? `${stats.avgJobMinutesAll} min` : '—'} hint='Stopped timers sample' delay={0.31} />
-        <StatCard
-          label='Lead conversion'
-          value={stats.leadConversionPercent != null ? `${stats.leadConversionPercent}%` : '—'}
-          hint={stats.leadsTotal ? `${stats.leadsBooked} booked / ${stats.leadsTotal} leads` : 'No leads yet'}
-          delay={0.32}
-        />
-      </div>
-
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Timeline events (24h)' value={stats.timelineEvents24h} hint='job_timeline_events' delay={0.33} />
-        <StatCard label='Intakes (month)' value={stats.intakeSubmissionsMonth} hint='intake_submissions' delay={0.34} />
-        <StatCard label='Signed agreements (month)' value={stats.signedAgreementsMonth} delay={0.35} />
-        <StatCard label='Post-deposit' value={stats.depositPaidAwaitingNext} hint='Deposit paid — next CRM steps' delay={0.36} />
-      </div>
-
-      <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-        <StatCard label='Pending deposits' value={stats.pendingDeposits} hint='Awaiting payment' delay={0.37} />
-        <StatCard label='Unread messages' value={stats.unreadMessages} delay={0.38} />
-        <StatCard label='Active services' value={stats.activeServices} delay={0.39} />
-        <StatCard
-          label='Longest timer (peak)'
-          value={stats.longestTimerSessions[0] ? `${stats.longestTimerSessions[0].minutes} min` : '—'}
-          hint={stats.longestTimerSessions[0] ? stats.longestTimerSessions[0].serviceSlug.replace(/-/g, ' ') : 'Stopped timers'}
-          delay={0.4}
-        />
-      </div>
-
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <RevenueChart stats={stats} />
-        <PulseChart stats={stats} />
-        <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Longest timer sessions</p>
-          <p className='mt-1 text-sm text-zinc-400'>Top stopped timers with service slug (real data).</p>
-          <ul className='mt-4 space-y-2'>
-            {stats.longestTimerSessions.length === 0 ? (
-              <li className='text-sm text-zinc-500'>No completed timers yet.</li>
-            ) : (
-              stats.longestTimerSessions.map((row, i) => (
-                <li key={i} className='rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-200'>
-                  <div className='flex justify-between gap-2'>
-                    <span className='font-bold text-white'>{row.guestName ?? 'Customer'}</span>
-                    <span className='font-mono text-gold-soft'>{row.minutes} min</span>
-                  </div>
-                  <p className='mt-1 text-xs text-zinc-500'>
-                    {row.vehicle ?? '—'} · {row.serviceSlug.replace(/-/g, ' ')}
-                    {row.scheduledStart ? ` · ${new Date(row.scheduledStart).toLocaleString()}` : ''}
-                  </p>
-                  {row.appointmentId ? (
-                    <Link href={`/admin/work-orders/${row.appointmentId}`} className='mt-2 inline-block text-[10px] font-black uppercase text-gold-soft'>
-                      Open work order
-                    </Link>
-                  ) : null}
-                </li>
-              ))
-            )}
-          </ul>
+      {/* QUICK SHORTCUTS ROW */}
+      <div className="rounded-2xl border border-white/5 bg-zinc-950 p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Core Administration Shortcuts</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          {[
+            { href: '/admin/work-orders', label: 'Work Orders' },
+            { href: '/admin/dispatch', label: 'Dispatch' },
+            { href: '/admin/revenue', label: 'Revenue' },
+            { href: '/admin/cms', label: 'Website CMS' },
+            { href: '/admin/customers', label: 'Customers' },
+            { href: '/admin/team', label: 'Team Roles' },
+            { href: '/admin/pricing', label: 'Promotions' },
+            { href: '/admin/system-status', label: 'System status' },
+          ].map((lnk) => (
+            <Link
+              key={lnk.href}
+              href={lnk.href}
+              className="text-center py-2.5 rounded-xl border border-white/10 bg-black/40 hover:border-gold/30 hover:text-gold-soft text-xs font-bold uppercase transition"
+            >
+              {lnk.label}
+            </Link>
+          ))}
         </div>
       </div>
 
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <div className='lg:col-span-2 rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_20px_rgba(212,166,77,0.05)] backdrop-blur-md'>
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Technician performance</p>
-          <p className='mt-1 text-sm text-zinc-400'>Completed jobs and average stopped-timer duration by technician (sample).</p>
-          <ul className='mt-4 space-y-2'>
-            {stats.technicianPerformance.length === 0 ? (
-              <li className='text-sm text-zinc-500'>No technician completions yet.</li>
-            ) : (
-              stats.technicianPerformance.map((t) => (
-                <li key={t.id}>
-                  <Link
-                    href={`/admin/team/${encodeURIComponent(t.id)}`}
-                    className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm transition hover:border-gold/40 hover:bg-gold/5'
-                  >
-                    <span className='flex items-center gap-3'>
-                      <span className='flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-xs font-black text-gold-soft'>
-                        {(t.full_name ?? 'T').slice(0, 2).toUpperCase()}
+      {/* ALERTS SECTION */}
+      {activeAlerts.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Required Owner Review Alerts</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            {activeAlerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`rounded-2xl border p-4 flex gap-3 ${
+                  alert.severity === 'critical'
+                    ? 'border-rose-500/35 bg-rose-500/5 text-rose-300'
+                    : alert.severity === 'warning'
+                    ? 'border-amber-500/35 bg-amber-500/5 text-amber-300'
+                    : 'border-zinc-800 bg-zinc-950 text-zinc-300'
+                }`}
+              >
+                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-sm uppercase tracking-wide">{alert.title}</h4>
+                  <p className="text-xs text-zinc-400 mt-1">{alert.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HEALTH CATEGORIES TABS */}
+      <div className="space-y-4">
+        {/* Tab Headers */}
+        <div className="flex gap-2 border-b border-white/5 pb-2 overflow-x-auto">
+          {[
+            { id: 'health', label: 'System & Health Status', icon: HeartPulse },
+            { id: 'revenue', label: 'Revenue Health', icon: DollarSign },
+            { id: 'jobs', label: 'Jobs & Timers Health', icon: Briefcase },
+            { id: 'stripe', label: 'Stripe & Connection Diagnostics', icon: CreditCard }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = currentTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setCurrentTab(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition whitespace-nowrap ${
+                  active
+                    ? 'bg-gold text-black shadow-md'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Icon className="h-4 w-4" /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-zinc-950 border border-white/5 rounded-3xl p-6 shadow-xl">
+          {/* TAB 1: SYSTEM & HEALTH */}
+          {currentTab === 'health' && (
+            <div className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-gold-soft mb-4">Core Integrations Health</h4>
+                  <ul className="space-y-3 text-xs">
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Database Connection</span>
+                      <span className="flex items-center gap-1.5 font-bold text-emerald-400"><CheckCircle className="h-4 w-4" /> Connected</span>
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Stripe Billing Auth</span>
+                      <span className={`flex items-center gap-1.5 font-bold ${stats.stripe.connected ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {stats.stripe.connected ? <CheckCircle className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                        {stats.stripe.connected ? 'Connected' : 'Missing Key'}
                       </span>
-                      <span className='text-zinc-200'>{t.full_name ?? 'Technician'}</span>
-                    </span>
-                    <span className='font-mono text-gold-soft'>
-                      {t.completed_jobs} done
-                      {t.avg_job_minutes != null ? ` · ~${t.avg_job_minutes}m` : ''}
-                    </span>
-                  </Link>
-                </li>
-              ))
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Stripe Webhooks</span>
+                      <span className={`flex items-center gap-1.5 font-bold ${stats.stripe.webhookConfigured ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {stats.stripe.webhookConfigured ? <CheckCircle className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                        {stats.stripe.webhookConfigured ? 'Active' : 'Missing secret'}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-gold-soft mb-4">Operations Metrics</h4>
+                  <ul className="space-y-3 text-xs">
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Staff Profiles</span>
+                      <span className="font-mono font-bold text-white">{stats.staffProfiles} staff members</span>
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Active Services pricing</span>
+                      <span className="font-mono font-bold text-white">{stats.activeServices} active packs</span>
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Unread inbox messages</span>
+                      <span className={`font-mono font-bold ${stats.unreadMessages > 0 ? 'text-amber-400' : 'text-white'}`}>
+                        {stats.unreadMessages} new
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-gold-soft mb-4">Intake & Waiver Health</h4>
+                  <ul className="space-y-3 text-xs">
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Signed Liability forms (month)</span>
+                      <span className="font-mono font-bold text-white">{stats.signedAgreementsMonth} signed</span>
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Customer Intake cards (month)</span>
+                      <span className="font-mono font-bold text-white">{stats.intakeSubmissionsMonth} submissions</span>
+                    </li>
+                    <li className="flex items-center justify-between">
+                      <span className="text-zinc-400">Audit timeline events (24h)</span>
+                      <span className="font-mono font-bold text-white">{stats.timelineEvents24h} logs</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Conversion Statistics */}
+              <div className="bg-black/30 border border-white/5 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white">Lead Pipeline Conversion Health</h4>
+                  <p className="text-xs text-zinc-500">Tracks conversions from custom intake forms to active bookings.</p>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <p className="text-[10px] text-zinc-500 uppercase font-black">Total Leads</p>
+                    <p className="text-xl font-mono font-black text-white">{stats.leadsTotal}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-zinc-500 uppercase font-black">Booked</p>
+                    <p className="text-xl font-mono font-black text-white">{stats.leadsBooked}</p>
+                  </div>
+                  <div className="text-center border-l border-white/10 pl-6">
+                    <p className="text-[10px] text-gold-soft uppercase font-black">Conversion Rate</p>
+                    <p className="text-2xl font-mono font-black text-gold">{stats.leadConversionPercent != null ? `${stats.leadConversionPercent}%` : '0%'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: REVENUE HEALTH */}
+          {currentTab === 'revenue' && (
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Gross Collected (24h)</p>
+                  <p className="mt-2 text-2xl font-black text-white font-mono">{money(stats.revenueTodayCents)}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">{stats.paymentsTodayCount} successful payout(s)</p>
+                </div>
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Gross Collected (Week)</p>
+                  <p className="mt-2 text-2xl font-black text-white font-mono">{money(stats.revenueWeekCents)}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">{stats.paymentsWeekCount} successful payout(s)</p>
+                </div>
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl bg-gradient-to-br from-zinc-950 via-zinc-950 to-gold/5 border-gold/15">
+                  <p className="text-[10px] font-black uppercase text-gold-soft tracking-wider">Gross Collected (Month)</p>
+                  <p className="mt-2 text-3xl font-black text-gold font-mono">{money(stats.revenueMonthCents)}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">{stats.paymentsMonthCount} successful payout(s)</p>
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Revenue History Chart placeholder/visual representation */}
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+                  <p className="text-xs font-black uppercase tracking-widest text-zinc-400 mb-4 flex items-center gap-1.5">
+                    <BarChart3 className="h-4 w-4 text-gold" /> Revenue Breakdown
+                  </p>
+                  <div className="flex h-36 items-end justify-between gap-4 px-2">
+                    {[
+                      { label: 'Today', cents: stats.revenueTodayCents },
+                      { label: 'Weekly', cents: stats.revenueWeekCents },
+                      { label: 'Monthly', cents: stats.revenueMonthCents }
+                    ].map((b) => {
+                      const max = Math.max(1, stats.revenueMonthCents);
+                      return (
+                        <div key={b.label} className="flex-1 flex flex-col items-center gap-2">
+                          <div 
+                            style={{ height: `${Math.max(10, Math.round((b.cents / max) * 100))}%` }}
+                            className="w-full max-w-[60px] min-h-[10px] rounded-t-lg bg-gradient-to-t from-gold/30 to-gold shadow-[0_0_15px_rgba(212,175,55,0.1)]"
+                          />
+                          <span className="text-[10px] text-zinc-500 font-bold uppercase">{b.label}</span>
+                          <span className="font-mono text-xs text-gold-soft">{money(b.cents)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Operations Cashflow summary */}
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl space-y-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-zinc-400">Operations Deposits Health</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="border border-white/5 bg-black p-3.5 rounded-xl">
+                      <p className="text-[9px] font-black uppercase text-zinc-500">Pending Deposits</p>
+                      <p className="text-xl font-black text-white mt-1">{stats.pendingDeposits}</p>
+                      <p className="text-[9px] text-zinc-500 mt-1">Awaiting checkout deposit</p>
+                    </div>
+                    <div className="border border-white/5 bg-black p-3.5 rounded-xl">
+                      <p className="text-[9px] font-black uppercase text-zinc-500">Confirmed Booking Deposits</p>
+                      <p className="text-xl font-black text-white mt-1">{stats.depositPaidAwaitingNext}</p>
+                      <p className="text-[9px] text-zinc-500 mt-1">Deposits cleared</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: JOBS & TIMERS */}
+          {currentTab === 'jobs' && (
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="bg-black/40 border border-white/5 p-4 rounded-xl text-center">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Scheduled Today</p>
+                  <p className="text-xl font-black text-white mt-1">{stats.jobsToday}</p>
+                </div>
+                <div className="bg-black/40 border border-white/5 p-4 rounded-xl text-center">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Active In-Flight</p>
+                  <p className="text-xl font-black text-white mt-1">{stats.activeJobs}</p>
+                </div>
+                <div className="bg-black/40 border border-white/5 p-4 rounded-xl text-center">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Assigned Dispatch</p>
+                  <p className="text-xl font-black text-white mt-1">{stats.assignedDispatchJobs}</p>
+                </div>
+                <div className="bg-black/40 border border-white/5 p-4 rounded-xl text-center">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">Closed Month</p>
+                  <p className="text-xl font-black text-white mt-1">{stats.completedMonth}</p>
+                </div>
+              </div>
+
+              {/* Timers & Active Logs */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white">Technician Active Timer Averages</h4>
+                  <div className="flex justify-between items-center bg-black/60 p-4 rounded-xl border border-white/5">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Database Averages</p>
+                      <p className="text-lg font-black text-white mt-1">
+                        {stats.avgJobMinutesAll != null ? `${stats.avgJobMinutesAll} minutes` : 'No timers recorded'}
+                      </p>
+                    </div>
+                    <Activity className="h-6 w-6 text-gold-soft animate-pulse" />
+                  </div>
+
+                  <h5 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Top 3 Longest Sessions</h5>
+                  <ul className="space-y-2">
+                    {stats.longestTimerSessions.slice(0, 3).map((session, idx) => (
+                      <li key={idx} className="flex justify-between items-center text-xs bg-black/30 p-2.5 rounded-lg border border-white/5">
+                        <div>
+                          <p className="font-bold text-white">{session.guestName || 'VIP Customer'}</p>
+                          <p className="text-[10px] text-zinc-500 mt-0.5">{session.serviceSlug.replace(/-/g, ' ')}</p>
+                        </div>
+                        <span className="font-mono text-gold-soft font-bold">{session.minutes} mins</span>
+                      </li>
+                    ))}
+                    {stats.longestTimerSessions.length === 0 && (
+                      <p className="text-xs text-zinc-500 italic">No job timers currently recorded.</p>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="bg-black/40 border border-white/5 p-5 rounded-2xl space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white">Technician Completion Roster</h4>
+                  <div className="max-h-60 overflow-y-auto space-y-2">
+                    {stats.technicianPerformance.map((tech) => (
+                      <div key={tech.id} className="flex justify-between items-center text-xs bg-black/40 p-3 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-2">
+                          <span className="h-7 w-7 rounded-full bg-gold/15 flex items-center justify-center text-[10px] font-black text-gold-soft">
+                            {(tech.full_name || 'T').slice(0, 2).toUpperCase()}
+                          </span>
+                          <span className="font-bold text-white">{tech.full_name || 'Technician'}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-gold-soft font-bold">{tech.completed_jobs} jobs</p>
+                          <p className="text-[9px] text-zinc-500 mt-0.5">Avg: {tech.avg_job_minutes ?? '—'} mins</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: STRIPE & CONNECTION */}
+          {currentTab === 'stripe' && (
+            <div className="space-y-6">
+              <div className="bg-black/40 border border-white/5 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <h4 className="text-sm font-black uppercase tracking-wider text-white">Stripe Core Configuration</h4>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${stats.stripe.connected ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
+                    {stats.stripe.connected ? 'Active Fabric' : 'Inactive'}
+                  </span>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                  <div className="space-y-1">
+                    <p className="text-zinc-500 uppercase text-[10px] font-black">Environment Keys Source</p>
+                    <p className="text-white font-mono font-bold">{stats.stripe.keySource || 'System'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-zinc-500 uppercase text-[10px] font-black">Operation Mode</p>
+                    <p className="text-gold-soft font-mono font-bold uppercase">{stats.stripe.mode} mode</p>
+                  </div>
+                  <div className="space-y-1 pt-2">
+                    <p className="text-zinc-500 uppercase text-[10px] font-black">Publishable Key</p>
+                    <p className="text-zinc-400 font-mono">{stats.stripe.publishableConfigured ? 'Configured' : 'Missing'}</p>
+                  </div>
+                  <div className="space-y-1 pt-2">
+                    <p className="text-zinc-500 uppercase text-[10px] font-black">Webhook Secret</p>
+                    <p className="text-zinc-400 font-mono">{stats.stripe.webhookConfigured ? 'Configured' : 'Missing'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stripe Setup Guidance Alert */}
+              {!stats.stripe.connected && (
+                <div className="rounded-2xl border border-gold/20 bg-gold/5 p-4 text-xs text-zinc-300">
+                  <p className="font-bold flex items-center gap-1.5 text-gold-soft uppercase"><ShieldAlert className="h-4 w-4" /> Connection Required</p>
+                  <p className="mt-2 leading-relaxed">
+                    To start accepting credit cards and managing payments, configure Stripe inside your server environment settings by adding:
+                  </p>
+                  <pre className="mt-2 p-2 bg-black border border-white/10 rounded font-mono text-[10px] text-zinc-400 max-w-full overflow-x-auto">
+                    {`STRIPE_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...`}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* RECENT PORTAL SNAPSHOTS */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Latest Bookings */}
+        <div className="bg-zinc-950 border border-white/5 rounded-3xl p-5 shadow-lg space-y-4">
+          <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Latest Appointments</p>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {stats.latestAppointments.map((appt) => (
+              <div key={appt.id} className="flex justify-between items-center text-xs bg-black/40 p-3 rounded-xl border border-white/5">
+                <div>
+                  <p className="font-bold text-white">{appt.guest_name || 'Guest customer'}</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    {appt.service_slug} · {new Date(appt.scheduled_start).toLocaleDateString()}
+                  </p>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${appt.status === 'completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-gold/15 text-gold-soft border border-gold/25'}`}>
+                  {appt.status}
+                </span>
+              </div>
+            ))}
+            {stats.latestAppointments.length === 0 && (
+              <p className="text-xs text-zinc-500 italic">No bookings on file.</p>
             )}
-          </ul>
+          </div>
+        </div>
+
+        {/* Latest customer inbox messages */}
+        <div className="bg-zinc-950 border border-white/5 rounded-3xl p-5 shadow-lg space-y-4">
+          <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Latest Inbox Messages</p>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {stats.latestMessages.map((msg) => (
+              <div key={msg.id} className="flex justify-between items-center text-xs bg-black/40 p-3 rounded-xl border border-white/5">
+                <div>
+                  <p className="font-bold text-white">{msg.from_name}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 line-clamp-1">{msg.subject || '(no subject)'}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${msg.status === 'replied' ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                  {msg.status}
+                </span>
+              </div>
+            ))}
+            {stats.latestMessages.length === 0 && (
+              <p className="text-xs text-zinc-500 italic">No messages received.</p>
+            )}
+          </div>
         </div>
       </div>
 
-      <div>
-        <h3 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>CRM snapshot</h3>
-        <div className='mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-          <ListCard title='Latest appointments' delay={0.1}>
-            {stats.latestAppointments.map((a) => (
-              <div key={a.id} className='rounded-lg border border-white/10 bg-black/20 px-2 py-2'>
-                <p className='font-semibold text-white'>{a.guest_name ?? 'Guest'}</p>
-                <p className='text-zinc-500'>
-                  {a.service_slug} · {new Date(a.scheduled_start).toLocaleString()}
-                </p>
-                <p className='text-gold-soft/90'>{a.status}</p>
-              </div>
-            ))}
-          </ListCard>
-          <ListCard title='Latest customers' delay={0.14}>
-            {stats.latestCustomers.map((c) => (
-              <div key={c.id} className='rounded-lg border border-white/10 bg-black/20 px-2 py-2'>
-                <p className='font-semibold text-white'>{c.full_name ?? c.email}</p>
-                <p className='text-zinc-500'>{c.email}</p>
-              </div>
-            ))}
-          </ListCard>
-          <ListCard title='Latest payments' delay={0.18}>
-            {stats.latestPayments.map((p) => (
-              <div key={p.id} className='rounded-lg border border-white/10 bg-black/20 px-2 py-2'>
-                <p className='font-semibold text-white'>{money(p.amount_cents)}</p>
-                <p className='text-zinc-500'>{p.status}</p>
-              </div>
-            ))}
-          </ListCard>
-          <ListCard title='Latest reviews' delay={0.22}>
-            <p className='text-zinc-500'>Reviews module not wired yet — schema hook reserved.</p>
-          </ListCard>
-          <ListCard title='Latest messages' delay={0.26}>
-            {stats.latestMessages.map((m) => (
-              <div key={m.id} className='rounded-lg border border-white/10 bg-black/20 px-2 py-2'>
-                <p className='font-semibold text-white'>{m.from_name}</p>
-                <p className='text-zinc-500'>{m.subject ?? '(no subject)'}</p>
-                <p className='text-gold-soft/90'>{m.status}</p>
-              </div>
-            ))}
-          </ListCard>
-        </div>
-      </div>
+      {/* COLLAPSIBLE DIAGNOSTICS & USER ROLE TUNER */}
+      <div className="border border-white/5 rounded-3xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowDiagnostics(!showDiagnostics)}
+          className="w-full flex items-center justify-between bg-zinc-950 px-6 py-4 border-b border-white/5 text-xs font-black uppercase tracking-widest text-zinc-400 hover:text-white"
+        >
+          <span>Diagnostics, Simulation & Roster promotions</span>
+          {showDiagnostics ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
 
-      <div className='rounded-2xl border border-gold/25 bg-zinc-950/90 p-5 shadow-[0_0_24px_rgba(212,166,77,0.08)] backdrop-blur-md'>
-        {promoteBanner ? (
-          <div
-            role='alert'
-            className={`mb-4 rounded-xl border p-3 text-sm ${
-              promoteBanner.kind === 'ok'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                : 'border-amber-500/45 bg-amber-500/10 text-amber-100'
-            }`}
-          >
-            {promoteBanner.text}
-          </div>
-        ) : null}
-        <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-          <div>
-            <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Team management</p>
-            <p className='mt-1 text-sm text-zinc-400'>Promote roles via service role on the server. Deactivate user requires a future profiles flag.</p>
-          </div>
-          <Link href='/admin/system-status' className='text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
-            System status
-          </Link>
-        </div>
-        <div className='mt-4 overflow-x-auto'>
-          <table className='w-full min-w-[640px] border-collapse text-left text-sm'>
-            <thead>
-              <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>
-                <th className='py-2 pr-4'>Name</th>
-                <th className='py-2 pr-4'>Role</th>
-                <th className='py-2'>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.teamRoster.map((row) => {
-                const rosterRole = parseAppRole(row.role);
-                return (
-                  <tr key={row.id} className='border-b border-white/5'>
-                    <td className='py-3 pr-4 text-zinc-200'>{row.full_name ?? '—'}</td>
-                    <td className='py-3 pr-4 font-mono text-xs text-gold-soft/90'>{row.role}</td>
-                    <td className='py-3'>
-                      <form action={submitPromoteRoleForm} className='flex flex-wrap items-center gap-2'>
-                        <input type='hidden' name='profileId' value={row.id} />
-                        <select
-                          name='role'
-                          defaultValue={rosterRole ?? ''}
-                          required
-                          className='rounded-lg border border-zinc-700 bg-black px-2 py-1.5 text-xs text-white'
-                        >
-                          {rosterRole ? null : (
-                            <option value='' disabled>
-                              Invalid role — pick a valid role
-                            </option>
-                          )}
-                        {ROLE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type='submit'
-                        className='rounded-lg bg-gold px-3 py-1.5 text-xs font-black uppercase tracking-wider text-black transition hover:brightness-110'
-                      >
-                        Update
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {showDiagnostics && (
+          <div className="bg-black/60 p-6 space-y-6">
+            {/* Simulation Block */}
+            <div className="border border-amber-500/35 bg-amber-500/5 p-5 rounded-2xl space-y-3">
+              <p className="text-xs font-black uppercase tracking-wider text-amber-300">Navigation role override (Local Simulation)</p>
+              <p className="text-[11px] text-zinc-500">
+                Does not change database values. Allows verifying view aesthetics for Customer or Technician layouts as a local simulator override.
+              </p>
+              <select
+                className="rounded-xl border border-white/10 bg-black px-4 py-2 text-xs text-white"
+                value={simNav || ''}
+                onChange={(e) => setSimulation(e.target.value)}
+              >
+                <option value="">Default (Super Admin)</option>
+                <option value="super_admin">Super Admin View</option>
+                <option value="admin">Admin View</option>
+                <option value="technician">Technician View</option>
+                <option value="customer">Customer View</option>
+              </select>
+            </div>
 
-      <div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]'>
-        <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 backdrop-blur-md'>
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>CMS & operations</p>
-          <p className='mt-2 text-sm text-zinc-400'>Homepage gallery, copy, offers, and service pricing live under Website CMS and Services.</p>
-          <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-            <Link href='/admin/cms' className='rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-gold-soft transition hover:bg-gold/20'>
-              Website & gallery CMS
-            </Link>
-            <Link href='/admin/services' className='rounded-lg bg-gold px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-black transition hover:brightness-110'>
-              Services & pricing
-            </Link>
-            <Link href='/admin/pricing' className='rounded-lg border border-white/15 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-white transition hover:border-gold/40'>
-              Deals & promos
-            </Link>
-            <Link href='/admin/messages' className='rounded-lg border border-white/15 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-white transition hover:border-gold/40'>
-              Message center
-            </Link>
+            {/* Team Roles Promotion */}
+            <div className="space-y-4">
+              <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Team Roster Promotion Console</p>
+              <div className="overflow-x-auto rounded-2xl border border-white/5 bg-zinc-950 p-4">
+                <table className="w-full min-w-[600px] text-left text-xs text-zinc-300">
+                  <thead>
+                    <tr className="border-b border-white/10 uppercase font-black text-zinc-500 pb-2">
+                      <th className="py-2 pr-4">Name</th>
+                      <th className="py-2 pr-4">Database Role</th>
+                      <th className="py-2">Modify Database Permission Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.teamRoster.map((row) => {
+                      const rosterRole = parseAppRole(row.role);
+                      return (
+                        <tr key={row.id} className="border-b border-white/5">
+                          <td className="py-3 pr-4 text-zinc-200">{row.full_name || 'VIP Staff Member'}</td>
+                          <td className="py-3 pr-4 font-mono text-gold-soft">{row.role}</td>
+                          <td className="py-3">
+                            <form action={submitPromoteRoleForm} className="flex items-center gap-2">
+                              <input type="hidden" name="profileId" value={row.id} />
+                              <select
+                                name="role"
+                                defaultValue={rosterRole || ''}
+                                required
+                                className="rounded-lg border border-zinc-850 bg-black px-2 py-1 text-xs text-white"
+                              >
+                                {!rosterRole && <option value="" disabled>Pick a valid role</option>}
+                                {ROLE_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-gold px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-black transition hover:brightness-110"
+                              >
+                                Save Database Role
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-5 backdrop-blur-md'>
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Control deck</p>
-          <div className='mt-4 flex flex-col gap-2'>
-            <Link href='/admin/settings/stripe' className='rounded-lg border border-white/15 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-white transition hover:border-gold/40'>
-              Stripe & billing
-            </Link>
-            <Link href='/admin/system-status' className='rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-center text-xs font-black uppercase tracking-wider text-gold-soft transition hover:bg-gold/20'>
-              Deployment checklist
-            </Link>
-          </div>
-          <p className='mt-4 text-xs text-zinc-500'>Staff accounts on file: {stats.staffProfiles}</p>
-        </div>
-      </div>
+        )}
       </div>
     </div>
   );

@@ -61,7 +61,11 @@ const fallbackItems: PublicGalleryItem[] = [
   },
 ];
 
-export function FeaturedTransformationsSection() {
+export interface FeaturedTransformationsSectionProps {
+  visuals?: any;
+}
+
+export function FeaturedTransformationsSection({ visuals }: FeaturedTransformationsSectionProps) {
   const [items, setItems] = useState<PublicGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -104,7 +108,7 @@ export function FeaturedTransformationsSection() {
     }
   };
 
-  if (loading) {
+  if (loading && !visuals) {
     return (
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -114,7 +118,35 @@ export function FeaturedTransformationsSection() {
     );
   }
 
-  const displayItems = items.length > 0 ? items : fallbackItems;
+  // Resolve the display items based on: Owner Selected -> CMS Featured -> Fallback
+  let displayItems: PublicGalleryItem[] = [];
+  
+  if (visuals?.featuredTransformations?.items && Array.isArray(visuals.featuredTransformations.items)) {
+    const publishedVisuals = visuals.featuredTransformations.items.filter((x: any) => x.published !== false);
+    if (publishedVisuals.length > 0) {
+      displayItems = publishedVisuals.map((item: any) => ({
+        id: item.id,
+        url: item.after,
+        image_url: item.after,
+        caption: item.caption,
+        sort_order: 1,
+        order_index: 1,
+        published: true,
+        watermark: false,
+        beforeUrl: item.before,
+        afterUrl: item.after,
+        vehicleLabel: item.title,
+        serviceLabel: item.tags?.split(',')[0]?.trim() || 'Detailing',
+        vehicleClass: item.layoutSize === 'wide' ? 'suv' : 'sedan',
+        featured: true,
+        createdAt: new Date().toISOString()
+      }));
+    }
+  }
+
+  if (displayItems.length === 0) {
+    displayItems = items.length > 0 ? items : fallbackItems;
+  }
 
   return (
     <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">

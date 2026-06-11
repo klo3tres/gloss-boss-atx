@@ -140,6 +140,7 @@ export type OrderLedger = {
     cashPaidCents: number;
     zellePaidCents: number;
     manualPaidCents: number;
+    creditPaidCents: number;
   };
   /** Payments counted toward customer-facing totals (excludes voided; test flagged separately). */
   customerPayments: LedgerPayment[];
@@ -524,6 +525,7 @@ export async function resolveOrderLedger(
       cashPaidCents: pricing.cashPaidCents,
       zellePaidCents: pricing.zellePaidCents,
       manualPaidCents: pricing.manualPaidCents,
+      creditPaidCents: pricing.creditPaidCents || 0,
     },
     audit: {
       orderSource: orderSourceFromJob(job),

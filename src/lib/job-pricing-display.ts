@@ -71,6 +71,7 @@ export type JobPricingDisplay = {
   cashPaidCents: number;
   zellePaidCents: number;
   manualPaidCents: number;
+  creditPaidCents: number;
   totalPaidCents: number;
   /** Sum of all succeeded non-voided payments (may exceed job total from test/duplicate rows). */
   rawTotalPaidCents: number;
@@ -124,8 +125,8 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   }
 
   const offerDiscountCents = pick('offerDiscountCents');
-  const promoCodeDiscountCents = pick('promoDiscountCents');
-  const promoDiscountCents = offerDiscountCents + promoCodeDiscountCents;
+  const primaryOfferDiscountCents = pick('promoDiscountCents');
+  const promoDiscountCents = offerDiscountCents + primaryOfferDiscountCents;
 
   let prePromoCents = pick('prePromoCents');
   if (prePromoCents <= 0) {
@@ -140,7 +141,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   const engineServiceFinalCents = Math.max(
     0,
-    prePromoCents - onlineDiscountCents - offerDiscountCents - promoCodeDiscountCents,
+    prePromoCents - onlineDiscountCents - offerDiscountCents - primaryOfferDiscountCents,
   );
 
   const adminOverrideFinal = pick('adminOverrideFinalTotalCents');
@@ -176,14 +177,22 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   let stripePaidCents = 0;
   let zellePaidCents = 0;
   let manualPaidCents = 0;
+  let creditPaidCents = 0;
   let totalPaidCents = 0;
+
+  const isCredit = (p: Row) => {
+    const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
+    return method.includes('credit');
+  };
+
   for (const p of succeeded) {
     const pid = str(p.id);
     if (pid && seenPayIds.has(pid)) continue;
     if (pid) seenPayIds.add(pid);
     const amt = num(p.amount_cents);
     totalPaidCents += amt;
-    if (isCash(p)) cashPaidCents += amt;
+    if (isCredit(p)) creditPaidCents += amt;
+    else if (isCash(p)) cashPaidCents += amt;
     else if (isZelle(p)) zellePaidCents += amt;
     else if (isManual(p)) manualPaidCents += amt;
     else if (isStripe(p)) stripePaidCents += amt;
@@ -229,6 +238,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     cashPaidCents,
     zellePaidCents,
     manualPaidCents,
+    creditPaidCents,
     totalPaidCents: rawTotalPaidCents > 0 ? rawTotalPaidCents : allocatedTotalPaidCents,
     rawTotalPaidCents,
     allocatedTotalPaidCents,

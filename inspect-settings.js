@@ -1,7 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 
-// Parse .env.local manually
 const envFile = fs.readFileSync('./.env.local', 'utf-8');
 const env = {};
 envFile.split('\n').forEach(line => {
@@ -19,7 +18,18 @@ const supabase = createClient(
 );
 
 async function run() {
-  console.log('Available Env Keys:', Object.keys(env));
+  const { data, error } = await supabase.from('site_settings').select('*');
+  if (error) {
+    console.error('Error fetching settings:', error);
+  } else {
+    console.log('Site settings keys:', data.map(d => d.key));
+    const visuals = data.find(d => d.key === 'homepage_visuals');
+    if (visuals) {
+      console.log('homepage_visuals exists:', visuals.value);
+    } else {
+      console.log('homepage_visuals does NOT exist in site_settings');
+    }
+  }
 }
 
 run();

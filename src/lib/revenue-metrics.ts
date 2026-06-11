@@ -55,6 +55,7 @@ export type RevenueSummary = {
   checkCents: number;
   manualCardCents: number;
   compCents: number;
+  creditCents: number;
   otherCents: number;
 };
 
@@ -119,6 +120,7 @@ function addChannel(summary: RevenueSummary, channel: ReturnType<typeof classify
   else if (channel === 'check') summary.checkCents += amt;
   else if (channel === 'manual_card') summary.manualCardCents += amt;
   else if (channel === 'comp') summary.compCents += amt;
+  else if (channel === 'credit') summary.creditCents += amt;
   else summary.otherCents += amt;
 }
 
@@ -143,6 +145,7 @@ export function summarizePayments(
     checkCents: 0,
     manualCardCents: 0,
     compCents: 0,
+    creditCents: 0,
     otherCents: 0,
   };
   const seenRevenueKeys = new Set<string>();

@@ -53,6 +53,7 @@ export type PublicSiteDataPayload = {
   /** True when `featured_showcase` CMS JSON produced at least one published slide. */
   featuredShowcaseFromCms?: boolean;
   googleReviewUrl: string;
+  homepageVisuals?: any;
   fleetServicesEnabled?: boolean;
   fleetServicesBlurb?: string;
   fleetPricing?: {

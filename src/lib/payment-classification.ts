@@ -72,12 +72,14 @@ export type PaymentChannel =
   | 'check'
   | 'manual_card'
   | 'comp'
+  | 'credit'
   | 'other';
 
 export function classifyPaymentChannel(methodRaw: string, kindRaw: string, row?: Row): PaymentChannel {
   const method = methodRaw.toLowerCase();
   const kind = kindRaw.toLowerCase();
   const source = `${method} ${kind}`;
+  if (source.includes('credit')) return 'credit';
   if (source.includes('comp') || source.includes('free')) return 'comp';
   if (source.includes('zelle')) return 'zelle';
   if (source.includes('venmo')) return 'venmo';

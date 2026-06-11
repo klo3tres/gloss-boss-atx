@@ -1,7 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 
-// Parse .env.local manually
 const envFile = fs.readFileSync('./.env.local', 'utf-8');
 const env = {};
 envFile.split('\n').forEach(line => {
@@ -19,7 +18,11 @@ const supabase = createClient(
 );
 
 async function run() {
-  console.log('Available Env Keys:', Object.keys(env));
+  const { data: cms, error: cmsErr } = await supabase.from('cms_documents').select('*').limit(1);
+  console.log('CMS Documents row sample:', cms);
+  
+  const { data: settings, error: setErr } = await supabase.from('settings').select('*').limit(1);
+  console.log('Settings row sample:', settings);
 }
 
 run();

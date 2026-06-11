@@ -421,7 +421,7 @@ export default async function CustomerDashboardRootPage() {
       }
       activeDeals = await loadCustomerDeals(adminDb);
 
-      const tier = customerMembership?.tier || 'default';
+      const tier = (customerMembership?.tier || 'default').toLowerCase();
       const { data: design } = await adminDb
         .from('loyalty_card_designs')
         .select('*')

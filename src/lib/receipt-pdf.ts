@@ -29,6 +29,7 @@ export type ReceiptPdfInput = {
   stripePaid?: string;
   zellePaid?: string;
   manualPaid?: string;
+  creditPaid?: string;
   remainingBalance: string;
 };
 
@@ -127,6 +128,9 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
           { label: 'Deposit paid', amount: input.depositPaid, tone: 'paid' as const },
           ...(input.stripePaid && input.stripePaid !== '$0.00'
             ? [{ label: 'Stripe paid', amount: input.stripePaid, tone: 'paid' as const }]
+            : []),
+          ...(input.creditPaid && input.creditPaid !== '$0.00'
+            ? [{ label: 'Credit applied', amount: input.creditPaid, tone: 'paid' as const }]
             : []),
           ...(input.cashPaid && input.cashPaid !== '$0.00'
             ? [{ label: 'Cash paid', amount: input.cashPaid, tone: 'paid' as const }]

@@ -239,7 +239,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const loyaltyTarget = 5;
   const loyaltyCycle = loyaltyTarget + 1;
   const currentStep = Math.min(loyaltyTarget, loyaltyVisits % loyaltyCycle);
-  const isRewardReady = loyaltyVisits > 0 && loyaltyVisits % loyaltyCycle === 0;
+  const isRewardReady = loyaltyVisits > 0 && loyaltyVisits % loyaltyCycle === loyaltyTarget;
   const loyaltyPercent = Math.round((currentStep / loyaltyTarget) * 100);
   const punchesVisual = Array.from({ length: loyaltyTarget }, (_, i) => i < currentStep || isRewardReady);
 

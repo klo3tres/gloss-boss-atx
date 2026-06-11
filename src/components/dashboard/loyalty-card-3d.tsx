@@ -65,14 +65,14 @@ export function LoyaltyCard3D({
 
   const currentStamps = forceStamps !== undefined ? forceStamps : stampsCount;
   const currentStep = currentStamps % (loyaltyTarget + 1);
-  const isRewardReady = forceRewardReady || (currentStamps > 0 && currentStamps % (loyaltyTarget + 1) === 0);
+  const isRewardReady = forceRewardReady || (currentStamps > 0 && currentStamps % (loyaltyTarget + 1) === loyaltyTarget);
 
   // We have 6 slots total: 5 standard stamps + 1 free reward slot.
   const slots = Array.from({ length: loyaltyTarget + 1 }, (_, i) => {
     const isRewardSlot = i === loyaltyTarget;
     let isPunched = false;
     if (isRewardSlot) {
-      isPunched = isRewardReady;
+      isPunched = false; // Keep reward slot unpunched, rendering as pulsing Gift icon when ready
     } else {
       isPunched = isRewardReady || (currentStep > i);
     }
@@ -99,7 +99,7 @@ export function LoyaltyCard3D({
         }}
         transition={{ type: 'spring', stiffness: 200, damping: 20 }}
         style={{ transformStyle: 'preserve-3d' }}
-        className="relative overflow-hidden rounded-3xl border border-gold/30 bg-gradient-to-br from-zinc-900 via-neutral-950 to-zinc-900 p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)] hover:shadow-[0_0_50px_rgba(212,175,55,0.22)] select-none cursor-pointer aspect-[3.5/2] min-h-[250px] flex flex-col justify-between"
+        className="relative rounded-3xl border border-gold/30 bg-gradient-to-br from-zinc-900 via-neutral-950 to-zinc-900 p-6 shadow-[0_0_40px_rgba(212,175,55,0.12)] hover:shadow-[0_0_50px_rgba(212,175,55,0.22)] select-none cursor-pointer aspect-[3.5/2] min-h-[250px] flex flex-col justify-between"
       >
         {/* Carbon fiber style subtle pattern overlay */}
         <div 
@@ -119,10 +119,9 @@ export function LoyaltyCard3D({
 
         {/* --- FRONT SIDE --- */}
         <div 
-          className="absolute inset-0 p-6 flex flex-col justify-between w-full h-full"
+          className="absolute inset-0 p-6 flex flex-col justify-between w-full h-full rounded-3xl overflow-hidden"
           style={{ 
             backfaceVisibility: 'hidden',
-            display: isFlipped ? 'none' : 'flex'
           }}
         >
           {showFrontImage ? (
@@ -160,11 +159,10 @@ export function LoyaltyCard3D({
 
         {/* --- BACK SIDE --- */}
         <div 
-          className="absolute inset-0 p-6 flex flex-col justify-between w-full h-full"
+          className="absolute inset-0 p-6 flex flex-col justify-between w-full h-full rounded-3xl overflow-hidden"
           style={{ 
             transform: lockedPreview ? 'none' : 'rotateY(180deg)',
             backfaceVisibility: 'hidden',
-            display: isFlipped ? 'flex' : 'none'
           }}
         >
           {showBackImage ? (

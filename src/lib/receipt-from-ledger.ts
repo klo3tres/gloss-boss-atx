@@ -198,6 +198,7 @@ export function buildReceiptFromLedger(
     stripePaid: documentProps.stripePaid,
     zellePaid: ledger.totals.zellePaidCents > 0 ? displayMoney(ledger.totals.zellePaidCents) : undefined,
     manualPaid: ledger.totals.manualPaidCents > 0 ? displayMoney(ledger.totals.manualPaidCents) : undefined,
+    creditPaid: ledger.totals.creditPaidCents > 0 ? displayMoney(ledger.totals.creditPaidCents) : undefined,
     remainingBalance: documentProps.remainingBalance,
   };
 

@@ -210,7 +210,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     .limit(1)
     .maybeSingle();
 
-  const tier = (activeMembership?.membership_plans as any)?.tier || 'default';
+  const tier = ((activeMembership?.membership_plans as any)?.tier || 'default').toLowerCase();
   const membershipName = (activeMembership?.membership_plans as any)?.name || 'Standard Client (No Tier)';
 
   const { data: activeCardDesign } = await admin
