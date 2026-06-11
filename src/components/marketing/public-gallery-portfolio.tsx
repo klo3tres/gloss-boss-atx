@@ -667,7 +667,7 @@ function GalleryModal({
                   <input
                     type="range"
                     min="0.8"
-                    max="1.3"
+                    max="2"
                     step="0.01"
                     value={beforeScale}
                     onChange={(e) => setBeforeScale(Number(e.target.value))}
@@ -694,37 +694,44 @@ function GalleryModal({
         >
           {viewMode === 'slider' && hasPair ? (
             <>
-              {/* Underneath (Before Image) with custom alignment settings */}
-              <img
-                src={imgBefore}
-                alt="Before"
-                draggable={false}
-                className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
-                style={{
-                  transform: `scale(${zoom * beforeScale}) translate3d(${(pan.x + beforeOffset.x) / zoom}px, ${(pan.y + beforeOffset.y) / zoom}px, 0px)`,
-                  transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                }}
-              />
-              
-              {/* Clipped Container (After Image) */}
+              {/* Right side/background (After image). The frame is hard-masked so pan/zoom never bleeds outside. */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
+                <img
+                  src={imgAfter}
+                  alt="After"
+                  draggable={false}
+                  className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
+                  style={{
+                    transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                    transformOrigin: 'center center',
+                    transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                  }}
+                />
+              </div>
+
+              {/* Left side clipped reveal (Before image). This is the only image reveal boundary. */}
               <div
                 className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none select-none"
                 style={{
                   width: `${sliderVal}%`,
                 }}
               >
-                <img
-                  src={imgAfter}
-                  alt="After"
-                  draggable={false}
-                  className="h-full object-contain pointer-events-none select-none max-w-none"
-                  style={{
-                    width: containerWidth ? `${containerWidth}px` : '100vw',
-                    height: '100%',
-                    transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
-                    transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                  }}
-                />
+                <div
+                  className="absolute inset-y-0 left-0 overflow-hidden"
+                  style={{ width: containerWidth ? `${containerWidth}px` : '100vw' }}
+                >
+                  <img
+                    src={imgBefore}
+                    alt="Before"
+                    draggable={false}
+                    className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none max-w-none"
+                    style={{
+                      transform: `scale(${zoom * beforeScale}) translate3d(${(pan.x + beforeOffset.x) / zoom}px, ${(pan.y + beforeOffset.y) / zoom}px, 0px)`,
+                      transformOrigin: 'center center',
+                      transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Slider Line Overlay */}
@@ -750,10 +757,10 @@ function GalleryModal({
               )}
               
               <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200 z-10 pointer-events-none select-none">
-                {swapped ? 'After' : 'Before'}
+                Before
               </span>
               <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black z-10 pointer-events-none select-none">
-                {swapped ? 'Before' : 'After'}
+                After
               </span>
             </>
           ) : viewMode === 'before' && hasPair ? (

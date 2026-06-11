@@ -441,6 +441,14 @@ export default async function CustomerDashboardRootPage() {
           .maybeSingle();
         activeCardDesign = defaultDesign;
       }
+
+      if (activeCardDesign) {
+        activeCardDesign = {
+          ...(activeCardDesign as Record<string, unknown>),
+          tier: customerMembership?.tier || (activeCardDesign as Record<string, unknown>).tier || 'member',
+          name: customerMembership?.name || (activeCardDesign as Record<string, unknown>).name || 'Gloss Boss Loyalty Card',
+        };
+      }
     }
   }
   const receiptTotal = Array.from(receiptsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0) || Array.from(paymentsByAppt.values()).reduce((sum, rows) => sum + rows.length, 0);

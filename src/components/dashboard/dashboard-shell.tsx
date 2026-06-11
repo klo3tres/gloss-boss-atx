@@ -131,6 +131,7 @@ export function DashboardShell({
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [outboxEvents, setOutboxEvents] = useState<any[]>([]);
   const [systemAlerts, setSystemAlerts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -155,6 +156,15 @@ export function DashboardShell({
           .limit(5);
         if (events) {
           setRecentEvents(events);
+        }
+
+        const { data: outbox } = await supabase
+          .from('notification_outbox')
+          .select('id, kind, template_key, status, channel, created_at, appointment_id, error_message, payload')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (outbox) {
+          setOutboxEvents(outbox);
         }
 
         const alertsList: string[] = [];
@@ -330,13 +340,13 @@ export function DashboardShell({
             <button
               type="button"
               onClick={() => setShowNotifications(true)}
-              className="relative rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-400 hover:text-gold-soft hover:border-gold/30 transition-all shrink-0 mt-1"
+              className="relative rounded-2xl border border-gold/25 bg-black/55 p-3.5 text-gold-soft shadow-[0_0_24px_rgba(212,175,55,0.12)] transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 mt-1"
               title="Open System Notifications"
             >
-              <Bell className="h-4.5 w-4.5" />
-              {(unreadCount > 0 || systemAlerts.length > 0) && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-lg">
-                  {unreadCount + systemAlerts.length}
+              <Bell className="h-5 w-5" />
+              {(unreadCount > 0 || systemAlerts.length > 0 || outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()))) && (
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-lg">
+                  {unreadCount + systemAlerts.length + outboxEvents.filter((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())).length}
                 </span>
               )}
             </button>
@@ -373,7 +383,7 @@ export function DashboardShell({
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3.5 mb-5">
                 <div className="flex items-center gap-2">
-                  <Bell className="h-4.5 w-4.5 text-gold-soft animate-pulse" />
+                  <Bell className="h-5 w-5 text-gold-soft animate-pulse" />
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Alerts & Messages</span>
                 </div>
                 <button
@@ -410,6 +420,43 @@ export function DashboardShell({
                   <Link href="/admin/messages" onClick={() => setShowNotifications(false)} className="text-[10px] font-black uppercase text-gold hover:underline inline-block pt-1">
                     Open Message Center →
                   </Link>
+                </div>
+
+                {/* Owner outbox / actionable notifications */}
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Owner Notifications</p>
+                  {outboxEvents.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-center text-xs text-zinc-500">
+                      No notification outbox rows visible yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {outboxEvents.map((evt) => {
+                        const status = String(evt.status ?? 'queued');
+                        const kind = String(evt.kind ?? evt.template_key ?? 'notification');
+                        const failed = ['failed', 'error'].includes(status.toLowerCase());
+                        const href = evt.appointment_id ? `/admin/work-orders/${evt.appointment_id}` : '/admin/notifications';
+                        return (
+                          <Link
+                            key={String(evt.id ?? evt.created_at)}
+                            href={href}
+                            onClick={() => setShowNotifications(false)}
+                            className={`block rounded-xl border px-3.5 py-3 text-xs ${failed ? 'border-rose-500/30 bg-rose-500/10' : 'border-white/10 bg-zinc-900/40 hover:border-gold/25'}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-bold capitalize text-white">{kind.replace(/_/g, ' ')}</p>
+                                <p className="mt-1 text-[10px] text-zinc-500">{String(evt.error_message ?? evt.channel ?? 'system')}</p>
+                              </div>
+                              <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${failed ? 'bg-rose-500/20 text-rose-100' : 'bg-white/5 text-zinc-400'}`}>
+                                {status}
+                              </span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Timeline activity log */}

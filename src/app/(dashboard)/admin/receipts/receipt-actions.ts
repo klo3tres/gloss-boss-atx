@@ -21,6 +21,40 @@ async function requireReceiptSender() {
   return { admin, userId: session.user.id };
 }
 
+async function safeFlagUpdate(
+  admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>,
+  table: 'receipts' | 'payments',
+  patch: Record<string, unknown>,
+  match: { kind: 'eq'; column: string; value: string } | { kind: 'in'; column: string; values: string[] },
+) {
+  let query =
+    match.kind === 'eq'
+      ? admin.from(table).update(patch).eq(match.column, match.value)
+      : admin.from(table).update(patch).in(match.column, match.values);
+  let res = await query;
+  if (!res.error) return;
+  if (!/schema cache|column|Could not find|voided_at|voided_by|voided|exclude_from_revenue|is_test|status/i.test(res.error.message)) {
+    console.warn(`[receipt-actions] ${table} update failed`, res.error.message);
+    return;
+  }
+
+  const fallbacks =
+    table === 'receipts'
+      ? [{ status: patch.status ?? 'voided' }, { voided_at: patch.voided_at }, { exclude_from_revenue: patch.exclude_from_revenue }, { is_test: patch.is_test }]
+      : [{ status: patch.status ?? 'voided' }, { voided_at: patch.voided_at }, { voided: patch.voided }, { exclude_from_revenue: patch.exclude_from_revenue }, { is_test: patch.is_test }];
+
+  for (const candidate of fallbacks) {
+    const clean = Object.fromEntries(Object.entries(candidate).filter(([, value]) => value !== undefined));
+    if (Object.keys(clean).length === 0) continue;
+    query =
+      match.kind === 'eq'
+        ? admin.from(table).update(clean).eq(match.column, match.value)
+        : admin.from(table).update(clean).in(match.column, match.values);
+    res = await query;
+    if (!res.error) return;
+  }
+}
+
 export async function sendReceiptActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   return sendReceiptAction(formData);
 }
@@ -196,8 +230,8 @@ export async function updateReceiptRevenueFlagsAction(formData: FormData): Promi
     return;
   }
 
-  if (receiptId && Object.keys(receiptPatch).length) await gate.admin.from('receipts').update(receiptPatch).eq('id', receiptId);
-  if (paymentId && Object.keys(paymentPatch).length) await gate.admin.from('payments').update(paymentPatch).eq('id', paymentId);
+  if (receiptId && Object.keys(receiptPatch).length) await safeFlagUpdate(gate.admin, 'receipts', receiptPatch, { kind: 'eq', column: 'id', value: receiptId });
+  if (paymentId && Object.keys(paymentPatch).length) await safeFlagUpdate(gate.admin, 'payments', paymentPatch, { kind: 'eq', column: 'id', value: paymentId });
   revalidatePath('/admin/receipts');
   if (receiptId) revalidatePath(`/admin/receipts/${receiptId}`);
 }
@@ -212,14 +246,14 @@ export async function bulkReceiptRevenueFlagsAction(formData: FormData): Promise
   const paymentIds = (linkedReceipts ?? []).map((r) => str((r as Record<string, unknown>).payment_id)).filter(Boolean);
   const now = new Date().toISOString();
   if (action === 'mark_test') {
-    await gate.admin.from('receipts').update({ is_test: true }).in('id', ids);
-    if (paymentIds.length > 0) await gate.admin.from('payments').update({ is_test: true }).in('id', paymentIds);
+    await safeFlagUpdate(gate.admin, 'receipts', { is_test: true }, { kind: 'in', column: 'id', values: ids });
+    if (paymentIds.length > 0) await safeFlagUpdate(gate.admin, 'payments', { is_test: true }, { kind: 'in', column: 'id', values: paymentIds });
   } else if (action === 'exclude') {
-    await gate.admin.from('receipts').update({ exclude_from_revenue: true }).in('id', ids);
-    if (paymentIds.length > 0) await gate.admin.from('payments').update({ exclude_from_revenue: true }).in('id', paymentIds);
+    await safeFlagUpdate(gate.admin, 'receipts', { exclude_from_revenue: true }, { kind: 'in', column: 'id', values: ids });
+    if (paymentIds.length > 0) await safeFlagUpdate(gate.admin, 'payments', { exclude_from_revenue: true }, { kind: 'in', column: 'id', values: paymentIds });
   } else if (action === 'void') {
-    await gate.admin.from('receipts').update({ voided_at: now, status: 'voided' }).in('id', ids);
-    if (paymentIds.length > 0) await gate.admin.from('payments').update({ voided_at: now, voided: true, status: 'voided' }).in('id', paymentIds);
+    await safeFlagUpdate(gate.admin, 'receipts', { voided_at: now, status: 'voided' }, { kind: 'in', column: 'id', values: ids });
+    if (paymentIds.length > 0) await safeFlagUpdate(gate.admin, 'payments', { voided_at: now, voided: true, status: 'voided' }, { kind: 'in', column: 'id', values: paymentIds });
   } else if (action === 'delete_test') {
     const testIds = (linkedReceipts ?? [])
       .filter((r) => (r as Record<string, unknown>).is_test === true)

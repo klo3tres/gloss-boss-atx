@@ -121,6 +121,22 @@ export type OwnerDashboardSnapshot = {
       reason: string;
     }>;
   };
+  membershipMetrics: {
+    activeTotal: number;
+    bronze: number;
+    silver: number;
+    gold: number;
+    renewingThisWeek: number;
+  };
+  notificationRows: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    channel: string;
+    title: string;
+    createdAt: string | null;
+    href: string;
+  }>;
 };
 
 function chicagoShort(iso: string) {
@@ -434,11 +450,21 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const thirtyDaysFromNow = new Date();
   thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-  const [outstandingRes, issuedRes, redeemedRes, expiringRes] = await Promise.all([
+  const weekFromNow = new Date();
+  weekFromNow.setDate(weekFromNow.getDate() + 7);
+
+  const [outstandingRes, issuedRes, redeemedRes, expiringRes, membershipsRes, plansRes, outboxRes] = await Promise.all([
     admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
     admin.from('customer_credits').select('amount_cents').gte('issued_at', startOfMonth).neq('status', 'voided'),
     admin.from('customer_credit_redemptions').select('amount_cents').gte('redeemed_at', startOfMonth),
     admin.from('customer_credits').select('id, amount_cents, remaining_cents, expires_at, reason, customers(full_name, email)').in('status', ['active', 'partially_used']).lte('expires_at', thirtyDaysFromNow.toISOString()).gte('expires_at', now).order('expires_at', { ascending: true }).limit(10),
+    admin.from('customer_memberships').select('id, status, membership_plan_id, current_period_end, ends_at').in('status', ['active', 'trialing', 'past_due']).limit(1000),
+    admin.from('membership_plans').select('id, tier, name').limit(1000),
+    admin
+      .from('notification_outbox')
+      .select('id, kind, template_key, status, channel, created_at, appointment_id, payload, error_message')
+      .order('created_at', { ascending: false })
+      .limit(20),
   ]);
 
   const outstandingLiabilityCents = (outstandingRes.data ?? []).reduce((sum, c) => sum + (c.remaining_cents ?? 0), 0);
@@ -456,6 +482,57 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   if (expiringSoon.length > 0) {
     alerts.push(`${expiringSoon.length} store credit(s) expiring in the next 30 days`);
   }
+
+  const plansById = new Map(
+    ((plansRes.data ?? []) as Array<Record<string, unknown>>).map((plan) => [
+      String(plan.id),
+      {
+        tier: String(plan.tier ?? plan.name ?? '').toLowerCase(),
+        name: String(plan.name ?? 'Membership'),
+      },
+    ]),
+  );
+  const activeMembershipRows = (membershipsRes.data ?? []) as Array<Record<string, unknown>>;
+  const membershipMetrics = activeMembershipRows.reduce<OwnerDashboardSnapshot['membershipMetrics']>(
+    (acc, row) => {
+      acc.activeTotal += 1;
+      const plan = plansById.get(String(row.membership_plan_id));
+      const tier = plan?.tier ?? '';
+      if (tier.includes('bronze')) acc.bronze += 1;
+      else if (tier.includes('silver')) acc.silver += 1;
+      else if (tier.includes('gold')) acc.gold += 1;
+
+      const renewalRaw = typeof row.current_period_end === 'string' ? row.current_period_end : typeof row.ends_at === 'string' ? row.ends_at : '';
+      if (renewalRaw) {
+        const renewal = new Date(renewalRaw).getTime();
+        if (!Number.isNaN(renewal) && renewal >= new Date(now).getTime() && renewal <= weekFromNow.getTime()) {
+          acc.renewingThisWeek += 1;
+        }
+      }
+      return acc;
+    },
+    { activeTotal: 0, bronze: 0, silver: 0, gold: 0, renewingThisWeek: 0 },
+  );
+
+  const notificationRows = ((outboxRes.data ?? []) as Array<Record<string, unknown>>).map((row) => {
+    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : {};
+    const appointmentId = String(row.appointment_id ?? payload.appointment_id ?? '');
+    const kind = String(row.kind ?? row.template_key ?? 'notification');
+    const status = String(row.status ?? 'queued');
+    const title =
+      String(row.error_message ?? '').trim() ||
+      String(payload.subject ?? payload.title ?? payload.event_kind ?? '').trim() ||
+      kind.replace(/_/g, ' ');
+    return {
+      id: String(row.id ?? row.created_at ?? Math.random()),
+      kind,
+      status,
+      channel: String(row.channel ?? 'system'),
+      title,
+      createdAt: typeof row.created_at === 'string' ? row.created_at : null,
+      href: appointmentId ? workOrderPath(appointmentId, { source: 'appointment', shell: 'admin' }) : '/admin/notifications',
+    };
+  });
 
   return {
     revenueToday: displayMoney(today.grossCents),
@@ -516,5 +593,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       mtdRedeemedCents,
       expiringSoon,
     },
+    membershipMetrics,
+    notificationRows,
   };
 }

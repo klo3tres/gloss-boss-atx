@@ -74,6 +74,14 @@ export default async function AdminDashboardPage() {
       mtdRedeemedCents: 0,
       expiringSoon: [],
     },
+    membershipMetrics: {
+      activeTotal: 0,
+      bronze: 0,
+      silver: 0,
+      gold: 0,
+      renewingThisWeek: 0,
+    },
+    notificationRows: [],
   };
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {

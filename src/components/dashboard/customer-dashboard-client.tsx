@@ -235,10 +235,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     ? new Date(new Date(lastCompleted.scheduled_start).getTime() + 21 * 24 * 60 * 60 * 1000)
     : null;
 
-  // Loyalty stepper variables
+  // Loyalty stepper variables. The card has 5 standard punches plus a reward slot.
   const loyaltyTarget = 5;
-  const currentStep = loyaltyVisits % loyaltyTarget;
+  const loyaltyCycle = loyaltyTarget + 1;
+  const currentStep = Math.min(loyaltyTarget, loyaltyVisits % loyaltyCycle);
+  const isRewardReady = loyaltyVisits > 0 && loyaltyVisits % loyaltyCycle === 0;
   const loyaltyPercent = Math.round((currentStep / loyaltyTarget) * 100);
+  const punchesVisual = Array.from({ length: loyaltyTarget }, (_, i) => i < currentStep || isRewardReady);
 
   return (
     <div className="space-y-8 rounded-3xl p-1 sm:p-2">
@@ -272,7 +275,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Punches</p>
-                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{currentStep}/{loyaltyTarget}</p>
+                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{isRewardReady ? 'Reward' : `${currentStep}/${loyaltyTarget}`}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Renews</p>
@@ -340,14 +343,20 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                   <p className="text-[10px] font-black uppercase text-zinc-500">Available credit</p>
                   <p className="mt-1 font-mono text-2xl font-black text-gold-soft">{money(availableCreditCents)}</p>
+                  <p className="mt-2 text-[11px] text-zinc-500">Apply credits in full or partially during booking after sign-in.</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                   <p className="text-[10px] font-black uppercase text-zinc-500">Reward progress</p>
-                  <p className="mt-1 font-mono text-2xl font-black text-white">{currentStep}/{loyaltyTarget}</p>
+                  <div className="mt-2 flex gap-1.5">
+                    {punchesVisual.map((filled, i) => (
+                      <span key={i} className={`h-3 w-3 rounded-full border ${filled ? 'border-gold bg-gold shadow-[0_0_12px_rgba(212,175,55,0.45)]' : 'border-white/20 bg-white/5'}`} />
+                    ))}
+                  </div>
+                  <p className="mt-2 font-mono text-lg font-black text-white">{isRewardReady ? 'Reward ready' : `${currentStep}/${loyaltyTarget}`}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                   <p className="text-[10px] font-black uppercase text-zinc-500">Reward menu</p>
-                  <p className="mt-1 text-sm font-bold text-zinc-200">Free wash reward unlocks when your punch card is full.</p>
+                  <p className="mt-1 text-sm font-bold text-zinc-200">{isRewardReady ? 'Your next reward is ready to redeem on your next booking.' : 'Free wash reward unlocks when your punch card is full.'}</p>
                 </div>
               </div>
             ) : (
@@ -524,7 +533,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           <LoyaltyCard3D 
             activeCardDesign={props.activeCardDesign} 
             stampsCount={loyaltyVisits} 
-            customerEmail={props.history[0]?.guest_email || 'VIP MEMBER'} 
+            customerEmail={membership ? `${theme.label} · ${membership.status}` : (props.history[0]?.guest_email || 'Gloss Boss Customer')}
           />
           <p className="text-[10px] text-zinc-500 text-center mt-1">
             💡 Click card to flip front/back
@@ -533,7 +542,9 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           {/* Stepper Progress Visualizer (Subtle text info card) */}
           <GlassCard className="border-zinc-900 bg-black/30 mt-2">
             <p className="text-xs text-zinc-500 text-center leading-relaxed">
-              Complete {loyaltyTarget - currentStep} more service{loyaltyTarget - currentStep === 1 ? '' : 's'} to unlock your next luxury detailing reward.
+              {isRewardReady
+                ? 'Your punch reward is ready. Book your next visit and ask the team to redeem it.'
+                : `Complete ${Math.max(0, loyaltyTarget - currentStep)} more service${loyaltyTarget - currentStep === 1 ? '' : 's'} to unlock your next luxury detailing reward.`}
             </p>
             <Link
               href="/book"

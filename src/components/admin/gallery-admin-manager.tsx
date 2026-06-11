@@ -773,15 +773,27 @@ export function GalleryAdminManager({ rows, recentPhotos = [] }: { rows: Gallery
 
               {/* Slider Component */}
               <div className="relative aspect-[4/3] w-full max-w-xl mx-auto overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
-                {/* Before Photo */}
-                <img src={selectedBeforeUrl} className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none" alt="Before" />
-                
-                {/* After Photo (Clipped) */}
-                <div 
-                  className="absolute inset-y-0 left-0 h-full overflow-hidden select-none pointer-events-none" 
-                  style={{ width: `${sliderVal}%` }}
+                {/* After Photo: full-frame background/right side */}
+                <div className="absolute inset-0 overflow-hidden select-none pointer-events-none">
+                  <img
+                    src={selectedAfterUrl}
+                    className="absolute inset-0 h-full w-full max-w-none object-cover select-none pointer-events-none"
+                    alt="After"
+                    draggable={false}
+                  />
+                </div>
+
+                {/* Before Photo: clipped left reveal only */}
+                <div
+                  className="absolute inset-0 overflow-hidden select-none pointer-events-none"
+                  style={{ clipPath: `inset(0 ${100 - sliderVal}% 0 0)` }}
                 >
-                  <img src={selectedAfterUrl} className="absolute inset-y-0 left-0 h-full object-cover select-none pointer-events-none" style={{ width: '100%', minWidth: '576px', maxWidth: '576px' }} alt="After" />
+                  <img
+                    src={selectedBeforeUrl}
+                    className="absolute inset-0 h-full w-full max-w-none object-cover select-none pointer-events-none"
+                    alt="Before"
+                    draggable={false}
+                  />
                 </div>
                 
                 {/* Slit vertical bar & drag handle */}

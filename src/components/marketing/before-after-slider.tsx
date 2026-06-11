@@ -22,7 +22,7 @@ export function BeforeAfterSlider({
   return (
     <div className={`relative w-full ${aspectRatio} overflow-hidden rounded-2xl border border-gold/15 bg-zinc-950 ${className}`}>
       {/* After image is in the background (Right side) */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 overflow-hidden">
         <img
           src={afterUrl}
           alt="After Detailing"
@@ -42,7 +42,7 @@ export function BeforeAfterSlider({
 
       {/* Before image is clipped on top (Left side) */}
       <div
-        className="absolute inset-0 select-none pointer-events-none"
+        className="absolute inset-0 overflow-hidden select-none pointer-events-none"
         style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
       >
         <img

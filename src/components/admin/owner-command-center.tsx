@@ -452,6 +452,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
         );
 
       case 'memberships':
+        const membershipMetrics = metrics.membershipMetrics ?? { activeTotal: 0, bronze: 0, silver: 0, gold: 0, renewingThisWeek: 0 };
         return (
           <div className="space-y-6">
             <div>
@@ -461,18 +462,26 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
 
             <div className="space-y-4">
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-3 text-xs">
-                <p className="font-bold text-white uppercase tracking-wider text-[10px] text-zinc-400">Membership Tiers</p>
+                <p className="font-bold uppercase tracking-wider text-[10px] text-zinc-400">Live Membership Tiers</p>
                 <div className="flex justify-between py-1 border-b border-white/5">
-                  <span className="text-zinc-400">Gold VIP (Annual)</span>
-                  <span className="font-bold text-white font-mono">5 Members</span>
+                  <span className="text-zinc-400">Active total</span>
+                  <span className="font-bold text-white font-mono">{membershipMetrics.activeTotal} members</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-white/5">
-                  <span className="text-zinc-400">Silver (Quarterly)</span>
-                  <span className="font-bold text-white font-mono">8 Members</span>
+                  <span className="text-zinc-400">Bronze</span>
+                  <span className="font-bold text-orange-200 font-mono">{membershipMetrics.bronze} members</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-zinc-400">Silver</span>
+                  <span className="font-bold text-zinc-200 font-mono">{membershipMetrics.silver} members</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-zinc-400">Gold</span>
+                  <span className="font-bold text-gold-soft font-mono">{membershipMetrics.gold} members</span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-zinc-400">Bronze Sparkle (Monthly)</span>
-                  <span className="font-bold text-white font-mono">5 Members</span>
+                  <span className="text-zinc-400">Renewing this week</span>
+                  <span className="font-bold text-emerald-300 font-mono">{membershipMetrics.renewingThisWeek}</span>
                 </div>
               </div>
 
@@ -579,6 +588,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
         );
 
       case 'notifications':
+        const notifications = metrics.notificationRows ?? [];
         return (
           <div className="space-y-6">
             <div>
@@ -600,6 +610,37 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
                 </div>
               </div>
             )}
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Owner Notification Outbox</p>
+              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center py-4">No owner notification rows found yet.</p>
+                ) : (
+                  notifications.slice(0, 12).map((notice) => (
+                    <Link
+                      key={notice.id}
+                      href={notice.href}
+                      onClick={() => setActiveDrawer(null)}
+                      className="block rounded-xl border border-white/10 bg-black/35 p-3 text-xs hover:border-gold/30"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-bold capitalize text-white">{notice.kind.replace(/_/g, ' ')}</p>
+                          <p className="mt-1 text-[10px] text-zinc-500">{notice.title}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${notice.status === 'failed' ? 'bg-rose-500/15 text-rose-200' : notice.status === 'sent' || notice.status === 'delivered' ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-200'}`}>
+                            {notice.status}
+                          </span>
+                          <p className="mt-1 text-[9px] text-zinc-600">{notice.createdAt ? new Date(notice.createdAt).toLocaleString() : 'No date'}</p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
 
             {/* Live Feed */}
             <div className="space-y-3">
