@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Bell, ShieldAlert, Sparkles, MessageSquare } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 
@@ -124,6 +126,56 @@ export function DashboardShell({
   const [navOpen, setNavOpen] = useState(false);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
   const [currentHash, setCurrentHash] = useState('');
+
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [systemAlerts, setSystemAlerts] = useState<string[]>([]);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const loadNotifications = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { count } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'new');
+        setUnreadCount(count ?? 0);
+
+        const { data: events } = await supabase
+          .from('job_timeline_events')
+          .select('event_type, created_at, appointment_id')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (events) {
+          setRecentEvents(events);
+        }
+
+        const alertsList: string[] = [];
+        const { count: unassignedCount } = await supabase
+          .from('appointments')
+          .select('id', { count: 'exact', head: true })
+          .is('assigned_technician_id', null)
+          .in('status', ['assigned', 'confirmed']);
+        if (unassignedCount && unassignedCount > 0) {
+          alertsList.push(`${unassignedCount} unassigned jobs need attention`);
+        }
+
+        setSystemAlerts(alertsList);
+      } catch (err) {
+        console.warn('[Notifications Bell] error fetching data', err);
+      }
+    };
+
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setCurrentHash(window.location.hash);
@@ -267,10 +319,26 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
-          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6'>
-            <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
-            <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
-            <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
+          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-start justify-between gap-4'>
+            <div className="min-w-0 flex-1">
+              <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
+              <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
+              <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
+            </div>
+            
+            <button
+              type="button"
+              onClick={() => setShowNotifications(true)}
+              className="relative rounded-xl border border-white/10 bg-black/40 p-2.5 text-zinc-400 hover:text-gold-soft hover:border-gold/30 transition-all shrink-0 mt-1"
+              title="Open System Notifications"
+            >
+              <Bell className="h-4.5 w-4.5" />
+              {(unreadCount > 0 || systemAlerts.length > 0) && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-lg">
+                  {unreadCount + systemAlerts.length}
+                </span>
+              )}
+            </button>
           </header>
           <SafeRenderBoundary label='Dashboard content'>
             <div className='gb-dashboard-content space-y-6'>{children}</div>
@@ -280,6 +348,91 @@ export function DashboardShell({
           </div>
         </section>
       </div>
+
+      {/* Sliding Notification Drawer */}
+      <AnimatePresence>
+        {showNotifications && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowNotifications(false)}
+              className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm"
+            />
+            
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-sm border-l border-gold/20 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3.5 mb-5">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4.5 w-4.5 text-gold-soft animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Alerts & Messages</span>
+                </div>
+                <button
+                  onClick={() => setShowNotifications(false)}
+                  className="rounded-lg border border-white/10 p-1 text-zinc-400 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Critical System Warnings */}
+                {systemAlerts.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">System Warnings</p>
+                    {systemAlerts.map((alert, i) => (
+                      <div key={i} className="flex items-start gap-2 rounded-xl bg-rose-500/10 border border-rose-500/25 px-3.5 py-2.5 text-xs text-rose-200">
+                        <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                        <span>{alert}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* Unread Message summary */}
+                <div className="rounded-xl border border-white/5 bg-zinc-900/40 p-4 text-xs space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-white flex items-center gap-1.5"><MessageSquare className="h-4 w-4 text-cyan-400" /> Chat Center</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${unreadCount > 0 ? 'bg-rose-500 text-white' : 'bg-white/5 text-zinc-500'}`}>
+                      {unreadCount} New
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">Manage client inbound messages and dispatch SOPs inside the communications dashboard.</p>
+                  <Link href="/admin/messages" onClick={() => setShowNotifications(false)} className="text-[10px] font-black uppercase text-gold hover:underline inline-block pt-1">
+                    Open Message Center →
+                  </Link>
+                </div>
+
+                {/* Timeline activity log */}
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Recent Dispatch Activity</p>
+                  {recentEvents.length === 0 ? (
+                    <p className="text-xs text-zinc-500">No recent timeline events found.</p>
+                  ) : (
+                    <div className="space-y-3 pl-2 border-l border-white/10">
+                      {recentEvents.map((evt, idx) => (
+                        <div key={idx} className="relative text-xs">
+                          <div className="absolute -left-[13px] top-1.5 h-1.5 w-1.5 rounded-full bg-gold-soft" />
+                          <p className="font-bold text-white capitalize">{evt.event_type.replace(/_/g, ' ')}</p>
+                          <p className="text-[9px] text-zinc-500 font-mono mt-0.5">{new Date(evt.created_at).toLocaleTimeString()}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

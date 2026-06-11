@@ -190,10 +190,10 @@ export function Navbar() {
             <Image
               src={navLogoSrc}
               alt='Gloss Boss ATX'
-              width={200}
-              height={56}
+              width={240}
+              height={68}
               unoptimized={navLogoSrc.startsWith('http')}
-              className='h-9 w-auto max-h-10 max-w-[min(200px,46vw)] shrink-0 object-contain object-left sm:h-10'
+              className='h-14 w-auto max-h-16 max-w-[min(240px,50vw)] shrink-0 object-contain object-left sm:h-16'
               priority
             />
             <span className='hidden text-[11px] font-bold uppercase tracking-[0.16em] text-gold-soft/90 sm:inline sm:text-xs'>Premium Auto Care</span>
@@ -214,22 +214,24 @@ export function Navbar() {
                     type='button'
                     onClick={() => setMoreOpen(!moreOpen)}
                     onMouseEnter={() => setMoreOpen(true)}
-                    className='flex items-center gap-1 transition hover:text-gold-soft uppercase font-bold text-xs tracking-widest'
+                    className='flex items-center gap-1 transition hover:text-gold-soft uppercase font-bold text-xs tracking-widest py-2'
                   >
                     More <ChevronDown size={14} />
                   </button>
                   {moreOpen && (
-                    <div className='absolute right-0 mt-2 w-48 rounded-xl border border-gold/20 bg-zinc-950 p-2 shadow-2xl z-50 flex flex-col gap-1'>
-                      {dropdownMarketingLinks.map((item) => (
-                        <a
-                          key={item.label}
-                          href={toSectionLink(item.href)}
-                          onClick={() => setMoreOpen(false)}
-                          className='block rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-gold/10 hover:text-gold-soft transition text-left'
-                        >
-                          {item.label}
-                        </a>
-                      ))}
+                    <div className='absolute right-0 top-full pt-1 w-48 z-50' onMouseEnter={() => setMoreOpen(true)}>
+                      <div className='rounded-xl border border-gold/20 bg-zinc-950 p-2 shadow-2xl flex flex-col gap-1'>
+                        {dropdownMarketingLinks.map((item) => (
+                          <a
+                            key={item.label}
+                            href={toSectionLink(item.href)}
+                            onClick={() => setMoreOpen(false)}
+                            className='block rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-gold/10 hover:text-gold-soft transition text-left'
+                          >
+                            {item.label}
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

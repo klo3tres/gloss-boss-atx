@@ -7,6 +7,60 @@ import { BeforeAfterSlider } from './before-after-slider';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 
+const fallbackItems: PublicGalleryItem[] = [
+  {
+    id: 'fallback-coating',
+    url: '/gallery-fallback/coating-after.png',
+    image_url: '/gallery-fallback/coating-after.png',
+    caption: 'Porsche 911 Carrera S · Ceramic Coating',
+    sort_order: 1,
+    order_index: 1,
+    published: true,
+    watermark: false,
+    beforeUrl: '/gallery-fallback/coating-before.png',
+    afterUrl: '/gallery-fallback/coating-after.png',
+    vehicleLabel: 'Porsche 911 Carrera S',
+    serviceLabel: 'Ceramic Coating',
+    vehicleClass: 'sedan',
+    featured: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'fallback-detail',
+    url: '/gallery-fallback/detail-after.png',
+    image_url: '/gallery-fallback/detail-after.png',
+    caption: 'Tesla Model Y · Full Detail',
+    sort_order: 2,
+    order_index: 2,
+    published: true,
+    watermark: false,
+    beforeUrl: '/gallery-fallback/detail-before.png',
+    afterUrl: '/gallery-fallback/detail-after.png',
+    vehicleLabel: 'Tesla Model Y',
+    serviceLabel: 'Full Detail & Paint Correction',
+    vehicleClass: 'suv',
+    featured: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'fallback-wash',
+    url: '/gallery-fallback/wash-after.png',
+    image_url: '/gallery-fallback/wash-after.png',
+    caption: 'Ford F-150 Raptor · Restorative Wash',
+    sort_order: 3,
+    order_index: 3,
+    published: true,
+    watermark: false,
+    beforeUrl: '/gallery-fallback/wash-before.png',
+    afterUrl: '/gallery-fallback/wash-after.png',
+    vehicleLabel: 'Ford F-150 Raptor',
+    serviceLabel: 'Exterior Restorative Wash',
+    vehicleClass: 'truck_large',
+    featured: true,
+    createdAt: new Date().toISOString(),
+  },
+];
+
 export function FeaturedTransformationsSection() {
   const [items, setItems] = useState<PublicGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,19 +114,11 @@ export function FeaturedTransformationsSection() {
     );
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-sm text-zinc-500">
-          Transformations will appear here once before/after photos are uploaded and featured.
-        </p>
-      </div>
-    );
-  }
+  const displayItems = items.length > 0 ? items : fallbackItems;
 
   return (
     <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => (
+      {displayItems.map((item) => (
         <article
           key={item.id}
           className="gb-premium-card gb-luxury-card-hover flex flex-col overflow-hidden rounded-3xl border border-gold/15 bg-black/40 p-4 sm:p-5 shadow-[0_0_35px_rgba(212,175,55,0.04)]"

@@ -86,6 +86,7 @@ export type PaymentBucket =
   | 'check'
   | 'manual_card'
   | 'comp_free'
+  | 'customer_credit'
   | 'other';
 
 export type LedgerPayment = {
@@ -213,6 +214,7 @@ function classifyPayment(p: Row): PaymentBucket {
   const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
   const amt = num(p.amount_cents);
   if (amt === 0 || kind.includes('comp') || kind.includes('free') || method.includes('comp')) return 'comp_free';
+  if (kind.includes('credit') || method.includes('credit')) return 'customer_credit';
   if (isManualFieldPayment(p)) {
     if (method.includes('cash')) return 'cash';
     if (method.includes('zelle')) return 'zelle';
@@ -241,6 +243,7 @@ function paymentLabel(bucket: PaymentBucket, p: Row): string {
     check: 'Check / manual paid',
     manual_card: 'Manual card paid',
     comp_free: 'Comp / FREE',
+    customer_credit: 'Customer credit applied',
     other: 'Payment',
   };
   return map[bucket] ?? 'Payment';

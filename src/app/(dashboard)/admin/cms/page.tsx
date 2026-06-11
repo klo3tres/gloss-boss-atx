@@ -178,16 +178,25 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     ]);
     const rawPhotos = [...(photosRes.data ?? []), ...(mediaRes.data ?? [])] as Record<string, unknown>[];
     const appointmentIds = [...new Set(rawPhotos.map((p) => String(p.appointment_id ?? '')).filter(Boolean))];
+    const fallbackBookingIds = [...new Set(rawPhotos.map((p) => String(p.fallback_booking_id ?? '')).filter(Boolean))];
     const techIds = [...new Set(rawPhotos.map((p) => String(p.technician_id ?? p.uploaded_by ?? '')).filter(Boolean))];
-    const [apptMeta, techMeta] = await Promise.all([
-      appointmentIds.length ? photoDb.from('appointments').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', appointmentIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-      techIds.length ? photoDb.from('profiles').select('id, full_name, email').in('id', techIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    
+    const [apptMeta, fallbackMeta, techMeta] = await Promise.all([
+      appointmentIds.length ? photoDb.from('appointments').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', appointmentIds) : Promise.resolve({ data: [] }),
+      fallbackBookingIds.length ? photoDb.from('booking_fallbacks').select('id, guest_name, guest_email, vehicle_description, booking_vehicles, service_slug').in('id', fallbackBookingIds) : Promise.resolve({ data: [] }),
+      techIds.length ? photoDb.from('profiles').select('id, full_name, email').in('id', techIds) : Promise.resolve({ data: [] }),
     ]);
-    const apptById = new Map(((apptMeta.data ?? []) as Record<string, unknown>[]).map((a) => [String(a.id), a]));
-    const techById = new Map(((techMeta.data ?? []) as Record<string, unknown>[]).map((t) => [String(t.id), t]));
+    
+    const apptById = new Map<string, Record<string, unknown>>([
+      ...((apptMeta.data ?? []) as Record<string, unknown>[]).map((a) => [String(a.id), a] as [string, Record<string, unknown>]),
+      ...((fallbackMeta.data ?? []) as Record<string, unknown>[]).map((f) => [String(f.id), f] as [string, Record<string, unknown>]),
+    ]);
+    const techById = new Map<string, Record<string, unknown>>(((techMeta.data ?? []) as Record<string, unknown>[]).map((t) => [String(t.id), t] as [string, Record<string, unknown>]));
+    
     recentPhotos = rawPhotos
       .map((p) => {
-        const appt = apptById.get(String(p.appointment_id ?? '')) ?? {};
+        const jobId = String(p.appointment_id ?? p.fallback_booking_id ?? '');
+        const appt = apptById.get(jobId) ?? {};
         const tech = techById.get(String(p.technician_id ?? p.uploaded_by ?? '')) ?? {};
         const url = String(p.url ?? p.public_url ?? p.media_url ?? p.file_url ?? '').trim();
         const vehicleIndex = typeof p.vehicle_index === 'number' ? p.vehicle_index : Number.isFinite(Number(p.vehicle_index)) ? Number(p.vehicle_index) : null;
@@ -201,10 +210,12 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           indexedLabel ||
           String(appt.vehicle_description ?? '').trim() ||
           `Vehicle ${vehicleIndex != null ? vehicleIndex + 1 : ''}`.trim();
+        const phase = String(p.category ?? 'before').trim().toLowerCase() === 'after' ? 'after' : 'before';
         return {
           ...p,
           id: String(p.id ?? url),
           url,
+          phase,
           category: String(p.photo_category ?? p.category ?? 'photo'),
           created_at: String(p.created_at ?? ''),
           uploader: String(tech.full_name ?? tech.email ?? p.uploader ?? ''),

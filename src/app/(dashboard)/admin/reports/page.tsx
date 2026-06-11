@@ -25,6 +25,21 @@ export default async function ReportsPage({
   const fromIso = new Date(`${from}T00:00:00`).toISOString();
   const toIso = new Date(`${to}T23:59:59`).toISOString();
   const summary = await getFinancialSnapshot(admin, { startDate: fromIso, endDate: toIso, includeTest });
+
+  const [reportOutstanding, reportIssued, reportRedeemed, reportExpired, reportVoided] = await Promise.all([
+    admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
+    admin.from('customer_credits').select('amount_cents').gte('issued_at', fromIso).lte('issued_at', toIso).neq('status', 'voided'),
+    admin.from('customer_credit_redemptions').select('amount_cents').gte('redeemed_at', fromIso).lte('redeemed_at', toIso),
+    admin.from('customer_credits').select('remaining_cents').gte('expires_at', fromIso).lte('expires_at', toIso).eq('status', 'expired'),
+    admin.from('customer_credits').select('amount_cents').gte('created_at', fromIso).lte('created_at', toIso).eq('status', 'voided'),
+  ]);
+
+  const outstandingTotalCents = (reportOutstanding.data ?? []).reduce((sum, c) => sum + (c.remaining_cents ?? 0), 0);
+  const issuedTotalCents = (reportIssued.data ?? []).reduce((sum, c) => sum + (c.amount_cents ?? 0), 0);
+  const redeemedTotalCents = (reportRedeemed.data ?? []).reduce((sum, r) => sum + (r.amount_cents ?? 0), 0);
+  const expiredTotalCents = (reportExpired.data ?? []).reduce((sum, c) => sum + (c.remaining_cents ?? 0), 0);
+  const voidedTotalCents = (reportVoided.data ?? []).reduce((sum, c) => sum + (c.amount_cents ?? 0), 0);
+
   const qs = `from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}${includeTest ? '&includeTest=1' : ''}`;
 
   const reports = [
@@ -53,6 +68,37 @@ export default async function ReportsPage({
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Refunds + fees</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.refundsCents + summary.stripeFeesCents)}</p></div>
         <div className='rounded-2xl border border-white/10 bg-black/40 p-5'><p className='text-xs uppercase text-zinc-500'>Expenses</p><p className='mt-2 text-2xl font-black text-white'>{displayMoney(summary.expensesCents)}</p></div>
         <div className='rounded-2xl border border-gold/20 bg-black/40 p-5'><p className='text-xs uppercase text-gold-soft'>Net profit</p><p className='mt-2 text-2xl font-black text-gold-soft'>{displayMoney(summary.netProfitCents)}</p></div>
+      </section>
+
+      <section className='mt-6 rounded-2xl border border-gold/15 bg-zinc-950 p-5'>
+        <p className='text-xs font-black uppercase tracking-wider text-gold-soft mb-3.5'>Credit Liability & Ledger Summary</p>
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-5'>
+          <div className='rounded-xl border border-white/5 bg-black/25 p-4'>
+            <p className='text-[10px] uppercase text-zinc-500 font-bold'>Outstanding Liability</p>
+            <p className='mt-2 text-lg font-black text-rose-300'>{displayMoney(outstandingTotalCents)}</p>
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>Global unredeemed active credits</p>
+          </div>
+          <div className='rounded-xl border border-white/5 bg-black/25 p-4'>
+            <p className='text-[10px] uppercase text-zinc-500 font-bold'>Issued in Period</p>
+            <p className='mt-2 text-lg font-black text-white'>{displayMoney(issuedTotalCents)}</p>
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>Total credits issued in range</p>
+          </div>
+          <div className='rounded-xl border border-white/5 bg-black/25 p-4'>
+            <p className='text-[10px] uppercase text-zinc-500 font-bold'>Redeemed in Period</p>
+            <p className='mt-2 text-lg font-black text-emerald-300'>{displayMoney(redeemedTotalCents)}</p>
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>Credits redeemed in range</p>
+          </div>
+          <div className='rounded-xl border border-white/5 bg-black/25 p-4'>
+            <p className='text-[10px] uppercase text-zinc-500 font-bold'>Expired in Period</p>
+            <p className='mt-2 text-lg font-black text-amber-200'>{displayMoney(expiredTotalCents)}</p>
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>Expired credits in range</p>
+          </div>
+          <div className='rounded-xl border border-white/5 bg-black/25 p-4'>
+            <p className='text-[10px] uppercase text-zinc-500 font-bold'>Voided in Period</p>
+            <p className='mt-2 text-lg font-black text-zinc-400'>{displayMoney(voidedTotalCents)}</p>
+            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>Voided credits in range</p>
+          </div>
+        </div>
       </section>
 
       <section className='grid gap-4 lg:grid-cols-2'>

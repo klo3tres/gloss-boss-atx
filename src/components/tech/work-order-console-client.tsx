@@ -27,6 +27,7 @@ import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSendCustomSmsAction } from '@/app/(dashboard)/tech/tech-actions';
 import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
+import { type CreditHistoryItem, type CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);
@@ -131,6 +132,8 @@ export type WorkOrderConsoleData = {
   canManagePayments?: boolean;
   workOrderPath?: string;
   customerId?: string;
+  credits?: CreditHistoryItem[];
+  redemptions?: CreditRedemptionItem[];
   loyaltyStampsCount?: number;
   loyaltyStamps?: any[];
   customLineItems?: Array<{ id: string; label: string; kind?: string; amountCents: number; quantity?: number; notes?: string }>;
@@ -908,6 +911,9 @@ export function WorkOrderConsoleClient({
                 status: p.status,
                 stripeSession: p.stripe,
               }))}
+              customerId={data.customerId}
+              credits={data.credits}
+              redemptions={data.redemptions}
             />
           ) : !data.ledgerResolveError ? (
             <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>

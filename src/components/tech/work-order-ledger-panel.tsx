@@ -20,6 +20,8 @@ import {
 } from '@/app/(dashboard)/tech/work-order-stripe-sync-actions';
 import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
 import { voidExtrasAndRebuildActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
+import { applyCreditToWorkOrderAction } from '@/app/(dashboard)/admin/customer-credit-actions';
+import { CustomerCreditsManager, type CreditHistoryItem, type CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 
 export type LedgerDiscountRow = { id: string; label: string; amount: string; source: string };
 export type LedgerPaymentRow = {
@@ -31,6 +33,82 @@ export type LedgerPaymentRow = {
   voided?: boolean;
   amountCents?: number;
 };
+
+function ApplyCreditForm({
+  customerId,
+  creditId,
+  workOrderId,
+  source,
+  maxAmountCents,
+  onApplied,
+}: {
+  customerId: string;
+  creditId: string;
+  workOrderId: string;
+  source: 'appointment' | 'fallback';
+  maxAmountCents: number;
+  onApplied?: (msg: string) => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [amount, setAmount] = useState((maxAmountCents / 100).toFixed(2));
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    const amountVal = Number(amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      setErr('Enter a valid amount.');
+      return;
+    }
+
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set('customerId', customerId);
+      fd.set('creditId', creditId);
+      fd.set('workOrderId', workOrderId);
+      fd.set('amountDollars', amountVal.toString());
+      fd.set('source', source);
+
+      const res = await applyCreditToWorkOrderAction(fd);
+      if (res.error) {
+        setErr(res.error);
+      } else {
+        if (onApplied) onApplied(res.message ?? 'Applied credit successfully.');
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-xl border border-gold/20 bg-gold/5 p-3">
+      <div className="flex-1 min-w-[100px]">
+        <label className="text-[9px] font-black uppercase text-gold-soft block">
+          Amount to Apply ($)
+        </label>
+        <input
+          type="number"
+          step="0.01"
+          min="0.01"
+          max={(maxAmountCents / 100).toFixed(2)}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="gb-input mt-1 w-24 bg-black border border-zinc-800 text-white rounded px-2.5 py-1 text-xs"
+          required
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded bg-gold px-3 py-1.5 text-[9px] font-black uppercase text-black hover:bg-gold-soft transition"
+      >
+        {pending ? 'Applying...' : 'Apply'}
+      </button>
+      {err && <p className="w-full text-rose-400 text-[9px] mt-1">{err}</p>}
+    </form>
+  );
+}
 
 function RecordPaymentForm({
   jobId,
@@ -134,6 +212,9 @@ export function WorkOrderLedgerPanel({
   recentPaymentsForRepair,
   ledgerWarnings,
   ledgerTotals,
+  customerId,
+  credits,
+  redemptions,
 }: {
   jobId: string;
   isFallback: boolean;
@@ -192,6 +273,9 @@ export function WorkOrderLedgerPanel({
     stripeSession?: string;
     stripeIntent?: string;
   }>;
+  customerId?: string;
+  credits?: CreditHistoryItem[];
+  redemptions?: CreditRedemptionItem[];
 }) {
   const vehicleBreakdownLines = (breakdownLines ?? []).filter(
     (l) =>
@@ -322,6 +406,59 @@ export function WorkOrderLedgerPanel({
             <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='check' label='Record check' recordCashAction={recordCashAction} />
           </div>
         ) : null}
+
+        {canManagePayments && customerId ? (
+          <div className="mt-6 border-t border-white/5 pt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase text-gold-soft">Customer Store Credits</h4>
+                <p className="text-[10px] text-zinc-500">Apply customer's existing credits to reduce the balance due.</p>
+              </div>
+              <CustomerCreditsManager
+                customerId={customerId}
+                credits={credits || []}
+                redemptions={redemptions || []}
+                showCompactButtonOnly
+              />
+            </div>
+
+            {credits && credits.filter(c => c.status === 'active' || c.status === 'partially_used').length > 0 ? (
+              <div className="space-y-2">
+                {credits
+                  .filter(c => c.status === 'active' || c.status === 'partially_used')
+                  .map((c) => {
+                    const maxToApply = Math.min(c.remaining_cents, balanceDueCents);
+                    return (
+                      <div key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-white/5 bg-zinc-900/40">
+                        <div className="text-xs">
+                          <p className="font-semibold text-white">{c.reason}</p>
+                          <p className="text-[10px] text-zinc-400 mt-0.5">
+                            Remaining: <strong className="text-gold-soft">{displayMoney(c.remaining_cents)}</strong> (Original: {displayMoney(c.amount_cents)})
+                          </p>
+                        </div>
+                        {maxToApply > 0 ? (
+                          <div className="shrink-0 w-full sm:w-auto">
+                            <ApplyCreditForm
+                              customerId={customerId}
+                              creditId={c.id}
+                              workOrderId={jobId}
+                              source={source}
+                              maxAmountCents={maxToApply}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-zinc-500 italic shrink-0">Balance due is zero</span>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500 italic">No available store credits for this customer.</p>
+            )}
+          </div>
+        ) : null}
+
         <div id='wo-invoice' className='mt-4'>
           <WorkOrderInvoiceBuilder
             jobId={jobId}

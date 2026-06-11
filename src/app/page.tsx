@@ -163,7 +163,7 @@ export default function HomePage() {
 
         <div className='relative mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.25fr_0.75fr]'>
           <MotionFade>
-            <div>
+            <div className="gb-glass-card border border-gold/15 p-6 sm:p-10 shadow-[0_0_60px_rgba(212,175,55,0.05)] bg-black/40 backdrop-blur-lg rounded-3xl">
               <p className='inline-flex items-center gap-2 rounded-full border border-gold/30 bg-black/60 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.1)]'>
                 <Sparkles size={12} className="text-gold" /> Ride Clean. Ride Like A Boss.
               </p>

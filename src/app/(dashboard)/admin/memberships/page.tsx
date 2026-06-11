@@ -6,6 +6,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { assignCustomerMembershipAction, saveLoyaltyRuleAction, saveMembershipPlanAction, saveLoyaltyCardDesignAction } from './actions';
 import { LoyaltyCardPreviewConsole } from '@/components/admin/loyalty-card-preview-console';
 import { addManualLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
+import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,7 @@ export default async function MembershipsAdminPage() {
     admin.from('customers').select('id, full_name, email').order('full_name').limit(300),
     admin
       .from('customer_memberships')
-      .select('id, status, started_at, customers(full_name,email), membership_plans(name,tier)')
+      .select('id, status, started_at, customer_id, customers(id,full_name,email), membership_plans(name,tier)')
       .order('created_at', { ascending: false })
       .limit(80),
     admin.from('loyalty_card_designs').select('*').order('created_at', { ascending: false }),
@@ -153,6 +154,17 @@ export default async function MembershipsAdminPage() {
               <input name='reward_description' defaultValue={String(p.reward_description ?? 'Complete 5 services, unlock 6th wash/free reward.')} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
             </label>
 
+            <div className='grid grid-cols-2 gap-2 mb-3'>
+              <label className='text-[10px] text-zinc-400'>
+                60-Day Upgrade Credit ($)
+                <input name='gold_60day_upgrade_credit' type='number' step='0.01' defaultValue={((Number(p.gold_60day_upgrade_credit_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+              <label className='text-[10px] text-zinc-400'>
+                Credit Expire (Months)
+                <input name='credit_expiration_months' type='number' defaultValue={Number(p.credit_expiration_months ?? 12)} className='w-full mt-1 rounded-lg border border-zinc-700 bg-black px-3 py-1.5 text-xs text-white' />
+              </label>
+            </div>
+
             <label className='mt-3 block text-xs text-zinc-400'>
               Benefits (one per line)
               <textarea name='benefits' rows={4} defaultValue={Array.isArray(p.benefits) ? p.benefits.join('\n') : ''} className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
@@ -239,11 +251,28 @@ export default async function MembershipsAdminPage() {
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Active Customer Memberships</p>
         <div className='mt-3 grid gap-2'>
-          {((membershipsRes.data ?? []) as any[]).map((m) => (
-            <div key={m.id} className='rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300'>
-              {m.customers?.full_name || m.customers?.email || 'Customer'} - {m.membership_plans?.name || 'Plan'} - {m.status}
-            </div>
-          ))}
+          {((membershipsRes.data ?? []) as any[]).map((m) => {
+            const custId = m.customers?.id || m.customer_id;
+            return (
+              <div key={m.id} className='flex items-center justify-between gap-4 rounded-lg border border-white/10 px-4 py-3 text-sm text-zinc-300 bg-black/20'>
+                <div>
+                  <span className="font-bold text-white">
+                    {m.customers?.full_name || m.customers?.email || 'Customer'}
+                  </span>{' '}
+                  — <span className="text-gold-soft">{m.membership_plans?.name || 'Plan'}</span> —{' '}
+                  <span className="text-xs text-zinc-400 capitalize">{m.status}</span>
+                </div>
+                {custId && (
+                  <CustomerCreditsManager
+                    customerId={custId}
+                    credits={[]}
+                    redemptions={[]}
+                    showCompactButtonOnly
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

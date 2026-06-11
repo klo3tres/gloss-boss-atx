@@ -418,6 +418,14 @@ function GalleryModal({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  const [swapped, setSwapped] = useState(false);
+  const [beforeOffset, setBeforeOffset] = useState({ x: 0, y: 0 });
+  const [beforeScale, setBeforeScale] = useState(1);
+  const [showAlignTools, setShowAlignTools] = useState(false);
+
+  const imgBefore = swapped ? after : before;
+  const imgAfter = swapped ? before : after;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -427,6 +435,9 @@ function GalleryModal({
     setPan({ x: 0, y: 0 });
     setSliderVal(50);
     setViewMode(hasPair ? 'slider' : 'after');
+    setSwapped(false);
+    setBeforeOffset({ x: 0, y: 0 });
+    setBeforeScale(1);
   }, [item.id, hasPair]);
 
   // Track container width for slider alignment
@@ -458,6 +469,9 @@ function GalleryModal({
   const handleReset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setBeforeOffset({ x: 0, y: 0 });
+    setBeforeScale(1);
+    setSwapped(false);
   };
 
   // Drag and Pan handlers
@@ -531,6 +545,20 @@ function GalleryModal({
               </div>
             )}
 
+            {/* Alignment Tools Toggle */}
+            {hasPair && (
+              <button
+                type="button"
+                onClick={() => setShowAlignTools(!showAlignTools)}
+                className={`rounded-xl border p-3 text-xs font-bold uppercase transition flex items-center gap-1.5 ${
+                  showAlignTools ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/10 text-zinc-200 hover:border-gold/40'
+                }`}
+                title="Toggle Alignment Tools"
+              >
+                <SlidersHorizontal className="h-4 w-4" /> Align
+              </button>
+            )}
+
             {/* Zoom Controls */}
             <div className="flex rounded-xl border border-white/10 bg-black/60 p-1">
               <button
@@ -556,12 +584,12 @@ function GalleryModal({
               </button>
             </div>
 
-            {zoom > 1 && (
+            {(zoom > 1 || beforeOffset.x !== 0 || beforeOffset.y !== 0 || beforeScale !== 1 || swapped) && (
               <button
                 type="button"
                 onClick={handleReset}
                 className="rounded-xl border border-white/10 p-3 text-zinc-200 hover:border-gold/40 hover:text-white transition flex items-center gap-1.5 text-xs font-bold uppercase"
-                title="Reset Pan & Zoom"
+                title="Reset Pan, Zoom & Alignment"
               >
                 <RefreshCw className="h-4 w-4" /> Reset
               </button>
@@ -578,6 +606,80 @@ function GalleryModal({
           </div>
         </div>
 
+        {/* Collapsible Alignment Panel */}
+        {showAlignTools && hasPair && (
+          <div className="mb-3 rounded-2xl border border-gold/30 bg-black/80 p-4 text-white backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSwapped(!swapped)}
+                  className={`rounded-lg border px-4 py-2 text-xs font-black uppercase tracking-wider transition ${
+                    swapped ? 'bg-gold/20 border-gold text-gold-soft shadow-[0_0_10px_rgba(212,175,55,0.15)]' : 'border-white/15 text-zinc-300 hover:border-white/30'
+                  }`}
+                >
+                  Swap Left / Right
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBeforeOffset({ x: 0, y: 0 });
+                    setBeforeScale(1);
+                  }}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold uppercase text-zinc-400 hover:text-white hover:border-white/30"
+                >
+                  Reset Offset
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Horizontal Shift */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Shift X:</span>
+                  <input
+                    type="range"
+                    min="-150"
+                    max="150"
+                    value={beforeOffset.x}
+                    onChange={(e) => setBeforeOffset((prev) => ({ ...prev, x: Number(e.target.value) }))}
+                    className="w-24 accent-gold bg-zinc-800 rounded-lg appearance-none h-1.5"
+                  />
+                  <span className="text-xs font-mono text-gold-soft w-8 text-right">{beforeOffset.x}px</span>
+                </div>
+
+                {/* Vertical Shift */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Shift Y:</span>
+                  <input
+                    type="range"
+                    min="-150"
+                    max="150"
+                    value={beforeOffset.y}
+                    onChange={(e) => setBeforeOffset((prev) => ({ ...prev, y: Number(e.target.value) }))}
+                    className="w-24 accent-gold bg-zinc-800 rounded-lg appearance-none h-1.5"
+                  />
+                  <span className="text-xs font-mono text-gold-soft w-8 text-right">{beforeOffset.y}px</span>
+                </div>
+
+                {/* Scaling */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Scale Left:</span>
+                  <input
+                    type="range"
+                    min="0.8"
+                    max="1.3"
+                    step="0.01"
+                    value={beforeScale}
+                    onChange={(e) => setBeforeScale(Number(e.target.value))}
+                    className="w-24 accent-gold bg-zinc-800 rounded-lg appearance-none h-1.5"
+                  />
+                  <span className="text-xs font-mono text-gold-soft w-10 text-right">{Math.round(beforeScale * 100)}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Viewport container */}
         <div
           ref={containerRef}
@@ -592,14 +694,14 @@ function GalleryModal({
         >
           {viewMode === 'slider' && hasPair ? (
             <>
-              {/* Underneath (Before Image) */}
+              {/* Underneath (Before Image) with custom alignment settings */}
               <img
-                src={before}
+                src={imgBefore}
                 alt="Before"
                 draggable={false}
                 className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
                 style={{
-                  transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                  transform: `scale(${zoom * beforeScale}) translate3d(${(pan.x + beforeOffset.x) / zoom}px, ${(pan.y + beforeOffset.y) / zoom}px, 0px)`,
                   transition: isDragging ? 'none' : 'transform 0.15s ease-out',
                 }}
               />
@@ -612,7 +714,7 @@ function GalleryModal({
                 }}
               >
                 <img
-                  src={after}
+                  src={imgAfter}
                   alt="After"
                   draggable={false}
                   className="h-full object-contain pointer-events-none select-none max-w-none"
@@ -648,26 +750,26 @@ function GalleryModal({
               )}
               
               <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200 z-10 pointer-events-none select-none">
-                Before
+                {swapped ? 'After' : 'Before'}
               </span>
               <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black z-10 pointer-events-none select-none">
-                After
+                {swapped ? 'Before' : 'After'}
               </span>
             </>
           ) : viewMode === 'before' && hasPair ? (
             <img
-              src={before}
+              src={imgBefore}
               alt="Before"
               draggable={false}
               className="h-full w-full object-contain pointer-events-none select-none"
               style={{
-                transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
+                transform: `scale(${zoom * beforeScale}) translate3d(${(pan.x + beforeOffset.x) / zoom}px, ${(pan.y + beforeOffset.y) / zoom}px, 0px)`,
                 transition: isDragging ? 'none' : 'transform 0.15s ease-out',
               }}
             />
           ) : (
             <img
-              src={after}
+              src={imgAfter}
               alt={caption}
               draggable={false}
               className="h-full w-full object-contain pointer-events-none select-none"

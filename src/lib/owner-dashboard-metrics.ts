@@ -91,6 +91,19 @@ export type OwnerDashboardSnapshot = {
     jobCount: number;
     revenueCents: number;
   }>;
+  creditMetrics: {
+    outstandingLiabilityCents: number;
+    mtdIssuedCents: number;
+    mtdRedeemedCents: number;
+    expiringSoon: Array<{
+      id: string;
+      customerName: string;
+      amountCents: number;
+      remainingCents: number;
+      expiresAt: string;
+      reason: string;
+    }>;
+  };
 };
 
 function chicagoShort(iso: string) {
@@ -359,6 +372,34 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     alerts.push(`${pendingSuppliesCount} pending technician supply request(s) need review — check Admin > Supply Requests`);
   }
 
+  // Credit Metrics calculation
+  const startOfMonth = startOfMonthIso();
+  const thirtyDaysFromNow = new Date();
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+  const [outstandingRes, issuedRes, redeemedRes, expiringRes] = await Promise.all([
+    admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
+    admin.from('customer_credits').select('amount_cents').gte('issued_at', startOfMonth).neq('status', 'voided'),
+    admin.from('customer_credit_redemptions').select('amount_cents').gte('redeemed_at', startOfMonth),
+    admin.from('customer_credits').select('id, amount_cents, remaining_cents, expires_at, reason, customers(full_name, email)').in('status', ['active', 'partially_used']).lte('expires_at', thirtyDaysFromNow.toISOString()).gte('expires_at', now).order('expires_at', { ascending: true }).limit(10),
+  ]);
+
+  const outstandingLiabilityCents = (outstandingRes.data ?? []).reduce((sum, c) => sum + (c.remaining_cents ?? 0), 0);
+  const mtdIssuedCents = (issuedRes.data ?? []).reduce((sum, c) => sum + (c.amount_cents ?? 0), 0);
+  const mtdRedeemedCents = (redeemedRes.data ?? []).reduce((sum, r) => sum + (r.amount_cents ?? 0), 0);
+  const expiringSoon = (expiringRes.data ?? []).map((c: any) => ({
+    id: c.id,
+    customerName: c.customers?.full_name || c.customers?.email || 'Valued Client',
+    amountCents: c.amount_cents,
+    remainingCents: c.remaining_cents,
+    expiresAt: c.expires_at,
+    reason: c.reason,
+  }));
+
+  if (expiringSoon.length > 0) {
+    alerts.push(`${expiringSoon.length} store credit(s) expiring in the next 30 days`);
+  }
+
   return {
     revenueToday: displayMoney(today.grossCents),
     revenueWeek: displayMoney(week.grossCents),
@@ -396,5 +437,11 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     techActivity,
     leadPipeline,
     techPerformance,
+    creditMetrics: {
+      outstandingLiabilityCents,
+      mtdIssuedCents,
+      mtdRedeemedCents,
+      expiringSoon,
+    },
   };
 }

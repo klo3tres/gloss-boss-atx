@@ -52,6 +52,12 @@ export default async function AdminDashboardPage() {
       totalActive: 0,
     },
     techPerformance: [],
+    creditMetrics: {
+      outstandingLiabilityCents: 0,
+      mtdIssuedCents: 0,
+      mtdRedeemedCents: 0,
+      expiringSoon: [],
+    },
   };
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {

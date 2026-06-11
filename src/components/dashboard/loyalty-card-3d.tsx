@@ -265,6 +265,19 @@ export function LoyaltyCard3D({
           </div>
         </div>
       </motion.div>
+
+      {/* Card Artwork Diagnostics */}
+      {(!frontImg || !backImg || frontImageFailed || backImageFailed) && (
+        <div className="mt-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-[10px] text-rose-200">
+          <p className="font-bold flex items-center gap-1">⚠️ Loyalty Card Diagnostic Alert</p>
+          <ul className="list-disc pl-4 mt-1 space-y-1 text-zinc-400 font-medium">
+            {!frontImg && <li>Front artwork upload is missing in membership plan.</li>}
+            {frontImg && frontImageFailed && <li>Front artwork failed to load (check URL/permissions).</li>}
+            {!backImg && <li>Back artwork upload is missing in membership plan.</li>}
+            {backImg && backImageFailed && <li>Back artwork failed to load (check URL/permissions).</li>}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

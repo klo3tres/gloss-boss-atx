@@ -21,6 +21,7 @@ import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
+import { RevenueIssueCreditPanel } from '@/components/admin/revenue-issue-credit-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,7 +95,7 @@ export default async function AdminRevenuePage({
   );
 
   const now = new Date().toISOString();
-  const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes, techsRes] = await Promise.all([
+  const [todayRows, weekRows, monthRows, yearRows, sixMonthRows, allApptsRes, techsRes, customersRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, periodStartIso, now),
@@ -102,6 +103,7 @@ export default async function AdminRevenuePage({
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
     admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class').order('scheduled_start', { ascending: false }).limit(800),
     admin.from('profiles').select('id, full_name, email').in('role', ['technician', 'admin', 'super_admin']),
+    admin.from('customers').select('id, full_name, email').order('full_name').limit(400),
   ]);
 
   const techNames: Record<string, string> = {};
@@ -109,6 +111,8 @@ export default async function AdminRevenuePage({
     const row = t as { id: string; full_name: string | null; email: string | null };
     techNames[row.id] = row.full_name?.trim() || row.email?.trim() || 'Tech';
   }
+
+  const customersList = (customersRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
 
   const sumOpts = includeTest
     ? { fromIso: periodStartIso, toIso: now }
@@ -412,6 +416,10 @@ export default async function AdminRevenuePage({
             </div>
           )}
         </div>
+      </section>
+
+      <section className='mb-8 max-w-xl'>
+        <RevenueIssueCreditPanel customers={customersList} />
       </section>
 
       <section className='space-y-3 mb-8'>

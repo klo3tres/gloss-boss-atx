@@ -10,6 +10,7 @@ import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-act
 import { unarchiveCustomerAction, addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import { workOrderPath } from '@/lib/work-order-links';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
+import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
 import { Mail, Phone, MapPin, User, Award, DollarSign, Calendar } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -231,6 +232,42 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       .maybeSingle();
     finalCardDesign = defaultDesign;
   }
+  const { data: creditsData } = await admin
+    .from('customer_credits')
+    .select('*, profiles(full_name)')
+    .eq('customer_id', id)
+    .order('issued_at', { ascending: false });
+
+  const { data: redemptionsData } = await admin
+    .from('customer_credit_redemptions')
+    .select('*, profiles(full_name), customer_credits!inner(customer_id), payments(appointment_id, fallback_booking_id)')
+    .eq('customer_credits.customer_id', id)
+    .order('redeemed_at', { ascending: false });
+
+  const creditsList = (creditsData ?? []).map((c: any) => ({
+    id: c.id,
+    amount_cents: c.amount_cents,
+    remaining_cents: c.remaining_cents,
+    type: c.type,
+    reason: c.reason,
+    status: c.status,
+    issued_at: c.issued_at,
+    expires_at: c.expires_at,
+    linked_work_order_id: c.linked_work_order_id,
+    linked_payment_id: c.linked_payment_id,
+    issued_by_name: c.profiles?.full_name || 'Staff',
+  }));
+
+  const redemptionsList = (redemptionsData ?? []).map((r: any) => ({
+    id: r.id,
+    credit_id: r.credit_id,
+    payment_id: r.payment_id,
+    amount_cents: r.amount_cents,
+    redeemed_at: r.redeemed_at,
+    redeemed_by_name: r.profiles?.full_name || 'Staff',
+    appointment_id: r.payments?.appointment_id,
+    fallback_booking_id: r.payments?.fallback_booking_id,
+  }));
 
   const isArchived = Boolean(c.archived);
 
@@ -480,6 +517,17 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             )}
           </div>
         </div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+          <h2 className="text-sm font-bold uppercase text-gold-soft">Customer Credits Ledger</h2>
+        </div>
+        <CustomerCreditsManager
+          customerId={id}
+          credits={creditsList}
+          redemptions={redemptionsList}
+        />
       </section>
 
       <section className='mt-6 rounded-2xl border border-gold/20 bg-zinc-950 p-5'>

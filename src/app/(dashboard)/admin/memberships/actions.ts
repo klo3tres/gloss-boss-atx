@@ -47,6 +47,8 @@ export async function saveMembershipPlanAction(formData: FormData) {
     bonus_punches: Number(str(formData.get('bonus_punches')) || 0),
     reward_threshold: Number(str(formData.get('reward_threshold')) || 5),
     reward_description: str(formData.get('reward_description')) || 'Complete 5 services, unlock 6th wash/free reward.',
+    gold_60day_upgrade_credit_cents: Math.round(Number(str(formData.get('gold_60day_upgrade_credit'))) * 100) || 0,
+    credit_expiration_months: Number(str(formData.get('credit_expiration_months'))) || 12,
     show_on_homepage: formData.get('show_on_homepage') === 'on',
     show_on_services: formData.get('show_on_services') === 'on',
     archived: formData.get('archived') === 'on',

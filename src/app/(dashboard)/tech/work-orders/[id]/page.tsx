@@ -559,15 +559,54 @@ export default async function TechWorkOrderDetailPage({
 
   let stampsCount = 0;
   let stampsList: any[] = [];
+  let creditsList: any[] = [];
+  let redemptionsList: any[] = [];
   if (row.customer_id) {
-    const { data: stampsData } = await admin
-      .from('loyalty_stamps')
-      .select('id, stamp_count, reason, created_at, appointment_id, voided, voided_at, voided_by, source')
-      .eq('customer_id', row.customer_id)
-      .order('created_at', { ascending: false });
+    const [stampsRes, creditsRes, redemptionsRes] = await Promise.all([
+      admin
+        .from('loyalty_stamps')
+        .select('id, stamp_count, reason, created_at, appointment_id, voided, voided_at, voided_by, source')
+        .eq('customer_id', row.customer_id)
+        .order('created_at', { ascending: false }),
+      admin
+        .from('customer_credits')
+        .select('*, profiles(full_name)')
+        .eq('customer_id', row.customer_id)
+        .order('issued_at', { ascending: false }),
+      admin
+        .from('customer_credit_redemptions')
+        .select('*, profiles(full_name), customer_credits!inner(customer_id), payments(appointment_id, fallback_booking_id)')
+        .eq('customer_credits.customer_id', row.customer_id)
+        .order('redeemed_at', { ascending: false }),
+    ]);
     
-    stampsList = stampsData ?? [];
+    stampsList = stampsRes.data ?? [];
     stampsCount = stampsList.filter(s => !s.voided).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+
+    creditsList = (creditsRes.data ?? []).map((c: any) => ({
+      id: c.id,
+      amount_cents: c.amount_cents,
+      remaining_cents: c.remaining_cents,
+      type: c.type,
+      reason: c.reason,
+      status: c.status,
+      issued_at: c.issued_at,
+      expires_at: c.expires_at,
+      linked_work_order_id: c.linked_work_order_id,
+      linked_payment_id: c.linked_payment_id,
+      issued_by_name: c.profiles?.full_name || 'Staff',
+    }));
+
+    redemptionsList = (redemptionsRes.data ?? []).map((r: any) => ({
+      id: r.id,
+      credit_id: r.credit_id,
+      payment_id: r.payment_id,
+      amount_cents: r.amount_cents,
+      redeemed_at: r.redeemed_at,
+      redeemed_by_name: r.profiles?.full_name || 'Staff',
+      appointment_id: r.payments?.appointment_id,
+      fallback_booking_id: r.payments?.fallback_booking_id,
+    }));
   }
 
   const consoleData: any = {
@@ -576,6 +615,8 @@ export default async function TechWorkOrderDetailPage({
     customerId: str(row.customer_id) || undefined,
     loyaltyStampsCount: stampsCount,
     loyaltyStamps: stampsList,
+    credits: creditsList,
+    redemptions: redemptionsList,
     customLineItems,
     jobPricing: pricing,
     pricingSnapshot: {
