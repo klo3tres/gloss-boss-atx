@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Car, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
+import { Car, CreditCard, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
@@ -63,6 +63,12 @@ type ExtraLine = {
 };
 
 type AddonOption = { slug: string; label: string; price_cents: number };
+type BookingCreditState = {
+  signedIn: boolean;
+  availableCents: number;
+  credits: Array<{ id: string; remainingCents: number; reason: string; expiresAt: string | null }>;
+  setupNeeded?: boolean;
+};
 
 function formatHours(minutes: number) {
   const hours = minutes / 60;
@@ -153,6 +159,12 @@ export function BookingWizard() {
   const [savedBooking, setSavedBooking] = useState<SavedBookingRef | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutTimedOut, setCheckoutTimedOut] = useState(false);
+  const [customerCredits, setCustomerCredits] = useState<BookingCreditState>({
+    signedIn: false,
+    availableCents: 0,
+    credits: [],
+  });
+  const [requestedCreditCents, setRequestedCreditCents] = useState(0);
   const CHECKOUT_TIMEOUT_MS = 10000;
   const CHECKOUT_FAIL_COPY =
     "We're having trouble opening secure checkout. Your booking can still be saved, and we'll send payment instructions separately.";
@@ -162,6 +174,27 @@ export function BookingWizard() {
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
   const freePromoRequested = appliedPromoCode === 'FREE';
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/booking/customer-credits', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setCustomerCredits({
+          signedIn: Boolean(data.signedIn),
+          availableCents: Math.max(0, Number(data.availableCents ?? 0)),
+          credits: Array.isArray(data.credits) ? data.credits : [],
+          setupNeeded: Boolean(data.setupNeeded),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerCredits({ signedIn: false, availableCents: 0, credits: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!serviceFromUrl || services.length === 0) return;
@@ -637,6 +670,29 @@ export function BookingWizard() {
         ? `$${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)} total · $${(priceSummary.breakdown.depositCents / 100).toFixed(2)} deposit`
         : null;
 
+  const creditAppliedCents =
+    priceSummary?.kind === 'ok'
+      ? Math.min(
+          Math.max(0, requestedCreditCents),
+          Math.max(0, customerCredits.availableCents),
+          Math.max(0, priceSummary.breakdown.finalTotalCents),
+        )
+      : 0;
+  const cardDueCents =
+    priceSummary?.kind === 'ok'
+      ? Math.max(0, (paymentChoice === 'full' ? priceSummary.breakdown.finalTotalCents : priceSummary.breakdown.depositCents) - creditAppliedCents)
+      : 0;
+
+  useEffect(() => {
+    if (requestedCreditCents <= 0) return;
+    if (priceSummary?.kind !== 'ok') {
+      setRequestedCreditCents(0);
+      return;
+    }
+    const maxCredit = Math.min(customerCredits.availableCents, priceSummary.breakdown.finalTotalCents);
+    if (requestedCreditCents > maxCredit) setRequestedCreditCents(maxCredit);
+  }, [customerCredits.availableCents, priceSummary, requestedCreditCents]);
+
   const toggleAddOn = (vehicleIndex: number, slug: string) => {
     if (vehicleIndex === 0) {
       setPrimaryAddOnSlugs((prev) => (prev.includes(slug) ? prev.filter((x) => x !== slug) : [...prev, slug]));
@@ -945,14 +1001,18 @@ export function BookingWizard() {
       };
 
       if (checkoutJson.skipPayment) {
-        console.warn('[booking-wizard] unexpected skipPayment from checkout API', checkoutJson.code);
+        if (checkoutJson.appointmentId && checkoutJson.accessToken) {
+          clearBookingDraft();
+          const q = new URLSearchParams({
+            appointment_id: checkoutJson.appointmentId,
+            token: checkoutJson.accessToken,
+            credit: '1',
+          });
+          window.location.href = `/book/confirmation?${q.toString()}`;
+          return;
+        }
         setCheckoutPhase('checkout_failed');
-        setCheckoutError(
-          checkoutJson.customerMessage ??
-            checkoutJson.message ??
-            checkoutJson.error ??
-            'Card checkout is unavailable. Your booking is saved — try Pay later or call (512) 481-2319.',
-        );
+        setCheckoutError(checkoutJson.customerMessage ?? checkoutJson.message ?? 'Credits covered checkout, but confirmation could not open.');
         setSubmitting(false);
         return;
       }
@@ -1130,6 +1190,7 @@ export function BookingWizard() {
           parkingAccess,
           promoCode: appliedPromoCode || promoCode.trim() || undefined,
           paymentChoice: freePromoEligible ? 'full' : paymentChoice,
+          requestedCreditCents: creditAppliedCents,
           notes: notes || undefined,
         }),
       });
@@ -1211,10 +1272,18 @@ export function BookingWizard() {
       <div className='rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/10 via-black/50 to-black p-4 text-sm text-zinc-200'>
         <p className='font-black uppercase tracking-wider text-gold-soft'>Member pricing</p>
         <p className='mt-1 text-xs leading-relaxed text-zinc-300'>
-          Sign in to use member pricing and earn loyalty stamps. Already a member? Sign in before booking. Guest booking still works without an account.
+          {customerCredits.signedIn
+            ? `Signed in. Available credits and member pricing are checked automatically before checkout.`
+            : 'Sign in to use member pricing and earn loyalty stamps. Already a member? Sign in before booking. Guest booking still works without an account.'}
         </p>
         <div className='mt-3 flex flex-wrap gap-2'>
-          <a href='/login?next=/book' className='rounded-lg border border-gold/35 px-3 py-2 text-xs font-black uppercase text-gold-soft'>Sign in</a>
+          {customerCredits.signedIn ? (
+            <span className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-xs font-black uppercase text-emerald-100'>
+              Credits: ${(customerCredits.availableCents / 100).toFixed(2)}
+            </span>
+          ) : (
+            <a href='/login?next=/book' className='rounded-lg border border-gold/35 px-3 py-2 text-xs font-black uppercase text-gold-soft'>Sign in</a>
+          )}
           <a href='/memberships' className='rounded-lg border border-white/15 px-3 py-2 text-xs font-black uppercase text-zinc-200'>View memberships</a>
         </div>
       </div>
@@ -1783,6 +1852,62 @@ export function BookingWizard() {
                     <span>FREE test comp</span>
                     <span className='tabular-nums'>-${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
                   </p>
+                ) : null}
+                {customerCredits.signedIn && customerCredits.availableCents > 0 && !freePromoEligible ? (
+                  <div className='rounded-xl border border-cyan-400/25 bg-cyan-400/10 p-3'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-100'>
+                        <CreditCard className='h-4 w-4' /> Use account credits
+                      </p>
+                      <span className='font-mono text-xs font-black text-cyan-100'>${(customerCredits.availableCents / 100).toFixed(2)} available</span>
+                    </div>
+                    <div className='mt-3 grid grid-cols-3 gap-2'>
+                      <button
+                        type='button'
+                        onClick={() => setRequestedCreditCents(Math.min(customerCredits.availableCents, priceSummary.breakdown.finalTotalCents))}
+                        className='rounded-lg border border-cyan-300/25 px-2 py-2 text-[10px] font-black uppercase text-cyan-100'
+                      >
+                        Full
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => setRequestedCreditCents(Math.min(customerCredits.availableCents, Math.round(priceSummary.breakdown.finalTotalCents / 2)))}
+                        className='rounded-lg border border-cyan-300/25 px-2 py-2 text-[10px] font-black uppercase text-cyan-100'
+                      >
+                        Half
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => setRequestedCreditCents(0)}
+                        className='rounded-lg border border-white/15 px-2 py-2 text-[10px] font-black uppercase text-zinc-300'
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <label className='mt-3 block text-[10px] font-bold uppercase tracking-wider text-zinc-400'>
+                      Custom credit amount
+                      <input
+                        type='number'
+                        min='0'
+                        step='0.01'
+                        value={(requestedCreditCents / 100).toFixed(2)}
+                        onChange={(e) => setRequestedCreditCents(Math.round(Math.max(0, Number(e.target.value || 0)) * 100))}
+                        className='mt-1 w-full rounded-lg border border-white/15 bg-black px-3 py-2 text-sm text-white'
+                      />
+                    </label>
+                    {creditAppliedCents > 0 ? (
+                      <div className='mt-3 space-y-1 border-t border-cyan-300/15 pt-2 text-xs'>
+                        <p className='flex justify-between text-cyan-100'>
+                          <span>Credit applied</span>
+                          <span className='tabular-nums'>-${(creditAppliedCents / 100).toFixed(2)}</span>
+                        </p>
+                        <p className='flex justify-between text-white'>
+                          <span>{paymentChoice === 'full' ? 'Card due today' : 'Card deposit due today'}</span>
+                          <span className='font-black tabular-nums'>${(cardDueCents / 100).toFixed(2)}</span>
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className='border-t border-white/10 pt-3'>
                   <p className='flex flex-wrap items-end justify-between gap-x-3 gap-y-1'>

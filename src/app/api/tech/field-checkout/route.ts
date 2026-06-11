@@ -193,6 +193,21 @@ export async function POST(request: Request) {
       );
     }
 
+    if ('skipPayment' in checkout && checkout.skipPayment) {
+      return NextResponse.json({
+        skipPayment: true,
+        code: checkout.code,
+        message: checkout.message,
+        appointmentId: appointment.id,
+        accessToken: appointment.access_token,
+        breakdown: fieldBd,
+      });
+    }
+
+    if (!('url' in checkout)) {
+      return NextResponse.json({ error: 'Checkout did not return a card URL', code: 'CHECKOUT_NO_URL', appointmentId: appointment.id }, { status: 400 });
+    }
+
     return NextResponse.json({
       url: checkout.url,
       appointmentId: appointment.id,

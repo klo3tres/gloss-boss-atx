@@ -325,7 +325,7 @@ async function fetchReceiptRevenueSince(admin: SupabaseClient, fromIso: string, 
     'id, payment_id, amount_cents, final_total_cents, payment_method, created_at, appointment_id, fallback_booking_id, metadata, is_test, exclude_from_revenue, voided_at, refunded_at';
   let res = await admin.from('receipts').select(fullSelect).gte('created_at', fromIso).lte('created_at', toIso).limit(5000);
   if (res.error) {
-    const fallbackRes = await admin.from('receipts').select('id, payment_id, amount_cents, payment_method, created_at, appointment_id, voided_at').gte('created_at', fromIso).lte('created_at', toIso).limit(5000);
+    const fallbackRes = await admin.from('receipts').select('id, payment_id, amount_cents, payment_method, created_at, appointment_id').gte('created_at', fromIso).lte('created_at', toIso).limit(5000);
     if (fallbackRes.error) return [];
     return ((fallbackRes.data ?? []) as Array<Record<string, unknown>>).map(receiptToPayRow);
   }

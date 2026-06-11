@@ -46,7 +46,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error, code: result.code }, { status });
     }
 
-    return NextResponse.json({ url: result.url });
+    if ('skipPayment' in result && result.skipPayment) {
+      return NextResponse.json({
+        ok: true,
+        skipPayment: true,
+        code: result.code,
+        appointmentId: result.appointmentId,
+        accessToken: result.accessToken,
+        message: result.message,
+      });
+    }
+
+    if ('url' in result) {
+      return NextResponse.json({ url: result.url });
+    }
+
+    return NextResponse.json({ error: 'Checkout did not return a card URL', code: 'CHECKOUT_NO_URL' }, { status: 400 });
   } catch (e) {
     console.warn('[api/checkout]', e);
     return NextResponse.json({ error: 'Checkout failed' }, { status: 500 });

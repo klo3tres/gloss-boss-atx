@@ -884,9 +884,11 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       origin: process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com',
       technicianId: gate.userId,
     });
-    if (checkout.ok) {
+    if (checkout.ok && 'url' in checkout) {
       paymentUrl = checkout.url;
       skippedReason = null;
+    } else if (checkout.ok && 'skipPayment' in checkout) {
+      skippedReason = checkout.message;
     } else if (checkout.code === 'NO_BALANCE_DUE') {
       return actionErr(`Balance link blocked: computed balance ${displayMoney(checkout.balanceCents ?? pricing.remainingBalanceCents)}.`);
     } else if (checkout.code === 'STRIPE_NOT_CONFIGURED') {

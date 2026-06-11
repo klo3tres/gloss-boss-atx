@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   logBookingError,
   recordBookingFailure,
@@ -50,9 +51,111 @@ type Body = {
   notes?: string;
   smsConsent?: boolean;
   smsConsentSource?: SmsConsentSource;
+  requestedCreditCents?: number;
 };
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
+
+async function applyCustomerCreditsToAppointment(params: {
+  admin: SupabaseClient;
+  customerId: string | null;
+  appointmentId: string;
+  requestedCents: number;
+  totalCents: number;
+}) {
+  const { admin, customerId, appointmentId } = params;
+  const requestedCents = Math.max(0, Math.min(params.totalCents, Math.round(params.requestedCents)));
+  if (!customerId || requestedCents <= 0) return 0;
+
+  const nowIso = new Date().toISOString();
+  const creditsRes = await admin
+    .from('customer_credits')
+    .select('id, remaining_cents, expires_at, status')
+    .eq('customer_id', customerId)
+    .in('status', ['active', 'partially_used'])
+    .order('expires_at', { ascending: true, nullsFirst: false })
+    .order('issued_at', { ascending: true })
+    .limit(50);
+  if (creditsRes.error || !creditsRes.data?.length) return 0;
+
+  let remainingRequest = requestedCents;
+  let appliedTotal = 0;
+  const redemptionRows: Array<{ creditId: string; amountCents: number }> = [];
+  for (const row of creditsRes.data as Array<{ id: string; remaining_cents: number | null; expires_at: string | null }>) {
+    if (remainingRequest <= 0) break;
+    if (row.expires_at && row.expires_at < nowIso) continue;
+    const available = Math.max(0, typeof row.remaining_cents === 'number' ? row.remaining_cents : 0);
+    if (available <= 0) continue;
+    const useNow = Math.min(available, remainingRequest);
+    const nextRemaining = available - useNow;
+    const updateRes = await admin
+      .from('customer_credits')
+      .update({
+        remaining_cents: nextRemaining,
+        status: nextRemaining > 0 ? 'partially_used' : 'used',
+        redeemed_at: nextRemaining > 0 ? null : nowIso,
+        linked_work_order_id: appointmentId,
+      })
+      .eq('id', row.id)
+      .eq('customer_id', customerId);
+    if (updateRes.error) {
+      console.warn('[api/bookings] credit update skipped', updateRes.error.message);
+      continue;
+    }
+    appliedTotal += useNow;
+    remainingRequest -= useNow;
+    redemptionRows.push({ creditId: row.id, amountCents: useNow });
+  }
+
+  if (appliedTotal <= 0) return 0;
+  const paymentRes = await admin
+    .from('payments')
+    .insert({
+      appointment_id: appointmentId,
+      customer_id: customerId,
+      amount_cents: appliedTotal,
+      status: 'succeeded',
+      payment_method: 'customer_credit',
+      payment_choice: 'credit',
+      payment_kind: 'credit_redemption',
+      paid_at: nowIso,
+      metadata: {
+        source: 'online_booking_credit',
+        requested_credit_cents: requestedCents,
+        applied_credit_cents: appliedTotal,
+        credits: redemptionRows,
+      },
+    })
+    .select('id')
+    .maybeSingle();
+  if (paymentRes.error) {
+    console.warn('[api/bookings] credit payment marker skipped', paymentRes.error.message);
+  }
+
+  if (paymentRes.data?.id) {
+    const rows = redemptionRows.map((r) => ({
+      credit_id: r.creditId,
+      payment_id: paymentRes.data!.id,
+      amount_cents: r.amountCents,
+      redeemed_at: nowIso,
+    }));
+    const redemptionRes = await admin.from('customer_credit_redemptions').insert(rows);
+    if (redemptionRes.error) {
+      console.warn('[api/bookings] credit redemption ledger skipped', redemptionRes.error.message);
+    }
+  }
+
+  await admin
+    .from('appointments')
+    .update({
+      balance_due_cents: Math.max(0, params.totalCents - appliedTotal),
+      payment_status: appliedTotal >= params.totalCents ? 'paid' : 'awaiting_deposit',
+      updated_at: nowIso,
+    })
+    .eq('id', appointmentId);
+
+  return appliedTotal;
+}
 
 export async function POST(request: Request) {
   try {
@@ -72,6 +175,7 @@ export async function POST(request: Request) {
     const LOCATION_TYPES = new Set(['house', 'apartment', 'business', 'other']);
     const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
     const paymentChoice = body.paymentChoice === 'full' ? 'full' : 'deposit';
+    const requestedCreditCents = Math.max(0, Math.round(Number(body.requestedCreditCents ?? 0)));
     const smsConsent = body.smsConsent === true;
     const smsConsentSource: SmsConsentSource = body.smsConsentSource === 'online_booking' ? 'online_booking' : 'online_booking';
     const smsConsentTimestamp = new Date().toISOString();
@@ -360,7 +464,10 @@ export async function POST(request: Request) {
       paymentChoice,
       pricing: priced,
     });
-    const breakdownWithSnapshot = mergeSnapshotIntoBreakdown(priced, orderSnapshot);
+    const breakdownWithSnapshot = {
+      ...mergeSnapshotIntoBreakdown(priced, orderSnapshot),
+      requested_credit_cents: requestedCreditCents,
+    };
 
     const insertPayload: Record<string, unknown> = {
       guest_email: emailNorm,
@@ -458,6 +565,14 @@ export async function POST(request: Request) {
 
     await recordBookingSuccess(admin);
 
+    const appliedCreditCents = await applyCustomerCreditsToAppointment({
+      admin,
+      customerId,
+      appointmentId: String(appointment.id),
+      requestedCents: requestedCreditCents,
+      totalCents: totalBaseCents,
+    });
+
     await logSmsConsentChange(admin, {
       customerId,
       appointmentId: String(appointment.id),
@@ -551,6 +666,7 @@ export async function POST(request: Request) {
         appointmentId: appointment.id,
         accessToken: appointment.access_token,
         depositAmountCents: 0,
+        appliedCreditCents,
         skipPayment: true,
         compStatus: 'test_comped',
         message: 'FREE test comp applied',
@@ -579,6 +695,7 @@ export async function POST(request: Request) {
       appointmentId: appointment.id,
       accessToken: appointment.access_token,
       depositAmountCents: depositAmountCents,
+      appliedCreditCents,
     });
   } catch (e) {
     console.error('[api/bookings] unexpected', e);

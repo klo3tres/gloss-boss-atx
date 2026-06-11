@@ -7,6 +7,7 @@ import {
   summarizePayments,
 } from '@/lib/revenue-metrics';
 import { displayMoney } from '@/lib/display-format';
+import { getFinancialSnapshot, type FinancialDetailRow } from '@/lib/financial-ledger';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { workOrderPath } from '@/lib/work-order-links';
 
@@ -91,6 +92,22 @@ export type OwnerDashboardSnapshot = {
     jobCount: number;
     revenueCents: number;
   }>;
+  financial: {
+    grossRevenueCents: number;
+    netProfitCents: number;
+    expensesCents: number;
+    cardSpendCents: number;
+    stripeRevenueCents: number;
+    cashRevenueCents: number;
+    zelleRevenueCents: number;
+    otherRevenueCents: number;
+    openBalancesCents: number;
+    pendingDepositsCents: number;
+  };
+  openBalanceRows: FinancialDetailRow[];
+  pendingDepositRows: FinancialDetailRow[];
+  expenseRows: FinancialDetailRow[];
+  cardSpendRows: FinancialDetailRow[];
   creditMetrics: {
     outstandingLiabilityCents: number;
     mtdIssuedCents: number;
@@ -165,6 +182,46 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const dashboardMonth = month.grossCents > 0 ? month : rolling30;
   const dashboardMonthRows = month.grossCents > 0 ? monthPay : rolling30Pay;
   const unreadMessageCount = messageCountRes.error ? 0 : (messageCountRes.count ?? 0);
+  const financial = await getFinancialSnapshot(admin, {
+    startDate: startOfRolling30Iso(),
+    endDate: now,
+    includeTest: false,
+  }).catch(() => null);
+
+  const ledgerRowsRes = await admin
+    .from('financial_ledger')
+    .select('*')
+    .gte('occurred_at', startOfRolling30Iso())
+    .lte('occurred_at', now)
+    .order('occurred_at', { ascending: false })
+    .limit(50);
+  const cardSpendRows: FinancialDetailRow[] = ((ledgerRowsRes.data ?? []) as Record<string, unknown>[])
+    .filter((row) => {
+      const type = String(row.type ?? '').toLowerCase();
+      const category = String(row.category ?? '').toLowerCase();
+      const source = String(row.source ?? '').toLowerCase();
+      return (
+        type === 'expense' &&
+        (Boolean(row.stripe_issuing_transaction_id) ||
+          category.includes('issuing') ||
+          category.includes('card') ||
+          source.includes('stripe'))
+      );
+    })
+    .map((row) => ({
+      id: String(row.id ?? row.stripe_issuing_transaction_id ?? row.occurred_at ?? Math.random()),
+      label:
+        String((row.metadata as Record<string, unknown> | null)?.merchant_name ?? '').trim() ||
+        String((row.metadata as { merchant_data?: { name?: string } } | null)?.merchant_data?.name ?? '').trim() ||
+        String(row.description ?? row.category ?? 'Card spend'),
+      amountCents: Math.abs(typeof row.amount === 'number' ? row.amount : typeof row.gross_amount === 'number' ? row.gross_amount : 0),
+      occurredAt: typeof row.occurred_at === 'string' ? row.occurred_at : null,
+      source: String(row.source ?? 'stripe'),
+      category: String(row.category ?? 'card_spend'),
+      method: row.stripe_issuing_transaction_id ? 'Stripe Issuing' : 'Card / expense',
+      href: '/admin/card-activity',
+    }));
+  const cardSpendCents = cardSpendRows.reduce((sum, row) => sum + Math.abs(row.amountCents), 0);
 
   const { data: appts } = await admin
     .from('appointments')
@@ -437,6 +494,22 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     techActivity,
     leadPipeline,
     techPerformance,
+    financial: {
+      grossRevenueCents: financial?.grossRevenueCents ?? dashboardMonth.grossCents,
+      netProfitCents: financial?.netProfitCents ?? dashboardMonth.grossCents,
+      expensesCents: financial?.expensesCents ?? 0,
+      cardSpendCents,
+      stripeRevenueCents: financial?.stripeRevenueCents ?? dashboardMonth.stripeCents,
+      cashRevenueCents: financial?.cashRevenueCents ?? dashboardMonth.cashCents,
+      zelleRevenueCents: financial?.zelleRevenueCents ?? dashboardMonth.zelleCents,
+      otherRevenueCents: financial?.otherRevenueCents ?? dashboardMonth.otherCents,
+      openBalancesCents: financial?.openBalancesCents ?? balanceDueCents,
+      pendingDepositsCents: financial?.pendingDepositsCents ?? pendingDepositsCents,
+    },
+    openBalanceRows: financial?.openBalances ?? [],
+    pendingDepositRows: financial?.pendingDeposits ?? [],
+    expenseRows: financial?.recentExpenses ?? [],
+    cardSpendRows,
     creditMetrics: {
       outstandingLiabilityCents,
       mtdIssuedCents,

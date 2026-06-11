@@ -52,6 +52,20 @@ export async function POST(request: Request) {
       const status = checkout.code === 'STRIPE_NOT_CONFIGURED' ? 503 : checkout.code === 'NO_BALANCE_DUE' ? 200 : 400;
       return NextResponse.json({ ok: false, error: checkout.error, code: checkout.code, balanceCents: checkout.balanceCents }, { status });
     }
+    if ('skipPayment' in checkout && checkout.skipPayment) {
+      return NextResponse.json({
+        ok: true,
+        skipPayment: true,
+        code: checkout.code,
+        message: checkout.message,
+        appointmentId: checkout.appointmentId,
+        accessToken: checkout.accessToken,
+        balanceCents: checkout.balanceCents,
+      });
+    }
+    if (!('url' in checkout)) {
+      return NextResponse.json({ ok: false, error: 'Checkout did not return a card URL', code: 'CHECKOUT_NO_URL', balanceCents: checkout.balanceCents }, { status: 400 });
+    }
     return NextResponse.json({ ok: true, url: checkout.url, balanceCents: checkout.balanceCents });
   } catch (e) {
     console.warn('[tech/final-balance-checkout]', e);

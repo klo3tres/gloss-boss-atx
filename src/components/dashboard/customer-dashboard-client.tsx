@@ -49,6 +49,7 @@ export type CustomerDashboardProps = {
   loyaltyStampsCount?: number;
   activeCardDesign?: any;
   membership?: CustomerMembershipView | null;
+  accountCreditBalanceCents?: number;
   activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
 };
 
@@ -227,6 +228,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
 
   const reviewUrl = props.googleReviewUrl?.trim() || '';
   const membership = props.membership ?? null;
+  const availableCreditCents = Math.max(0, props.accountCreditBalanceCents ?? membership?.creditBalanceCents ?? 0);
   const theme = tierTheme(membership?.tier);
   const lastCompleted = props.history[0] ? apptFromSnapshot(props.history[0], props.snapshotByAppt?.[props.history[0].id]) : null;
   const nextRecommended = lastCompleted
@@ -266,7 +268,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Credits</p>
-                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{money(membership?.creditBalanceCents ?? 0)}</p>
+                <p className={`mt-1 font-mono text-xl font-black ${theme.text}`}>{money(availableCreditCents)}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                 <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Punches</p>
@@ -337,7 +339,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                   <p className="text-[10px] font-black uppercase text-zinc-500">Available credit</p>
-                  <p className="mt-1 font-mono text-2xl font-black text-gold-soft">{money(membership?.creditBalanceCents ?? 0)}</p>
+                  <p className="mt-1 font-mono text-2xl font-black text-gold-soft">{money(availableCreditCents)}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
                   <p className="text-[10px] font-black uppercase text-zinc-500">Reward progress</p>

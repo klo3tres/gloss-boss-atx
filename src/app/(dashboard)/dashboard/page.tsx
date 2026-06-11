@@ -392,6 +392,7 @@ export default async function CustomerDashboardRootPage() {
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
   let loyaltyStampsCount = 0;
   let customerMembership: CustomerMembershipView | null = null;
+  let accountCreditBalanceCents = 0;
   let activeDeals: ActiveDealView[] = [];
   let activeCardDesign = null;
   if (adminDb && userEmail) {
@@ -404,6 +405,20 @@ export default async function CustomerDashboardRootPage() {
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
       loyaltyStampsCount = (stamps ?? []).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
+      const creditRes = await adminDb
+        .from('customer_credits')
+        .select('remaining_cents, status, expires_at')
+        .eq('customer_id', cust.id)
+        .in('status', ['active', 'partially_used'])
+        .limit(500);
+      if (!creditRes.error) {
+        const nowIso = new Date().toISOString();
+        accountCreditBalanceCents = (creditRes.data ?? []).reduce((sum, row) => {
+          const expiresAt = typeof row.expires_at === 'string' ? row.expires_at : '';
+          if (expiresAt && expiresAt < nowIso) return sum;
+          return sum + (typeof row.remaining_cents === 'number' ? Math.max(0, row.remaining_cents) : 0);
+        }, 0);
+      }
       activeDeals = await loadCustomerDeals(adminDb);
 
       const tier = customerMembership?.tier || 'default';
@@ -505,6 +520,7 @@ export default async function CustomerDashboardRootPage() {
         loyaltyStampsCount={loyaltyStampsCount}
         activeCardDesign={activeCardDesign}
         membership={customerMembership}
+        accountCreditBalanceCents={accountCreditBalanceCents}
         activeDeals={activeDeals}
       />
     </DashboardShell>

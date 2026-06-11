@@ -392,6 +392,31 @@ export async function POST(request: Request) {
 
 
 
+    if ('skipPayment' in result && result.skipPayment) {
+      await logPaymentDebugEvent(admin, {
+        appointmentId,
+        fallbackBookingId,
+        customerEmail,
+        eventType: 'checkout_skipped_credit_covered',
+        paymentMode: payChoice,
+        stripeMode: keyHealth.secretMode,
+        metadata: { code: result.code },
+      });
+
+      return NextResponse.json({
+        ok: true,
+        skipPayment: true,
+        code: result.code,
+        appointmentId: result.appointmentId,
+        accessToken: result.accessToken,
+        customerMessage: result.message,
+      });
+    }
+
+    if (!('url' in result)) {
+      return NextResponse.json({ error: 'Checkout did not return a card URL', code: 'CHECKOUT_NO_URL' }, { status: 400 });
+    }
+
     await logPaymentDebugEvent(admin, {
 
       appointmentId,

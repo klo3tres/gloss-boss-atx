@@ -150,16 +150,11 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
     | 'tech-performance'
     | 'goals'
     | 'memberships'
+    | 'credits'
     | 'bookings'
     | 'notifications'
     | null
   >(null);
-
-  const [mockCardTransactions, setMockCardTransactions] = useState([
-    { id: 'tx-1', merchant: 'AutoZone #8812', amount: 45.20, category: 'Detailing Supplies', date: 'June 08, 2026', status: 'Cleared', linkedWo: 'WO-7729', excluded: false },
-    { id: 'tx-2', merchant: 'Chevron Gas Station', amount: 32.00, category: 'Vehicle Fuel', date: 'June 09, 2026', status: 'Cleared', linkedWo: '', excluded: false },
-    { id: 'tx-3', merchant: 'O\'Reilly Auto Parts', amount: 71.30, category: 'Equipment Maintenance', date: 'June 10, 2026', status: 'Pending', linkedWo: '', excluded: false },
-  ]);
 
   const quickActions = [
     { href: '/admin/dispatch', label: 'New Booking', desc: 'Create manual field job', icon: Calendar, color: 'text-gold-soft', drawer: 'bookings' },
@@ -192,25 +187,12 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
     : 'No jobs today';
 
   const techStatusLabel = `${metrics.activeTechCount} Active`;
-
-  // Stripe Spend actions
-  const handleCategorize = (txId: string, category: string) => {
-    setMockCardTransactions(prev =>
-      prev.map(tx => tx.id === txId ? { ...tx, category } : tx)
-    );
-  };
-
-  const handleToggleExclude = (txId: string) => {
-    setMockCardTransactions(prev =>
-      prev.map(tx => tx.id === txId ? { ...tx, excluded: !tx.excluded } : tx)
-    );
-  };
-
-  const handleLinkWorkOrder = (txId: string, woId: string) => {
-    setMockCardTransactions(prev =>
-      prev.map(tx => tx.id === txId ? { ...tx, linkedWo: woId } : tx)
-    );
-  };
+  const openBalanceRows = metrics.openBalanceRows ?? [];
+  const pendingDepositRows = metrics.pendingDepositRows ?? [];
+  const cardSpendRows = metrics.cardSpendRows ?? [];
+  const expenseRows = metrics.expenseRows ?? [];
+  const cardSpendTotal = metrics.financial?.cardSpendCents ?? 0;
+  const expenseTotal = metrics.financial?.expensesCents ?? 0;
 
   const renderDrawerContent = () => {
     switch (activeDrawer) {
@@ -225,22 +207,31 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Receivables Accounts</p>
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-4">
-                {[
-                  { name: 'Sarah Jenkins', vehicle: 'Tesla Model 3', balance: '$125.00', age: '2 days ago' },
-                  { name: 'Michael Chang', vehicle: 'BMW M4 Competition', balance: '$175.00', age: '5 days ago' },
-                  { name: 'David Miller', vehicle: 'Audi Q7 Prestige', balance: '$250.00', age: '1 week ago' },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs">
-                    <div>
-                      <p className="font-bold text-white">{item.name}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">{item.vehicle} · Completed {item.age}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-rose-400">{item.balance}</p>
-                      <button className="text-[9px] font-black uppercase text-gold hover:underline mt-1 block">Remind</button>
-                    </div>
-                  </div>
-                ))}
+                {openBalanceRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-500">
+                    No open customer balances found in the live ledger.
+                  </p>
+                ) : (
+                  openBalanceRows.slice(0, 12).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href ?? '/admin/revenue'}
+                      onClick={() => setActiveDrawer(null)}
+                      className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs hover:text-gold-soft"
+                    >
+                      <div>
+                        <p className="font-bold text-white">{item.label}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          {item.category ?? 'receivable'} · {item.occurredAt ? new Date(item.occurredAt).toLocaleDateString() : 'No date'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-rose-400">{displayMoney(Math.abs(item.amountCents))}</p>
+                        <span className="text-[9px] font-black uppercase text-gold hover:underline mt-1 block">Open</span>
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
             </div>
 
@@ -262,23 +253,29 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Pending Bookings</p>
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-4">
-                {[
-                  { name: 'Robert Taylor', service: 'Ceramic Coating', deposit: '$45.00', linkSent: true },
-                  { name: 'Emily Davis', service: 'Full Interior Detail', deposit: '$60.00', linkSent: false },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs">
-                    <div>
-                      <p className="font-bold text-white">{item.name}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">{item.service}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-amber-400">{item.deposit}</p>
-                      <button className="text-[9px] font-black uppercase text-gold hover:underline mt-1 block">
-                        {item.linkSent ? 'Resend Stripe Link' : 'Generate Stripe Link'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {pendingDepositRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-500">
+                    No bookings are currently waiting on deposits.
+                  </p>
+                ) : (
+                  pendingDepositRows.slice(0, 12).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href ?? '/admin/dispatch'}
+                      onClick={() => setActiveDrawer(null)}
+                      className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs hover:text-gold-soft"
+                    >
+                      <div>
+                        <p className="font-bold text-white">{item.label}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">{item.category ?? 'awaiting deposit'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-amber-400">{displayMoney(Math.abs(item.amountCents))}</p>
+                        <span className="text-[9px] font-black uppercase text-gold hover:underline mt-1 block">Open booking</span>
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
             </div>
 
@@ -294,63 +291,43 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
           <div className="space-y-6">
             <div>
               <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Stripe Card Activity</p>
-              <h2 className="text-4xl font-black text-cyan-400 mt-1 font-mono">$148.50 <span className="text-xs text-zinc-500 font-medium">MTD</span></h2>
+              <h2 className="text-4xl font-black text-cyan-400 mt-1 font-mono">{displayMoney(cardSpendTotal)} <span className="text-xs text-zinc-500 font-medium">30D</span></h2>
             </div>
 
             <div className="space-y-4">
               <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Recent Transactions</p>
               <div className="space-y-3">
-                {mockCardTransactions.map((tx) => (
-                  <div key={tx.id} className={`rounded-xl border p-4 text-xs bg-zinc-900/40 transition-all ${tx.excluded ? 'opacity-40 border-white/5' : 'border-white/10 hover:border-cyan-500/30'}`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-white">{tx.merchant}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{tx.date} · {tx.status}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono font-bold text-white">${tx.amount.toFixed(2)}</p>
-                        <span className="inline-block rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-white/5 text-zinc-400 mt-1">{tx.category}</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 pt-2 border-t border-white/5 flex flex-wrap gap-2 justify-end">
-                      <button
-                        onClick={() => handleToggleExclude(tx.id)}
-                        className="rounded bg-white/5 border border-white/5 px-2 py-1 text-[9px] font-bold uppercase text-zinc-300 hover:bg-white/10"
-                      >
-                        {tx.excluded ? 'Include' : 'Exclude'}
-                      </button>
-                      
-                      {!tx.excluded && (
-                        <>
-                          <select
-                            onChange={(e) => handleCategorize(tx.id, e.target.value)}
-                            value={tx.category}
-                            className="rounded bg-zinc-950 border border-white/10 px-2 py-0.5 text-[9px] font-bold uppercase text-zinc-300"
-                          >
-                            <option value="Detailing Supplies">Supplies</option>
-                            <option value="Vehicle Fuel">Fuel</option>
-                            <option value="Equipment Maintenance">Maintenance</option>
-                            <option value="Office Expense">Office</option>
-                          </select>
-
-                          {tx.linkedWo ? (
-                            <span className="rounded bg-emerald-500/10 border border-emerald-500/25 px-2 py-1 text-[9px] font-bold uppercase text-emerald-400">
-                              Linked to {tx.linkedWo}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleLinkWorkOrder(tx.id, 'WO-7729')}
-                              className="rounded bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 text-[9px] font-bold uppercase text-cyan-300 hover:bg-cyan-500/20"
-                            >
-                              Link WO
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
+                {cardSpendRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-cyan-500/20 bg-cyan-500/5 p-4 text-xs text-cyan-100">
+                    <p className="font-bold">No synced Stripe card spend found.</p>
+                    <p className="mt-1 text-zinc-400">If Stripe Issuing is enabled, run Stripe Sync. If it is not enabled, use Operations to enter card or supply expenses manually.</p>
+                    <Link href="/admin/card-activity" onClick={() => setActiveDrawer(null)} className="mt-3 inline-flex text-[10px] font-black uppercase text-gold-soft hover:underline">
+                      Open Card Activity
+                    </Link>
                   </div>
-                ))}
+                ) : (
+                  cardSpendRows.slice(0, 12).map((tx) => (
+                    <Link
+                      key={tx.id}
+                      href={tx.href ?? '/admin/card-activity'}
+                      onClick={() => setActiveDrawer(null)}
+                      className="block rounded-xl border border-white/10 bg-zinc-900/40 p-4 text-xs transition-all hover:border-cyan-500/30"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-bold text-white">{tx.label}</p>
+                          <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                            {tx.occurredAt ? new Date(tx.occurredAt).toLocaleString() : 'No date'} · {tx.method ?? tx.source ?? 'card'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-white">{displayMoney(Math.abs(tx.amountCents))}</p>
+                          <span className="inline-block rounded px-1.5 py-0.5 text-[9px] font-bold uppercase bg-white/5 text-zinc-400 mt-1">{tx.category ?? 'card spend'}</span>
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
             </div>
 
@@ -366,33 +343,37 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
           <div className="space-y-6">
             <div>
               <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Rig Expenses & Supplies</p>
-              <h2 className="text-4xl font-black text-rose-400 mt-1 font-mono">$208.90 <span className="text-xs text-zinc-500 font-medium">Pending Review</span></h2>
+              <h2 className="text-4xl font-black text-rose-400 mt-1 font-mono">{displayMoney(expenseTotal)} <span className="text-xs text-zinc-500 font-medium">30D</span></h2>
             </div>
 
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Supply Requests</p>
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-4">
-                {[
-                  { item: 'Microfiber Towels (Bulk Pack)', cost: '$54.00', requestedBy: 'Marcus (Tech)', status: 'Pending Approval' },
-                  { item: 'Ceramic Sealant Spray', cost: '$89.90', requestedBy: 'Lucius (Tech)', status: 'Ordered' },
-                  { item: 'Rig 1 Oil Change Reimbursement', cost: '$65.00', requestedBy: 'Marcus (Tech)', status: 'Pending Receipt' },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs">
-                    <div>
-                      <p className="font-bold text-white">{item.item}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">Requested by {item.requestedBy} · <span className="text-zinc-400 font-semibold">{item.status}</span></p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-white">{item.cost}</p>
-                      {item.status === 'Pending Approval' && (
-                        <div className="flex gap-1.5 mt-1">
-                          <button className="text-[8px] font-black uppercase text-emerald-400 hover:underline">Approve</button>
-                          <button className="text-[8px] font-black uppercase text-rose-400 hover:underline">Deny</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {expenseRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-500">
+                    No expense rows found for the current reporting window.
+                  </p>
+                ) : (
+                  expenseRows.slice(0, 12).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href ?? '/admin/operations'}
+                      onClick={() => setActiveDrawer(null)}
+                      className="flex justify-between items-center py-2 border-b border-white/5 last:border-0 text-xs hover:text-gold-soft"
+                    >
+                      <div>
+                        <p className="font-bold text-white">{item.label}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          {item.category ?? 'expense'} · {item.occurredAt ? new Date(item.occurredAt).toLocaleDateString() : 'No date'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-white">{displayMoney(Math.abs(item.amountCents))}</p>
+                        <span className="text-[9px] font-black uppercase text-gold hover:underline mt-1 block">Review</span>
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -500,6 +481,60 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
                 <p className="mt-1 text-zinc-400">Customer participation is currently at <span className="font-bold text-white">{metrics.loyaltyParticipation}%</span>. Customer dashboards show punch counts and front/back scans of loyalty cards.</p>
               </div>
             </div>
+          </div>
+        );
+
+      case 'credits':
+        return (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Customer Credits</p>
+              <h2 className="text-4xl font-black text-rose-400 mt-1 font-mono">
+                {displayMoney(metrics.creditMetrics?.outstandingLiabilityCents ?? 0)}
+                <span className="text-xs text-zinc-500 font-medium"> outstanding</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Issued MTD</p>
+                <p className="mt-2 font-mono text-xl font-black text-white">{displayMoney(metrics.creditMetrics?.mtdIssuedCents ?? 0)}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-4">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Applied MTD</p>
+                <p className="mt-2 font-mono text-xl font-black text-emerald-400">{displayMoney(metrics.creditMetrics?.mtdRedeemedCents ?? 0)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Expiring Soon</p>
+              {(metrics.creditMetrics?.expiringSoon ?? []).length === 0 ? (
+                <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-500">
+                  No customer credits are expiring in the next 30 days.
+                </p>
+              ) : (
+                metrics.creditMetrics.expiringSoon.map((credit) => (
+                  <Link
+                    key={credit.id}
+                    href="/admin/customers"
+                    onClick={() => setActiveDrawer(null)}
+                    className="block rounded-xl border border-white/10 bg-zinc-900/50 p-4 text-xs hover:border-rose-400/40"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-bold text-white">{credit.customerName}</p>
+                        <p className="mt-1 text-[10px] text-zinc-500">{credit.reason || 'Store credit'} · expires {new Date(credit.expiresAt).toLocaleDateString()}</p>
+                      </div>
+                      <p className="font-mono font-black text-rose-300">{displayMoney(credit.remainingCents)}</p>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </div>
+
+            <Link href="/admin/customers" onClick={() => setActiveDrawer(null)} className="inline-flex rounded-xl border border-gold/25 bg-gold/10 px-4 py-3 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20">
+              Open Customer Credit Ledger
+            </Link>
           </div>
         );
 
@@ -650,7 +685,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
           <TodayMetricCard label="Revenue 30 Days" value={metrics.revenueMonth} href="/admin/revenue" icon={Activity} colorClass="text-gold" subtitle="MTD collected revenue" />
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} onClick={() => setActiveDrawer('open-balances')} icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} onClick={() => setActiveDrawer('pending-deposits')} icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
-          <TodayMetricCard label="Card Spend" value="$148.50" onClick={() => setActiveDrawer('card-spend')} icon={CreditCard} colorClass="text-cyan-400" subtitle="Stripe Card spend MTD" />
+          <TodayMetricCard label="Card Spend" value={displayMoney(cardSpendTotal)} onClick={() => setActiveDrawer('card-spend')} icon={CreditCard} colorClass="text-cyan-400" subtitle="Stripe Card spend 30D" />
           <TodayMetricCard label="Active Jobs" value={metrics.activeJobsCount} onClick={() => setActiveDrawer('bookings')} icon={Zap} colorClass="text-cyan-400" subtitle="Currently in progress" />
           <TodayMetricCard label="Memberships" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold-soft" subtitle="Active membership revenue" />
           <TodayMetricCard label="Notifications" value={metrics.unreadMessageCount} onClick={() => setActiveDrawer('notifications')} icon={MessageSquare} colorClass={metrics.unreadMessageCount > 0 ? 'text-rose-400' : 'text-emerald-400'} subtitle={metrics.unreadMessageCount > 0 ? 'Action items pending' : 'No new messages'} />
@@ -834,29 +869,29 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
       <section>
         <SectionEyebrow>Customer Store Credits & Liabilities</SectionEyebrow>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-rose-500/30">
+          <button type="button" onClick={() => setActiveDrawer('credits')} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 text-left transition-all duration-300 hover:border-rose-500/30">
             <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Outstanding Liability</span>
             <p className="mt-4 font-mono text-2xl font-black text-rose-400 tracking-tight sm:text-3xl">
               {displayMoney(metrics.creditMetrics?.outstandingLiabilityCents ?? 0)}
             </p>
             <p className="mt-1 text-[10px] text-zinc-500 font-medium">Unredeemed active customer credits</p>
-          </div>
+          </button>
 
-          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-gold/30">
+          <button type="button" onClick={() => setActiveDrawer('credits')} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 text-left transition-all duration-300 hover:border-gold/30">
             <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Credits Issued (MTD)</span>
             <p className="mt-4 font-mono text-2xl font-black text-white tracking-tight sm:text-3xl">
               {displayMoney(metrics.creditMetrics?.mtdIssuedCents ?? 0)}
             </p>
             <p className="mt-1 text-[10px] text-zinc-500 font-medium">Total credits issued this month</p>
-          </div>
+          </button>
 
-          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-emerald-500/30">
+          <button type="button" onClick={() => setActiveDrawer('credits')} className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 text-left transition-all duration-300 hover:border-emerald-500/30">
             <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Credits Applied (MTD)</span>
             <p className="mt-4 font-mono text-2xl font-black text-emerald-400 tracking-tight sm:text-3xl">
               {displayMoney(metrics.creditMetrics?.mtdRedeemedCents ?? 0)}
             </p>
             <p className="mt-1 text-[10px] text-zinc-500 font-medium">Total credits applied to jobs this month</p>
-          </div>
+          </button>
         </div>
       </section>
 

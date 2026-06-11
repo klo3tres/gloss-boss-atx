@@ -10,6 +10,7 @@ import { fetchPaymentsForJob, findDepositPayment } from '@/lib/payments-resolve'
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
+  | { ok: true; skipPayment: true; appointmentId: string; accessToken: string; code: 'NO_CARD_BALANCE'; message: string }
   | { ok: false; error: string; code?: string };
 
 function stripeErrorMessage(e: unknown): string {
@@ -88,7 +89,37 @@ export async function createDepositCheckoutSession(params: {
     const vehicleSummary = String(appt.vehicle_description ?? 'Vehicle');
     const serviceAddress = [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', ');
     const isFullPay = params.paymentChoice === 'full';
-    const amountCents = isFullPay && typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : appt.deposit_amount_cents;
+    const rawAmountCents = isFullPay && typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : appt.deposit_amount_cents;
+    const creditPaymentsRes = await admin
+      .from('payments')
+      .select('amount_cents, status, payment_method, payment_kind, provider, voided, voided_at')
+      .eq('appointment_id', appt.id)
+      .in('status', ['succeeded', 'paid']);
+    const appliedCreditCents = (creditPaymentsRes.data ?? []).reduce((sum, row) => {
+      const method = String(row.payment_method ?? row.payment_kind ?? row.provider ?? '').toLowerCase();
+      const isCredit = method.includes('credit');
+      const isVoided = row.voided === true || Boolean(row.voided_at);
+      return isCredit && !isVoided ? sum + Math.max(0, Number(row.amount_cents ?? 0)) : sum;
+    }, 0);
+    const amountCents = Math.max(0, rawAmountCents - appliedCreditCents);
+    if (amountCents < 50) {
+      await admin
+        .from('appointments')
+        .update({
+          payment_status: isFullPay ? 'paid' : 'deposit_paid',
+          status: isFullPay ? 'confirmed' : 'deposit_paid',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', appt.id);
+      return {
+        ok: true,
+        skipPayment: true,
+        appointmentId: String(appt.id),
+        accessToken: accessToken.trim(),
+        code: 'NO_CARD_BALANCE',
+        message: 'Customer credits covered the card amount due.',
+      };
+    }
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: appt.guest_email ?? undefined,

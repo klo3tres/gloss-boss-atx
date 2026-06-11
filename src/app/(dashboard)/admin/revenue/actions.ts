@@ -16,22 +16,44 @@ export async function managePaymentAction(
   if (!id) return { error: 'Missing ID' };
 
   let updateObj: Record<string, any> = {};
+  const tableName = table === 'receipts' ? 'receipts' : 'payments';
   if (action === 'keep') {
-    updateObj = { exclude_from_revenue: false, is_test: false, voided: false, voided_at: null };
+    updateObj =
+      tableName === 'receipts'
+        ? { exclude_from_revenue: false, is_test: false, voided_at: null, status: 'issued' }
+        : { exclude_from_revenue: false, is_test: false, voided: false, voided_at: null };
   } else if (action === 'exclude') {
     updateObj = { exclude_from_revenue: true };
   } else if (action === 'mark_test') {
     updateObj = { is_test: true };
   } else if (action === 'soft_delete') {
-    updateObj = { voided: true, voided_at: new Date().toISOString() };
+    updateObj =
+      tableName === 'receipts'
+        ? { status: 'voided', voided_at: new Date().toISOString(), exclude_from_revenue: true }
+        : { voided: true, voided_at: new Date().toISOString() };
   }
 
-  const tableName = table === 'receipts' ? 'receipts' : 'payments';
   let cleanId = id;
   if (tableName === 'receipts' && id.startsWith('receipt:')) {
     cleanId = id.substring(8);
   }
-  const { error } = await admin.from(tableName).update(updateObj).eq('id', cleanId);
+  let { error } = await admin.from(tableName).update(updateObj).eq('id', cleanId);
+  if (error && tableName === 'receipts' && /voided_at|exclude_from_revenue|is_test|status|schema cache|column|Could not find/i.test(error.message)) {
+    const fallbackAttempts =
+      action === 'keep'
+        ? [{ status: 'issued' }, { exclude_from_revenue: false }, { is_test: false }]
+        : action === 'exclude'
+          ? [{ exclude_from_revenue: true }, { is_test: true }, { status: 'excluded' }]
+          : action === 'mark_test'
+            ? [{ is_test: true }, { exclude_from_revenue: true }, { status: 'test' }]
+            : [{ status: 'voided' }, { voided_at: new Date().toISOString() }, { exclude_from_revenue: true }, { is_test: true }];
+    for (const fallback of fallbackAttempts) {
+      const retry = await admin.from(tableName).update(fallback).eq('id', cleanId);
+      error = retry.error;
+      if (!error) break;
+      if (!/schema cache|column|Could not find|does not exist/i.test(error.message)) break;
+    }
+  }
   
   if (error) {
     console.error(`[revenue-actions] error updating ${tableName} id ${id}:`, error.message);
