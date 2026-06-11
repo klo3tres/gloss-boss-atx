@@ -45,19 +45,7 @@ export default async function AdminCustomersPage() {
     
     const full = await client
       .from('customers')
-      .select(`
-        id, 
-        email, 
-        full_name, 
-        phone, 
-        created_at, 
-        archived,
-        customer_memberships(
-          status,
-          membership_plans(name, tier)
-        ),
-        loyalty_stamps(stamp_count)
-      `)
+      .select('id, email, full_name, phone, created_at, archived')
       .or('archived.is.null,archived.eq.false')
       .order('created_at', { ascending: false })
       .limit(200);
@@ -67,6 +55,52 @@ export default async function AdminCustomersPage() {
       console.warn('[CRM_DEBUG_DB]', 'customers_list', full.error.message);
     } else {
       rows = (full.data ?? []) as unknown as CustomerRow[];
+      const customerIds = rows.map((row) => row.id);
+      if (customerIds.length > 0) {
+        const [membershipsRes, plansRes, stampsRes] = await Promise.all([
+          client
+            .from('customer_memberships')
+            .select('customer_id, membership_plan_id, status')
+            .in('customer_id', customerIds),
+          client
+            .from('membership_plans')
+            .select('id, name, tier')
+            .limit(100),
+          client
+            .from('loyalty_stamps')
+            .select('customer_id, stamp_count')
+            .in('customer_id', customerIds),
+        ]);
+
+        if (membershipsRes.error) console.warn('[CRM_DEBUG_DB]', 'customer_memberships_list', membershipsRes.error.message);
+        if (plansRes.error) console.warn('[CRM_DEBUG_DB]', 'membership_plans_list', plansRes.error.message);
+        if (stampsRes.error) console.warn('[CRM_DEBUG_DB]', 'loyalty_stamps_list', stampsRes.error.message);
+
+        const plansById = new Map(
+          ((plansRes.data ?? []) as Array<{ id: string; name: string; tier: string }>).map((plan) => [plan.id, plan]),
+        );
+        const membershipsByCustomer = new Map<string, CustomerRow['customer_memberships']>();
+        for (const membership of (membershipsRes.data ?? []) as Array<{ customer_id: string; membership_plan_id: string | null; status: string }>) {
+          const list = membershipsByCustomer.get(membership.customer_id) ?? [];
+          const plan = membership.membership_plan_id ? plansById.get(membership.membership_plan_id) ?? null : null;
+          list.push({
+            status: membership.status,
+            membership_plans: plan ? { name: plan.name, tier: plan.tier } : null,
+          });
+          membershipsByCustomer.set(membership.customer_id, list);
+        }
+        const stampsByCustomer = new Map<string, CustomerRow['loyalty_stamps']>();
+        for (const stamp of (stampsRes.data ?? []) as Array<{ customer_id: string; stamp_count: number | null }>) {
+          const list = stampsByCustomer.get(stamp.customer_id) ?? [];
+          list.push({ stamp_count: stamp.stamp_count ?? 1 });
+          stampsByCustomer.set(stamp.customer_id, list);
+        }
+        rows = rows.map((row) => ({
+          ...row,
+          customer_memberships: membershipsByCustomer.get(row.id) ?? [],
+          loyalty_stamps: stampsByCustomer.get(row.id) ?? [],
+        }));
+      }
     }
   }
 

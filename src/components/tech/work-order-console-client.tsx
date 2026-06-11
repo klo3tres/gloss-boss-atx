@@ -859,7 +859,7 @@ export function WorkOrderConsoleClient({
           {data.ledgerResolveError ? (
             <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
           ) : null}
-          {data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
+          {data.canAdvancedRepair && data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
           {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
             <WorkOrderLedgerPanel
               jobId={jobId}

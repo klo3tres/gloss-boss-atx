@@ -322,13 +322,6 @@ export function WorkOrderLedgerPanel({
             <RecordPaymentForm jobId={jobId} isFallback={isFallback} method='check' label='Record check' recordCashAction={recordCashAction} />
           </div>
         ) : null}
-        {canAdvancedRepair ? (
-          <CorrectPaymentTruthPanel
-            appointmentId={isFallback ? undefined : jobId}
-            fallbackBookingId={isFallback ? jobId : undefined}
-            workOrderPath={workOrderPath ?? `/tech/work-orders/${jobId}`}
-          />
-        ) : null}
         <div id='wo-invoice' className='mt-4'>
           <WorkOrderInvoiceBuilder
             jobId={jobId}

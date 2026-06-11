@@ -264,7 +264,15 @@ export default async function AdminRevenuePage({
     .from('payment_debug_events')
     .select('id, event_type, error_message, created_at, appointment_id')
     .order('created_at', { ascending: false })
-    .limit(8);
+    .limit(40);
+
+  const paymentAlerts = (debugEvents ?? []).filter((e) => {
+    const row = e as { event_type?: string | null; error_message?: string | null };
+    const eventType = String(row.event_type ?? '').toLowerCase();
+    const errorMessage = String(row.error_message ?? '').trim();
+    if (errorMessage.length > 0) return true;
+    return eventType.includes('error') || eventType.includes('failed') || eventType.includes('failure');
+  }).slice(0, 8);
 
   const { data: upcoming } = await admin
     .from('appointments')
@@ -509,16 +517,16 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
-      {(debugEvents ?? []).length > 0 ? (
+      {paymentAlerts.length > 0 ? (
         <section className='mt-8 space-y-3'>
           <p className='text-xs font-black uppercase tracking-[0.2em] text-red-300'>Payment alerts</p>
           <ul className='space-y-2 text-sm'>
-            {(debugEvents ?? []).map((e) => {
+            {paymentAlerts.map((e) => {
               const row = e as { id: string; event_type: string; error_message: string | null; created_at: string; appointment_id: string | null };
               return (
                 <li key={row.id} className='rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-100'>
                   <span className='font-mono text-[10px] uppercase'>{row.event_type}</span>
-                  <p className='mt-1'>{row.error_message ?? 'Webhook/processing issue'}</p>
+                  <p className='mt-1'>{row.error_message ?? 'Payment processing failure'}</p>
                   {row.appointment_id ? (
                     <Link href={`/admin/work-orders/${row.appointment_id}?shell=admin`} className='mt-2 inline-block text-xs text-gold-soft underline'>
                       Open work order

@@ -145,6 +145,137 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
 
   const techStatusLabel = `${metrics.activeTechCount} Active`;
 
+  const ownerActions = [
+    { href: '/book', label: 'New Booking', desc: 'Create or test a customer booking', icon: Calendar, color: 'text-gold-soft' },
+    { href: '/admin/revenue', label: 'Revenue Center', desc: 'Payment truth, balances, and profit', icon: TrendingUp, color: 'text-emerald-400' },
+    { href: '/admin/work-orders', label: 'Work Orders', desc: 'Paid, unpaid, active, and completed jobs', icon: ClipboardList, color: 'text-cyan-300' },
+    { href: '/admin/memberships', label: 'Membership Hub', desc: 'Plans, members, stamps, and loyalty cards', icon: Sparkles, color: 'text-gold' },
+    { href: '/admin/customers', label: 'Customer CRM', desc: 'Profiles, vehicles, history, and membership status', icon: Users, color: 'text-amber-300' },
+    { href: '/admin/cms', label: 'Gallery Manager', desc: 'Review and publish transformations', icon: ShieldCheck, color: 'text-emerald-300' },
+    { href: '/admin/reports', label: 'Reports', desc: 'Clean tax and revenue exports', icon: Activity, color: 'text-indigo-300' },
+    { href: '/admin/messages', label: 'Messages', desc: 'Customer and technician notifications', icon: MessageSquare, color: 'text-rose-300' },
+  ];
+
+  return (
+    <div className="space-y-8 pb-10">
+      {metrics.alerts.length > 0 ? (
+        <section className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-amber-200">
+            <AlertTriangle className="h-4 w-4" />
+            Owner Tasks
+          </div>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {metrics.alerts.map((a) => (
+              <li key={a} className="rounded-xl border border-amber-500/20 bg-black/30 px-3 py-2 text-xs text-amber-50/90">
+                {a}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section>
+        <SectionEyebrow>Owner Operating Snapshot</SectionEyebrow>
+        <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <TodayMetricCard label="Revenue Today" value={metrics.revenueToday} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle="Succeeded gross payments" />
+          <TodayMetricCard label="Revenue 30 Days" value={metrics.revenueMonth} href="/admin/revenue" icon={Activity} colorClass="text-gold" subtitle="Real collected revenue" />
+          <TodayMetricCard label="Open Balances" value={metrics.balanceDue} href="/admin/work-orders" icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
+          <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} href="/admin/work-orders" icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
+          <TodayMetricCard label="New Bookings" value={metrics.bookingsThisWeek} href="/admin/dispatch" icon={Calendar} colorClass="text-indigo-300" subtitle="Booked this week" />
+          <TodayMetricCard label="Memberships" value={metrics.membershipRevenueMonth} href="/admin/memberships" icon={Sparkles} colorClass="text-gold-soft" subtitle="Membership revenue signal" />
+          <TodayMetricCard label="Notifications" value={metrics.unreadMessageCount} href="/admin/messages" icon={MessageSquare} colorClass={metrics.unreadMessageCount > 0 ? 'text-rose-400' : 'text-emerald-400'} subtitle={metrics.unreadMessageCount > 0 ? 'Needs response' : 'Clear'} />
+          <TodayMetricCard label="Tasks" value={metrics.alerts.length} href="/admin/work-orders" icon={CheckCircle2} colorClass={metrics.alerts.length > 0 ? 'text-amber-400' : 'text-emerald-400'} subtitle={metrics.alerts.length > 0 ? 'Owner follow-ups' : 'No blockers'} />
+        </div>
+      </section>
+
+      <section>
+        <SectionEyebrow>Command Shortcuts</SectionEyebrow>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {ownerActions.map((q) => (
+            <Link key={q.label} href={q.href} className="group block focus:outline-none">
+              <div className="relative flex min-h-28 flex-col justify-between rounded-2xl border border-gold/15 bg-black/60 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-gold/45 hover:shadow-[0_4px_20px_rgba(212,175,55,0.1)]">
+                <div className="flex items-center justify-between">
+                  <div className={`rounded-xl border border-white/5 bg-zinc-950/60 p-2.5 transition-all group-hover:border-gold/20 ${q.color}`}>
+                    <q.icon className="h-5 w-5 shrink-0" />
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-zinc-600 transition group-hover:translate-x-1 group-hover:text-gold" />
+                </div>
+                <div>
+                  <h3 className="mt-3 text-xs font-black uppercase tracking-wider text-white">{q.label}</h3>
+                  <p className="mt-1 text-[10px] font-medium leading-snug text-zinc-500 transition group-hover:text-zinc-400">{q.desc}</p>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <GlassCard className="border-white/10 bg-black/40">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <SectionEyebrow>Today&apos;s Jobs</SectionEyebrow>
+            <Link href="/admin/dispatch" className="text-[9px] font-black uppercase text-gold-soft hover:underline">
+              Dispatch board
+            </Link>
+          </div>
+          {metrics.todayJobs.length === 0 ? (
+            <p className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/20 py-10 text-center text-xs text-zinc-500">
+              No live detailing jobs scheduled for today.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {metrics.todayJobs.slice(0, 6).map((j) => (
+                <Link key={j.id} href={j.href} className="rounded-xl border border-white/10 bg-zinc-950/40 p-4 transition hover:border-gold/30">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">{j.guestName}</p>
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-500">{j.when} · {j.service}</p>
+                    </div>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase text-zinc-300">
+                      {j.status}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+
+        <GlassCard className="border-white/10 bg-black/40">
+          <div className="border-b border-white/10 pb-3">
+            <SectionEyebrow>Business Health</SectionEyebrow>
+          </div>
+          <div className="mt-5 grid gap-4">
+            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Average Ticket</p>
+                <p className="font-mono text-lg font-black text-white">{metrics.averageTicketSize}</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Booking Health</p>
+                <PremiumBadge tone={healthInfo.tone}>{healthInfo.label}</PremiumBadge>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/5">
+                <div className="h-full rounded-full bg-gradient-to-r from-gold/40 to-gold" style={{ width: `${metrics.bookingHealth}%` }} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Loyalty Participation</p>
+                <p className="font-mono text-lg font-black text-cyan-300">{metrics.loyaltyParticipation}%</p>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/5">
+                <div className="h-full rounded-full bg-gradient-to-r from-cyan-500/50 to-cyan-300" style={{ width: `${metrics.loyaltyParticipation}%` }} />
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      </section>
+    </div>
+  );
+
   return (
     <div className="space-y-8 pb-10">
       {/* Alert Banner if any */}
@@ -170,7 +301,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
         <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <TodayMetricCard label="Revenue Today" value={metrics.revenueToday} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle="Succeeded gross payments" />
           <TodayMetricCard label="Revenue Week" value={metrics.revenueWeek} href="/admin/revenue" icon={TrendingUp} colorClass="text-gold-soft" subtitle="Rolling 7-day payments" />
-          <TodayMetricCard label="Revenue Month" value={metrics.revenueMonth} href="/admin/revenue" icon={Activity} colorClass="text-gold" subtitle="MTD cumulative revenue" />
+          <TodayMetricCard label="Revenue 30 Days" value={metrics.revenueMonth} href="/admin/revenue" icon={Activity} colorClass="text-gold" subtitle="Calendar MTD, falls back to rolling 30 days" />
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} href="/admin/revenue" icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} href="/admin/revenue" icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
           <TodayMetricCard label="Active Jobs" value={metrics.activeJobsCount} href="/admin/dispatch" icon={Zap} colorClass="text-cyan-400" subtitle="Currently in progress" />

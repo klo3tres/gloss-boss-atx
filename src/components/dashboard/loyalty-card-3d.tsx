@@ -83,6 +83,7 @@ export function LoyaltyCard3D({
   const backImg = activeCardDesign?.back_image_url || '';
   const showFrontImage = Boolean(frontImg && !frontImageFailed);
   const showBackImage = Boolean(backImg && !backImageFailed);
+  const lockedPreview = Boolean(forceState);
 
   return (
     <div className={`perspective-[1000px] w-full ${className}`}>
@@ -92,8 +93,8 @@ export function LoyaltyCard3D({
         onMouseEnter={() => !forceState && setIsHovered(true)}
         onClick={() => !forceState && setIsFlipped(!isFlipped)}
         animate={{
-          rotateX,
-          rotateY: (isFlipped ? 180 : 0) + rotateY,
+          rotateX: lockedPreview ? 0 : rotateX,
+          rotateY: lockedPreview ? 0 : (isFlipped ? 180 : 0) + rotateY,
           scale: isHovered ? 1.02 : 1,
         }}
         transition={{ type: 'spring', stiffness: 200, damping: 20 }}
@@ -161,7 +162,7 @@ export function LoyaltyCard3D({
         <div 
           className="absolute inset-0 p-6 flex flex-col justify-between w-full h-full"
           style={{ 
-            transform: 'rotateY(180deg)',
+            transform: lockedPreview ? 'none' : 'rotateY(180deg)',
             backfaceVisibility: 'hidden',
             display: isFlipped ? 'flex' : 'none'
           }}

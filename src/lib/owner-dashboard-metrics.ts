@@ -115,6 +115,13 @@ function isTodayChicago(iso: string) {
   return fmt(d) === fmt(n);
 }
 
+function startOfRolling30Iso() {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
 export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise<OwnerDashboardSnapshot> {
   const now = new Date().toISOString();
   const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
@@ -126,12 +133,12 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   );
   const sumOpts = { excludeTest: true as const, apptById };
 
-  const [todayPay, weekPay, monthPay, leadRowsRes, paymentRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes] = await Promise.all([
+  const [todayPay, weekPay, monthPay, rolling30Pay, leadRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
+    fetchPaymentsSince(admin, startOfRolling30Iso(), now),
     admin.from('leads').select('status, archived, archived_at'),
-    admin.from('payments').select('amount_cents, status, payment_method, payment_kind, created_at, appointment_id').order('created_at', { ascending: false }).limit(6),
     admin.from('job_timeline_events').select('appointment_id, event_type, created_at').order('created_at', { ascending: false }).limit(10),
     admin.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     admin.from('loyalty_stamps').select('customer_id'),
@@ -141,6 +148,9 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const today = summarizePayments(todayPay, sumOpts);
   const week = summarizePayments(weekPay, sumOpts);
   const month = summarizePayments(monthPay, sumOpts);
+  const rolling30 = summarizePayments(rolling30Pay, { ...sumOpts, fromIso: startOfRolling30Iso(), toIso: now });
+  const dashboardMonth = month.grossCents > 0 ? month : rolling30;
+  const dashboardMonthRows = month.grossCents > 0 ? monthPay : rolling30Pay;
   const unreadMessageCount = messageCountRes.error ? 0 : (messageCountRes.count ?? 0);
 
   const { data: appts } = await admin
@@ -232,11 +242,11 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const customerRetentionRate = uniqueCustomers > 0 ? Math.round((repeatCustomers / uniqueCustomers) * 100) : 0;
 
   // Average Ticket Size
-  const averageTicketSizeCents = month.paymentCount > 0 ? Math.round(month.grossCents / month.paymentCount) : 0;
+  const averageTicketSizeCents = dashboardMonth.paymentCount > 0 ? Math.round(dashboardMonth.grossCents / dashboardMonth.paymentCount) : 0;
   const averageTicketSize = displayMoney(averageTicketSizeCents);
 
   // Membership Revenue Month
-  const membershipCents = (monthPay ?? [])
+  const membershipCents = (dashboardMonthRows ?? [])
     .filter((p) => p.payment_kind === 'membership' || p.payment_method === 'membership')
     .reduce((sum, p) => sum + (p.amount_cents ?? 0), 0);
   const membershipRevenueMonth = displayMoney(membershipCents);
@@ -246,15 +256,22 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const loyaltyParticipation = uniqueCustomers > 0 ? Math.round((stampCustomers.size / uniqueCustomers) * 100) : 0;
 
   // Recent Payments
-  const recentPayments = (paymentRowsRes.data ?? []).map((p) => {
+  const recentPayments = dashboardMonthRows
+    .filter((p) => {
+      const one = summarizePayments([p], sumOpts);
+      return one.grossCents > 0;
+    })
+    .sort((a, b) => String(b.paid_at ?? b.created_at ?? '').localeCompare(String(a.paid_at ?? a.created_at ?? '')))
+    .slice(0, 6)
+    .map((p) => {
     const appt = apptById.get(String(p.appointment_id));
     return {
-      id: String(p.created_at) + String(p.appointment_id),
+      id: String(p.id ?? p.created_at) + String(p.appointment_id),
       customer: appt?.guest_name || 'Guest',
       amount: displayMoney(p.amount_cents ?? 0),
       method: String(p.payment_method || p.payment_kind || 'Stripe'),
       status: String(p.status || 'succeeded'),
-      time: chicagoShort(p.created_at ?? ''),
+      time: chicagoShort(p.paid_at ?? p.created_at ?? ''),
     };
   });
 
@@ -345,7 +362,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   return {
     revenueToday: displayMoney(today.grossCents),
     revenueWeek: displayMoney(week.grossCents),
-    revenueMonth: displayMoney(month.grossCents),
+    revenueMonth: displayMoney(dashboardMonth.grossCents),
     balanceDue: displayMoney(balanceDueCents),
     jobsToday: todayJobs.length,
     pipelineCount,
@@ -353,12 +370,12 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     alerts,
     todayJobs,
     paymentMixMonth: {
-      stripeCents: month.stripeCents,
-      cashCents: month.cashCents,
-      zelleCents: month.zelleCents,
-      otherCents: month.otherCents,
-      grossCents: month.grossCents,
-      paymentCount: month.paymentCount,
+      stripeCents: dashboardMonth.stripeCents,
+      cashCents: dashboardMonth.cashCents,
+      zelleCents: dashboardMonth.zelleCents,
+      otherCents: dashboardMonth.otherCents,
+      grossCents: dashboardMonth.grossCents,
+      paymentCount: dashboardMonth.paymentCount,
     },
     pendingDeposits,
     activeJobsCount,

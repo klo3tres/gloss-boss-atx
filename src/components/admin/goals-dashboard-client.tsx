@@ -136,15 +136,16 @@ export function GoalsDashboardClient({
           }}
         />
       ) : null}
-      <div className='space-y-4'>
+      <div className='grid gap-4 lg:grid-cols-2'>
         {goals.length === 0 ? (
-          <p className='text-sm text-zinc-500 italic'>No goals yet. Create one above or apply migration 000057_goals_dashboard.sql.</p>
+          <p className='text-sm text-zinc-500 italic lg:col-span-2'>No goals yet. Create one above or apply migration 000057_goals_dashboard.sql.</p>
         ) : (
           goals.map((g) => {
             const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
             const auto = ['revenue_weekly', 'revenue_monthly', 'jobs_monthly', 'avg_ticket', 'profit_monthly'].includes(g.goal_type);
+            const dashOffset = 283 - (283 * pct) / 100;
             return (
-              <article key={g.id} className='gb-premium-card rounded-2xl border border-gold/15 p-6 hover:border-gold/35 transition duration-300'>
+              <article key={g.id} className='gb-premium-card rounded-3xl border border-gold/15 p-6 hover:border-gold/35 transition duration-300'>
                 <div className='flex flex-wrap items-start justify-between gap-3'>
                   <div>
                     <p className='text-lg font-black text-white uppercase tracking-tight'>{g.title}</p>
@@ -152,14 +153,42 @@ export function GoalsDashboardClient({
                       {g.goal_type.replace(/_/g, ' ')} · {auto ? 'Auto-tracked' : 'Manual'}
                     </p>
                   </div>
-                  <span className='rounded-full bg-gold/10 border border-gold/30 px-3 py-1 text-xs font-black uppercase text-gold-soft'>{g.status}</span>
+                  <div className='flex items-center gap-3'>
+                    <span className='rounded-full bg-gold/10 border border-gold/30 px-3 py-1 text-xs font-black uppercase text-gold-soft'>{g.status}</span>
+                    <div className='relative h-20 w-20 shrink-0'>
+                      <svg className='h-20 w-20 -rotate-90' viewBox='0 0 100 100' aria-hidden='true'>
+                        <circle cx='50' cy='50' r='45' stroke='rgba(255,255,255,0.08)' strokeWidth='8' fill='none' />
+                        <circle
+                          cx='50'
+                          cy='50'
+                          r='45'
+                          stroke='#f4d35e'
+                          strokeWidth='8'
+                          fill='none'
+                          strokeLinecap='round'
+                          strokeDasharray='283'
+                          strokeDashoffset={dashOffset}
+                        />
+                      </svg>
+                      <div className='absolute inset-0 flex items-center justify-center'>
+                        <span className='font-mono text-sm font-black text-gold-soft'>{pct}%</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className='mt-4 h-2.5 overflow-hidden rounded-full bg-zinc-900 border border-white/5'>
                   <div className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400 shadow-[0_0_8px_rgba(212,175,55,0.4)]' style={{ width: `${pct}%` }} />
                 </div>
-                <p className='mt-2.5 text-sm text-zinc-300 font-bold'>
-                  {displayValue(g.unit, g.current_value)} / {displayValue(g.unit, g.target_value)} ({pct}%)
-                </p>
+                <div className='mt-4 grid gap-3 rounded-2xl border border-white/10 bg-black/35 p-4 sm:grid-cols-2'>
+                  <div>
+                    <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Current</p>
+                    <p className='mt-1 font-mono text-sm font-black text-white'>{displayValue(g.unit, g.current_value)}</p>
+                  </div>
+                  <div>
+                    <p className='text-[10px] font-black uppercase tracking-wider text-zinc-500'>Target</p>
+                    <p className='mt-1 font-mono text-sm font-black text-gold-soft'>{displayValue(g.unit, g.target_value)}</p>
+                  </div>
+                </div>
                 {g.period_end ? <p className='text-xs text-zinc-500 mt-0.5'>Due {g.period_end.slice(0, 10)}</p> : null}
                 <div className='mt-4 flex flex-wrap gap-2'>
                   <button type='button' onClick={() => setEditId(g.id)} className='text-xs font-bold uppercase text-gold-soft underline'>
