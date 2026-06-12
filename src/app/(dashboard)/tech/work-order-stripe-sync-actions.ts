@@ -1,11 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import Stripe from 'stripe';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { Row } from '@/lib/work-order-resolve';
+import { getStripeSecrets } from '@/lib/stripe/stripeService';
+import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -14,9 +17,12 @@ function str(v: unknown) {
 export type StripeSyncResult = {
   ok: boolean;
   error?: string;
+  blocker?: string;
+  diagnostics?: string[];
   appointmentId?: string;
   stripeSessionId?: string;
   stripePaymentIntent?: string;
+  stripeChargeId?: string;
   matchedBefore: number;
   matchedAfter: number;
   attachedIds: string[];
@@ -31,6 +37,111 @@ export type StripeSyncResult = {
     stripe_payment_intent_id: string;
   }>;
 };
+
+function money(cents: number) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function cents(v: unknown) {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+function emailOfCharge(charge: Stripe.Charge | null | undefined) {
+  return str(charge?.billing_details?.email).toLowerCase();
+}
+
+function emailOfSession(session: Stripe.Checkout.Session | null | undefined) {
+  return str(session?.customer_details?.email || session?.customer_email).toLowerCase();
+}
+
+function emailOfIntent(pi: Stripe.PaymentIntent | null | undefined) {
+  return str(pi?.receipt_email).toLowerCase();
+}
+
+async function upsertStripePaymentForJob(params: {
+  admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>;
+  stripe: Stripe;
+  job: Row;
+  jobId: string;
+  isFallback: boolean;
+  sessionObj?: Stripe.Checkout.Session | null;
+  paymentIntent?: Stripe.PaymentIntent | null;
+  charge?: Stripe.Charge | null;
+  sourceReason: string;
+}) {
+  const { admin, stripe, job, jobId, isFallback, sessionObj, paymentIntent, charge } = params;
+  const paymentIntentId = str(paymentIntent?.id || (typeof sessionObj?.payment_intent === 'string' ? sessionObj.payment_intent : sessionObj?.payment_intent?.id) || (typeof charge?.payment_intent === 'string' ? charge.payment_intent : ''));
+  const chargeId = str(charge?.id || (typeof paymentIntent?.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent?.latest_charge?.id));
+  const sessionId = str(sessionObj?.id || job.stripe_checkout_session_id || job.final_payment_checkout_session_id);
+  const amountCents = cents(sessionObj?.amount_total) || cents(paymentIntent?.amount_received) || cents(paymentIntent?.amount) || cents(charge?.amount);
+  if (amountCents <= 0) return { ok: false as const, error: 'Stripe API object lacks required amount fields.', paymentId: null as string | null };
+  const status = charge?.status === 'failed' || paymentIntent?.status === 'requires_payment_method' ? 'failed' : 'succeeded';
+  if (status !== 'succeeded') return { ok: false as const, error: `Stripe object is not succeeded. Current status: ${status}.`, paymentId: null as string | null };
+  const paidAt = new Date(((sessionObj?.created ?? paymentIntent?.created ?? charge?.created ?? Math.floor(Date.now() / 1000)) as number) * 1000).toISOString();
+  const payload: Record<string, unknown> = {
+    appointment_id: isFallback ? null : jobId,
+    fallback_booking_id: isFallback ? jobId : null,
+    customer_id: str(job.customer_id) || null,
+    email: str(job.guest_email) || emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge) || null,
+    amount_cents: amountCents,
+    status,
+    payment_method: 'stripe',
+    payment_kind: str(sessionObj?.metadata?.stripe_checkout_kind || paymentIntent?.metadata?.stripe_checkout_kind || charge?.metadata?.stripe_checkout_kind) || 'stripe_repair',
+    provider: 'stripe',
+    stripe_checkout_session_id: sessionId || null,
+    stripe_payment_intent_id: paymentIntentId || null,
+    stripe_charge_id: chargeId || null,
+    paid_at: paidAt,
+    created_at: paidAt,
+    exclude_from_revenue: false,
+    is_test: false,
+    metadata: {
+      source: 'work_order_stripe_repair',
+      reason: params.sourceReason,
+      stripe_customer_email: emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge) || null,
+    },
+  };
+
+  let existing: Row | null = null;
+  if (paymentIntentId) {
+    const { data } = await admin.from('payments').select('*').eq('stripe_payment_intent_id', paymentIntentId).maybeSingle();
+    existing = (data as Row | null) ?? null;
+  }
+  if (!existing && sessionId) {
+    const { data } = await admin.from('payments').select('*').eq('stripe_checkout_session_id', sessionId).maybeSingle();
+    existing = (data as Row | null) ?? null;
+  }
+  if (!existing && chargeId) {
+    const { data } = await admin.from('payments').select('*').eq('stripe_charge_id', chargeId).maybeSingle();
+    existing = (data as Row | null) ?? null;
+  }
+
+  const write = existing?.id
+    ? await admin.from('payments').update(payload).eq('id', existing.id).select('id').maybeSingle()
+    : await admin.from('payments').insert(payload).select('id').maybeSingle();
+  if (write.error) {
+    return { ok: false as const, error: `Database ${existing?.id ? 'update' : 'insert'} blocked: ${write.error.message}`, paymentId: null as string | null };
+  }
+
+  const paymentId = str((write.data as Row | null)?.id || existing?.id);
+  if (charge?.balance_transaction) {
+    const txId = typeof charge.balance_transaction === 'string' ? charge.balance_transaction : charge.balance_transaction.id;
+    if (txId) {
+      try {
+        const tx = await stripe.balanceTransactions.retrieve(txId);
+        await upsertLedgerFromBalanceTransaction(admin, tx, {
+          paymentIntentId,
+          chargeId,
+          paymentId,
+          workOrderId: isFallback ? null : jobId,
+        });
+      } catch (e) {
+        return { ok: false as const, error: `Payment row wrote, but ledger balance transaction sync failed: ${e instanceof Error ? e.message : String(e)}`, paymentId };
+      }
+    }
+  }
+  return { ok: true as const, error: null, paymentId };
+}
 
 export async function syncStripePaymentsForWorkOrderAction(formData: FormData): Promise<StripeSyncResult> {
   const session = await getSessionWithProfile();
@@ -66,7 +177,14 @@ export async function syncStripePaymentsForWorkOrderAction(formData: FormData): 
   const job = jobRow as Row;
   const isFallback = table === 'booking_fallbacks';
   const stripeSessionId = str(job.stripe_checkout_session_id || job.final_payment_checkout_session_id);
-  const stripePaymentIntent = str(job.stripe_payment_intent_id);
+  const stripePaymentIntent = str(job.stripe_payment_intent_id || job.final_payment_intent_id);
+  const jobEmail = str(job.guest_email).toLowerCase();
+  const expectedAmounts = Array.from(new Set([
+    cents(job.deposit_amount_cents),
+    cents(job.base_price_cents),
+    cents(job.final_total_cents),
+    cents(job.balance_due_cents),
+  ].filter((n) => n > 0)));
 
   const before = await fetchPaymentsForJob(admin, job, {
     appointmentId: isFallback ? undefined : jobId,
@@ -74,67 +192,116 @@ export async function syncStripePaymentsForWorkOrderAction(formData: FormData): 
     isFallback,
   });
 
-  const attachedIds: string[] = [];
-  const candidates = new Map<string, Row>();
+  const diagnostics: string[] = [
+    `Work order table: ${table}`,
+    `Work order id: ${jobId}`,
+    `Expected amounts: ${expectedAmounts.map(money).join(', ') || 'none'}`,
+    `Customer email: ${jobEmail || 'missing'}`,
+    `Stored checkout session: ${stripeSessionId || 'missing'}`,
+    `Stored payment intent: ${stripePaymentIntent || 'missing'}`,
+  ];
 
-  const addCandidates = (rows: Row[] | null | undefined) => {
-    for (const r of rows ?? []) {
-      const id = str(r.id);
-      if (id) candidates.set(id, r);
+  const secrets = await getStripeSecrets(admin);
+  if (!secrets.secretKey) {
+    return { ok: false, blocker: 'missing_stripe_secret_key', error: 'Missing Stripe secret key. Add STRIPE_SECRET_KEY in Vercel or Admin > Stripe setup.', diagnostics, matchedBefore: before.length, matchedAfter: before.length, attachedIds: [], paymentRows: [] };
+  }
+  if (!secrets.webhookSecret) diagnostics.push('Webhook signing secret missing. Manual repair can still run, but automatic webhook writes will not verify.');
+  const stripeMode = secrets.secretKey.startsWith('sk_live') ? 'live' : secrets.secretKey.startsWith('sk_test') ? 'test' : 'unknown';
+  diagnostics.push(`Stripe key mode: ${stripeMode}`);
+  if (stripeMode !== 'live') diagnostics.push('Live production payment may be invisible with a non-live Stripe key.');
+
+  let stripe: Stripe;
+  try {
+    stripe = new Stripe(secrets.secretKey);
+    const account = await stripe.accounts.retrieve();
+    diagnostics.push(`Stripe account reachable: ${account.id}`);
+  } catch (e) {
+    return { ok: false, blocker: 'wrong_stripe_secret_key', error: `Stripe API rejected this secret key: ${e instanceof Error ? e.message : String(e)}`, diagnostics, matchedBefore: before.length, matchedAfter: before.length, attachedIds: [], paymentRows: [] };
+  }
+
+  let sessionObj: Stripe.Checkout.Session | null = null;
+  let paymentIntent: Stripe.PaymentIntent | null = null;
+  let charge: Stripe.Charge | null = null;
+  let sourceReason = '';
+
+  try {
+    if (stripeSessionId) {
+      sessionObj = await stripe.checkout.sessions.retrieve(stripeSessionId, { expand: ['payment_intent', 'payment_intent.latest_charge'] });
+      diagnostics.push(`Checkout session found: ${sessionObj.id} / ${money(cents(sessionObj.amount_total))} / ${sessionObj.payment_status}`);
+      paymentIntent = typeof sessionObj.payment_intent === 'object' ? sessionObj.payment_intent as Stripe.PaymentIntent : null;
+      const latest = paymentIntent?.latest_charge;
+      charge = typeof latest === 'object' ? latest as Stripe.Charge : null;
+      sourceReason = 'exact_checkout_session_id';
     }
-  };
-
-  if (stripeSessionId) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_checkout_session_id', stripeSessionId).limit(20);
-    addCandidates(data as Row[]);
-  }
-  if (stripePaymentIntent) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_payment_intent_id', stripePaymentIntent).limit(20);
-    addCandidates(data as Row[]);
+  } catch (e) {
+    diagnostics.push(`Stored checkout session retrieve failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const email = str(job.guest_email).toLowerCase();
-  if (email.includes('@')) {
-    const { data } = await admin.from('payments').select('*').ilike('email', email).order('paid_at', { ascending: false }).limit(30);
-    addCandidates(data as Row[]);
+  if (!paymentIntent && stripePaymentIntent) {
+    try {
+      paymentIntent = await stripe.paymentIntents.retrieve(stripePaymentIntent, { expand: ['latest_charge'] });
+      diagnostics.push(`Payment intent found: ${paymentIntent.id} / ${money(cents(paymentIntent.amount_received || paymentIntent.amount))} / ${paymentIntent.status}`);
+      const latest = paymentIntent.latest_charge;
+      charge = typeof latest === 'object' ? latest as Stripe.Charge : null;
+      sourceReason = 'exact_payment_intent_id';
+    } catch (e) {
+      diagnostics.push(`Stored payment intent retrieve failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
-  const customerId = str(job.customer_id);
-  if (customerId) {
-    const { data } = await admin
-      .from('payments')
-      .select('*')
-      .eq('customer_id', customerId)
-      .order('paid_at', { ascending: false })
-      .limit(30);
-    addCandidates(data as Row[]);
+  if (!charge && !paymentIntent && !sessionObj && expectedAmounts.length > 0) {
+    const charges = await stripe.charges.list({ limit: 100 });
+    const amountMatches = charges.data.filter((c) => c.status === 'succeeded' && expectedAmounts.includes(c.amount));
+    diagnostics.push(`Stripe charge fallback scan: ${amountMatches.length} succeeded amount match(es) in latest 100 charges.`);
+    const emailMatches = amountMatches.filter((c) => !jobEmail || emailOfCharge(c) === jobEmail);
+    if (amountMatches.length > 0 && emailMatches.length === 0 && jobEmail) {
+      diagnostics.push(`Customer email mismatch. Amount matched Stripe, but none used ${jobEmail}. Stripe emails: ${amountMatches.map((c) => emailOfCharge(c) || 'none').join(', ')}`);
+    }
+    const picked = emailMatches[0] ?? (jobEmail ? null : amountMatches[0]);
+    if (picked) {
+      charge = picked;
+      if (typeof picked.payment_intent === 'string') {
+        paymentIntent = await stripe.paymentIntents.retrieve(picked.payment_intent, { expand: ['latest_charge'] }).catch(() => null);
+      }
+      sourceReason = 'fallback_amount_email_charge_match';
+      diagnostics.push(`Fallback charge selected: ${picked.id} / ${money(picked.amount)} / ${emailOfCharge(picked) || 'no email'}`);
+    }
   }
 
-  for (const pay of candidates.values()) {
-    const payId = str(pay.id);
-    if (!payId) continue;
-    const alreadyLinked =
-      (!isFallback && str(pay.appointment_id) === jobId) || (isFallback && str(pay.fallback_booking_id) === jobId);
-    if (alreadyLinked) continue;
-
-    const patch: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
+  if (!sessionObj && !paymentIntent && !charge) {
+    const blocker = stripeMode !== 'live' ? 'wrong_environment_live_test_mismatch' : (!stripeSessionId && !stripePaymentIntent ? 'missing_payment_intent_metadata' : 'stripe_api_object_not_found');
+    return {
+      ok: false,
+      blocker,
+      error: blocker === 'wrong_environment_live_test_mismatch'
+        ? 'Stripe key is not live mode, so the live $58.14 payment cannot be read.'
+        : 'No Stripe session, payment intent, or high-confidence charge match was found. Add Stripe metadata or paste the exact Session/PaymentIntent in the manual link tool.',
+      diagnostics,
+      matchedBefore: before.length,
+      matchedAfter: before.length,
+      attachedIds: [],
+      paymentRows: [],
     };
-    if (!isFallback) {
-      patch.appointment_id = jobId;
-    } else {
-      patch.fallback_booking_id = jobId;
-    }
-    if (!str(pay.payment_method)) {
-      patch.payment_method = 'stripe';
-    }
-    const kind = str(pay.payment_kind).toLowerCase();
-    if (!kind || kind === 'discount') {
-      patch.payment_kind = stripeSessionId && str(pay.stripe_checkout_session_id) === stripeSessionId ? 'deposit' : 'stripe';
-    }
+  }
 
-    const { error } = await admin.from('payments').update(patch).eq('id', payId);
-    if (!error) attachedIds.push(payId);
+  const stripeEmail = emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge);
+  if (jobEmail && stripeEmail && stripeEmail !== jobEmail && sourceReason === 'fallback_amount_email_charge_match') {
+    return { ok: false, blocker: 'customer_email_mismatch', error: `Stripe customer email ${stripeEmail} does not match work order email ${jobEmail}.`, diagnostics, matchedBefore: before.length, matchedAfter: before.length, attachedIds: [], paymentRows: [] };
+  }
+
+  const write = await upsertStripePaymentForJob({
+    admin,
+    stripe,
+    job,
+    jobId,
+    isFallback,
+    sessionObj,
+    paymentIntent,
+    charge,
+    sourceReason,
+  });
+  if (!write.ok) {
+    return { ok: false, blocker: write.error?.toLowerCase().includes('duplicate') ? 'duplicate_key_conflict' : 'database_constraint_or_insert_failed', error: write.error ?? 'Payment write failed.', diagnostics, matchedBefore: before.length, matchedAfter: before.length, attachedIds: [], paymentRows: [] };
   }
 
   const after = await fetchPaymentsForJob(admin, job, {
@@ -145,6 +312,8 @@ export async function syncStripePaymentsForWorkOrderAction(formData: FormData): 
 
   revalidatePath(`/tech/work-orders/${jobId}`);
   revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
 
   const paymentRows = after.map((p) => ({
     id: str(p.id),
@@ -161,10 +330,12 @@ export async function syncStripePaymentsForWorkOrderAction(formData: FormData): 
     ok: true,
     appointmentId: isFallback ? undefined : jobId,
     stripeSessionId: stripeSessionId || undefined,
-    stripePaymentIntent: stripePaymentIntent || undefined,
+    stripePaymentIntent: str(paymentIntent?.id || stripePaymentIntent) || undefined,
+    stripeChargeId: str(charge?.id) || undefined,
+    diagnostics,
     matchedBefore: before.length,
     matchedAfter: after.length,
-    attachedIds,
+    attachedIds: write.paymentId ? [write.paymentId] : [],
     paymentRows,
   };
 }

@@ -3,32 +3,23 @@
 import type { ReactNode } from 'react';
 import {
   Camera,
-  CheckSquare,
   Clock,
   CreditCard,
   FileText,
-  History,
-  MapPin,
-  Phone,
-  Receipt,
+  User,
+  FileSignature,
+  MessageSquare,
 } from 'lucide-react';
-
-function scrollTo(id: string) {
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 
 function MissionBtn({
   label,
   icon,
   onClick,
-  href,
   active,
 }: {
   label: string;
   icon: ReactNode;
   onClick?: () => void;
-  href?: string;
   active?: boolean;
 }) {
   const cls =
@@ -37,14 +28,6 @@ function MissionBtn({
       ? 'border-gold bg-gold/20 text-gold-soft shadow-[0_0_20px_rgba(212,175,55,0.3)]'
       : 'border-white/15 bg-black/70 text-zinc-300 hover:border-gold/50 hover:text-gold-soft');
 
-  if (href) {
-    return (
-      <a href={href} className={cls}>
-        {icon}
-        <span>{label}</span>
-      </a>
-    );
-  }
   return (
     <button type='button' onClick={onClick} className={cls}>
       {icon}
@@ -53,39 +36,62 @@ function MissionBtn({
   );
 }
 
-/** Fixed top dispatch bar — mission control for field work orders. */
+/** Fixed top dispatch bar — mission control for field work orders as a premium tab switcher. */
 export function WorkOrderMissionBar({
-  guestPhone,
-  mapsHref,
-  hasPreInspection,
+  activeTab,
+  onTabChange,
   timerRunning,
 }: {
-  guestPhone?: string;
-  mapsHref?: string;
-  hasPreInspection?: boolean;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
   timerRunning?: boolean;
+  hasPreInspection?: boolean;
 }) {
-  const tel = guestPhone ? `tel:${guestPhone.replace(/\s/g, '')}` : undefined;
-
   return (
     <div className='gb-mission-top fixed left-0 right-0 top-16 z-40 border-b border-gold/25 bg-black/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl lg:top-14'>
-      <div className='mx-auto flex max-w-7xl gap-2 overflow-x-auto px-3 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-        {tel ? <MissionBtn label='Call' icon={<Phone className='h-4 w-4' />} href={tel} /> : null}
-        {mapsHref ? <MissionBtn label='Directions' icon={<MapPin className='h-4 w-4' />} href={mapsHref} /> : null}
+      <div className='mx-auto flex max-w-7xl gap-2 overflow-x-auto px-3 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden justify-start md:justify-center'>
         <MissionBtn
-          label={timerRunning ? 'Timer on' : 'Timer'}
+          label={timerRunning ? 'Timer on' : 'Overview'}
           icon={<Clock className='h-4 w-4' />}
-          onClick={() => scrollTo('wo-timer')}
-          active={timerRunning}
+          onClick={() => onTabChange('overview')}
+          active={activeTab === 'overview'}
         />
-        <MissionBtn label='Photos' icon={<Camera className='h-4 w-4' />} onClick={() => scrollTo('wo-photos')} />
-        <MissionBtn label='Invoice' icon={<FileText className='h-4 w-4' />} onClick={() => scrollTo('wo-invoice')} />
-        <MissionBtn label='Payments' icon={<CreditCard className='h-4 w-4' />} onClick={() => scrollTo('wo-payment')} />
-        {hasPreInspection ? (
-          <MissionBtn label='Checklist' icon={<CheckSquare className='h-4 w-4' />} onClick={() => scrollTo('wo-preinspect')} />
-        ) : null}
-        <MissionBtn label='Receipt' icon={<Receipt className='h-4 w-4' />} onClick={() => scrollTo('wo-receipt')} />
-        <MissionBtn label='Timeline' icon={<History className='h-4 w-4' />} onClick={() => scrollTo('wo-timeline')} />
+        <MissionBtn
+          label='Photos'
+          icon={<Camera className='h-4 w-4' />}
+          onClick={() => onTabChange('photos')}
+          active={activeTab === 'photos'}
+        />
+        <MissionBtn
+          label='Payments'
+          icon={<CreditCard className='h-4 w-4' />}
+          onClick={() => onTabChange('payments')}
+          active={activeTab === 'payments'}
+        />
+        <MissionBtn
+          label='Customer'
+          icon={<User className='h-4 w-4' />}
+          onClick={() => onTabChange('customer')}
+          active={activeTab === 'customer'}
+        />
+        <MissionBtn
+          label='Vehicle'
+          icon={<FileText className='h-4 w-4' />}
+          onClick={() => onTabChange('vehicle')}
+          active={activeTab === 'vehicle'}
+        />
+        <MissionBtn
+          label='Notes'
+          icon={<MessageSquare className='h-4 w-4' />}
+          onClick={() => onTabChange('notes')}
+          active={activeTab === 'notes'}
+        />
+        <MissionBtn
+          label='Documents'
+          icon={<FileSignature className='h-4 w-4' />}
+          onClick={() => onTabChange('documents')}
+          active={activeTab === 'documents'}
+        />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2 } from 'lucide-react';
+import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
@@ -249,6 +249,7 @@ export function WorkOrderConsoleClient({
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'customer' | 'vehicle' | 'notes' | 'documents'>('overview');
   const [isContactOpen, setIsContactOpen] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -398,742 +399,986 @@ export function WorkOrderConsoleClient({
 
   const isCompleted = data.statusLabel.toLowerCase().includes('complete') || Boolean(data.jobCompletedAt);
 
+  const getTimelineSteps = () => {
+    const isArrived = data.job.status !== 'confirmed' && data.job.status !== 'pending';
+    const isPreInspected = data.preInspection?.damageAck.damageAckComplete || (data.agreementSigned && data.job.status !== 'confirmed' && data.job.status !== 'pending' && data.job.status !== 'arrived');
+    const isDetailing = data.job.status === 'in_progress' || Boolean(data.openTimerId) || isCompleted;
+    const isPhotosUploaded = data.beforePhotos.length > 0 || data.afterPhotos.length > 0 || data.photosByVehicle.some(v => v.before.length > 0 || v.after.length > 0);
+    const isPaid = data.paymentComplete;
+    const isClosed = isCompleted && data.paymentComplete;
+
+    return [
+      { label: 'Arrival', ok: isArrived },
+      { label: 'Pre-Inspect', ok: isPreInspected },
+      { label: 'Detailing', ok: isDetailing },
+      { label: 'Photos Uploaded', ok: isPhotosUploaded },
+      { label: 'Payment', ok: isPaid },
+      { label: 'Closeout', ok: isClosed },
+    ];
+  };
+
   return (
-    <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-24 md:space-y-6'>
+    <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-32 md:space-y-6'>
       <WorkOrderMissionBar
-        guestPhone={data.guestPhone}
-        mapsHref={data.mapsHref}
-        hasPreInspection={Boolean(data.preInspection)}
+        activeTab={activeTab}
+        onTabChange={(tab: any) => setActiveTab(tab)}
         timerRunning={Boolean(data.openTimerId)}
+        hasPreInspection={Boolean(data.preInspection)}
       />
 
-      {isCompleted && (
-        <div id='wo-complete-top' className='scroll-mt-36'>
-          <WorkOrderCompletePanel
-            jobId={jobId}
-            isFallback={data.isFallback}
-            workflowSessionId={data.workflowSessionId}
-            canAdminOverride={canAdminOverride}
-            paymentComplete={data.paymentComplete}
-            balanceDueCents={data.balanceDueCents}
-            guestEmail={data.guestEmail}
-            agreementCaptureHref={data.agreementCaptureHref}
-            receiptPdfHref={data.receiptPdfHref}
-            jobCompleted={true}
-            onOfferMaintenancePlan={() => {
-              setIsMaintenanceModalOpen(true);
-            }}
-          />
+      {/* 1. CLEAN HORIZONTAL HEADER */}
+      <div className="rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 h-32 w-32 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Work Order</span>
+              <PremiumBadge tone='gold'>#{data.canonicalId.slice(0, 8).toUpperCase()}</PremiumBadge>
+            </div>
+            <h1 className="text-2xl font-black text-white tracking-tight mt-1">{data.guestName}</h1>
+            <p className="text-sm font-semibold text-gold-soft mt-1">{vehicleLine}</p>
+          </div>
+          
+          <div className="grid grid-cols-2 md:flex md:items-center gap-6 text-xs border-t border-white/5 md:border-t-0 pt-4 md:pt-0">
+            <div>
+              <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Status</p>
+              <span className={`inline-block mt-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                data.paymentComplete ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20' : 'bg-gold/10 text-gold-soft border border-gold/20'
+              }`}>
+                {data.statusLabel}
+              </span>
+            </div>
+            <div>
+              <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Appointment Time</p>
+              <p className="font-semibold text-zinc-300 mt-1">{data.scheduledStart || 'TBD'}</p>
+            </div>
+            <div>
+              <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Outstanding Balance</p>
+              <p className={`font-mono font-black text-sm mt-1 ${data.balanceDueCents > 0 ? 'text-rose-400' : 'text-emerald-300'}`}>
+                {data.balanceDue}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. CONDITIONAL TAB CONTENTS */}
+
+      {/* === OVERVIEW TAB === */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {isCompleted && (
+            <div id='wo-complete-top' className='scroll-mt-36'>
+              <WorkOrderCompletePanel
+                jobId={jobId}
+                isFallback={data.isFallback}
+                workflowSessionId={data.workflowSessionId}
+                canAdminOverride={canAdminOverride}
+                paymentComplete={data.paymentComplete}
+                balanceDueCents={data.balanceDueCents}
+                guestEmail={data.guestEmail}
+                agreementCaptureHref={data.agreementCaptureHref}
+                receiptPdfHref={data.receiptPdfHref}
+                jobCompleted={true}
+                onOfferMaintenancePlan={() => {
+                  setIsMaintenanceModalOpen(true);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Visual Job Timeline */}
+          <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40">
+            <SectionEyebrow>Operations pipeline</SectionEyebrow>
+            <div className="mt-6 relative flex items-center justify-between">
+              {/* Connector Line */}
+              <div className="absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-white/5" />
+              <div 
+                className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-gold transition-all duration-500" 
+                style={{
+                  width: `${
+                    data.paymentComplete ? '100%' :
+                    data.jobCompletedAt || data.statusLabel.toLowerCase().includes('complete') ? '80%' :
+                    data.job.status === 'in_progress' || data.openTimerId ? '50%' :
+                    data.preInspection?.damageAck.damageAckComplete ? '30%' : '10%'
+                  }`
+                }}
+              />
+              
+              {/* Stepper Nodes */}
+              {getTimelineSteps().map((step, idx) => {
+                const isOk = step.ok;
+                return (
+                  <div key={idx} className="relative z-10 flex flex-col items-center">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-300 ${
+                        isOk
+                          ? 'border-gold bg-black text-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]'
+                          : 'border-white/10 bg-zinc-950 text-zinc-500'
+                      }`}
+                    >
+                      {isOk ? '✓' : idx + 1}
+                    </div>
+                    <span className={`mt-2 text-[9px] font-black uppercase tracking-wider ${isOk ? 'text-gold-soft' : 'text-zinc-500'}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quick Actions Grid */}
+          <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40 space-y-4">
+            <SectionEyebrow>Quick Actions</SectionEyebrow>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('overview');
+                  setTimeout(() => {
+                    const el = document.getElementById('wo-schedule-panel');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                <Calendar className="h-5 w-5 text-gold-soft" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Reschedule</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-red-500/30 hover:bg-red-950/10 transition duration-200"
+              >
+                <XCircle className="h-5 w-5 text-red-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Cancel Job</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setIsContactOpen(true)}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                <PhoneCall className="h-5 w-5 text-gold-soft" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                {copiedAddress ? <Check className="h-5 w-5 text-emerald-400" /> : <Copy className="h-5 w-5 text-zinc-400" />}
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">
+                  {copiedAddress ? 'Copied!' : 'Copy Address'}
+                </span>
+              </button>
+              
+              <a
+                href={data.mapsHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                <MapPin className="h-5 w-5 text-gold-soft" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Directions</span>
+              </a>
+              
+              {data.customerId ? (
+                <button
+                  onClick={() => setActiveTab('customer')}
+                  className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                >
+                  <User className="h-5 w-5 text-zinc-400" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Profile</span>
+                </button>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 opacity-40 cursor-not-allowed">
+                  <User className="h-5 w-5 text-zinc-600" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Profile</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Summary Financial Cards */}
+          <div className='gb-mission-metrics grid grid-cols-2 md:grid-cols-4 gap-4'>
+            <div className='gb-premium-card rounded-2xl border border-gold/30 px-4 py-3.5 bg-zinc-950/50 shadow-[0_0_15px_rgba(212,175,55,0.08)] backdrop-blur-sm'>
+              <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Final total</p>
+              <p className='mt-1 font-mono text-lg font-black text-gold-soft'>{data.finalTotal ?? data.baseSubtotal}</p>
+            </div>
+            <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 bg-zinc-950/50 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+              <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Balance</p>
+              <p className='mt-1 font-mono text-lg font-black text-white'>{data.balanceDue}</p>
+            </div>
+            <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 bg-zinc-950/50 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+              <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Paid</p>
+              <p className='mt-1 font-mono text-lg font-black text-emerald-300'>{data.totalPaid ?? '—'}</p>
+            </div>
+            <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 bg-zinc-950/50 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
+              <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Requirements</p>
+              <p className='mt-1 font-mono text-lg font-black text-white'>{progressPct}%</p>
+            </div>
+          </div>
+
+          {/* Timer section */}
+          <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 p-6'>
+            <div id='timer-section-toggle' className='flex items-center justify-between border-b border-white/5 pb-2 mb-3'>
+              <div className='flex items-center gap-2'>
+                <Clock className='h-4 w-4 text-gold-soft' />
+                <SectionEyebrow>Timer & duration</SectionEyebrow>
+              </div>
+              {dur && (
+                <div className='flex items-center gap-2 text-[10px] font-mono'>
+                  <span className='text-zinc-400'>{dur.label}: <strong className='text-white'>{dur.minutes}m</strong></span>
+                  {expectedMins && (
+                    <>
+                      <span className='text-zinc-600'>|</span>
+                      <span className='text-zinc-400'>Expected: <strong className='text-white'>{expectedMins}m</strong></span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <TechTimerControls
+              appointmentId={data.isFallback ? null : jobId}
+              fallbackBookingId={data.isFallback ? jobId : null}
+              workflowSessionId={data.workflowSessionId}
+              initialTimerId={data.openTimerId || null}
+              initialStartedAt={data.openTimerStartedAt || null}
+            />
+          </div>
+
+          {/* Schedule settings */}
+          <div id='wo-schedule-panel' className='space-y-4'>
+            {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
+              <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
+            ) : null}
+            {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
+              <AppointmentScheduleControls appointmentId={jobId} scheduledStart={data.scheduledStartIso} />
+            ) : null}
+          </div>
+
+          {/* Checklist / Requirements snapshot */}
+          <div className='bg-zinc-950/45 p-6 rounded-3xl border border-white/5'>
+            <SectionEyebrow>Intake Progress Tracker</SectionEyebrow>
+            <div className='mt-4'>
+              <ProgressTracker steps={data.requirements} />
+            </div>
+          </div>
+
+          {!isCompleted && (
+            <div id='wo-complete' className='scroll-mt-32'>
+              <WorkOrderCompletePanel
+                jobId={jobId}
+                isFallback={data.isFallback}
+                workflowSessionId={data.workflowSessionId}
+                canAdminOverride={canAdminOverride}
+                paymentComplete={data.paymentComplete}
+                balanceDueCents={data.balanceDueCents}
+                guestEmail={data.guestEmail}
+                agreementCaptureHref={data.agreementCaptureHref}
+                receiptPdfHref={data.receiptPdfHref}
+                jobCompleted={false}
+                onOfferMaintenancePlan={() => {
+                  setIsMaintenanceModalOpen(true);
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Luxury Process Stepper */}
-      <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40">
-        <SectionEyebrow>Operations pipeline</SectionEyebrow>
-        <div className="mt-6 relative flex items-center justify-between">
-          {/* Connector Line */}
-          <div className="absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 bg-white/5" />
-          <div 
-            className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-gold transition-all duration-500" 
-            style={{
-              width: `${
-                data.paymentComplete ? '100%' :
-                data.jobCompletedAt || data.statusLabel.toLowerCase().includes('complete') ? '75%' :
-                data.job.status === 'in_progress' || data.openTimerId ? '50%' :
-                data.agreementSigned ? '25%' : '0%'
-              }`
-            }}
-          />
-          
-          {/* Stepper Nodes */}
-          {[
-            { label: 'Agreement', ok: data.agreementSigned },
-            { label: 'Pre-Inspect', ok: data.preInspection?.damageAck.damageAckComplete || (data.agreementSigned && data.job.status !== 'confirmed' && data.job.status !== 'pending') },
-            { label: 'In Progress', ok: data.job.status === 'in_progress' || Boolean(data.openTimerId) || data.statusLabel.toLowerCase().includes('complete') },
-            { label: 'Completed', ok: data.statusLabel.toLowerCase().includes('complete') || Boolean(data.jobCompletedAt) },
-            { label: 'Paid', ok: data.paymentComplete },
-          ].map((step, idx) => {
-            const isOk = step.ok;
-            return (
-              <div key={idx} className="relative z-10 flex flex-col items-center">
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-all duration-300 ${
-                    isOk
-                      ? 'border-gold bg-black text-gold shadow-[0_0_12px_rgba(212,175,55,0.4)]'
-                      : 'border-white/10 bg-zinc-950 text-zinc-500'
-                  }`}
-                >
-                  {isOk ? '✓' : idx + 1}
+      {/* === PHOTOS TAB === */}
+      {activeTab === 'photos' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {data.preInspection ? (
+            <div id='wo-preinspect' className='scroll-mt-28'>
+              <div className='gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden'>
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                  <SectionEyebrow>Pre-inspection & checklist</SectionEyebrow>
+                  <PremiumBadge tone="gold">{data.preInspection.photoProgress}</PremiumBadge>
                 </div>
-                <span className={`mt-2 text-[9px] font-black uppercase tracking-wider ${isOk ? 'text-gold-soft' : 'text-zinc-500'}`}>
-                  {step.label}
-                </span>
+                <WorkOrderPreInspection
+                  appointmentId={data.isFallback ? null : jobId}
+                  fallbackBookingId={data.isFallback ? jobId : null}
+                  workOrderId={jobId}
+                  customerId={data.customerId}
+                  workflowSessionId={data.workflowSessionId}
+                  photoUploadDisabled={data.photoUploadDisabled}
+                  agreementSigned={data.agreementSigned}
+                  canAdminOverride={canAdminOverride}
+                  checklistSaved={data.requirements.find((r) => r.label.startsWith('Checklist'))?.ok ?? false}
+                  jobStatus={data.job.status}
+                  {...data.preInspection}
+                />
               </div>
-            );
-          })}
-        </div>
-      </div>
+            </div>
+          ) : null}
 
-      {/* Quick Actions Grid */}
-      <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40 space-y-4">
-        <SectionEyebrow>Quick actions</SectionEyebrow>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          <button
-            type="button"
-            onClick={() => scrollToSection('wo-schedule')}
-            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-          >
-            <Calendar className="h-5 w-5 text-gold-soft" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Reschedule</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setIsCancelModalOpen(true)}
-            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-red-500/30 hover:bg-red-950/10 transition duration-200"
-          >
-            <XCircle className="h-5 w-5 text-red-400" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Cancel Job</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setIsContactOpen(true)}
-            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-          >
-            <PhoneCall className="h-5 w-5 text-gold-soft" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={handleCopyAddress}
-            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-          >
-            {copiedAddress ? <Check className="h-5 w-5 text-emerald-400" /> : <Copy className="h-5 w-5 text-zinc-400" />}
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">
-              {copiedAddress ? 'Copied!' : 'Copy Address'}
-            </span>
-          </button>
-          
-          <a
-            href={data.mapsHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-          >
-            <MapPin className="h-5 w-5 text-gold-soft" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Directions</span>
-          </a>
-          
-          {data.customerId ? (
-            <Link
-              href={`/admin/customers/${data.customerId}`}
-              className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-            >
-              <User className="h-5 w-5 text-zinc-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Profile</span>
-            </Link>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 opacity-40 cursor-not-allowed">
-              <User className="h-5 w-5 text-zinc-600" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Profile</span>
+          <div id='wo-photos' className='scroll-mt-28'>
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Photos & gallery</SectionEyebrow>
+                <PremiumBadge tone="zinc">{data.vehicles.length} vehicle{data.vehicles.length === 1 ? '' : 's'}</PremiumBadge>
+              </div>
+
+              {data.photoUploadDisabled ? (
+                <p className='mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+                  {data.photoUploadDisableReason ?? 'Photo upload disabled for archived/test/orphan job.'}
+                </p>
+              ) : null}
+
+              {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
+                <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-white/10 bg-zinc-950/20 p-5 space-y-4'>
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className='text-base font-black text-white'>
+                        Vehicle {vg.vehicleIndex + 1}: {vg.label}
+                      </p>
+                      {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
+                    </div>
+                    {vg.before.length > 0 && vg.after.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBeforeAfterModal(vg)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-gold/45 bg-gold/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/25 transition duration-200"
+                      >
+                        Create Before/After Post
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Comparative Photos Timeline */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="gb-glass bg-zinc-950/45 rounded-xl p-3 border border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-200 mb-2">Before Restoration</p>
+                      <WorkOrderGallery title="" photos={vg.before} canDelete={data.canDeletePhotos} />
+                    </div>
+                    <div className="gb-glass bg-zinc-950/45 rounded-xl p-3 border border-white/5">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300 mb-2">After Restoration</p>
+                      <WorkOrderGallery title="" photos={vg.after} canDelete={data.canDeletePhotos} />
+                    </div>
+                  </div>
+
+                  {!data.photoUploadDisabled ? (
+                    <div className="pt-2">
+                      <WorkOrderPhotoUpload
+                        appointmentId={data.isFallback ? null : jobId}
+                        fallbackBookingId={data.isFallback ? jobId : null}
+                        workOrderId={data.canonicalId}
+                        customerId={data.customerId}
+                        workflowSessionId={data.workflowSessionId}
+                        source={data.isFallback ? 'fallback' : 'appointment'}
+                        resolvedContextTrust={data.photoUploadResolvedContext}
+                        vehicleIndex={vg.vehicleIndex}
+                        vehicleLabel={vg.label}
+                        existingPhotos={vg.before.concat(vg.after)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === PAYMENTS TAB === */}
+      {activeTab === 'payments' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {isCompleted && (
+            <div className='scroll-mt-36'>
+              <WorkOrderCompletePanel
+                jobId={jobId}
+                isFallback={data.isFallback}
+                workflowSessionId={data.workflowSessionId}
+                canAdminOverride={canAdminOverride}
+                paymentComplete={data.paymentComplete}
+                balanceDueCents={data.balanceDueCents}
+                guestEmail={data.guestEmail}
+                agreementCaptureHref={data.agreementCaptureHref}
+                receiptPdfHref={data.receiptPdfHref}
+                jobCompleted={true}
+                onOfferMaintenancePlan={() => {
+                  setIsMaintenanceModalOpen(true);
+                }}
+              />
             </div>
           )}
-        </div>
-      </div>
 
-      <motion.section
-        id='wo-overview'
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className='gb-invoice-card gb-premium-hero scroll-mt-36 rounded-3xl px-5 py-6 sm:px-8 sm:py-8'
-      >
-        <div className='flex flex-wrap gap-2'>
-          <PremiumBadge tone='gold'>WO #{data.canonicalId.slice(0, 8).toUpperCase()}</PremiumBadge>
-          <PremiumBadge tone='zinc'>{data.statusLabel}</PremiumBadge>
-          <PremiumBadge tone={data.agreementSigned ? 'emerald' : 'amber'}>
-            <FileSignature className='h-3 w-3' />
-            {data.agreementSigned ? 'Signed' : 'Agreement'}
-          </PremiumBadge>
-          <PremiumBadge tone={data.paymentComplete ? 'emerald' : 'amber'}>
-            <CreditCard className='h-3 w-3' />
-            {data.paymentComplete ? 'Paid' : data.paymentStatus}
-          </PremiumBadge>
-        </div>
-        <h1 className='mt-4 text-2xl font-black text-white sm:text-4xl'>
-          <span className='block text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500'>Work order</span>
-          <span className='mt-1 block'>{data.guestName}</span>
-        </h1>
-        <p className='mt-2 text-sm font-semibold text-gold-soft'>{vehicleLine}</p>
-        {data.fullAddress ? (
-          <p className='mt-1 text-sm text-zinc-400'>{data.fullAddress}</p>
-        ) : null}
-        <p className='mt-2 text-sm text-zinc-500'>
-          {data.scheduledStart || 'Schedule TBD'}
-          {data.scheduledEnd ? ` → ${data.scheduledEnd}` : ''}
-          {data.technicianName ? ` · ${data.technicianName}` : ''}
-        </p>
-        <div className='gb-mission-metrics mt-6'>
-          <div className='gb-premium-card rounded-2xl border border-gold/30 px-4 py-3.5 shadow-[0_0_15px_rgba(212,175,55,0.08)] backdrop-blur-sm'>
-            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Final total</p>
-            <p className='mt-1 font-mono text-lg font-black text-gold-soft'>{data.finalTotal ?? data.baseSubtotal}</p>
+          <div id='wo-payment' className='scroll-mt-28'>
+            <div id="wo-payment-card" className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Order Ledger — payment & receipt</SectionEyebrow>
+                <PremiumBadge tone={data.paymentComplete ? 'emerald' : 'amber'}>
+                  {data.paymentComplete ? 'Paid' : 'Unpaid'}
+                </PremiumBadge>
+              </div>
+
+              {data.ledgerResolveError ? (
+                <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
+              ) : null}
+              {data.canAdvancedRepair && data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
+              {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
+                <WorkOrderLedgerPanel
+                  jobId={jobId}
+                  isFallback={data.isFallback}
+                  source={data.isFallback ? 'fallback' : 'appointment'}
+                  appointmentId={data.isFallback ? undefined : jobId}
+                  fallbackBookingId={data.isFallback ? jobId : undefined}
+                  orderSourceLabel={data.orderSourceLabel ?? 'Work order'}
+                  isTest={data.isTestOrder}
+                  vehicles={data.vehicles.map((v, index) => ({
+                    index,
+                    label: v.label,
+                    service: v.service,
+                    priceCents: v.priceCents,
+                    priceLabel: v.priceLabel,
+                  }))}
+                  discounts={data.ledgerDiscounts}
+                  payments={data.ledgerPayments}
+                  pricingSnapshot={data.pricingSnapshot}
+                  pricing={data.jobPricing!}
+                  breakdownLines={data.receiptBreakdownLines}
+                  balanceDue={data.balanceDue}
+                  balanceDueCents={data.balanceDueCents}
+                  finalTotal={data.finalTotal}
+                  depositPaid={data.depositPaid}
+                  totalPaid={data.totalPaid}
+                  paymentComplete={data.paymentComplete}
+                  receiptPdfHref={data.receiptPdfHref}
+                  customLineItems={data.customLineItems ?? []}
+                  promoCode={data.promoCode}
+                  pricingOverrideReason={data.pricingOverrideReason}
+                  canEditPricing={canEditPricing}
+                  canManagePayments={Boolean(data.canManagePayments)}
+                  canAdvancedRepair={Boolean(data.canAdvancedRepair)}
+                  workOrderPath={data.workOrderPath}
+                  customerName={data.guestName}
+                  recordCashAction={recordCashAction}
+                  stripeSessionId={data.stripeSessionId}
+                  stripePaymentIntent={data.stripePaymentIntent}
+                  ledgerWarnings={data.ledgerWarnings}
+                  ledgerTotals={data.ledgerTotals}
+                  recentPaymentsForRepair={data.recentPayments.map((p) => ({
+                    id: p.id ?? '',
+                    amount: p.amount,
+                    method: p.method,
+                    status: p.status,
+                    stripeSession: p.stripe,
+                  }))}
+                  unassignedPaymentDiagnostics={data.unassignedPaymentDiagnostics ?? []}
+                  customerId={data.customerId}
+                  credits={data.credits}
+                  redemptions={data.redemptions}
+                />
+              ) : !data.ledgerResolveError ? (
+                <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+                  Order ledger unavailable — refresh the page.
+                </p>
+              ) : null}
+              
+              {!data.isFallback ? (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <WorkOrderMileagePanel
+                    appointmentId={jobId}
+                    workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
-          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
-            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Balance</p>
-            <p className='mt-1 font-mono text-lg font-black text-white'>{data.balanceDue}</p>
-          </div>
-          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
-            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Paid</p>
-            <p className='mt-1 font-mono text-lg font-black text-emerald-300'>{data.totalPaid ?? '—'}</p>
-          </div>
-          <div className='gb-premium-card rounded-2xl border border-white/10 px-4 py-3.5 shadow-md backdrop-blur-sm hover:border-gold/15 transition duration-300'>
-            <p className='text-[9px] font-black uppercase tracking-wider text-zinc-400'>Progress</p>
-            <p className='mt-1 font-mono text-lg font-black text-white'>{progressPct}%</p>
-          </div>
-        </div>
-        <div className='mt-4 flex flex-wrap gap-2'>
-          <Link href={data.shellBackHref} className='rounded-xl border border-white/20 bg-black/40 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:bg-white/5 transition duration-200'>
-            ← Back
-          </Link>
-          <button
-            type='button'
-            onClick={() => scrollToSection('wo-timer')}
-            className='gb-premium-btn rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/15 shadow-[0_0_15px_rgba(16,185,129,0.1)] transition duration-200'
-          >
-            Timer
-          </button>
-          <button
-            type='button'
-            onClick={() => scrollToSection('wo-complete')}
-            className='gb-premium-btn rounded-xl border border-gold/45 bg-gold/10 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/15 shadow-[0_0_15px_rgba(212,175,55,0.1)] transition duration-200'
-          >
-            Mark complete
-          </button>
-        </div>
-        <div className='mt-6'>
-          <ProgressTracker steps={data.requirements} />
-        </div>
-      </motion.section>
 
-      <WorkOrderSectionTabs />
+          {/* Loyalty Punch Card Controls */}
+          {data.customerId ? (
+            <div id='wo-loyalty' className='scroll-mt-32'>
+              <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                  <SectionEyebrow>Loyalty punch controls</SectionEyebrow>
+                  <PremiumBadge tone="gold">{data.loyaltyStampsCount ?? 0} Punches</PremiumBadge>
+                </div>
 
-      <section id='wo-agreement' className='scroll-mt-28'>
-        <WorkOrderCollapsible
-          title='Agreement & acknowledgement'
-          defaultOpen={!data.agreementSigned}
-          badge={data.agreementSigned ? 'Signed' : 'Required'}
-        >
-          <p className='text-sm text-zinc-400'>
-            {data.agreementSigned
-              ? 'Legal acknowledgement is on file for this job.'
-              : 'Capture acknowledgement before field work — this is step 1 in job progress.'}
-          </p>
-          <div className='mt-4 flex flex-wrap gap-2'>
-            <Link
-              href={data.agreementCaptureHref}
-              className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft'
-            >
-              {data.agreementSigned ? 'Recapture agreement' : 'Capture agreement'}
-            </Link>
-            <Link
-              href={data.agreementDetailHref}
-              className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200'
-            >
-              View agreement
-            </Link>
-          </div>
-        </WorkOrderCollapsible>
-      </section>
-
-      <section className='space-y-4'>
-        <WorkOrderCollapsible title='Job summary' defaultOpen={false}>
-          <div className='grid gap-2 text-sm sm:grid-cols-2'>
-            <p className='text-zinc-400'>
-              Base subtotal <span className='font-mono text-white'>{data.baseSubtotal}</span>
-            </p>
-            {data.onlineDiscount ? (
-              <p className='text-zinc-400'>
-                Online booking discount <span className='font-mono text-emerald-300'>−{data.onlineDiscount}</span>
-              </p>
-            ) : null}
-            {data.multiCarDiscount ? (
-              <p className='text-zinc-400'>
-                Multi-car discount <span className='font-mono text-emerald-300'>−{data.multiCarDiscount}</span>
-              </p>
-            ) : null}
-            {data.promoDiscount ? (
-              <p className='text-zinc-400'>
-                Promo discount <span className='font-mono text-emerald-300'>−{data.promoDiscount}</span>
-              </p>
-            ) : null}
-            <p className='text-zinc-400 sm:col-span-2'>
-              Final total <span className='font-mono text-lg text-gold-soft'>{data.finalTotal}</span>
-            </p>
-            <p className='text-zinc-400'>
-              Deposit paid <span className='font-mono text-white'>{data.depositPaid || '—'}</span>
-            </p>
-            {data.stripePaid ? (
-              <p className='text-zinc-400'>
-                Stripe paid <span className='font-mono text-emerald-300'>{data.stripePaid}</span>
-              </p>
-            ) : null}
-            {data.cashPaid ? (
-              <p className='text-zinc-400'>
-                Cash paid <span className='font-mono text-emerald-300'>{data.cashPaid}</span>
-              </p>
-            ) : null}
-            <p className='text-zinc-400'>
-              Total paid <span className='font-mono text-emerald-300'>{data.totalPaid ?? '—'}</span>
-            </p>
-            <p className='text-zinc-400'>
-              Balance due <span className='font-mono text-gold-soft'>{data.balanceDue}</span>
-            </p>
-            {data.paymentMethod ? <p className='text-zinc-400'>Status: {data.paymentMethod}</p> : null}
-            {data.technicianName ? <p className='text-zinc-400'>Tech: {data.technicianName}</p> : null}
-          </div>
-        </WorkOrderCollapsible>
-
-        <WorkOrderCollapsible title='Customer & address' defaultOpen={false}>
-          {data.guestPhone ? <p className='mt-2 text-sm text-zinc-300'>{data.guestPhone}</p> : null}
-          {data.guestEmail ? <p className='text-sm text-zinc-400'>{data.guestEmail}</p> : null}
-          {data.fullAddress ? <p className='mt-2 text-sm text-zinc-500'>{data.fullAddress}</p> : null}
-          {(data.accessLocation || data.accessWater) && (
-            <ul className='mt-3 space-y-1 text-xs text-zinc-400'>
-              {data.accessLocation ? <li>Location: {data.accessLocation}</li> : null}
-              {data.accessWater ? <li>Water: {data.accessWater}</li> : null}
-              {data.accessPower ? <li>Power: {data.accessPower}</li> : null}
-              {data.accessParking ? <li>Parking: {data.accessParking}</li> : null}
-              {data.gateNotes ? <li>Access notes: {data.gateNotes}</li> : null}
-            </ul>
-          )}
-          <form action={updateDetailsAction} className='mt-4 grid gap-2 sm:grid-cols-2'>
-            <input type='hidden' name='id' value={jobId} />
-            <input type='hidden' name='source' value={data.source} />
-            <input name='guestName' defaultValue={data.guestName} placeholder='Name' className='gb-input' />
-            <input name='guestPhone' defaultValue={data.guestPhone} placeholder='Phone' className='gb-input' />
-            <input name='guestEmail' defaultValue={data.guestEmail} placeholder='Email' className='gb-input sm:col-span-2' />
-            <input name='serviceAddress' defaultValue={data.serviceAddress} placeholder='Street' className='gb-input sm:col-span-2' />
-            <input name='serviceCity' defaultValue={data.serviceCity} placeholder='City' className='gb-input' />
-            <input name='serviceState' defaultValue={data.serviceState} placeholder='State' className='gb-input' />
-            <input name='serviceZip' defaultValue={data.serviceZip} placeholder='ZIP' className='gb-input' />
-            <button type='submit' className='scroll-mt-32 sm:col-span-2 rounded-2xl border border-gold/40 px-4 py-3 text-xs font-black uppercase text-gold-soft'>
-              Save customer
-            </button>
-          </form>
-        </WorkOrderCollapsible>
-
-        <WorkOrderCollapsible title='Vehicles' badge={`${data.vehicles.length}`} defaultOpen={false}>
-          <WorkOrderVehiclesForm
-            id={jobId}
-            source={data.source}
-            defaultService={data.vehicleForms.defaultService}
-            defaultClass={data.vehicleForms.defaultClass}
-            saveAction={updateVehiclesAction}
-            initialVehicles={data.vehicles.map((v) => ({
-              year: v.year,
-              make: v.make,
-              model: v.model,
-              description: v.description,
-              color: v.color,
-              service: v.service,
-              vehicleClass: v.vehicleClass,
-              priceCents: v.priceCents,
-            }))}
-          />
-        </WorkOrderCollapsible>
-
-        {canAdminOverride && data.uploadContextDebug ? (
-          <div className='rounded-xl border border-dashed border-gold/30 bg-zinc-950 px-4 py-3 font-mono text-[10px] text-zinc-400'>
-            <p className='font-black uppercase text-gold-soft'>Upload context (admin)</p>
-            <p className='mt-2'>
-              Enabled: {data.uploadContextDebug.uploadEnabled ? 'yes' : 'no'}
-              {data.uploadContextDebug.disableReason ? ` — ${data.uploadContextDebug.disableReason}` : ''}
-            </p>
-            <p>Source: {data.uploadContextDebug.source ?? '—'} · partial: {data.uploadContextDebug.partialLoad ? 'yes' : 'no'}</p>
-            <p>WO {data.uploadContextDebug.workOrderId}</p>
-            <p>Appt {data.uploadContextDebug.appointmentId || '—'} · FB {data.uploadContextDebug.fallbackBookingId || '—'}</p>
-            <p>Session {data.uploadContextDebug.workflowSessionId || '—'} · customer {data.uploadContextDebug.customerId || '—'}</p>
-          </div>
-        ) : null}
-
-        {data.preInspection ? (
-          <div id='wo-preinspect' className='scroll-mt-28'>
-          <WorkOrderCollapsible title='Pre-inspection & checklist' defaultOpen badge={data.preInspection.photoProgress}>
-            <WorkOrderPreInspection
-              appointmentId={data.isFallback ? null : jobId}
-              fallbackBookingId={data.isFallback ? jobId : null}
-              workOrderId={jobId}
-              customerId={data.customerId}
-              workflowSessionId={data.workflowSessionId}
-              photoUploadDisabled={data.photoUploadDisabled}
-              agreementSigned={data.agreementSigned}
-              canAdminOverride={canAdminOverride}
-              checklistSaved={data.requirements.find((r) => r.label.startsWith('Checklist'))?.ok ?? false}
-              jobStatus={data.job.status}
-              {...data.preInspection}
-            />
-          </WorkOrderCollapsible>
-          </div>
-        ) : null}
-
-        <div id='wo-photos' className='scroll-mt-28'>
-          <WorkOrderCollapsible title='Photos & gallery' defaultOpen badge={`${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`}>
-            {data.photoUploadDisabled ? (
-              <p className='mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
-                {data.photoUploadDisableReason ?? 'Photo upload disabled for archived/test/orphan job.'}
-              </p>
-            ) : null}
-            {(data.photosByVehicle?.length ? data.photosByVehicle : []).map((vg) => (
-              <div key={vg.vehicleIndex} className='gb-premium-card mb-6 rounded-2xl border border-gold/20 bg-black/40 p-5 space-y-4'>
-                <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className='grid gap-6 md:grid-cols-2'>
                   <div>
-                    <p className='text-base font-black text-white'>
-                      Vehicle {vg.vehicleIndex + 1}: {vg.label}
+                    <p className='text-xs text-zinc-400'>
+                      Active loyalty stamps recorded for this customer:
                     </p>
-                    {vg.service ? <p className='text-xs text-zinc-500'>{vg.service.replace(/-/g, ' ')}</p> : null}
+                    <div className='mt-2.5 flex items-center gap-2'>
+                      <span className='text-2xl font-black text-white'>
+                        {(data.loyaltyStampsCount ?? 0) % 6} / 6
+                      </span>
+                      <span className='text-xs text-zinc-500 uppercase tracking-widest'>
+                        stamps on current card ({(data.loyaltyStampsCount ?? 0)} total)
+                      </span>
+                    </div>
+
+                    {/* Stamp award form */}
+                    <form action={addManualLoyaltyStampAction} className='mt-4 rounded-xl border border-white/10 bg-black/45 p-4 space-y-3'>
+                      <input type='hidden' name='customerId' value={data.customerId} />
+                      <input type='hidden' name='appointmentId' value={data.id} />
+                      
+                      <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Award Loyalty Stamps</p>
+                      
+                      <div className='grid gap-2 grid-cols-2'>
+                        <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                          Count
+                          <select name='stampCount' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white focus:outline-none focus:border-gold'>
+                            <option value='1'>+1 Stamp</option>
+                            <option value='2'>+2 Stamps</option>
+                            <option value='3'>+3 Stamps</option>
+                            <option value='5'>+5 Stamps</option>
+                          </select>
+                        </label>
+                        <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                          Source
+                          <select name='source' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white focus:outline-none focus:border-gold'>
+                            <option value='tech_manual'>Tech Manual</option>
+                            <option value='admin_manual'>Admin Manual</option>
+                            <option value='membership_bonus'>Membership Bonus</option>
+                          </select>
+                        </label>
+                      </div>
+                      
+                      <label className='block text-[9px] uppercase font-bold text-zinc-500'>
+                        Reason / Note
+                        <input name='reason' required placeholder='e.g., Referral bonus, goodwill adjustment...' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold' />
+                      </label>
+
+                      <button type='submit' className='w-full rounded bg-gold py-1.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>
+                        Award Punch
+                      </button>
+                    </form>
                   </div>
-                  {vg.before.length > 0 && vg.after.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenBeforeAfterModal(vg)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-gold/45 bg-gold/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/20 transition duration-200"
+
+                  <div>
+                    <p className='text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2'>Punches history</p>
+                    {!data.loyaltyStamps || data.loyaltyStamps.length === 0 ? (
+                      <p className='text-xs text-zinc-600 italic py-4 border border-dashed border-white/5 rounded-xl text-center bg-black/20'>
+                        No stamps recorded.
+                      </p>
+                    ) : (
+                      <ul className='space-y-2.5 max-h-[200px] overflow-y-auto pr-1 text-xs'>
+                        {data.loyaltyStamps.map((s) => {
+                          const isVoided = Boolean(s.voided);
+                          return (
+                            <li key={s.id} className={`flex items-start justify-between gap-2 border-b border-white/5 pb-2 last:border-b-0 ${isVoided ? 'opacity-50' : ''}`}>
+                              <div className="min-w-0 flex-1">
+                                <p className={`font-semibold ${isVoided ? 'line-through text-zinc-500' : 'text-zinc-300'}`}>
+                                  {s.reason || 'Loyalty stamp earned'}
+                                </p>
+                                <p className='text-[9px] text-zinc-500 font-mono mt-0.5'>
+                                  {new Date(s.created_at).toLocaleDateString()}
+                                  {s.source && ` · ${s.source.replace(/_/g, ' ')}`}
+                                  {isVoided && ' (Voided)'}
+                                </p>
+                              </div>
+                              <div className='flex items-center gap-1.5 shrink-0'>
+                                <span className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${isVoided ? 'bg-zinc-800 text-zinc-500 line-through' : 'bg-gold/15 text-gold-soft border border-gold/25'}`}>
+                                  {isVoided ? '0' : `+${s.stamp_count ?? 1}`}
+                                </span>
+                                {!isVoided && (
+                                  <form action={deleteLoyaltyStampAction} method='POST' className='flex gap-1'>
+                                    <input type='hidden' name='stampId' value={s.id} />
+                                    <input type='hidden' name='customerId' value={data.customerId} />
+                                    <input type='text' name='voidReason' placeholder='Void reason...' required className='w-16 rounded border border-zinc-700 bg-black px-1 py-0.5 text-[8px] text-white focus:outline-none' />
+                                    <button type='submit' className='text-[9px] font-black uppercase text-red-400 hover:text-red-300 px-1 border border-red-500/20 rounded bg-red-500/5'>
+                                      Void
+                                    </button>
+                                  </form>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* === CUSTOMER TAB === */}
+      {activeTab === 'customer' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+              <SectionEyebrow>Customer CRM Profile</SectionEyebrow>
+              <PremiumBadge tone="zinc">Details & Contact</PremiumBadge>
+            </div>
+
+            <div className='grid gap-4 md:grid-cols-2 text-sm text-zinc-300'>
+              <div className="space-y-2">
+                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Contact Details</p>
+                <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-2">
+                  <p><span className="text-zinc-500">Name:</span> <strong className="text-white">{data.guestName}</strong></p>
+                  <p><span className="text-zinc-500">Phone:</span> <strong className="text-white">{data.guestPhone || 'None'}</strong></p>
+                  <p><span className="text-zinc-500">Email:</span> <strong className="text-white">{data.guestEmail || 'None'}</strong></p>
+                </div>
+
+                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Quick Connect Links</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <a
+                    href={`tel:${data.guestPhone}`}
+                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                  >
+                    <PhoneCall className="h-4 w-4 text-gold-soft mb-1" />
+                    Call
+                  </a>
+                  <a
+                    href={`sms:${data.guestPhone}`}
+                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                  >
+                    <MessageSquare className="h-4 w-4 text-gold-soft mb-1" />
+                    SMS
+                  </a>
+                  <a
+                    href={`mailto:${data.guestEmail}`}
+                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                  >
+                    ✉ Email
+                  </a>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Service Location</p>
+                <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-2">
+                  <p className="text-white font-medium">{data.fullAddress || 'No address provided'}</p>
+                  
+                  {data.mapsHref && (
+                    <a
+                      href={data.mapsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-gold-soft hover:underline font-bold mt-1"
                     >
-                      Create Before/After Post
-                    </button>
+                      <MapPin className="h-3.5 w-3.5" />
+                      Open Google Maps Directions
+                    </a>
                   )}
                 </div>
                 
-                {/* Comparative Photos Timeline */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="gb-glass bg-zinc-950/40 rounded-xl p-3 border border-white/5">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-200 mb-2">Before Restoration</p>
-                    <WorkOrderGallery title="" photos={vg.before} canDelete={data.canDeletePhotos} />
+                {(data.accessLocation || data.accessWater || data.accessPower || data.accessParking || data.gateNotes) && (
+                  <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-1 text-xs">
+                    <p className="font-bold text-[9px] uppercase tracking-wider text-zinc-500 mb-1">Access Notes</p>
+                    {data.accessLocation && <p><span className="text-zinc-500">Location:</span> {data.accessLocation}</p>}
+                    {data.accessWater && <p><span className="text-zinc-500">Water Source:</span> {data.accessWater}</p>}
+                    {data.accessPower && <p><span className="text-zinc-500">Power Source:</span> {data.accessPower}</p>}
+                    {data.accessParking && <p><span className="text-zinc-500">Parking Setup:</span> {data.accessParking}</p>}
+                    {data.gateNotes && <p><span className="text-zinc-500">Gate/Code Notes:</span> {data.gateNotes}</p>}
                   </div>
-                  <div className="gb-glass bg-zinc-950/40 rounded-xl p-3 border border-white/5">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300 mb-2">After Restoration</p>
-                    <WorkOrderGallery title="" photos={vg.after} canDelete={data.canDeletePhotos} />
-                  </div>
-                </div>
-
-                {!data.photoUploadDisabled ? (
-                  <div className="pt-2">
-                    <WorkOrderPhotoUpload
-                      appointmentId={data.isFallback ? null : jobId}
-                      fallbackBookingId={data.isFallback ? jobId : null}
-                      workOrderId={data.canonicalId}
-                      customerId={data.customerId}
-                      workflowSessionId={data.workflowSessionId}
-                      source={data.isFallback ? 'fallback' : 'appointment'}
-                      resolvedContextTrust={data.photoUploadResolvedContext}
-                      vehicleIndex={vg.vehicleIndex}
-                      vehicleLabel={vg.label}
-                      existingPhotos={vg.before.concat(vg.after)}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </WorkOrderCollapsible>
-        </div>
-
-        <div id='wo-timer' className='scroll-mt-28 rounded-2xl border border-gold/25 bg-black/50 px-4 py-3'>
-          <div className='flex items-center justify-between border-b border-white/5 pb-2 mb-3'>
-            <div className='flex items-center gap-2'>
-              <Clock className='h-4 w-4 text-gold-soft' />
-              <SectionEyebrow>Timer & duration</SectionEyebrow>
-            </div>
-            {dur && (
-              <div className='flex items-center gap-2 text-[10px] font-mono'>
-                <span className='text-zinc-400'>{dur.label}: <strong className='text-white'>{dur.minutes}m</strong></span>
-                {expectedMins && (
-                  <>
-                    <span className='text-zinc-600'>|</span>
-                    <span className='text-zinc-400'>Expected: <strong className='text-white'>{expectedMins}m</strong></span>
-                  </>
                 )}
               </div>
+            </div>
+
+            {/* Profile edit form */}
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500 mb-3">Edit Customer & Location Details</p>
+              <form action={updateDetailsAction} className='grid gap-3 sm:grid-cols-2'>
+                <input type='hidden' name='id' value={jobId} />
+                <input type='hidden' name='source' value={data.source} />
+                
+                <label className="block text-[9px] uppercase font-bold text-zinc-500">
+                  Guest Name
+                  <input name='guestName' defaultValue={data.guestName} placeholder='Guest Name' className='gb-input mt-1 focus:border-gold' />
+                </label>
+                
+                <label className="block text-[9px] uppercase font-bold text-zinc-500">
+                  Phone Number
+                  <input name='guestPhone' defaultValue={data.guestPhone} placeholder='Phone Number' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
+                  Email Address
+                  <input name='guestEmail' defaultValue={data.guestEmail} placeholder='Email Address' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
+                  Street Address
+                  <input name='serviceAddress' defaultValue={data.serviceAddress} placeholder='Street Address' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <label className="block text-[9px] uppercase font-bold text-zinc-500">
+                  City
+                  <input name='serviceCity' defaultValue={data.serviceCity} placeholder='City' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <label className="block text-[9px] uppercase font-bold text-zinc-500">
+                  State
+                  <input name='serviceState' defaultValue={data.serviceState} placeholder='State' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
+                  ZIP Code
+                  <input name='serviceZip' defaultValue={data.serviceZip} placeholder='ZIP Code' className='gb-input mt-1 focus:border-gold' />
+                </label>
+
+                <button type='submit' className='sm:col-span-2 rounded-2xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs font-black uppercase text-gold-soft hover:bg-gold/20 transition duration-200 mt-2'>
+                  Save Customer Details
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === VEHICLE TAB === */}
+      {activeTab === 'vehicle' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+              <SectionEyebrow>Vehicles Configuration</SectionEyebrow>
+              <PremiumBadge tone="zinc">{data.vehicles.length} Vehicle{data.vehicles.length === 1 ? '' : 's'}</PremiumBadge>
+            </div>
+
+            <WorkOrderVehiclesForm
+              id={jobId}
+              source={data.source}
+              defaultService={data.vehicleForms.defaultService}
+              defaultClass={data.vehicleForms.defaultClass}
+              saveAction={updateVehiclesAction}
+              initialVehicles={data.vehicles.map((v) => ({
+                year: v.year,
+                make: v.make,
+                model: v.model,
+                description: v.description,
+                color: v.color,
+                service: v.service,
+                vehicleClass: v.vehicleClass,
+                priceCents: v.priceCents,
+              }))}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* === NOTES TAB === */}
+      {activeTab === 'notes' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+              <SectionEyebrow>Chronological Notes</SectionEyebrow>
+              <PremiumBadge tone="zinc">{data.notes.length} Note{data.notes.length === 1 ? '' : 's'}</PremiumBadge>
+            </div>
+
+            {data.notes.length === 0 ? (
+              <p className='text-sm text-zinc-500 py-6 text-center bg-black/20 border border-dashed border-white/5 rounded-2xl'>No operational notes recorded yet.</p>
+            ) : (
+              <ul className='space-y-3'>
+                {data.notes.map((n) => (
+                  <li key={n.id} className='rounded-xl border border-white/10 bg-zinc-950/30 px-4 py-3 text-sm'>
+                    <p className='text-[10px] font-bold uppercase text-gold-soft'>{n.vehicleLabel} · {n.time}</p>
+                    <p className='mt-1 whitespace-pre-wrap text-zinc-300 leading-relaxed'>{n.body}</p>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-          <TechTimerControls
-            appointmentId={data.isFallback ? null : jobId}
-            fallbackBookingId={data.isFallback ? jobId : null}
-            workflowSessionId={data.workflowSessionId}
-            initialTimerId={data.openTimerId || null}
-            initialStartedAt={data.openTimerStartedAt || null}
-          />
-        </div>
 
-        {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
-          <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
-        ) : null}
-        {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
-          <AppointmentScheduleControls appointmentId={jobId} scheduledStart={data.scheduledStartIso} />
-        ) : null}
+          {/* Timeline & notifications outbox */}
+          <div id='wo-timeline'>
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Timeline & Notifications</SectionEyebrow>
+                <PremiumBadge tone="zinc">{data.timeline.length} Events</PremiumBadge>
+              </div>
 
-        <div id='wo-payment' className='scroll-mt-28'>
-        <WorkOrderCollapsible title='Order ledger — payment & receipt' defaultOpen>
-          {data.ledgerResolveError ? (
-            <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
-          ) : null}
-          {data.canAdvancedRepair && data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
-          {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
-            <WorkOrderLedgerPanel
-              jobId={jobId}
-              isFallback={data.isFallback}
-              source={data.isFallback ? 'fallback' : 'appointment'}
-              appointmentId={data.isFallback ? undefined : jobId}
-              fallbackBookingId={data.isFallback ? jobId : undefined}
-              orderSourceLabel={data.orderSourceLabel ?? 'Work order'}
-              isTest={data.isTestOrder}
-              vehicles={data.vehicles.map((v, index) => ({
-                index,
-                label: v.label,
-                service: v.service,
-                priceCents: v.priceCents,
-                priceLabel: v.priceLabel,
-              }))}
-              discounts={data.ledgerDiscounts}
-              payments={data.ledgerPayments}
-              pricingSnapshot={data.pricingSnapshot}
-              pricing={data.jobPricing!}
-              breakdownLines={data.receiptBreakdownLines}
-              balanceDue={data.balanceDue}
-              balanceDueCents={data.balanceDueCents}
-              finalTotal={data.finalTotal}
-              depositPaid={data.depositPaid}
-              totalPaid={data.totalPaid}
-              paymentComplete={data.paymentComplete}
-              receiptPdfHref={data.receiptPdfHref}
-              customLineItems={data.customLineItems ?? []}
-              promoCode={data.promoCode}
-              pricingOverrideReason={data.pricingOverrideReason}
-              canEditPricing={canEditPricing}
-              canManagePayments={Boolean(data.canManagePayments)}
-              canAdvancedRepair={Boolean(data.canAdvancedRepair)}
-              workOrderPath={data.workOrderPath}
-              customerName={data.guestName}
-              recordCashAction={recordCashAction}
-              stripeSessionId={data.stripeSessionId}
-              stripePaymentIntent={data.stripePaymentIntent}
-              ledgerWarnings={data.ledgerWarnings}
-              ledgerTotals={data.ledgerTotals}
-              recentPaymentsForRepair={data.recentPayments.map((p) => ({
-                id: p.id ?? '',
-                amount: p.amount,
-                method: p.method,
-                status: p.status,
-                stripeSession: p.stripe,
-              }))}
-              unassignedPaymentDiagnostics={data.unassignedPaymentDiagnostics ?? []}
-              customerId={data.customerId}
-              credits={data.credits}
-              redemptions={data.redemptions}
-            />
-          ) : !data.ledgerResolveError ? (
-            <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
-              Order ledger unavailable — refresh the page.
-            </p>
-          ) : null}
-          {!data.isFallback ? (
-            <WorkOrderMileagePanel
-              appointmentId={jobId}
-              workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
-            />
-          ) : null}
-        </WorkOrderCollapsible>
-        </div>
+              <TimelineRail events={data.timeline} />
 
-        <div id='wo-timeline' className='scroll-mt-28'>
-        <WorkOrderCollapsible title='Timeline & notifications' defaultOpen={false} badge={String(data.timeline.length)}>
-          <TimelineRail events={data.timeline} />
-          {data.outbox.length > 0 ? (
-            <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Outbox History</p>
-              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                {data.outbox.map((o) => {
-                  const isEmail = String(o.kind).toLowerCase().includes('email');
-                  const isSent = String(o.status).toLowerCase().includes('sent') || String(o.status).toLowerCase().includes('delivered');
-                  return (
-                    <div
-                      key={o.id}
-                      className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 px-3.5 py-2.5"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-base text-zinc-400 shrink-0">
-                          {isEmail ? '✉' : '🗪'}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-white uppercase tracking-wide">
-                            {o.kind}
-                          </p>
-                          <p className="text-[9px] text-zinc-500 mt-0.5">{o.time}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                            isSent
-                              ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
-                              : 'border border-amber-500/25 bg-amber-500/10 text-amber-200'
-                          }`}
+              {data.outbox.length > 0 ? (
+                <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">SMS & Email Outbox History</p>
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {data.outbox.map((o) => {
+                      const isEmail = String(o.kind).toLowerCase().includes('email');
+                      const isSent = String(o.status).toLowerCase().includes('sent') || String(o.status).toLowerCase().includes('delivered');
+                      return (
+                        <div
+                          key={o.id}
+                          className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 px-3.5 py-2.5"
                         >
-                          {o.status}
-                        </span>
-                        {o.skipped ? (
-                          <p className="text-[9px] text-zinc-500 mt-0.5 italic">{o.skipped}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="text-base text-zinc-400 shrink-0">
+                              {isEmail ? '✉' : '🗪'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-white uppercase tracking-wide">
+                                {o.kind}
+                              </p>
+                              <p className="text-[9px] text-zinc-500 mt-0.5">{o.time}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
+                                isSent
+                                  ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                                  : 'border border-amber-500/25 bg-amber-500/10 text-amber-200'
+                              }`}
+                            >
+                              {o.status}
+                            </span>
+                            {o.skipped ? (
+                              <p className="text-[9px] text-zinc-500 mt-0.5 italic">{o.skipped}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === DOCUMENTS TAB === */}
+      {activeTab === 'documents' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section id='wo-agreement' className='scroll-mt-28'>
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Agreement & Acknowledgement</SectionEyebrow>
+                <PremiumBadge tone={data.agreementSigned ? 'emerald' : 'amber'}>
+                  {data.agreementSigned ? 'Signed' : 'Required'}
+                </PremiumBadge>
+              </div>
+
+              <p className='text-sm text-zinc-300 leading-relaxed'>
+                {data.agreementSigned
+                  ? 'Legal liability agreement is signed and on file for this job.'
+                  : 'Capture liability and service intake acknowledgement before starting field work — this is step 1 in job progress.'}
+              </p>
+              <div className='mt-5 flex flex-wrap gap-2'>
+                <Link
+                  href={data.agreementCaptureHref}
+                  className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/20 transition'
+                >
+                  {data.agreementSigned ? 'Recapture agreement' : 'Capture agreement'}
+                </Link>
+                <Link
+                  href={data.agreementDetailHref}
+                  className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200 hover:bg-white/5 transition'
+                >
+                  View agreement
+                </Link>
               </div>
             </div>
-          ) : null}
-        </WorkOrderCollapsible>
+          </section>
         </div>
+      )}
 
-        {data.customerId ? (
-          <div id='wo-loyalty' className='scroll-mt-32'>
-            <WorkOrderCollapsible 
-              title='Loyalty punch controls' 
-              badge={String(data.loyaltyStampsCount ?? 0)} 
-              defaultOpen={false}
-            >
-              <div className='grid gap-6 md:grid-cols-2'>
-                <div>
-                  <p className='text-xs text-zinc-400'>
-                    Active loyalty stamps recorded for this customer:
-                  </p>
-                  <div className='mt-2.5 flex items-center gap-2'>
-                    <span className='text-2xl font-black text-white'>
-                      {(data.loyaltyStampsCount ?? 0) % 6} / 6
-                    </span>
-                    <span className='text-xs text-zinc-500 uppercase tracking-widest'>
-                      stamps on current card ({(data.loyaltyStampsCount ?? 0)} total)
-                    </span>
-                  </div>
-
-                  {/* Stamp award form */}
-                  <form action={addManualLoyaltyStampAction} className='mt-4 rounded-xl border border-white/10 bg-black/45 p-4 space-y-3'>
-                    <input type='hidden' name='customerId' value={data.customerId} />
-                    <input type='hidden' name='appointmentId' value={data.id} />
-                    
-                    <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Award Loyalty Stamps</p>
-                    
-                    <div className='grid gap-2 grid-cols-2'>
-                      <label className='block text-[9px] uppercase font-bold text-zinc-500'>
-                        Count
-                        <select name='stampCount' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'>
-                          <option value='1'>+1 Stamp</option>
-                          <option value='2'>+2 Stamps</option>
-                          <option value='3'>+3 Stamps</option>
-                          <option value='5'>+5 Stamps</option>
-                        </select>
-                      </label>
-                      <label className='block text-[9px] uppercase font-bold text-zinc-500'>
-                        Source
-                        <select name='source' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'>
-                          <option value='tech_manual'>Tech Manual</option>
-                          <option value='admin_manual'>Admin Manual</option>
-                          <option value='membership_bonus'>Membership Bonus</option>
-                        </select>
-                      </label>
-                    </div>
-                    
-                    <label className='block text-[9px] uppercase font-bold text-zinc-500'>
-                      Reason / Note
-                      <input name='reason' required placeholder='e.g., Referral bonus, goodwill adjustment...' className='mt-1 w-full rounded border border-zinc-700 bg-black px-2.5 py-1.5 text-xs text-white' />
-                    </label>
-
-                    <button type='submit' className='w-full rounded bg-gold py-1.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>
-                      Award Punch
-                    </button>
-                  </form>
-                </div>
-
-                <div>
-                  <p className='text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2'>Punches history</p>
-                  {!data.loyaltyStamps || data.loyaltyStamps.length === 0 ? (
-                    <p className='text-xs text-zinc-600 italic py-4 border border-dashed border-white/5 rounded-xl text-center'>
-                      No stamps recorded.
-                    </p>
-                  ) : (
-                    <ul className='space-y-2.5 max-h-[200px] overflow-y-auto pr-1 text-xs'>
-                      {data.loyaltyStamps.map((s) => {
-                        const isVoided = Boolean(s.voided);
-                        return (
-                          <li key={s.id} className={`flex items-start justify-between gap-2 border-b border-white/5 pb-2 last:border-b-0 ${isVoided ? 'opacity-50' : ''}`}>
-                            <div className="min-w-0 flex-1">
-                              <p className={`font-semibold ${isVoided ? 'line-through text-zinc-500' : 'text-zinc-300'}`}>
-                                {s.reason || 'Loyalty stamp earned'}
-                              </p>
-                              <p className='text-[9px] text-zinc-500 font-mono mt-0.5'>
-                                {new Date(s.created_at).toLocaleDateString()}
-                                {s.source && ` · ${s.source.replace(/_/g, ' ')}`}
-                                {isVoided && ' (Voided)'}
-                              </p>
-                            </div>
-                            <div className='flex items-center gap-1.5 shrink-0'>
-                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${isVoided ? 'bg-zinc-800 text-zinc-500 line-through' : 'bg-gold/15 text-gold-soft border border-gold/25'}`}>
-                                {isVoided ? '0' : `+${s.stamp_count ?? 1}`}
-                              </span>
-                              {!isVoided && (
-                                <form action={deleteLoyaltyStampAction} method='POST' className='flex gap-1'>
-                                  <input type='hidden' name='stampId' value={s.id} />
-                                  <input type='hidden' name='customerId' value={data.customerId} />
-                                  <input type='text' name='voidReason' placeholder='Void reason...' required className='w-16 rounded border border-zinc-700 bg-black px-1 py-0.5 text-[8px] text-white' />
-                                  <button type='submit' className='text-[9px] font-black uppercase text-red-400 hover:text-red-300 px-1 border border-red-500/20 rounded bg-red-500/5'>
-                                    Void
-                                  </button>
-                                </form>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            </WorkOrderCollapsible>
-          </div>
-        ) : null}
-
-        <div id='wo-notes' className='scroll-mt-32'>
-        <WorkOrderCollapsible title='Notes' badge={String(data.notes.length)} defaultOpen={false}>
-          {data.notes.length === 0 ? <p className='text-sm text-zinc-500'>No notes yet.</p> : null}
-          <ul className='space-y-3'>
-            {data.notes.map((n) => (
-              <li key={n.id} className='rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm'>
-                <p className='text-[10px] font-bold uppercase text-gold-soft'>{n.vehicleLabel} · {n.time}</p>
-                <p className='mt-1 whitespace-pre-wrap text-zinc-300'>{n.body}</p>
-              </li>
-            ))}
-          </ul>
-        </WorkOrderCollapsible>
+      {canAdminOverride && data.uploadContextDebug ? (
+        <div className='rounded-xl border border-dashed border-gold/30 bg-zinc-950/80 px-4 py-3 font-mono text-[10px] text-zinc-400'>
+          <p className='font-black uppercase text-gold-soft'>Upload context (admin)</p>
+          <p className='mt-2'>
+            Enabled: {data.uploadContextDebug.uploadEnabled ? 'yes' : 'no'}
+            {data.uploadContextDebug.disableReason ? ` — ${data.uploadContextDebug.disableReason}` : ''}
+          </p>
+          <p>Source: {data.uploadContextDebug.source ?? '—'} · partial: {data.uploadContextDebug.partialLoad ? 'yes' : 'no'}</p>
+          <p>WO {data.uploadContextDebug.workOrderId}</p>
+          <p>Appt {data.uploadContextDebug.appointmentId || '—'} · FB {data.uploadContextDebug.fallbackBookingId || '—'}</p>
+          <p>Session {data.uploadContextDebug.workflowSessionId || '—'} · customer {data.uploadContextDebug.customerId || '—'}</p>
         </div>
+      ) : null}
 
-        {!isCompleted && (
-          <div id='wo-complete' className='scroll-mt-32'>
-            <WorkOrderCompletePanel
-              jobId={jobId}
-              isFallback={data.isFallback}
-              workflowSessionId={data.workflowSessionId}
-              canAdminOverride={canAdminOverride}
-              paymentComplete={data.paymentComplete}
-              balanceDueCents={data.balanceDueCents}
-              guestEmail={data.guestEmail}
-              agreementCaptureHref={data.agreementCaptureHref}
-              receiptPdfHref={data.receiptPdfHref}
-              jobCompleted={false}
-              onOfferMaintenancePlan={() => {
-                setIsMaintenanceModalOpen(true);
-              }}
-            />
-          </div>
+      {/* 3. STICKY MOBILE ACTION BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-t border-white/10 px-3 py-2 flex justify-around items-center shadow-2xl">
+        {/* Message Customer */}
+        <button
+          onClick={() => setIsContactOpen(true)}
+          className="flex flex-col items-center justify-center p-2 text-zinc-400 hover:text-gold-soft transition"
+        >
+          <MessageSquare className="h-5 w-5" />
+          <span className="text-[9px] font-bold uppercase mt-1">Message</span>
+        </button>
+
+        {/* Start Job / Timer */}
+        <button
+          onClick={() => {
+            setActiveTab('overview');
+            setTimeout(() => {
+              const el = document.getElementById('timer-section-toggle');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }}
+          className={`flex flex-col items-center justify-center p-2 transition ${
+            data.openTimerId ? 'text-emerald-400 font-bold animate-pulse' : 'text-zinc-400 hover:text-gold-soft'
+          }`}
+        >
+          <Clock className="h-5 w-5" />
+          <span className="text-[9px] font-bold uppercase mt-1">{data.openTimerId ? 'Timer On' : 'Start Job'}</span>
+        </button>
+
+        {/* Complete Job */}
+        <button
+          onClick={() => {
+            if (isCompleted) {
+              setActiveTab('payments');
+            } else {
+              setActiveTab('overview');
+              setTimeout(() => {
+                const el = document.getElementById('wo-complete-top') || document.getElementById('wo-complete');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            }
+          }}
+          className={`flex flex-col items-center justify-center p-2 transition ${
+            isCompleted ? 'text-zinc-500' : 'text-zinc-400 hover:text-gold-soft'
+          }`}
+        >
+          <CheckCircle2 className="h-5 w-5" />
+          <span className="text-[9px] font-bold uppercase mt-1">Complete</span>
+        </button>
+
+        {/* Collect Payment */}
+        <button
+          onClick={() => {
+            setActiveTab('payments');
+            setTimeout(() => {
+              const el = document.getElementById('wo-payment-card');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }}
+          className={`flex flex-col items-center justify-center p-2 transition ${
+            data.paymentComplete ? 'text-emerald-400 font-bold' : 'text-zinc-400 hover:text-gold-soft'
+          }`}
+        >
+          <CreditCard className="h-5 w-5" />
+          <span className="text-[9px] font-bold uppercase mt-1">Payment</span>
+        </button>
+
+        {/* Send Receipt */}
+        {data.receiptPdfHref ? (
+          <a
+            href={data.receiptPdfHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center justify-center p-2 text-zinc-400 hover:text-gold-soft transition"
+          >
+            <FileText className="h-5 w-5" />
+            <span className="text-[9px] font-bold uppercase mt-1">Receipt</span>
+          </a>
+        ) : (
+          <button
+            onClick={() => {
+              setActiveTab('payments');
+              alert('Please complete the job and process payment first to generate a receipt.');
+            }}
+            className="flex flex-col items-center justify-center p-2 text-zinc-600 cursor-not-allowed"
+          >
+            <FileText className="h-5 w-5" />
+            <span className="text-[9px] font-bold uppercase mt-1">Receipt</span>
+          </button>
         )}
-      </section>
+      </div>
 
       {/* Cancellation Modal */}
       {isCancelModalOpen && (
@@ -1210,6 +1455,7 @@ export function WorkOrderConsoleClient({
                 href={`sms:${data.guestPhone}`}
                 className="flex items-center justify-center gap-3 w-full p-3.5 bg-black/40 border border-white/10 rounded-2xl text-sm font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
+                <MessageSquare className="h-4 w-4 text-gold-soft" />
                 SMS / Text Customer
               </a>
               <a

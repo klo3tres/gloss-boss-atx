@@ -189,6 +189,7 @@ function DetachUnrelatedPaymentsCard({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
 
   return (
     <div className='gb-premium-card gb-glass rounded-2xl border border-amber-500/25 bg-black/40 p-4 text-xs'>
@@ -724,23 +725,26 @@ function SyncStripeCard({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
 
   const handleSync = () => {
     startTransition(async () => {
       setMsg(null);
+      setDiagnostics([]);
       const fd = new FormData();
       fd.set('source', source);
       if (appointmentId) fd.set('appointmentId', appointmentId);
       if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
       
       const res = await syncStripePaymentsForWorkOrderAction(fd);
+      setDiagnostics(res.diagnostics ?? []);
       if (!res.ok) {
-        setMsg({ tone: 'err', text: res.error ?? 'Sync failed' });
+        setMsg({ tone: 'err', text: `${res.blocker ? `${res.blocker}: ` : ''}${res.error ?? 'Sync failed'}` });
         return;
       }
       setMsg({
         tone: 'ok',
-        text: `Synced ${res.attachedIds.length} payment(s). Matched ${res.matchedBefore} → ${res.matchedAfter}.`,
+        text: `Synced ${res.attachedIds.length} payment(s). Matched ${res.matchedBefore} -> ${res.matchedAfter}.`,
       });
       router.refresh();
     });
@@ -767,6 +771,18 @@ function SyncStripeCard({
           <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
             {msg.text}
           </p>
+        ) : null}
+        {diagnostics.length > 0 ? (
+          <details className='mt-3 rounded-xl border border-white/10 bg-black/45 p-3'>
+            <summary className='cursor-pointer text-[10px] font-black uppercase tracking-wider text-violet-200'>
+              Stripe repair diagnostics
+            </summary>
+            <ul className='mt-2 space-y-1 text-[10px] text-zinc-400'>
+              {diagnostics.map((line, idx) => (
+                <li key={`${idx}-${line}`} className='font-mono leading-relaxed'>{line}</li>
+              ))}
+            </ul>
+          </details>
         ) : null}
       </div>
     </div>

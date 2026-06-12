@@ -1,5 +1,22 @@
 import Link from 'next/link';
-import { CreditCard, ExternalLink, Fuel, ReceiptText, ShieldCheck } from 'lucide-react';
+import { 
+  CreditCard, 
+  ExternalLink, 
+  Fuel, 
+  ReceiptText, 
+  ShieldCheck,
+  TrendingDown,
+  DollarSign,
+  Layers,
+  ArrowLeft,
+  Activity,
+  Zap,
+  Clock,
+  Sparkles,
+  Info,
+  ChevronRight,
+  Plus
+} from 'lucide-react';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { GlassCard, PremiumBadge, SectionEyebrow } from '@/components/ui/premium';
 import { getSessionWithProfile } from '@/lib/auth/session';
@@ -47,6 +64,7 @@ export default async function AdminCardActivityPage() {
   const session = await getSessionWithProfile();
   const canView = session.user && isAdminLevel(session.profile?.role ?? null);
   const admin = canView ? tryCreateAdminSupabase() : null;
+  
   const now = new Date();
   const start = new Date(now);
   start.setDate(now.getDate() - 30);
@@ -91,126 +109,165 @@ export default async function AdminCardActivityPage() {
   const cardSpendCents = cardRows.reduce((sum, row) => sum + Math.abs(row.amountCents), 0);
   const manualExpenseCents = manualExpenseRows.reduce((sum, row) => sum + Math.abs(row.amountCents), 0);
 
+  const getCategoryIcon = (category: string | null | undefined) => {
+    const cat = (category || '').toLowerCase();
+    if (cat.includes('fuel') || cat.includes('gas')) return <Fuel className="h-4 w-4 text-amber-400" />;
+    if (cat.includes('card') || cat.includes('issuing')) return <CreditCard className="h-4 w-4 text-cyan-400" />;
+    return <Layers className="h-4 w-4 text-zinc-400" />;
+  };
+
   return (
-    <DashboardShell title="Card activity" subtitle="Stripe card spend, manual expenses, and finance setup." role="admin">
+    <DashboardShell title="Card Activity & Expenses" subtitle="Stripe issuing, corporate card metrics, and manual business logs." role="admin">
       {!canView ? (
-        <GlassCard className="p-6 text-sm text-zinc-300">Admin access is required.</GlassCard>
+        <GlassCard className="p-6 text-sm text-zinc-400">Admin credentials required to view ledger details.</GlassCard>
       ) : (
         <div className="space-y-6">
-          <section className="grid gap-4 md:grid-cols-4">
-            <GlassCard className="p-5">
-              <SectionEyebrow>Stripe Card Spend</SectionEyebrow>
-              <p className="mt-3 font-mono text-3xl font-black text-cyan-300">{displayMoney(cardSpendCents)}</p>
-              <p className="mt-1 text-xs text-zinc-500">Last 30 days</p>
-            </GlassCard>
-            <GlassCard className="p-5">
-              <SectionEyebrow>Manual Expenses</SectionEyebrow>
-              <p className="mt-3 font-mono text-3xl font-black text-white">{displayMoney(manualExpenseCents)}</p>
-              <p className="mt-1 text-xs text-zinc-500">Operations, fuel, supplies</p>
-            </GlassCard>
-            <GlassCard className="p-5">
-              <SectionEyebrow>Total Expenses</SectionEyebrow>
-              <p className="mt-3 font-mono text-3xl font-black text-rose-300">{displayMoney(snapshotTotals.expensesCents)}</p>
-              <p className="mt-1 text-xs text-zinc-500">Ledger + manual rows</p>
-            </GlassCard>
-            <GlassCard className="p-5">
-              <SectionEyebrow>Revenue Context</SectionEyebrow>
-              <p className="mt-3 font-mono text-3xl font-black text-gold-soft">{displayMoney(snapshotTotals.netProfitCents)}</p>
-              <p className="mt-1 text-xs text-zinc-500">Net after current expense rows</p>
-            </GlassCard>
+          {/* Executive metrics cards */}
+          <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: 'Stripe Card Spend', val: cardSpendCents, desc: 'Corporate cards', color: 'text-cyan-300' },
+              { label: 'Manual Expenses', val: manualExpenseCents, desc: 'Supplies, fuel, gas', color: 'text-zinc-200' },
+              { label: 'Total Business Costs', val: snapshotTotals.expensesCents, desc: 'Ledger + manual logs', color: 'text-rose-400' },
+              { label: 'Net Profit Margin', val: snapshotTotals.netProfitCents, desc: 'After expenses logic', color: 'text-gold-soft' },
+            ].map((s, idx) => (
+              <div key={idx} className="bg-zinc-950/60 border border-white/5 p-4.5 rounded-3xl backdrop-blur-md relative overflow-hidden group hover:border-gold/20 transition-all duration-300">
+                <div className="absolute top-0 right-0 p-3 opacity-5">
+                  <Activity className="h-10 w-10 text-gold" />
+                </div>
+                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-wider">{s.label}</p>
+                <p className={`text-xl font-black mt-1 font-mono ${s.color}`}>
+                  {displayMoney(s.val)}
+                </p>
+                <p className="text-[10px] text-zinc-400 mt-1">{s.desc}</p>
+              </div>
+            ))}
           </section>
 
-          <GlassCard className="p-5">
-            <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-center md:justify-between">
+          {/* Sync operations control center */}
+          <GlassCard className="p-6">
+            <div className="flex flex-col gap-4 border-b border-white/5 pb-5 md:flex-row md:items-center md:justify-between">
               <div>
-                <SectionEyebrow>Issuing / Treasury Status</SectionEyebrow>
-                <p className="mt-2 text-sm text-zinc-300">{setupNotice}</p>
+                <SectionEyebrow>Corporate Treasury Integrations</SectionEyebrow>
+                <p className="mt-1.5 text-xs text-zinc-400">{setupNotice}</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/admin/stripe-sync" className="rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-[10px] font-black uppercase text-cyan-100 hover:bg-cyan-400/20">
-                  Run Stripe Sync
+              
+              <div className="flex flex-wrap gap-2.5">
+                <Link href="/admin/stripe-sync" className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-2.5 text-[10px] font-black uppercase text-cyan-300 hover:bg-cyan-500/20 transition tracking-wider">
+                  Sync Stripe Ledger
                 </Link>
-                <Link href="/admin/operations" className="rounded-xl border border-gold/25 bg-gold/10 px-4 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20">
-                  Add Manual Expense
+                <Link href="/admin/operations" className="flex items-center gap-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-black bg-gold hover:bg-gold-soft px-4 py-2.5 transition duration-300">
+                  <Plus className="h-3.5 w-3.5 stroke-[3]" /> Manual Expense
                 </Link>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <ShieldCheck className="h-5 w-5 text-emerald-300" />
-                <p className="mt-3 text-xs font-bold uppercase text-white">No Error Spam</p>
-                <p className="mt-1 text-xs text-zinc-500">Unavailable Stripe products are treated as setup state, not dashboard failures.</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <CreditCard className="h-5 w-5 text-cyan-300" />
-                <p className="mt-3 text-xs font-bold uppercase text-white">Card Spend</p>
-                <p className="mt-1 text-xs text-zinc-500">Rows come from `financial_ledger` Stripe/Issuing expense entries.</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <Fuel className="h-5 w-5 text-gold-soft" />
-                <p className="mt-3 text-xs font-bold uppercase text-white">Fallback Entry</p>
-                <p className="mt-1 text-xs text-zinc-500">Fuel, supplies, and reimbursements still work through Operations.</p>
-              </div>
+
+            {/* Checklist */}
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              {[
+                { title: 'Webhook Sync', desc: 'Unavailable Stripe API products are bypassed safely to prevent downtime.', icon: <ShieldCheck className="h-5 w-5 text-emerald-400" /> },
+                { title: 'Ledger Audit', desc: 'Sync fetches core card spend from financial_ledger issuing entries.', icon: <CreditCard className="h-5 w-5 text-cyan-400" /> },
+                { title: 'Fallback Reconciliation', desc: 'Reimbursements, chemical logs, and fuel audits are run manually.', icon: <Fuel className="h-5 w-5 text-gold-soft" /> }
+              ].map((item, idx) => (
+                <div key={idx} className="rounded-2xl border border-white/5 bg-black/45 p-4 hover:border-white/10 transition">
+                  {item.icon}
+                  <p className="mt-3.5 text-xs font-black uppercase text-white tracking-wider">{item.title}</p>
+                  <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
             </div>
           </GlassCard>
 
+          {/* Synced Card Spend and Manual Expense Side-by-Side Grid */}
           <section className="grid gap-6 lg:grid-cols-2">
-            <GlassCard className="p-5">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <SectionEyebrow>Synced Card Spend</SectionEyebrow>
-                <PremiumBadge tone={cardRows.length > 0 ? 'emerald' : 'amber'}>{cardRows.length} rows</PremiumBadge>
-              </div>
-              <div className="mt-4 space-y-3">
-                {cardRows.length === 0 ? (
-                  <p className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
-                    No Stripe card spend rows are available yet.
-                  </p>
-                ) : (
-                  cardRows.map((row) => (
-                    <div key={row.id} className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-bold text-white">{row.label}</p>
-                          <p className="mt-1 text-xs text-zinc-500">{row.category} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
-                        </div>
-                        <p className="font-mono font-black text-cyan-200">{displayMoney(row.amountCents)}</p>
-                      </div>
+            {/* Sync Spend */}
+            <GlassCard className="p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                  <SectionEyebrow>Synced Card Transactions</SectionEyebrow>
+                  <span className="rounded-full bg-cyan-500/10 border border-cyan-500/25 px-2.5 py-0.5 text-[10px] font-black uppercase text-cyan-300 font-mono">
+                    {cardRows.length} transactions
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-900">
+                  {cardRows.length === 0 ? (
+                    <div className="py-16 text-center border border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center">
+                      <CreditCard className="h-6 w-6 text-zinc-800 mb-1" />
+                      <p className="text-[10px] text-zinc-600 uppercase font-black tracking-wider">No Card Spend Synced</p>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    cardRows.map((row) => (
+                      <div key={row.id} className="rounded-2xl border border-white/5 bg-zinc-900/35 p-4 hover:border-white/10 transition duration-200">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="mt-0.5 p-1.5 bg-black/40 border border-white/5 rounded-lg">
+                              {getCategoryIcon(row.category)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white text-xs truncate">{row.label}</p>
+                              <p className="mt-1 text-[10px] text-zinc-500 font-mono">
+                                {row.category} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="font-mono font-black text-cyan-300 shrink-0">{displayMoney(row.amountCents)}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </GlassCard>
 
-            <GlassCard className="p-5">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <SectionEyebrow>Manual Expense Rows</SectionEyebrow>
-                <Link href="/admin/operations" className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-gold-soft hover:underline">
-                  Manage <ExternalLink className="h-3 w-3" />
-                </Link>
-              </div>
-              <div className="mt-4 space-y-3">
-                {manualExpenseRows.length === 0 ? (
-                  <p className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
-                    No manual expenses found in this range.
-                  </p>
-                ) : (
-                  manualExpenseRows.slice(0, 25).map((row) => (
-                    <div key={`${row.source}:${row.id}`} className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-bold text-white">{row.label}</p>
-                          <p className="mt-1 text-xs text-zinc-500">{row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}</p>
-                        </div>
-                        <p className="font-mono font-black text-white">{displayMoney(row.amountCents)}</p>
-                      </div>
+            {/* Manual expenses */}
+            <GlassCard className="p-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                  <SectionEyebrow>Manual Expense Ledgers</SectionEyebrow>
+                  <Link href="/admin/operations" className="text-[10px] font-black uppercase text-gold-soft hover:underline">
+                    Reconcile Board →
+                  </Link>
+                </div>
+
+                <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-900">
+                  {manualExpenseRows.length === 0 ? (
+                    <div className="py-16 text-center border border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center">
+                      <Fuel className="h-6 w-6 text-zinc-800 mb-1" />
+                      <p className="text-[10px] text-zinc-600 uppercase font-black tracking-wider">No Manual Expenses</p>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    manualExpenseRows.slice(0, 30).map((row) => (
+                      <div key={`${row.source}:${row.id}`} className="rounded-2xl border border-white/5 bg-zinc-900/35 p-4 hover:border-white/10 transition duration-200">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="mt-0.5 p-1.5 bg-black/40 border border-white/5 rounded-lg">
+                              {getCategoryIcon(row.category)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white text-xs truncate">{row.label}</p>
+                              <p className="mt-1 text-[10px] text-zinc-500 font-mono">
+                                {row.source} · {row.occurredAt ? new Date(row.occurredAt).toLocaleString() : 'No date'}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="font-mono font-black text-rose-300 shrink-0">{displayMoney(row.amountCents)}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </GlassCard>
           </section>
         </div>
       )}
+
+      {/* Footer Return Link */}
+      <div className="pt-4 border-t border-white/5">
+        <Link href="/admin" className="inline-flex items-center gap-1.5 text-xs font-black uppercase text-gold-soft hover:underline tracking-wider">
+          <ArrowLeft className="h-4 w-4" /> Return to Dashboard
+        </Link>
+      </div>
     </DashboardShell>
   );
 }

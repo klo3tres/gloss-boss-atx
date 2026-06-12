@@ -19,6 +19,7 @@ import {
   reviewBookingFallbackAction,
 } from '@/app/(dashboard)/admin/booking-fallback-actions';
 import { GlassCard, PremiumBadge, SectionEyebrow } from '@/components/ui/premium';
+import { adminRescheduleAppointmentActionState } from '@/app/(dashboard)/admin/appointment-lifecycle-actions';
 
 export type DispatchFallbackRow = {
   id: string;
@@ -47,18 +48,35 @@ export type DispatchJobRow = {
   notes: string | null;
   job_started_at: string | null;
   job_completed_at: string | null;
+  payment_status?: string | null;
 };
 
 export type TechOption = { id: string; full_name: string | null; email: string | null };
 
-type ColId = 'unassigned' | 'active_dispatch' | 'completed';
+type ColId = 'today' | 'tomorrow' | 'upcoming';
 type BoardFilter = 'active' | 'today' | 'upcoming' | 'fallback' | 'completed' | 'all';
 
 function dispatchColumn(j: DispatchJobRow): ColId {
-  if (j.status === 'cancelled') return 'completed';
-  if (j.job_completed_at || j.status === 'completed') return 'completed';
-  if (j.job_started_at || j.status === 'in_progress' || j.assigned_technician_id) return 'active_dispatch';
-  return 'unassigned';
+  const t = new Date(j.scheduled_start);
+  const now = new Date();
+  
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  
+  const dayAfterTomorrow = new Date(tomorrow);
+  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+
+  const time = t.getTime();
+  if (time < tomorrow.getTime()) {
+    return 'today';
+  } else if (time < dayAfterTomorrow.getTime()) {
+    return 'tomorrow';
+  } else {
+    return 'upcoming';
+  }
 }
 
 function formatMoney(cents: number | null) {
@@ -82,9 +100,9 @@ function chicago(value: string | null) {
 }
 
 const COLS: { id: ColId; label: string; hint: string }[] = [
-  { id: 'unassigned', label: 'Unassigned', hint: 'Needs assignment' },
-  { id: 'active_dispatch', label: 'Active Dispatch', hint: 'Scheduled / On site' },
-  { id: 'completed', label: 'Completed', hint: 'Completed & Cancelled' },
+  { id: 'today', label: 'Today', hint: "Today's scheduled jobs" },
+  { id: 'tomorrow', label: 'Tomorrow', hint: "Tomorrow's scheduled jobs" },
+  { id: 'upcoming', label: 'Upcoming', hint: 'Upcoming scheduled jobs' },
 ];
 
 const FILTER_TABS: { id: BoardFilter; label: string }[] = [
@@ -114,7 +132,7 @@ export function DispatchBoardClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragJobId, setDragJobId] = useState<string | null>(null);
   const [dropCol, setDropCol] = useState<ColId | null>(null);
-  const [mobileCol, setMobileCol] = useState<ColId>('unassigned');
+  const [mobileCol, setMobileCol] = useState<ColId>('today');
 
   const techLabel = useMemo(() => {
     const m: Record<string, string> = {};
@@ -136,9 +154,11 @@ export function DispatchBoardClient({
       if (filter === 'all') {
         /* keep */
       } else if (filter === 'completed') {
-        if (col !== 'completed') return false;
+        const isJobDone = j.job_completed_at || j.status === 'completed' || j.status === 'cancelled';
+        if (!isJobDone) return false;
       } else if (filter === 'active') {
-        if (col === 'completed') return false;
+        const isJobDone = j.job_completed_at || j.status === 'completed' || j.status === 'cancelled';
+        if (isJobDone) return false;
       } else if (filter === 'today') {
         if (t < sod.getTime() || t > eod.getTime()) return false;
       } else if (filter === 'upcoming') {
@@ -154,7 +174,7 @@ export function DispatchBoardClient({
   }, [jobs, filter, search]);
 
   const grouped = useMemo(() => {
-    const g: Record<ColId, DispatchJobRow[]> = { unassigned: [], active_dispatch: [], completed: [] };
+    const g: Record<ColId, DispatchJobRow[]> = { today: [], tomorrow: [], upcoming: [] };
     for (const j of filteredJobs) g[dispatchColumn(j)].push(j);
     return g;
   }, [filteredJobs]);
@@ -169,49 +189,31 @@ export function DispatchBoardClient({
   const moveToColumn = useCallback(
     async (jobId: string, col: ColId, job: DispatchJobRow) => {
       setMsg(null);
-      if (col === 'unassigned') {
-        const r = await unassignAppointmentTechnicianAction(
-          (() => {
-            const fd = new FormData();
-            fd.set('appointmentId', jobId);
-            return fd;
-          })(),
-        );
-        setMsg(r.ok ? 'Moved to unassigned.' : r.error ?? 'Failed');
-        router.refresh();
-        return;
+      const now = new Date();
+      const targetDate = new Date(now);
+      if (col === 'tomorrow') {
+        targetDate.setDate(now.getDate() + 1);
+      } else if (col === 'upcoming') {
+        targetDate.setDate(now.getDate() + 3);
       }
-      if (col === 'active_dispatch') {
-        if (!job.assigned_technician_id && techOptions[0]) {
-          const fd = new FormData();
-          fd.set('appointmentId', jobId);
-          fd.set('technicianId', techOptions[0].id);
-          const r = await assignAppointmentTechnicianAction(fd);
-          const fd2 = new FormData();
-          fd2.set('appointmentId', jobId);
-          fd2.set('status', 'assigned');
-          await updateAppointmentDispatchStatusAction(fd2);
-          setMsg(r.ok ? 'Assigned and scheduled.' : r.error ?? 'Failed');
-          router.refresh();
-          return;
-        }
-        const fd = new FormData();
-        fd.set('appointmentId', jobId);
-        fd.set('status', 'assigned');
-        const r = await updateAppointmentDispatchStatusAction(fd);
-        setMsg(r.ok ? 'Moved to Active Dispatch.' : r.error ?? 'Failed');
-        router.refresh();
-        return;
-      }
-      // Completed column
+      const dateStr = targetDate.toISOString().slice(0, 10);
+      const timeStr = '09:00'; // Default morning slot
+      
       const fd = new FormData();
       fd.set('appointmentId', jobId);
-      fd.set('status', 'completed');
-      const r = await updateAppointmentDispatchStatusAction(fd);
-      setMsg(r.ok ? 'Moved to Completed.' : r.error ?? 'Failed');
+      fd.set('date', dateStr);
+      fd.set('time', timeStr);
+      fd.set('reason', `Rescheduled via Dispatch Board drag-and-drop to ${col}`);
+
+      const res = await adminRescheduleAppointmentActionState(null, fd);
+      if (res && res.error) {
+        setMsg(`Failed to reschedule: ${res.error}`);
+      } else {
+        setMsg(`Rescheduled to ${col} (${dateStr} at ${timeStr}).`);
+      }
       router.refresh();
     },
-    [router, techOptions],
+    [router],
   );
 
   const onDrop = (col: ColId) => {
@@ -264,9 +266,23 @@ export function DispatchBoardClient({
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="truncate font-bold text-white text-base">{j.guest_name ?? 'Guest'}</p>
-                <div className="flex items-center gap-1.5 mt-1">
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <span className={`h-2 w-2 rounded-full ${indicator.color}`} />
                   <span className="text-[10px] uppercase font-black tracking-wider text-zinc-400">{indicator.label}</span>
+                  {j.payment_status && (
+                    <>
+                      <span className="text-zinc-600">·</span>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider ${
+                        j.payment_status === 'paid'
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
+                          : j.payment_status === 'deposit_paid' || j.payment_status === 'deposit_only'
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/20'
+                            : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
+                      }`}>
+                        {j.payment_status.replace(/_/g, ' ')}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               <input

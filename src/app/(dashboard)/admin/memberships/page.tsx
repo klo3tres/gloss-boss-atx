@@ -7,6 +7,7 @@ import { assignCustomerMembershipAction, saveLoyaltyRuleAction, saveMembershipPl
 import { LoyaltyCardPreviewConsole } from '@/components/admin/loyalty-card-preview-console';
 import { addManualLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
+import { MembershipPlansManager } from '@/components/admin/membership-plans-manager';
 
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 
@@ -96,128 +97,9 @@ export default async function MembershipsAdminPage() {
       ) : null}
 
       {/* PLAN DETAILS CARDS */}
-      <section className='grid gap-6 lg:grid-cols-3 mb-8'>
-        {publicPlans.map((p: any) => (
-          <GlassCard key={String(p.id)} className="border-white/10 bg-zinc-950/40 hover:border-gold/30 transition duration-300 flex flex-col justify-between">
-            <form action={saveMembershipPlanAction} className="space-y-4">
-              <input type='hidden' name='id' value={String(p.id)} />
-              
-              <div className='flex gap-2 items-center'>
-                <input 
-                  name='name' 
-                  defaultValue={String(p.name ?? '')} 
-                  placeholder="Plan Name" 
-                  required
-                  className='flex-1 rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white font-black uppercase tracking-wide focus:border-gold/50 outline-none transition' 
-                />
-                <input 
-                  name='tier' 
-                  defaultValue={String(p.tier ?? '')} 
-                  placeholder="Tier" 
-                  required
-                  className='w-24 rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-zinc-300 font-mono focus:border-gold/50 outline-none transition' 
-                />
-              </div>
-              
-              <div className="border-t border-white/5 pt-3">
-                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft mb-2'>Pricing Config ($)</p>
-                <div className='grid grid-cols-2 gap-2'>
-                  <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                    Weekly
-                    <input name='price_weekly' type='number' step='0.01' defaultValue={((Number(p.price_weekly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white' />
-                  </label>
-                  <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                    Bi-Weekly
-                    <input name='price_biweekly' type='number' step='0.01' defaultValue={((Number(p.price_biweekly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white' />
-                  </label>
-                  <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                    Monthly
-                    <input name='price_monthly' type='number' step='0.01' defaultValue={((Number(p.price_monthly_cents ?? p.price_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white' />
-                  </label>
-                  <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                    Yearly
-                    <input name='price_yearly' type='number' step='0.01' defaultValue={((Number(p.price_yearly_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white' />
-                  </label>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 border-t border-white/5 pt-3">
-                <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                  Discount %
-                  <input name='discount_percent' type='number' defaultValue={Number(p.discount_percent ?? 0)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white' />
-                </label>
-                <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                  Billing Interval
-                  <select name='billing_interval' defaultValue={String(p.billing_interval ?? 'monthly')} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white'>
-                    <option value='weekly'>Weekly</option>
-                    <option value='bi-weekly'>Bi-weekly</option>
-                    <option value='monthly'>Monthly</option>
-                    <option value='yearly'>Yearly</option>
-                    <option value='one-time'>One-time</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="border-t border-white/5 pt-3">
-                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft mb-2'>Loyalty rules</p>
-                <div className='grid grid-cols-3 gap-2'>
-                  <label className='text-[9px] text-zinc-500 font-bold uppercase'>
-                    Multiplier
-                    <input name='punch_multiplier' type='number' step='0.05' defaultValue={Number(p.punch_multiplier ?? 1.0)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white font-mono' />
-                  </label>
-                  <label className='text-[9px] text-zinc-500 font-bold uppercase'>
-                    Bonus stamps
-                    <input name='bonus_punches' type='number' defaultValue={Number(p.bonus_punches ?? 0)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white font-mono' />
-                  </label>
-                  <label className='text-[9px] text-zinc-500 font-bold uppercase'>
-                    Reward Thr.
-                    <input name='reward_threshold' type='number' defaultValue={Number(p.reward_threshold ?? 5)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white font-mono' />
-                  </label>
-                </div>
-              </div>
-
-              <label className='block text-[10px] text-zinc-500 font-bold uppercase border-t border-white/5 pt-3'>
-                Reward Description
-                <input name='reward_description' defaultValue={String(p.reward_description ?? 'Complete 5 services, unlock 6th wash/free reward.')} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' />
-              </label>
-
-              <div className='grid grid-cols-2 gap-2 border-t border-white/5 pt-3'>
-                <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                  Upgrade Credit ($)
-                  <input name='gold_60day_upgrade_credit' type='number' step='0.01' defaultValue={((Number(p.gold_60day_upgrade_credit_cents ?? 0)) / 100).toFixed(2)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white font-mono' />
-                </label>
-                <label className='text-[10px] text-zinc-500 font-bold uppercase'>
-                  Credit Expire (Mo)
-                  <input name='credit_expiration_months' type='number' defaultValue={Number(p.credit_expiration_months ?? 12)} className='w-full mt-1.5 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white font-mono' />
-                </label>
-              </div>
-
-              <label className='block text-[10px] text-zinc-500 font-bold uppercase border-t border-white/5 pt-3'>
-                Benefits (One per line)
-                <textarea name='benefits' rows={3} defaultValue={Array.isArray(p.benefits) ? p.benefits.join('\n') : ''} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white font-medium' />
-              </label>
-              <label className='block text-[10px] text-zinc-500 font-bold uppercase'>
-                Included Services (One per line)
-                <textarea name='included_services' rows={2} defaultValue={Array.isArray(p.included_services) ? p.included_services.join('\n') : ''} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white font-medium' />
-              </label>
-              
-              <div className='mt-3 flex flex-wrap gap-4 text-xs text-zinc-300 border-t border-white/5 pt-3'>
-                <label className="flex items-center gap-1.5 cursor-pointer"><input type='checkbox' name='show_on_homepage' defaultChecked={p.show_on_homepage !== false} className='accent-gold' />Homepage</label>
-                <label className="flex items-center gap-1.5 cursor-pointer"><input type='checkbox' name='show_on_services' defaultChecked={p.show_on_services !== false} className='accent-gold' />Services</label>
-                <label className="flex items-center gap-1.5 cursor-pointer"><input type='checkbox' name='archived' defaultChecked={p.archived === true} className='accent-gold' />Archived</label>
-              </div>
-
-              <button className='w-full rounded-xl bg-gold py-3 text-xs font-black uppercase text-black hover:brightness-110 transition mt-2'>
-                Save {String(p.name ?? 'Plan')} Configuration
-              </button>
-              
-              <p className='text-center text-[9px] text-zinc-500 font-mono'>
-                Monthly: {money(p.price_monthly_cents ?? p.price_cents)} · Weekly: {money(p.price_weekly_cents)} · Yearly: {money(p.price_yearly_cents)}
-              </p>
-            </form>
-          </GlassCard>
-        ))}
-      </section>
+      <div className="mb-8">
+        <MembershipPlansManager publicPlans={publicPlans as any} />
+      </div>
 
       {/* THREE INTERACTIVE PANELS GRID */}
       <section className='grid gap-6 lg:grid-cols-3 mb-8'>

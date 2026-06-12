@@ -7,6 +7,22 @@ import {
   saveNotificationTemplateAction,
   testNotificationSendAction,
 } from '@/app/(dashboard)/admin/notifications/notification-actions';
+import { 
+  Mail, 
+  MessageSquare, 
+  AlertCircle, 
+  CheckCircle, 
+  Clock, 
+  ChevronDown, 
+  ChevronUp, 
+  Search, 
+  FileText, 
+  Database,
+  ArrowRight,
+  Sparkles,
+  Layers,
+  Settings
+} from 'lucide-react';
 
 type TemplateRow = {
   id: string;
@@ -184,11 +200,11 @@ export function NotificationCenterClient({
       ) : null}
 
       {tab === 'Sent log' ? (
-        <OutboxTable rows={sent} empty='No sent messages logged yet.' />
+        <StructuredOutboxLogs rows={sent} empty='No sent messages logged yet.' />
       ) : null}
 
       {tab === 'Failed / skipped' ? (
-        <OutboxTable rows={failed} empty='No failed or skipped messages.' />
+        <StructuredOutboxLogs rows={failed} empty='No failed or skipped messages.' />
       ) : null}
 
       {tab === 'Test send' ? (
@@ -265,54 +281,185 @@ export function NotificationCenterClient({
   );
 }
 
-function OutboxTable({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
+function StructuredOutboxLogs({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'sms'>('all');
+
+  const filtered = rows.filter((r) => {
+    const searchLower = search.toLowerCase();
+    const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
+    const to = String((p as { to?: unknown }).to ?? '').toLowerCase();
+    const subject = String(r.subject ?? '').toLowerCase();
+    const kind = String(r.kind ?? '').toLowerCase();
+    
+    const matchesSearch = 
+      to.includes(searchLower) ||
+      subject.includes(searchLower) ||
+      kind.includes(searchLower) ||
+      r.id.toLowerCase().includes(searchLower);
+
+    const matchesChannel = channelFilter === 'all' || r.channel.toLowerCase() === channelFilter;
+
+    return matchesSearch && matchesChannel;
+  });
+
+  const getStatusBadge = (status: string) => {
+    const s = status.toLowerCase();
+    if (s === 'sent' || s === 'delivered') {
+      return <span className="rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-emerald-300 font-mono">Sent</span>;
+    }
+    if (s === 'failed') {
+      return <span className="rounded-full bg-rose-500/10 border border-rose-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-rose-300 font-mono">Failed</span>;
+    }
+    return <span className="rounded-full bg-amber-500/10 border border-amber-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-amber-300 font-mono">{status}</span>;
+  };
+
+  const getChannelIcon = (channel: string) => {
+    const c = channel.toLowerCase();
+    if (c === 'email') return <Mail className="h-3.5 w-3.5 text-cyan-400" />;
+    if (c === 'sms') return <MessageSquare className="h-3.5 w-3.5 text-gold-soft" />;
+    return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
+  };
+
   return (
-    <div className='gb-admin-table-wrap gb-glass'>
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Kind</th>
-            <th>Subject</th>
-            <th>To</th>
-            <th>From</th>
-            <th>Channel</th>
-            <th>Status</th>
-            <th>Provider ID</th>
-            <th>Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={9} className='py-6 text-zinc-500'>
-                {empty}
-              </td>
-            </tr>
-          ) : (
-            rows.map((r) => {
-              const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
-              const to = String((p as { to?: unknown }).to ?? '—');
-              const from = String((p as { from?: unknown }).from ?? '—');
-              return (
-              <tr key={r.id}>
-                <td className='tabular-nums text-zinc-400'>{r.created_at.slice(0, 19)}</td>
-                <td className='font-semibold text-white'>{r.kind}</td>
-                <td className='max-w-[120px] truncate text-zinc-400'>{r.subject || '—'}</td>
-                <td className='max-w-[140px] truncate text-zinc-300'>{to}</td>
-                <td className='max-w-[120px] truncate text-zinc-500'>{from}</td>
-                <td>{r.channel}</td>
-                <td className={r.status === 'sent' ? 'text-emerald-300' : r.status === 'failed' ? 'text-red-300' : 'text-amber-200'}>
-                  {r.status}
-                </td>
-                <td className='max-w-[100px] truncate font-mono text-[10px] text-zinc-500'>{r.provider_message_id || '—'}</td>
-                <td className='max-w-xs truncate text-zinc-500'>{r.error_message || r.skipped_reason || '—'}</td>
-              </tr>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-950/60 border border-white/5 p-4 rounded-2xl">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search outbox (e.g. user@example.com)..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 bg-black border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-gold/40 transition"
+          />
+        </div>
+        <div className="flex gap-2">
+          {([
+            { id: 'all', label: 'All Channels' },
+            { id: 'email', label: 'Email' },
+            { id: 'sms', label: 'SMS' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setChannelFilter(opt.id)}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
+                channelFilter === opt.id
+                  ? 'bg-gold/15 border border-gold/30 text-gold-soft'
+                  : 'border border-white/5 text-zinc-400 hover:border-white/15'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-900">
+        {filtered.length === 0 ? (
+          <div className="py-16 text-center border border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center">
+            <Database className="h-6 w-6 text-zinc-800 mb-1" />
+            <p className="text-[10px] text-zinc-600 uppercase font-black tracking-wider">{empty}</p>
+          </div>
+        ) : (
+          filtered.map((r) => {
+            const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
+            const to = String((p as { to?: unknown }).to ?? '—');
+            const from = String((p as { from?: unknown }).from ?? '—');
+            const isExpanded = expandedId === r.id;
+
+            return (
+              <div
+                key={r.id}
+                className={`rounded-2xl border transition duration-200 bg-zinc-950/40 ${
+                  isExpanded ? 'border-gold/30 shadow-[0_0_24px_rgba(212,175,55,0.02)]' : 'border-white/5 hover:border-white/10'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                  className="w-full p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-0.5 p-1.5 bg-black/40 border border-white/5 rounded-lg shrink-0">
+                      {getChannelIcon(r.channel)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-xs">{r.kind}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">ID: {r.id.slice(0, 8)}...</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-300 truncate font-mono">
+                        to: {to}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 self-end sm:self-auto">
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      {r.created_at ? new Date(r.created_at).toLocaleString() : 'No date'}
+                    </span>
+                    {getStatusBadge(r.status)}
+                    {isExpanded ? <ChevronUp className="h-4 w-4 text-zinc-400" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="px-4 pb-4 pt-1 border-t border-white/5 bg-black/25 rounded-b-2xl space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2 text-xs">
+                      <div className="space-y-2">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Log Properties</p>
+                        <dl className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-1 text-[11px] text-zinc-300">
+                          <dt className="text-zinc-500">Sender (From):</dt>
+                          <dd className="font-mono truncate">{from}</dd>
+                          <dt className="text-zinc-500">Recipient (To):</dt>
+                          <dd className="font-mono truncate">{to}</dd>
+                          <dt className="text-zinc-500">Channel:</dt>
+                          <dd className="uppercase font-semibold text-zinc-400">{r.channel}</dd>
+                          <dt className="text-zinc-500">Provider:</dt>
+                          <dd className="font-mono">{r.provider || '—'}</dd>
+                          <dt className="text-zinc-500">Provider ID:</dt>
+                          <dd className="font-mono truncate">{r.provider_message_id || '—'}</dd>
+                        </dl>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Delivery Details</p>
+                        <dl className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-1 text-[11px] text-zinc-300">
+                          <dt className="text-zinc-500">Status:</dt>
+                          <dd className="font-mono font-bold text-white">{r.status}</dd>
+                          <dt className="text-zinc-500">Error Message:</dt>
+                          <dd className="text-rose-400">{r.error_message || '—'}</dd>
+                          <dt className="text-zinc-500">Skipped Reason:</dt>
+                          <dd className="text-amber-400">{r.skipped_reason || '—'}</dd>
+                        </dl>
+                      </div>
+                    </div>
+
+                    {r.subject && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Subject</p>
+                        <p className="text-xs font-semibold text-white bg-black/40 border border-white/5 p-2 rounded-lg">{r.subject}</p>
+                      </div>
+                    )}
+
+                    {r.payload && Object.keys(p).length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Raw Payload JSON</p>
+                        <pre className="text-[10px] text-zinc-400 font-mono bg-black/60 border border-white/5 p-3 rounded-lg overflow-x-auto max-h-[180px]">
+                          {JSON.stringify(p, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             );
-            })
-          )}
-        </tbody>
-      </table>
+          })
+        )}
+      </div>
     </div>
   );
 }

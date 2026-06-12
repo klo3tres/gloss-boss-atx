@@ -718,33 +718,127 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
         </section>
       ) : null}
 
-      {/* SECTION 1: TODAY (Top Metrics Grid) */}
-      <section>
-        <SectionEyebrow>Command Center Overview · Today</SectionEyebrow>
-        <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-4">
-          <TodayMetricCard label="Revenue Today" value={metrics.revenueToday} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle="Succeeded gross payments" />
-          <TodayMetricCard label="Revenue 30 Days" value={metrics.revenueMonth} href="/admin/revenue" icon={Activity} colorClass="text-gold" subtitle="MTD collected revenue" />
+      {/* SECTION 1: EXECUTIVE SNAPSHOT (Top Section) */}
+      <section className="gb-glass rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 h-32 w-32 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <SectionEyebrow>Executive Snapshot</SectionEyebrow>
+          <span className="text-[10px] font-black uppercase text-gold-soft tracking-wider">Gloss Boss operations</span>
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-5">
+          <TodayMetricCard label="Revenue MTD" value={metrics.revenueMonth} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle={`Today: ${metrics.revenueToday}`} />
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} onClick={() => setActiveDrawer('open-balances')} icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} onClick={() => setActiveDrawer('pending-deposits')} icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
-          <TodayMetricCard label="Card Spend" value={displayMoney(cardSpendTotal)} onClick={() => setActiveDrawer('card-spend')} icon={CreditCard} colorClass="text-cyan-400" subtitle="Stripe Card spend 30D" />
           <TodayMetricCard label="Active Jobs" value={metrics.activeJobsCount} onClick={() => setActiveDrawer('bookings')} icon={Zap} colorClass="text-cyan-400" subtitle="Currently in progress" />
-          <TodayMetricCard label="Memberships" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold-soft" subtitle="Active membership revenue" />
-          <TodayMetricCard label="Notifications" value={metrics.unreadMessageCount} onClick={() => setActiveDrawer('notifications')} icon={MessageSquare} colorClass={metrics.unreadMessageCount > 0 ? 'text-rose-400' : 'text-emerald-400'} subtitle={metrics.unreadMessageCount > 0 ? 'Action items pending' : 'No new messages'} />
+          <TodayMetricCard label="Membership MTD" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold" subtitle="MTD active member dues" />
         </div>
       </section>
 
-      {/* SECTION 2: QUICK ACTIONS (Large Luxury Cards) */}
+      {/* SECTION 2: ACTIONABLE ALERTS (Middle Section) */}
+      <section className="space-y-3">
+        <SectionEyebrow>Actionable Alerts & Tasks</SectionEyebrow>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Expiring Store Credits */}
+          {metrics.creditMetrics?.expiringSoon && metrics.creditMetrics.expiringSoon.length > 0 && (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 flex flex-col justify-between hover:border-rose-500/50 transition">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-rose-400 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-xs uppercase text-rose-300">Credits Expiring Soon</h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    {metrics.creditMetrics.expiringSoon.length} customer credit(s) expire within 30 days.
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setActiveDrawer('credits')} className="mt-3 text-[10px] font-black uppercase text-rose-400 hover:underline text-left">
+                Manage Credits →
+              </button>
+            </div>
+          )}
+
+          {/* Unread Messages */}
+          {metrics.unreadMessageCount > 0 && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 flex flex-col justify-between hover:border-amber-500/50 transition">
+              <div className="flex items-start gap-2.5">
+                <MessageSquare className="h-5 w-5 shrink-0 text-amber-400 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-xs uppercase text-amber-300 font-mono">Unread Messages</h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    You have {metrics.unreadMessageCount} new message(s) from customers.
+                  </p>
+                </div>
+              </div>
+              <Link href="/admin/messages" className="mt-3 text-[10px] font-black uppercase text-amber-400 hover:underline text-left">
+                Open Chat Hub →
+              </Link>
+            </div>
+          )}
+
+          {/* Booking Health issues or Unassigned Jobs */}
+          {(metrics.dispatchUnassignedToday > 0 || metrics.bookingHealth < 75) && (
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-4 flex flex-col justify-between hover:border-cyan-500/50 transition">
+              <div className="flex items-start gap-2.5">
+                <Zap className="h-5 w-5 shrink-0 text-cyan-400 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-xs uppercase text-cyan-300">Booking & Dispatch Alert</h4>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    {metrics.dispatchUnassignedToday > 0 
+                      ? `${metrics.dispatchUnassignedToday} unassigned job(s) today need scheduling.`
+                      : `Booking health is currently at ${metrics.bookingHealth}%.`}
+                  </p>
+                </div>
+              </div>
+              <Link href="/admin/dispatch" className="mt-3 text-[10px] font-black uppercase text-cyan-400 hover:underline text-left">
+                Open Dispatch Board →
+              </Link>
+            </div>
+          )}
+
+          {/* Custom Alerts */}
+          {metrics.alerts.map((alert, idx) => (
+            <div key={idx} className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 flex items-start gap-2.5">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-zinc-500 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-xs uppercase text-zinc-300">System Alert</h4>
+                <p className="text-[10px] text-zinc-500 mt-1">{alert}</p>
+              </div>
+            </div>
+          ))}
+
+          {/* Empty state alert if clear */}
+          {(!metrics.creditMetrics?.expiringSoon?.length && metrics.unreadMessageCount === 0 && metrics.dispatchUnassignedToday === 0 && metrics.bookingHealth >= 75 && !metrics.alerts.length) && (
+            <div className="rounded-2xl border border-white/5 bg-zinc-950/40 p-4 sm:col-span-2 lg:col-span-3 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                <div>
+                  <h4 className="font-bold text-xs uppercase text-white">All Clear</h4>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">No critical alerts or pending customer items.</p>
+                </div>
+              </div>
+              <PremiumBadge tone="emerald">Healthy</PremiumBadge>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* SECTION 3: COMMAND CENTER SHORTCUTS (Bottom Section) */}
       <section>
-        <SectionEyebrow>Quick Actions & Command Links</SectionEyebrow>
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {quickActions.map((q) => {
-            const cardContent = (
+        <SectionEyebrow>Command Center Shortcuts</SectionEyebrow>
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-5">
+          {[
+            { href: '/admin/operations', label: 'Operations', desc: 'Expenses & mileage logs', icon: ClipboardList, color: 'text-indigo-400' },
+            { href: '/admin/dispatch', label: 'Dispatch', desc: 'Slots, routes & technicians', icon: Zap, color: 'text-cyan-400' },
+            { href: '/admin/customers', label: 'Customers', desc: 'CRM directory & profiles', icon: Users, color: 'text-amber-400' },
+            { href: '/admin/revenue', label: 'Revenue', desc: 'Sales ledger & statements', icon: DollarSign, color: 'text-emerald-400' },
+            { href: '/admin/reports', label: 'Reports', desc: 'Tax & financial exports', icon: Activity, color: 'text-rose-300' },
+          ].map((q) => (
+            <Link key={q.label} href={q.href} className="group block focus:outline-none">
               <div className="group relative h-28 flex flex-col justify-between rounded-2xl border border-gold/15 bg-black/60 p-4 transition-all duration-300 hover:border-gold/45 hover:-translate-y-1 hover:shadow-[0_4px_20px_rgba(212,175,55,0.1)]">
                 <div className="flex items-center justify-between">
                   <div className={`rounded-xl bg-zinc-950/60 p-2.5 border border-white/5 group-hover:border-gold/20 transition-all ${q.color}`}>
                     <q.icon className="h-5 w-5 shrink-0" />
                   </div>
-                  {q.external && <ExternalLink className="h-3.5 w-3.5 text-zinc-500 group-hover:text-zinc-300 transition" />}
+                  <ArrowUpRight className="h-3.5 w-3.5 text-zinc-500 group-hover:text-zinc-300 transition" />
                 </div>
                 <div>
                   <h3 className="text-xs font-black uppercase tracking-wider text-white mt-2 truncate">{q.label}</h3>
@@ -752,32 +846,52 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
                 </div>
                 <div className="absolute top-0 right-0 h-2 w-2 rounded-bl-lg bg-gold-soft/0 group-hover:bg-gold-soft/20 transition-all" />
               </div>
-            );
-
-            return q.external ? (
-              <a key={q.label} href={q.href} target="_blank" rel="noreferrer" className="block focus:outline-none">
-                {cardContent}
-              </a>
-            ) : (
-              <Link key={q.label} href={q.href} className="block focus:outline-none">
-                {cardContent}
-              </Link>
-            );
-          })}
+            </Link>
+          ))}
         </div>
       </section>
 
-      {/* SECTION 3: OPERATIONS (Dispatch Feed and Technical Indicators) */}
-      <section>
-        <SectionEyebrow>Operations & Field Dispatch</SectionEyebrow>
-        <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-          <OperationsCard label="Jobs Today" value={metrics.jobsTodayCount} icon={Calendar} colorClass="text-indigo-400" href="/admin/dispatch" />
-          <OperationsCard label="Dispatch Status" value={metrics.dispatchUnassignedToday > 0 ? `${metrics.dispatchUnassignedToday} Unassigned` : 'Ready'} icon={Zap} colorClass={metrics.dispatchUnassignedToday > 0 ? 'text-amber-400' : 'text-emerald-400'} status={dispatchStatus} href="/admin/dispatch" />
-          <OperationsCard label="Leads Waiting" value={metrics.leadPipeline.newCount} icon={Users} colorClass="text-amber-400" href="/admin/customers" />
-          <OperationsCard label="Unread Messages" value={metrics.unreadMessageCount} icon={MessageSquare} colorClass={metrics.unreadMessageCount > 0 ? 'text-rose-400' : 'text-zinc-500'} status={metrics.unreadMessageCount > 0 ? 'Action required' : 'Clear'} href="/admin/messages" />
-          <OperationsCard label="Technicians" value={metrics.activeTechCount} icon={Users} colorClass="text-cyan-400" status={techStatusLabel} href="/admin/team" />
-          <OperationsCard label="Bookings This Week" value={metrics.bookingsThisWeek} icon={Activity} colorClass="text-emerald-400" href="/admin/dispatch" />
-        </div>
+      {/* SECTION 4: ADVANCED SYSTEM HEALTH (Collapsed by default) */}
+      <section className="border border-white/5 rounded-3xl overflow-hidden bg-zinc-950/45">
+        <details className="group">
+          <summary className="flex items-center justify-between px-6 py-4 cursor-pointer text-xs font-black uppercase tracking-widest text-zinc-400 hover:text-white select-none">
+            <span>Advanced System Health</span>
+            <ChevronRight className="h-4 w-4 transform group-open:rotate-90 transition-transform duration-200" />
+          </summary>
+          <div className="px-6 pb-6 pt-2 border-t border-white/5 space-y-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { href: '/admin/work-orders/add-past', label: 'Add Past Job', desc: 'Backfill completed work', icon: ClipboardList, color: 'text-amber-300' },
+                { href: '/admin/system-diagnostics', label: 'Diagnostics', desc: 'Find data blockers fast', icon: Wrench, color: 'text-rose-300' },
+                { href: '/admin/cms', label: 'Gallery Manager', desc: 'Review & publish showcase', icon: Sparkles, color: 'text-gold' },
+                { href: 'https://dashboard.stripe.com/', label: 'Stripe Dashboard', desc: 'External Stripe Console', icon: ExternalLink, external: true, color: 'text-indigo-400' },
+                { href: 'https://mail.google.com/', label: 'Gmail Admin', desc: 'Business mailbox console', icon: ExternalLink, external: true, color: 'text-red-400' },
+                { href: 'https://console.twilio.com/', label: 'Twilio Console', desc: 'External SMS Console', icon: ExternalLink, external: true, color: 'text-rose-400' },
+                { href: 'https://vercel.com/dashboard', label: 'Vercel Dashboard', desc: 'Deployments & production logs', icon: ExternalLink, external: true, color: 'text-white' },
+              ].map((q) => {
+                const card = (
+                  <div className="group flex flex-col justify-between rounded-xl border border-white/5 bg-black/45 p-3 hover:border-gold/30 transition h-24">
+                    <div className="flex items-center justify-between">
+                      <div className={`p-1.5 rounded-lg bg-zinc-900 border border-white/5 ${q.color}`}>
+                        <q.icon className="h-4 w-4" />
+                      </div>
+                      {q.external && <ExternalLink className="h-3 w-3 text-zinc-500" />}
+                    </div>
+                    <div className="mt-1">
+                      <p className="text-[10px] font-bold uppercase text-white truncate">{q.label}</p>
+                      <p className="text-[8px] text-zinc-500 truncate">{q.desc}</p>
+                    </div>
+                  </div>
+                );
+                return q.external ? (
+                  <a key={q.label} href={q.href} target="_blank" rel="noreferrer" className="block">{card}</a>
+                ) : (
+                  <Link key={q.label} href={q.href} className="block">{card}</Link>
+                );
+              })}
+            </div>
+          </div>
+        </details>
       </section>
 
       {/* SECTION 4: BUSINESS HEALTH & ANALYTICS */}

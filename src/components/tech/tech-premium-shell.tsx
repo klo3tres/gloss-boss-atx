@@ -260,12 +260,6 @@ export function TechPremiumShell({
 
   return (
     <div className='relative min-h-screen overflow-hidden pb-24'>
-      <div
-        className='pointer-events-none absolute inset-0 flex items-start justify-center pt-10 opacity-[0.035]'
-        aria-hidden
-      >
-        <span className='text-[9rem] font-black uppercase tracking-[0.2em] text-white sm:text-[12rem]'>Gloss Boss</span>
-      </div>
       <div className='pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gold/10 blur-[100px]' aria-hidden />
       <div className='pointer-events-none absolute -left-32 top-1/3 h-64 w-64 rounded-full bg-amber-500/5 blur-[90px]' aria-hidden />
 
@@ -493,49 +487,88 @@ export function TechPremiumShell({
                 )}
               </div>
             </div>
-            <div className='mt-4 flex flex-wrap gap-2'>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase tracking-wider text-gold-soft'>Open Work Order</Link>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Upload After Photos</Link>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200'>Save Notes</Link>
-              <div className='flex w-full flex-col gap-2 sm:w-auto'>
-                {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-                  <div key={`top-${kind}`} className='flex flex-col gap-0.5'>
-                    <NotificationSendForm
-                      kind={kind}
-                      appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
-                      fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
-                      buttonClassName='rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:brightness-110 disabled:opacity-60'
-                    >
-                      {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Send Pay Now Link' : 'Send Review Request'}
-                    </NotificationSendForm>
-                    <p className='text-[10px] text-zinc-500'>
-                      {kind === 'last_touches'
-                        ? 'SMS/email customer that service is wrapping up.'
-                        : kind === 'payment_link'
-                          ? 'Stripe balance link — logs to notification outbox.'
-                          : 'Google review link after job (SMS if configured).'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <form action={techRecordCashPaymentAction} className='flex flex-wrap gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/5 p-2'>
-                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
-                <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-20 rounded border border-emerald-400/20 bg-black px-2 py-1 text-[10px] text-white' />
-                <button type='submit' className='rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/15'>
-                  Paid Cash
-                </button>
-              </form>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>Complete Job</Link>
-              <form action={techArchiveTestWorkOrderAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
-                {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-                {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                <ConfirmSubmitButton message='Archive this test job?' className='rounded bg-red-500/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-200'>
-                  Archive Test Job
-                </ConfirmSubmitButton>
-              </form>
+            <div className='mt-4 flex flex-wrap gap-2 items-center'>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.2)] hover:bg-gold-soft transition'>
+                Open Work Order
+              </Link>
+              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200 transition'>
+                Complete Job
+              </Link>
             </div>
+
+            <details className='group mt-4 w-full rounded-2xl border border-white/5 bg-zinc-950/45 p-4 transition-all duration-200'>
+              <summary className='flex cursor-pointer items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white select-none focus:outline-none'>
+                <span>Advanced Job Operations & Actions</span>
+                <ChevronRight className='h-4 w-4 text-zinc-500 transition-transform duration-200 group-open:rotate-90' />
+              </summary>
+              <div className='mt-4 space-y-4 border-t border-white/5 pt-4 flex flex-col gap-3'>
+                {/* Upload Photos & Save Notes Quick Redirects */}
+                <div className='flex flex-wrap gap-2'>
+                  <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
+                    Upload After Photos
+                  </Link>
+                  <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
+                    Save Notes
+                  </Link>
+                </div>
+
+                {/* Notifications Dispatch */}
+                <div className='space-y-2.5'>
+                  <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Customer Alerts & Messages</p>
+                  <div className='grid gap-3 sm:grid-cols-3'>
+                    {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+                      <div key={`top-${kind}`} className='rounded-xl bg-black/45 border border-white/5 p-3 flex flex-col justify-between space-y-2'>
+                        <NotificationSendForm
+                          kind={kind}
+                          appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                          fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                          buttonClassName='w-full text-center rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/30 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300 transition'
+                        >
+                          {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Pay Now Link' : 'Review Request'}
+                        </NotificationSendForm>
+                        <p className='text-[8px] text-zinc-500 leading-normal'>
+                          {kind === 'last_touches'
+                            ? 'Alert customer that service is wrapping up.'
+                            : kind === 'payment_link'
+                              ? 'Send Stripe balance checkout page link.'
+                              : 'Send Google review invitation link.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cash Recording and Archiving */}
+                <div className='grid gap-4 md:grid-cols-2 border-t border-white/5 pt-4'>
+                  <form action={techRecordCashPaymentAction} className='flex flex-col gap-2 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-3.5 text-xs'>
+                    <p className='text-[10px] font-black uppercase tracking-wider text-emerald-300'>Record Cash Received</p>
+                    {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                    {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                    <div className="flex gap-2">
+                      <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
+                      <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
+                    </div>
+                    <button type='submit' className='w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black py-2 text-xs font-black uppercase tracking-wider transition'>
+                      Record Cash Payment
+                    </button>
+                  </form>
+
+                  <div className='flex flex-col justify-between rounded-xl border border-red-500/10 bg-red-500/5 p-3.5 text-xs'>
+                    <div>
+                      <p className='text-[10px] font-black uppercase tracking-wider text-red-300'>System Diagnostics</p>
+                      <p className='text-[10px] text-zinc-500 mt-1'>Archive this job if it is a test run or system duplicate. This cannot be undone.</p>
+                    </div>
+                    <form action={techArchiveTestWorkOrderAction} className='mt-2.5'>
+                      {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                      {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                      <ConfirmSubmitButton message='Archive this test job?' className='w-full text-center rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 py-2 text-xs font-black uppercase tracking-wider text-red-300 transition'>
+                        Archive Test Job
+                      </ConfirmSubmitButton>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </details>
           </section>
         ) : null}
 
