@@ -351,7 +351,9 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         <>
           <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
             <h2 className='text-lg font-black uppercase tracking-tight text-white'>Online booking hours</h2>
-            <p className='mt-2 text-sm text-zinc-400'>Friday 5:00–9:00 PM, Saturday & Sunday 7:30 AM–7:00 PM (defaults). Add blackout dates below.</p>
+            <p className='mt-2 text-sm text-zinc-400'>
+              Default display hours: Monday, Tuesday, Thursday, and Friday 5:00 PM-7:30 PM; Wednesday closed; Saturday and Sunday 7:30 AM-7:00 PM. Add blackout dates below.
+            </p>
             <CmsBookingAvailabilityClient initial={bookingAvail} />
           </section>
 

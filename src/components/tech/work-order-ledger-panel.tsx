@@ -19,7 +19,7 @@ import {
   syncStripePaymentsForWorkOrderAction,
 } from '@/app/(dashboard)/tech/work-order-stripe-sync-actions';
 import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
-import { voidExtrasAndRebuildActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
+import { detachUnrelatedPaymentsFromWorkOrderActionState, voidExtrasAndRebuildActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
 import { applyCreditToWorkOrderAction } from '@/app/(dashboard)/admin/customer-credit-actions';
 import { CustomerCreditsManager, type CreditHistoryItem, type CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 
@@ -177,6 +177,48 @@ function RebuildLedgerButton({
   );
 }
 
+function DetachUnrelatedPaymentsCard({
+  appointmentId,
+  fallbackBookingId,
+  workOrderPath,
+}: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  workOrderPath?: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
+  return (
+    <div className='gb-premium-card gb-glass rounded-2xl border border-amber-500/25 bg-black/40 p-4 text-xs'>
+      <h4 className='font-black uppercase tracking-wider text-amber-200'>Detach unrelated payments</h4>
+      <p className='mt-1 text-zinc-400 leading-relaxed'>
+        Removes suspicious payment links from this work order without deleting the payment rows. Unlinked payments stay in payment history as unassigned.
+      </p>
+      <button
+        type='button'
+        disabled={pending}
+        onClick={() => {
+          startTransition(async () => {
+            const fd = new FormData();
+            if (appointmentId) fd.set('appointmentId', appointmentId);
+            if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
+            if (workOrderPath) fd.set('workOrderPath', workOrderPath);
+            const res = await detachUnrelatedPaymentsFromWorkOrderActionState(null, fd);
+            setMsg(res.ok ? { tone: 'ok', text: res.message ?? 'Repair complete.' } : { tone: 'err', text: res.error ?? 'Repair failed.' });
+            if (res.ok) router.refresh();
+          });
+        }}
+        className='mt-4 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 font-black uppercase tracking-wider text-amber-100 disabled:opacity-50'
+      >
+        {pending ? 'Checking rows...' : 'Detach suspicious rows'}
+      </button>
+      {msg ? <p className={`mt-2 font-mono text-[10px] ${msg.tone === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>{msg.text}</p> : null}
+    </div>
+  );
+}
+
 export function WorkOrderLedgerPanel({
   jobId,
   isFallback,
@@ -210,6 +252,7 @@ export function WorkOrderLedgerPanel({
   stripeSessionId,
   stripePaymentIntent,
   recentPaymentsForRepair,
+  unassignedPaymentDiagnostics,
   ledgerWarnings,
   ledgerTotals,
   customerId,
@@ -272,6 +315,20 @@ export function WorkOrderLedgerPanel({
     status: string;
     stripeSession?: string;
     stripeIntent?: string;
+  }>;
+  unassignedPaymentDiagnostics?: Array<{
+    id: string;
+    amount: string;
+    amountCents?: number;
+    status: string;
+    method: string;
+    source: string;
+    appointmentId: string;
+    fallbackBookingId: string;
+    customerId: string;
+    stripeSession: string;
+    stripeIntent: string;
+    at: string;
   }>;
   customerId?: string;
   credits?: CreditHistoryItem[];
@@ -382,8 +439,36 @@ export function WorkOrderLedgerPanel({
         )}
       </WorkOrderCollapsible>
 
-      <WorkOrderCollapsible title='C. Payments' defaultOpen>
-        <p className='mb-3 text-xs text-zinc-500'>Stripe deposits appear automatically for new online bookings. Deposits are payments, not discounts.</p>
+      <WorkOrderCollapsible title='C. Payment summary' defaultOpen>
+        <div className='grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3'>
+          {[
+            ['Service total', totals.finalTotal],
+            ['Discounts', `-${totals.totalDiscounts.replace(/^[-−]/, '')}`],
+            ['Credits applied', displayMoney(pricing.creditPaidCents || 0)],
+            ['Cash / direct paid', displayMoney((pricing.cashPaidCents || 0) + (pricing.zellePaidCents || 0) + (pricing.manualPaidCents || 0))],
+            ['Stripe/card paid', displayMoney(pricing.stripePaidCents || 0)],
+            ['Balance due', totals.balanceDue],
+          ].map(([label, value]) => (
+            <div key={label} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
+              <p className='text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500'>{label}</p>
+              <p className={`mt-2 font-mono text-xl font-black ${label === 'Balance due' && balanceDueCents > 0 ? 'text-amber-200' : label === 'Credits applied' ? 'text-emerald-300' : 'text-white'}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className='mt-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-4'>
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <div>
+              <p className='text-[10px] font-black uppercase tracking-[0.18em] text-gold-soft'>Payment status</p>
+              <p className='mt-1 text-sm text-zinc-400'>Only payments linked to this exact work order are counted.</p>
+            </div>
+            <PremiumBadge tone={paymentComplete ? 'emerald' : balanceDueCents > 0 ? 'amber' : 'zinc'}>
+              {paymentComplete ? 'Paid' : balanceDueCents > 0 ? 'Balance due' : 'No payment due'}
+            </PremiumBadge>
+          </div>
+        </div>
+
+        <WorkOrderCollapsible title='Payment rows and collection tools' defaultOpen={false}>
+          <p className='mb-3 text-xs text-zinc-500'>Stripe deposits appear automatically for new online bookings. Credits reduce balance but do not count as cash revenue.</p>
         <ul className='space-y-2 text-sm'>
           {payments.length === 0 ? <li className='text-zinc-500'>No payments recorded yet.</li> : null}
           {payments.map((p) => (
@@ -481,6 +566,7 @@ export function WorkOrderLedgerPanel({
             hideReceiptSection
           />
         </div>
+        </WorkOrderCollapsible>
       </WorkOrderCollapsible>
 
       <WorkOrderCollapsible title='D. Totals (ledger)' defaultOpen>
@@ -565,6 +651,11 @@ export function WorkOrderLedgerPanel({
               appointmentId={appointmentId}
               fallbackBookingId={fallbackBookingId}
             />
+            <DetachUnrelatedPaymentsCard
+              appointmentId={appointmentId}
+              fallbackBookingId={fallbackBookingId}
+              workOrderPath={workOrderPath}
+            />
             <div className='col-span-1 md:col-span-2 lg:col-span-3'>
               <CorrectPaymentTruthPanel
                 appointmentId={appointmentId}
@@ -573,6 +664,46 @@ export function WorkOrderLedgerPanel({
                 defaultFinalDollars={totals.finalTotal.replace(/[^0-9.]/g, '')}
                 defaultPaidDollars={totals.totalPaid.replace(/[^0-9.]/g, '')}
               />
+            </div>
+            <div className='col-span-1 md:col-span-2 lg:col-span-3 rounded-2xl border border-white/10 bg-black/35 p-4'>
+              <h4 className='text-xs font-black uppercase tracking-wider text-gold-soft'>Payment link diagnostic</h4>
+              <p className='mt-1 text-xs text-zinc-500'>
+                These rows are related to the customer but are not counted in this work order because they are not linked to this exact appointment/fallback id.
+              </p>
+              <div className='mt-3 overflow-x-auto'>
+                <table className='w-full min-w-[780px] text-left text-[11px] text-zinc-300'>
+                  <thead className='text-[9px] uppercase tracking-wider text-zinc-500'>
+                    <tr>
+                      <th className='py-2'>Payment id</th>
+                      <th>Amount</th>
+                      <th>Method</th>
+                      <th>Source</th>
+                      <th>Linked appointment</th>
+                      <th>Linked fallback</th>
+                      <th>Customer</th>
+                      <th>Stripe refs</th>
+                    </tr>
+                  </thead>
+                  <tbody className='divide-y divide-white/5'>
+                    {(unassignedPaymentDiagnostics ?? []).length === 0 ? (
+                      <tr><td colSpan={8} className='py-4 text-center text-zinc-500'>No unassigned customer payments found.</td></tr>
+                    ) : (
+                      (unassignedPaymentDiagnostics ?? []).map((p) => (
+                        <tr key={p.id}>
+                          <td className='py-2 font-mono'>{p.id.slice(0, 8)}...</td>
+                          <td className='font-mono text-white'>{p.amount}</td>
+                          <td>{p.method}</td>
+                          <td>{p.source}</td>
+                          <td className='font-mono'>{p.appointmentId ? `${p.appointmentId.slice(0, 8)}...` : '-'}</td>
+                          <td className='font-mono'>{p.fallbackBookingId ? `${p.fallbackBookingId.slice(0, 8)}...` : '-'}</td>
+                          <td className='font-mono'>{p.customerId ? `${p.customerId.slice(0, 8)}...` : '-'}</td>
+                          <td className='font-mono'>{[p.stripeSession, p.stripeIntent].filter(Boolean).map((v) => `${v.slice(0, 10)}...`).join(' / ') || '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </WorkOrderCollapsible>

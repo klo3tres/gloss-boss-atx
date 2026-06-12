@@ -5,6 +5,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
+import { businessNotifyDestination, resendConfigured, sendResendHtml } from '@/lib/email-send';
 
 async function requireAdminGate() {
   const session = await getSessionWithProfile();
@@ -170,6 +172,55 @@ export async function addManualLoyaltyStampAction(formData: FormData) {
   if (error) {
     console.warn('[CRM_DEBUG_DB]', 'add_manual_loyalty_stamp_failed', error.message);
     return;
+  }
+
+  try {
+    const { data: stamps } = await admin
+      .from('loyalty_stamps')
+      .select('stamp_count, voided, voided_at')
+      .eq('customer_id', customerId);
+    const loyalty = calculateLoyaltyStatus(stamps ?? []);
+    if (loyalty.rewardReady) {
+      const { data: customer } = await admin.from('customers').select('full_name, email').eq('id', customerId).maybeSingle();
+      const to = businessNotifyDestination();
+      const payload = {
+        to,
+        customer_id: customerId,
+        customerName: customer?.full_name ?? customer?.email ?? 'Customer',
+        customerEmail: customer?.email ?? null,
+        stamps: loyalty.totalStamps,
+        appointment_id: appointmentId,
+      };
+      if (!resendConfigured()) {
+        await admin.from('notification_outbox').insert({
+          kind: 'reward_earned',
+          channel: 'email',
+          status: 'skipped',
+          provider: 'resend',
+          skipped_reason: 'resend_not_configured',
+          template_key: 'reward_earned',
+          payload,
+        });
+      } else {
+        const sent = await sendResendHtml({
+          to,
+          subject: `Gloss Boss ATX — Reward earned: ${payload.customerName}`,
+          html: `<div style="font-family:Arial,sans-serif;background:#050505;color:#fff;padding:24px;border:1px solid #d4af37;border-radius:14px"><h2 style="margin:0 0 12px">Reward earned</h2><p>${payload.customerName} has ${loyalty.totalStamps} loyalty stamps and is reward-ready.</p></div>`,
+        });
+        await admin.from('notification_outbox').insert({
+          kind: 'reward_earned',
+          channel: 'email',
+          status: sent.ok ? 'sent' : 'failed',
+          provider: 'resend',
+          provider_message_id: sent.emailId ?? null,
+          error_message: sent.ok ? null : sent.error ?? 'send failed',
+          template_key: 'reward_earned',
+          payload,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[loyalty] reward owner notification failed', e);
   }
 
   revalidatePath('/admin/customers');

@@ -13,7 +13,8 @@ import { syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { resolveOrderLedger } from '@/lib/order-ledger';
 import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
-import { fetchPaymentsForJob } from '@/lib/payments-resolve';
+import { fetchPaymentsForJob, fetchUnassignedCustomerPaymentsForDiagnostics } from '@/lib/payments-resolve';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
@@ -366,6 +367,11 @@ export default async function TechWorkOrderDetailPage({
     fallbackBookingId: isFallback ? queryId : undefined,
     isFallback,
   });
+  const unassignedPaymentDiagnostics = await fetchUnassignedCustomerPaymentsForDiagnostics(admin, row, {
+    appointmentId: !isFallback ? queryId : undefined,
+    fallbackBookingId: isFallback ? queryId : undefined,
+    isFallback,
+  });
 
   const agreementRow = (agreementRes.data as Row | null) ?? null;
   const agreementSigned =
@@ -581,7 +587,7 @@ export default async function TechWorkOrderDetailPage({
     ]);
     
     stampsList = stampsRes.data ?? [];
-    stampsCount = stampsList.filter(s => !s.voided).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+    stampsCount = calculateLoyaltyStatus(stampsList).totalStamps;
 
     creditsList = (creditsRes.data ?? []).map((c: any) => ({
       id: c.id,
@@ -813,6 +819,23 @@ export default async function TechWorkOrderDetailPage({
       at: displayChicago(p.paid_at),
       voided: Boolean(p.voided_at || p.voided === true) || str(p.status).toLowerCase() === 'voided',
       stripe: str(p.stripe_payment_intent_id) ? 'Stripe' : '',
+    })),
+    unassignedPaymentDiagnostics: unassignedPaymentDiagnostics.map((p) => ({
+      id: str(p.id),
+      amount: displayMoney(p.amount_cents),
+      amountCents: num(p.amount_cents),
+      status: displayLabel(p.status),
+      method: displayLabel(p.payment_method || p.payment_kind),
+      source: displayLabel(
+        (p.metadata && typeof p.metadata === 'object' ? (p.metadata as Row).source : '') || p.provider || p.payment_kind,
+        'Payment',
+      ),
+      appointmentId: str(p.appointment_id),
+      fallbackBookingId: str(p.fallback_booking_id),
+      customerId: str(p.customer_id),
+      stripeSession: str(p.stripe_checkout_session_id),
+      stripeIntent: str(p.stripe_payment_intent_id),
+      at: displayChicago(p.paid_at || p.created_at),
     })),
     receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`,
   };

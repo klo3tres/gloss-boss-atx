@@ -11,6 +11,7 @@ import { unarchiveCustomerAction, addManualLoyaltyStampAction, deleteLoyaltyStam
 import { workOrderPath } from '@/lib/work-order-links';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { Mail, Phone, MapPin, User, Award, DollarSign, Calendar } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -197,9 +198,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     .order('created_at', { ascending: false });
 
   const stamps = (stampsData ?? []) as Array<{ id: string; stamp_count: number; reason: string | null; note?: string | null; created_at: string; appointment_id?: string | null; voided?: boolean | null; voided_at?: string | null; voided_by?: string | null; source?: string | null; admin_id?: string | null; technician_id?: string | null }>;
-  const stampsTotal = stamps.filter(s => !s.voided).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
-  const currentPunchCardStamps = stampsTotal % 6;
-  const isRewardReady = stampsTotal > 0 && (stampsTotal % 6 === 0 || stampsTotal % 6 === 5);
+  const loyaltyStatus = calculateLoyaltyStatus(stamps);
+  const stampsTotal = loyaltyStatus.totalStamps;
+  const currentPunchCardStamps = loyaltyStatus.progressStamps;
+  const isRewardReady = loyaltyStatus.rewardReady;
 
   const { data: activeMembership } = await admin
     .from('customer_memberships')
@@ -383,7 +385,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               Current Card Punch: <strong className='text-white'>{currentPunchCardStamps} / 5 stamps</strong>
             </p>
             <p className='font-bold'>
-              {isRewardReady ? '🟢 Reward Ready' : '🔴 Accumulating'}
+              {isRewardReady ? 'Reward Ready' : 'Accumulating'}
             </p>
           </div>
         </section>
@@ -422,7 +424,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               })}
               <div
                 className={`flex h-10 px-3 items-center justify-center rounded-xl border text-[10px] font-black tracking-wider transition duration-200 ${
-                  stampsTotal > 0 && stampsTotal % 5 === 0
+                  isRewardReady
                     ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300 animate-pulse'
                     : 'border-white/10 bg-black/40 text-zinc-600'
                 }`}

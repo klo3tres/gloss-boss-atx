@@ -7,6 +7,7 @@ import {
   loadCustomerSnapshotForAppointment,
   type CustomerApptSnapshotView,
 } from '@/lib/customer-dashboard-snapshot';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 
 
 
@@ -400,10 +401,10 @@ export default async function CustomerDashboardRootPage() {
     if (cust?.id) {
       const [{ count }, { data: stamps }] = await Promise.all([
         adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id),
-        adminDb.from('loyalty_stamps').select('stamp_count').eq('customer_id', cust.id),
+        adminDb.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', cust.id),
       ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
-      loyaltyStampsCount = (stamps ?? []).reduce((sum, s) => sum + (s.stamp_count ?? 1), 0);
+      loyaltyStampsCount = calculateLoyaltyStatus(stamps ?? []).totalStamps;
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
       const creditRes = await adminDb
         .from('customer_credits')

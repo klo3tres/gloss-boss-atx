@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
 
 export type CustomerAppt = {
@@ -235,11 +236,11 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     ? new Date(new Date(lastCompleted.scheduled_start).getTime() + 21 * 24 * 60 * 60 * 1000)
     : null;
 
-  // Loyalty stepper variables. The card has 5 standard punches plus a reward slot.
-  const loyaltyTarget = 5;
-  const loyaltyCycle = loyaltyTarget + 1;
-  const currentStep = Math.min(loyaltyTarget, loyaltyVisits % loyaltyCycle);
-  const isRewardReady = loyaltyVisits > 0 && loyaltyVisits % loyaltyCycle === loyaltyTarget;
+  // Loyalty stepper variables. The card has 5 standard punches plus a 6th reward slot.
+  const loyalty = calculateLoyaltyStatus([{ stamp_count: loyaltyVisits }]);
+  const loyaltyTarget = loyalty.rewardThreshold;
+  const currentStep = loyalty.progressStamps;
+  const isRewardReady = loyalty.rewardReady;
   const loyaltyPercent = Math.round((currentStep / loyaltyTarget) * 100);
   const punchesVisual = Array.from({ length: loyaltyTarget }, (_, i) => i < currentStep || isRewardReady);
 
@@ -544,7 +545,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             <p className="text-xs text-zinc-500 text-center leading-relaxed">
               {isRewardReady
                 ? 'Your punch reward is ready. Book your next visit and ask the team to redeem it.'
-                : `Complete ${Math.max(0, loyaltyTarget - currentStep)} more service${loyaltyTarget - currentStep === 1 ? '' : 's'} to unlock your next luxury detailing reward.`}
+                : `Complete ${loyalty.stampsUntilReward} more service${loyalty.stampsUntilReward === 1 ? '' : 's'} to unlock your next luxury detailing reward.`}
             </p>
             <Link
               href="/book"

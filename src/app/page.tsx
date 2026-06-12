@@ -610,9 +610,13 @@ export default function HomePage() {
                 <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Operating hours</p>
               </div>
               <ul className='space-y-3 text-xs text-zinc-300'>
-                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Friday</span> <span>5:00 PM — 9:00 PM</span></li>
-                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Saturday</span> <span>7:30 AM — 7:00 PM</span></li>
-                <li className="flex justify-between"><span className='font-bold text-white'>Sunday</span> <span>7:30 AM — 7:00 PM</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Monday</span> <span>5:00 PM - 7:30 PM</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Tuesday</span> <span>5:00 PM - 7:30 PM</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Wednesday</span> <span>Closed</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Thursday</span> <span>5:00 PM - 7:30 PM</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Friday</span> <span>5:00 PM - 7:30 PM</span></li>
+                <li className="flex justify-between border-b border-white/5 pb-1"><span className='font-bold text-white'>Saturday</span> <span>7:30 AM - 7:00 PM</span></li>
+                <li className="flex justify-between"><span className='font-bold text-white'>Sunday</span> <span>7:30 AM - 7:00 PM</span></li>
               </ul>
             </article>
             <article className='rounded-3xl border border-gold/15 bg-zinc-950 p-6 space-y-4'>

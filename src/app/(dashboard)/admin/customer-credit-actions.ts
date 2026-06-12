@@ -7,12 +7,73 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { sendCustomerSms } from '@/lib/sms-send';
-import { sendResendHtml } from '@/lib/email-send';
+import { businessNotifyDestination, resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { resolveOrderLedger } from '@/lib/order-ledger';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
+}
+
+async function notifyOwnerCreditEvent(
+  db: any,
+  params: {
+    kind: 'credit_issued' | 'reward_redeemed' | 'credit_redeemed';
+    subject: string;
+    headline: string;
+    customerName?: string | null;
+    customerEmail?: string | null;
+    amountCents: number;
+    creditId?: string | null;
+    workOrderId?: string | null;
+    reason?: string | null;
+  },
+) {
+  const to = businessNotifyDestination();
+  const amount = (params.amountCents / 100).toFixed(2);
+  const payload = {
+    to,
+    customerName: params.customerName ?? 'Customer',
+    customerEmail: params.customerEmail ?? null,
+    amount_cents: params.amountCents,
+    credit_id: params.creditId ?? null,
+    work_order_id: params.workOrderId ?? null,
+    reason: params.reason ?? null,
+  };
+
+  const record = async (status: string, extra: Record<string, unknown> = {}) => {
+    try {
+      await db.from('notification_outbox').insert({
+        kind: params.kind,
+        channel: 'email',
+        status,
+        provider: 'resend',
+        template_key: params.kind,
+        payload: { ...payload, ...extra },
+      });
+    } catch (e) {
+      console.warn('[owner-credit-notify] outbox', e);
+    }
+  };
+
+  if (!resendConfigured()) {
+    await record('skipped', { skipped_reason: 'resend_not_configured' });
+    return;
+  }
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#050505;color:#fff;padding:24px;border:1px solid #d4af37;border-radius:14px">
+      <p style="margin:0 0 8px;color:#d4af37;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.16em">Gloss Boss ATX owner alert</p>
+      <h2 style="margin:0 0 14px;font-size:24px">${params.headline}</h2>
+      <p style="margin:0 0 10px"><strong>Customer:</strong> ${payload.customerName}</p>
+      ${payload.customerEmail ? `<p style="margin:0 0 10px"><strong>Email:</strong> ${payload.customerEmail}</p>` : ''}
+      <p style="margin:0 0 10px"><strong>Amount:</strong> $${amount}</p>
+      ${params.reason ? `<p style="margin:0 0 10px"><strong>Reason:</strong> ${params.reason}</p>` : ''}
+      ${params.workOrderId ? `<p style="margin:0;color:#aaa"><strong>Work order:</strong> ${params.workOrderId}</p>` : ''}
+    </div>
+  `;
+  const sent = await sendResendHtml({ to, subject: params.subject, html });
+  await record(sent.ok ? 'sent' : 'failed', sent.ok ? { provider_message_id: sent.emailId ?? null } : { error_message: sent.error ?? 'send failed' });
 }
 
 async function requireAdminGate() {
@@ -94,9 +155,9 @@ export async function issueCreditAction(formData: FormData): Promise<ActionResul
 
   // Fetch customer details to dispatch notifications
   const { data: customer } = await db.from('customers').select('*').eq('id', customerId).maybeSingle();
+  const formattedAmount = amountDollars.toFixed(2);
   if (customer) {
     const name = String(customer.full_name || 'Valued Client');
-    const formattedAmount = amountDollars.toFixed(2);
 
     // 1. Send SMS if opted in
     if (customer.phone && (customer.sms_consent === true || customer.sms_status === 'opted_in')) {
@@ -140,6 +201,18 @@ export async function issueCreditAction(formData: FormData): Promise<ActionResul
       body: `Issued $${formattedAmount} credit (${type}). Reason: ${reason}.`,
     });
   }
+
+  await notifyOwnerCreditEvent(db, {
+    kind: 'credit_issued',
+    subject: `Gloss Boss ATX — Credit issued: $${formattedAmount}`,
+    headline: 'Customer credit issued',
+    customerName: customer ? (customer.full_name || customer.name || customer.email) : 'Customer',
+    customerEmail: customer?.email ?? null,
+    amountCents,
+    creditId: inserted.id,
+    workOrderId: linkedWorkOrderId,
+    reason,
+  });
 
   revalidatePath('/admin/customers');
   revalidatePath(`/admin/customers/${customerId}`);
@@ -188,6 +261,49 @@ export async function voidCreditAction(formData: FormData): Promise<ActionResult
   revalidatePath('/admin/reports');
   revalidatePath('/admin');
   return actionOk('Credit voided successfully.');
+}
+
+export async function clearTestCreditsAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requireAdminGate();
+  if (!gate.ok) return actionErr('Not authorized.');
+
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const customerId = str(formData.get('customerId'));
+  if (!customerId) return actionErr('Missing customer ID.');
+
+  const { data: credits, error: loadErr } = await db
+    .from('customer_credits')
+    .select('*')
+    .eq('customer_id', customerId)
+    .in('status', ['active', 'partially_used']);
+  if (loadErr) return actionErr(loadErr.message);
+
+  const testCredits = ((credits ?? []) as Array<Record<string, unknown>>).filter((c) => {
+    const haystack = `${str(c.reason)} ${str(c.type)} ${str(c.source)}`.toLowerCase();
+    return haystack.includes('test') || haystack.includes('qa') || haystack.includes('demo');
+  });
+  if (testCredits.length === 0) return actionOk('No active test credits found for this customer.');
+
+  const ids = testCredits.map((c) => str(c.id)).filter(Boolean);
+  const { error } = await db
+    .from('customer_credits')
+    .update({ status: 'voided', remaining_cents: 0, reason: 'Voided test credit cleanup' })
+    .in('id', ids);
+  if (error) return actionErr(error.message);
+
+  await db.from('customer_notes').insert({
+    customer_id: customerId,
+    body: `Cleared ${ids.length} active test/QA/demo credit(s).`,
+  });
+
+  revalidatePath('/admin/customers');
+  revalidatePath(`/admin/customers/${customerId}`);
+  revalidatePath('/admin/memberships');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+  revalidatePath('/admin');
+  return actionOk(`Cleared ${ids.length} test credit(s).`);
 }
 
 export async function applyCreditToWorkOrderAction(formData: FormData): Promise<ActionResult> {
@@ -340,6 +456,19 @@ export async function applyCreditToWorkOrderAction(formData: FormData): Promise<
   await db.from('customer_notes').insert({
     customer_id: customerId,
     body: `Redeemed $${(centsToApply / 100).toFixed(2)} credit from credit ID ${creditId.slice(0, 8)}… to work order ${workOrderId.slice(0, 8)}….`,
+  });
+
+  const { data: ownerCustomer } = await db.from('customers').select('full_name, name, email').eq('id', customerId).maybeSingle();
+  await notifyOwnerCreditEvent(db, {
+    kind: 'credit_redeemed',
+    subject: `Gloss Boss ATX — Credit redeemed: $${(centsToApply / 100).toFixed(2)}`,
+    headline: 'Customer credit redeemed',
+    customerName: ownerCustomer ? (ownerCustomer.full_name || ownerCustomer.name || ownerCustomer.email) : 'Customer',
+    customerEmail: ownerCustomer?.email ?? null,
+    amountCents: centsToApply,
+    creditId,
+    workOrderId,
+    reason: `Applied customer credit to ${source} work order`,
   });
 
   revalidatePath('/admin/customers');

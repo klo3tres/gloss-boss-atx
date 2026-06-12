@@ -110,6 +110,20 @@ export type WorkOrderConsoleData = {
     voided?: boolean;
     stripe?: string;
   }>;
+  unassignedPaymentDiagnostics?: Array<{
+    id: string;
+    amount: string;
+    amountCents?: number;
+    status: string;
+    method: string;
+    source: string;
+    appointmentId: string;
+    fallbackBookingId: string;
+    customerId: string;
+    stripeSession: string;
+    stripeIntent: string;
+    at: string;
+  }>;
   receiptPdfHref?: string;
   receiptBreakdownLines?: ReceiptBreakdownLine[];
   ledgerResolveError?: string | null;
@@ -911,6 +925,7 @@ export function WorkOrderConsoleClient({
                 status: p.status,
                 stripeSession: p.stripe,
               }))}
+              unassignedPaymentDiagnostics={data.unassignedPaymentDiagnostics ?? []}
               customerId={data.customerId}
               credits={data.credits}
               redemptions={data.redemptions}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Gift, Award } from 'lucide-react';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 
 interface LoyaltyCard3DProps {
   activeCardDesign?: {
@@ -64,8 +65,9 @@ export function LoyaltyCard3D({
   };
 
   const currentStamps = forceStamps !== undefined ? forceStamps : stampsCount;
-  const currentStep = currentStamps % (loyaltyTarget + 1);
-  const isRewardReady = forceRewardReady || (currentStamps > 0 && currentStamps % (loyaltyTarget + 1) === loyaltyTarget);
+  const loyalty = calculateLoyaltyStatus([{ stamp_count: currentStamps }], { rewardThreshold: loyaltyTarget });
+  const currentStep = loyalty.progressStamps;
+  const isRewardReady = forceRewardReady || loyalty.rewardReady;
 
   // We have 6 slots total: 5 standard stamps + 1 free reward slot.
   const slots = Array.from({ length: loyaltyTarget + 1 }, (_, i) => {
@@ -255,7 +257,7 @@ export function LoyaltyCard3D({
             <p className="text-[8px] font-medium text-zinc-400 bg-black/75 px-2 py-0.5 rounded border border-white/5">
               {isRewardReady
                 ? '🎉 DETAILED REWARD ACTIVE!'
-                : `${(loyaltyTarget + 1) - (currentStamps % (loyaltyTarget + 1))} VISITS UNTIL REWARD`}
+                : `${loyalty.stampsUntilReward} VISITS UNTIL REWARD`}
             </p>
             <p className="text-[8px] font-black uppercase tracking-widest text-gold bg-black/75 px-2 py-0.5 rounded border border-gold/25">
               {isRewardReady ? 'REDEEM NOW' : 'GLOSS BOSS'}

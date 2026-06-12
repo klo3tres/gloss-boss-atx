@@ -38,7 +38,7 @@ export type BookingAvailabilityRules = {
 
 
 
-const DEFAULT_FRIDAY: DayTimeWindow = { startHour: 17, startMinute: 0, endHour: 21, endMinute: 0 };
+const DEFAULT_FRIDAY: DayTimeWindow = { startHour: 17, startMinute: 0, endHour: 19, endMinute: 30 };
 
 const DEFAULT_WEEKEND: DayTimeWindow = { startHour: 7, startMinute: 30, endHour: 19, endMinute: 0 };
 

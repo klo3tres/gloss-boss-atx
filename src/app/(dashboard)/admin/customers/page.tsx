@@ -7,6 +7,7 @@ import { createCustomerAction, deleteCustomerAction, archiveCustomerAction } fro
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { backfillAllAppointmentVehicles } from '@/lib/crm-vehicle-sync';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { User, Mail, Phone, Calendar, Award, Star } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,8 @@ type CustomerRow = {
   }>;
   loyalty_stamps?: Array<{
     stamp_count: number;
+    voided?: boolean | null;
+    voided_at?: string | null;
   }>;
 };
 
@@ -68,7 +71,7 @@ export default async function AdminCustomersPage() {
             .limit(100),
           client
             .from('loyalty_stamps')
-            .select('customer_id, stamp_count')
+            .select('customer_id, stamp_count, voided, voided_at')
             .in('customer_id', customerIds),
         ]);
 
@@ -90,9 +93,9 @@ export default async function AdminCustomersPage() {
           membershipsByCustomer.set(membership.customer_id, list);
         }
         const stampsByCustomer = new Map<string, CustomerRow['loyalty_stamps']>();
-        for (const stamp of (stampsRes.data ?? []) as Array<{ customer_id: string; stamp_count: number | null }>) {
+        for (const stamp of (stampsRes.data ?? []) as Array<{ customer_id: string; stamp_count: number | null; voided?: boolean | null; voided_at?: string | null }>) {
           const list = stampsByCustomer.get(stamp.customer_id) ?? [];
-          list.push({ stamp_count: stamp.stamp_count ?? 1 });
+          list.push({ stamp_count: stamp.stamp_count ?? 1, voided: stamp.voided ?? null, voided_at: stamp.voided_at ?? null });
           stampsByCustomer.set(stamp.customer_id, list);
         }
         rows = rows.map((row) => ({
@@ -166,8 +169,9 @@ export default async function AdminCustomersPage() {
             const tierName = activeMembership?.membership_plans?.name || null;
 
             // Resolve stamp count
-            const stampsCount = c.loyalty_stamps?.reduce((sum, s) => sum + (s.stamp_count ?? 1), 0) ?? 0;
-            const currentPunchCardStamps = stampsCount % 5;
+            const loyaltyStatus = calculateLoyaltyStatus(c.loyalty_stamps ?? []);
+            const stampsCount = loyaltyStatus.totalStamps;
+            const currentPunchCardStamps = loyaltyStatus.progressStamps;
 
             return (
               <div 
@@ -211,7 +215,9 @@ export default async function AdminCustomersPage() {
                     <div className='flex items-center gap-2 justify-between'>
                       <div className='flex items-center gap-2'>
                         <Star className='h-3.5 w-3.5 text-gold fill-gold/10' />
-                        <span>Stamps count: <strong className='text-white'>{stampsCount}</strong> ({currentPunchCardStamps}/5 active)</span>
+                        <span>
+                          Stamps count: <strong className='text-white'>{stampsCount}</strong> ({loyaltyStatus.rewardReady ? 'reward ready' : `${currentPunchCardStamps}/5 active`})
+                        </span>
                       </div>
                     </div>
                     <div className='flex items-center gap-2'>

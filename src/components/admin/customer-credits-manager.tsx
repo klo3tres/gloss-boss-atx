@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { CreditCard, PlusCircle, Trash2, Calendar, Award, CheckCircle, Clock } from 'lucide-react';
-import { issueCreditAction, voidCreditAction } from '@/app/(dashboard)/admin/customer-credit-actions';
+import { clearTestCreditsAction, issueCreditAction, voidCreditAction } from '@/app/(dashboard)/admin/customer-credit-actions';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 import { displayMoney } from '@/lib/display-format';
 
@@ -83,6 +83,19 @@ export function CustomerCreditsManager({ customerId, credits, redemptions, admin
       } else {
         setSuccessMsg(res.message ?? 'Credit voided.');
       }
+    });
+  };
+
+  const handleClearTestCredits = async () => {
+    if (!confirm('Clear active credits with test, QA, or demo labels for this customer?')) return;
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    const formData = new FormData();
+    formData.set('customerId', customerId);
+    startTransition(async () => {
+      const res = await clearTestCreditsAction(formData);
+      if (res.error) setErrorMsg(res.error);
+      else setSuccessMsg(res.message ?? 'Test credits cleared.');
     });
   };
 
@@ -185,8 +198,22 @@ export function CustomerCreditsManager({ customerId, credits, redemptions, admin
           >
             <PlusCircle className="h-4 w-4" /> Issue Customer Credit
           </button>
+          <button
+            type="button"
+            onClick={handleClearTestCredits}
+            disabled={isPending}
+            className="mt-3 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2 text-[10px] font-black uppercase text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Clear Test Credits
+          </button>
         </div>
       </div>
+
+      {(errorMsg || successMsg) && (
+        <div className={`rounded-xl border px-4 py-3 text-xs font-bold ${errorMsg ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>
+          {errorMsg || successMsg}
+        </div>
+      )}
 
       {/* Slide-out Form / Modal */}
       {isOpen && (

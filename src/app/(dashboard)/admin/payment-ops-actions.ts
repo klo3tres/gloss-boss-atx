@@ -178,8 +178,88 @@ export async function voidExtrasAndRebuildActionState(_prev: ActionResult | null
   return actionOk(`Voided ${toVoid.length} extra payment(s) and rebuilt receipt.`);
 }
 
+/** Detach suspicious payment rows from a work order without deleting payment history. */
+export async function detachUnrelatedPaymentsFromWorkOrderActionState(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireStaff();
+  if (!gate) return actionErr('Not authorized.');
+
+  const appointmentId = str(formData.get('appointmentId'));
+  const fallbackBookingId = str(formData.get('fallbackBookingId'));
+  if (!appointmentId && !fallbackBookingId) return actionErr('Missing work order.');
+
+  const table = fallbackBookingId ? 'booking_fallbacks' : 'appointments';
+  const jobId = fallbackBookingId || appointmentId;
+  const { data: job } = await gate.admin.from(table).select('*').eq('id', jobId).maybeSingle();
+  if (!job) return actionErr('Work order not found.');
+  const jobRow = job as Record<string, unknown>;
+  const customerId = str(jobRow.customer_id);
+  const sessionId = str(jobRow.stripe_checkout_session_id || jobRow.final_payment_checkout_session_id);
+  const intentId = str(jobRow.stripe_payment_intent_id);
+
+  let q = gate.admin.from('payments').select('*').order('paid_at', { ascending: false });
+  q = appointmentId ? q.eq('appointment_id', appointmentId) : q.eq('fallback_booking_id', fallbackBookingId);
+  const { data: payments, error } = await q;
+  if (error) return actionErr(error.message);
+
+  const suspicious = ((payments ?? []) as Record<string, unknown>[]).filter((p) => {
+    const pCustomer = str(p.customer_id);
+    const pSession = str(p.stripe_checkout_session_id);
+    const pIntent = str(p.stripe_payment_intent_id);
+    const metadata = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : {};
+    const metaAppointment = str(metadata.appointment_id || metadata.appointmentId || metadata.work_order_id || metadata.workOrderId);
+    const metaFallback = str(metadata.fallback_booking_id || metadata.fallbackBookingId);
+    const wrongCustomer = Boolean(customerId && pCustomer && pCustomer !== customerId);
+    const wrongAppointment = Boolean(appointmentId && metaAppointment && metaAppointment !== appointmentId);
+    const wrongFallback = Boolean(fallbackBookingId && metaFallback && metaFallback !== fallbackBookingId);
+    const wrongStripe =
+      Boolean((pSession || pIntent) && (sessionId || intentId)) &&
+      ![sessionId, intentId].filter(Boolean).includes(pSession) &&
+      ![sessionId, intentId].filter(Boolean).includes(pIntent);
+    return wrongCustomer || wrongAppointment || wrongFallback || wrongStripe;
+  });
+
+  if (suspicious.length === 0) {
+    return actionOk('No suspicious attached payments found. Job totals now use exact work-order scoped payments only.');
+  }
+
+  const ids = suspicious.map((p) => str(p.id)).filter(Boolean);
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const patch = appointmentId
+      ? { appointment_id: null, metadata: { detached_from_appointment_id: appointmentId, detached_at: now, detached_reason: 'admin_unrelated_payment_repair' }, updated_at: now }
+      : { fallback_booking_id: null, metadata: { detached_from_fallback_booking_id: fallbackBookingId, detached_at: now, detached_reason: 'admin_unrelated_payment_repair' }, updated_at: now };
+    let { error: updateErr } = await gate.admin.from('payments').update(patch).eq('id', id);
+    if (updateErr && /metadata|updated_at|column|schema cache|Could not find/i.test(updateErr.message)) {
+      const leanPatch = appointmentId ? { appointment_id: null } : { fallback_booking_id: null };
+      ({ error: updateErr } = await gate.admin.from('payments').update(leanPatch).eq('id', id));
+    }
+    if (updateErr) return actionErr(`Could not detach payment ${id}: ${updateErr.message}`);
+  }
+
+  const rebuildFd = new FormData();
+  if (appointmentId) rebuildFd.set('appointmentId', appointmentId);
+  if (fallbackBookingId) rebuildFd.set('fallbackBookingId', fallbackBookingId);
+  await generateWorkOrderReceiptActionState(null, rebuildFd);
+
+  revalidatePath(`/tech/work-orders/${jobId}`);
+  revalidatePath(`/admin/work-orders/${jobId}`);
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+  revalidatePath('/admin/payments');
+  const workOrderPath = str(formData.get('workOrderPath'));
+  if (workOrderPath) revalidatePath(workOrderPath);
+  return actionOk(`Detached ${ids.length} suspicious payment row(s). They remain in payment history as unassigned until manually linked.`);
+}
+
 export async function voidPaymentAction(formData: FormData) {
   return voidPaymentActionState(null, formData);
+}
+
+export async function detachUnrelatedPaymentsFromWorkOrderAction(formData: FormData) {
+  return detachUnrelatedPaymentsFromWorkOrderActionState(null, formData);
 }
 
 export async function recordManualPaymentAction(formData: FormData) {
