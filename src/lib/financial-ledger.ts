@@ -7,8 +7,16 @@ import {
   type PayRow,
   type RevenueDiagnostics,
 } from '@/lib/revenue-metrics';
-import { classifyPaymentChannel } from '@/lib/payment-classification';
-import { classifyOpenBalance, isActionableOpenBalance, isStaleOpenBalance, type OpenBalanceAppt } from '@/lib/open-balance-filters';
+import { classifyPaymentChannel, isPaymentVoided, isRealStripePayment, shouldExcludeFromCashRevenue } from '@/lib/payment-classification';
+import {
+  classifyOpenBalance,
+  classifyPendingDeposit,
+  isActionableOpenBalance,
+  isActionablePendingDeposit,
+  isStaleOpenBalance,
+  isStalePendingDeposit,
+  type OpenBalanceAppt,
+} from '@/lib/open-balance-filters';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 export type FinancialSummary = {
@@ -60,6 +68,11 @@ export type FinancialSnapshot = {
   pendingDeposits: FinancialDetailRow[];
   staleOpenBalances: FinancialDetailRow[];
   staleOpenBalancesCents: number;
+  stalePendingDeposits: FinancialDetailRow[];
+  stalePendingDepositsCents: number;
+  creditsRedeemedCents: number;
+  discountsCents: number;
+  grossServiceValueCents: number;
   diagnostics: RevenueDiagnostics & {
     ledgerRowsLoaded: number;
     expenseRowsLoaded: number;
@@ -144,7 +157,7 @@ export async function getFinancialSnapshot(
   const [apptMetaRes, payments, ledgerRows, expenseRows, businessExpenseRows, mileageRows, receiptsRes, techsRes] = await Promise.all([
     db
       .from('appointments')
-      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, service_slug, assigned_technician_id, vehicle_class')
+      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, created_at, service_slug, assigned_technician_id, vehicle_class, stripe_checkout_session_id, fallback_booking_id, archived, archived_at, deleted_at')
       .limit(10000),
     fetchPaymentsSince(db, fromIso, toIso),
     safeSelect(db, 'financial_ledger', '*', 'occurred_at', fromIso, toIso),
@@ -163,6 +176,40 @@ export async function getFinancialSnapshot(
 
   const summary = summarizePayments(payments, { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
   const diagnostics = buildRevenueDiagnostics(payments, { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
+
+  const cashByAppt = new Map<string, number>();
+  const stripeByAppt = new Set<string>();
+  for (const p of payments) {
+    const aid = str(p.appointment_id);
+    if (!aid) continue;
+    if (isPaymentVoided(p) || !isPaymentSucceededGuard(p)) continue;
+    if (isRealStripePayment(p as PayRow)) stripeByAppt.add(aid);
+    if (shouldExcludeFromCashRevenue(p)) continue;
+    const amt = Math.max(0, cents(p.amount_cents) - cents(p.refunded_amount_cents));
+    if (amt <= 0) continue;
+    cashByAppt.set(aid, (cashByAppt.get(aid) ?? 0) + amt);
+  }
+
+  function isPaymentSucceededGuard(p: PayRow) {
+    const st = str(p.status).toLowerCase();
+    return st === 'succeeded' || st === 'paid';
+  }
+
+  const openBalanceCtx = (row: Record<string, unknown>) => {
+    const id = str(row.id);
+    return {
+      cashCollectedCents: cashByAppt.get(id) ?? 0,
+      hasRealStripePayment: stripeByAppt.has(id),
+    };
+  };
+
+  const pendingDepositCtx = (row: Record<string, unknown>) => {
+    const id = str(row.id);
+    return {
+      hasRealStripePayment: stripeByAppt.has(id),
+      paymentLinkValid: Boolean(str(row.stripe_checkout_session_id)),
+    };
+  };
 
   let membershipRevenueCents = 0;
   const membershipChannelCents = {
@@ -246,15 +293,20 @@ export async function getFinancialSnapshot(
   let openBalancesCents = 0;
   let staleOpenBalancesCents = 0;
   let pendingDepositsCents = 0;
+  let stalePendingDepositsCents = 0;
+  let grossServiceValueCents = 0;
   const openBalances: FinancialDetailRow[] = [];
   const staleOpenBalances: FinancialDetailRow[] = [];
   const pendingDeposits: FinancialDetailRow[] = [];
+  const stalePendingDeposits: FinancialDetailRow[] = [];
 
   for (const row of apptRows) {
     const status = str(row.status).toLowerCase();
     const paymentStatus = str(row.payment_status).toLowerCase();
     const balance = Math.max(0, cents(row.balance_due_cents));
     const deposit = Math.max(0, cents(row.deposit_amount_cents));
+    const obCtx = openBalanceCtx(row);
+    const pdCtx = pendingDepositCtx(row);
     const detail: FinancialDetailRow = {
       id: str(row.id),
       label: str(row.guest_name) || 'Customer',
@@ -264,18 +316,17 @@ export async function getFinancialSnapshot(
       customer: str(row.guest_name) || null,
       href: `/admin/work-orders/${str(row.id)}`,
     };
-    if (balance > 0 && !['cancelled', 'deleted', 'archived'].includes(status)) {
-      if (isActionableOpenBalance(row)) {
+    if (balance > 0 && !['cancelled', 'canceled', 'deleted', 'archived', 'voided'].includes(status)) {
+      if (isActionableOpenBalance(row as OpenBalanceAppt, obCtx)) {
         openBalancesCents += balance;
         openBalances.push(detail);
-      } else if (isStaleOpenBalance(row)) {
+      } else if (isStaleOpenBalance(row as OpenBalanceAppt, obCtx)) {
         staleOpenBalancesCents += balance;
-        staleOpenBalances.push({ ...detail, category: classifyOpenBalance(row as OpenBalanceAppt).reason });
+        staleOpenBalances.push({ ...detail, category: classifyOpenBalance(row as OpenBalanceAppt, obCtx).reason });
       }
     }
-    if ((paymentStatus === 'awaiting_deposit' || status === 'pending') && deposit > 0) {
-      pendingDepositsCents += deposit;
-      pendingDeposits.push({
+    if (deposit > 0 && (paymentStatus === 'awaiting_deposit' || status === 'pending')) {
+      const depositDetail: FinancialDetailRow = {
         id: str(row.id),
         label: str(row.guest_name) || 'Customer',
         amountCents: deposit,
@@ -283,12 +334,23 @@ export async function getFinancialSnapshot(
         source: 'appointments',
         customer: str(row.guest_name) || null,
         href: `/admin/work-orders/${str(row.id)}`,
-      });
+      };
+      if (isActionablePendingDeposit(row as OpenBalanceAppt, pdCtx)) {
+        pendingDepositsCents += deposit;
+        pendingDeposits.push(depositDetail);
+      } else if (isStalePendingDeposit(row as OpenBalanceAppt, pdCtx)) {
+        stalePendingDepositsCents += deposit;
+        stalePendingDeposits.push({
+          ...depositDetail,
+          category: classifyPendingDeposit(row as OpenBalanceAppt, pdCtx).reason,
+        });
+      }
     }
     const completedAt = str(row.job_completed_at) || str(row.updated_at) || str(row.scheduled_start);
     if (status !== 'completed' || !dateInRange(completedAt, fromIso, toIso)) continue;
     completedJobs += 1;
     const amount = cents(row.base_price_cents);
+    grossServiceValueCents += amount;
     const service = str(row.service_slug) || 'uncategorized';
     addBreakdown(serviceMap, service, { label: service.replace(/-/g, ' '), count: 0, revenueCents: 0 }, amount);
     const techId = str(row.assigned_technician_id);
@@ -310,7 +372,12 @@ export async function getFinancialSnapshot(
   const electronicSourceCents = Math.max(0, summary.zelleCents + summary.venmoCents + summary.cashAppCents - membershipChannelCents.zelleGroup);
   const otherSourceCents = Math.max(
     0,
-    summary.otherCents + summary.applePayCents + summary.checkCents + summary.manualCardCents + summary.compCents - membershipChannelCents.other,
+    summary.otherCents +
+      summary.applePayCents +
+      summary.checkCents +
+      summary.manualCardCents +
+      summary.bankTransferCents -
+      membershipChannelCents.other,
   );
 
   return {
@@ -320,6 +387,9 @@ export async function getFinancialSnapshot(
     zelleRevenueCents: electronicSourceCents,
     otherRevenueCents: otherSourceCents,
     membershipRevenueCents,
+    creditsRedeemedCents: summary.creditCents,
+    discountsCents: summary.compCents,
+    grossServiceValueCents,
     refundsCents,
     stripeFeesCents,
     expensesCents,
@@ -341,6 +411,8 @@ export async function getFinancialSnapshot(
     pendingDeposits: pendingDeposits.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
     staleOpenBalances: staleOpenBalances.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
     staleOpenBalancesCents,
+    stalePendingDeposits: stalePendingDeposits.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
+    stalePendingDepositsCents,
     diagnostics: {
       ...diagnostics,
       ledgerRowsLoaded: ledgerRows.length,

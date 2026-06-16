@@ -8,7 +8,7 @@ import {
 } from '@/lib/revenue-metrics';
 import { displayMoney } from '@/lib/display-format';
 import { getFinancialSnapshot, type FinancialDetailRow } from '@/lib/financial-ledger';
-import { isActionableOpenBalance } from '@/lib/open-balance-filters';
+import { isActionableOpenBalance, isActionablePendingDeposit } from '@/lib/open-balance-filters';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { workOrderPath } from '@/lib/work-order-links';
 
@@ -302,9 +302,11 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const dispatchUnassignedToday = todayJobs.filter((j) => j.techName === 'Unassigned').length;
   const dispatchCompletedToday = rows.filter((a) => isTodayChicago(String(a.scheduled_start)) && a.status === 'completed').length;
   
-  const pendingDepositsCents = rows
-    .filter((a) => a.payment_status === 'awaiting_deposit' || a.status === 'pending')
-    .reduce((sum, a) => sum + (a.deposit_amount_cents ?? 0), 0);
+  const pendingDepositsCents =
+    financial?.pendingDepositsCents ??
+    rows
+      .filter((a) => isActionablePendingDeposit(a as Parameters<typeof isActionablePendingDeposit>[0]))
+      .reduce((sum, a) => sum + (a.deposit_amount_cents ?? 0), 0);
   const pendingDeposits = displayMoney(pendingDepositsCents);
 
   const totalApptsCount = rows.length;
@@ -542,7 +544,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     revenueToday: displayMoney(today.grossCents),
     revenueWeek: displayMoney(week.grossCents),
     revenueMonth: displayMoney(dashboardMonth.grossCents),
-    balanceDue: displayMoney(balanceDueCents),
+    balanceDue: displayMoney(financial?.openBalancesCents ?? balanceDueCents),
     jobsToday: todayJobs.length,
     pipelineCount,
     activeTechCount,

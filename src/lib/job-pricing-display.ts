@@ -3,6 +3,7 @@ import type { Row } from '@/lib/work-order-resolve';
 import { vehiclesFromRow } from '@/lib/work-order-resolve';
 import { findDepositPayment } from '@/lib/payments-resolve';
 import {
+  classifyPaymentChannel,
   isManualFieldPayment,
   isPaymentSucceeded,
   isPaymentVoided,
@@ -180,18 +181,20 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   let creditPaidCents = 0;
   let totalPaidCents = 0;
 
-  const isCredit = (p: Row) => {
-    const method = str(p.payment_method ?? p.payment_kind).toLowerCase();
-    return method.includes('credit');
+  const isNonCash = (p: Row) => {
+    const channel = classifyPaymentChannel(str(p.payment_method ?? p.payment_kind), str(p.payment_kind), p);
+    return channel === 'credit' || channel === 'comp';
   };
 
   for (const p of succeeded) {
     const pid = str(p.id);
     if (pid && seenPayIds.has(pid)) continue;
+    const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
+    if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id || p.exclude_from_revenue === true) continue;
     if (pid) seenPayIds.add(pid);
     const amt = num(p.amount_cents);
     totalPaidCents += amt;
-    if (isCredit(p)) creditPaidCents += amt;
+    if (isNonCash(p)) creditPaidCents += amt;
     else if (isCash(p)) cashPaidCents += amt;
     else if (isZelle(p)) zellePaidCents += amt;
     else if (isManual(p)) manualPaidCents += amt;

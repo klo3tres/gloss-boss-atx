@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { classifyPaymentChannel, isPaymentSucceeded, isPaymentVoided } from '@/lib/payment-classification';
+import { classifyPaymentChannel, isCashRevenueChannel, isPaymentSucceeded, isPaymentVoided, shouldExcludeFromCashRevenue } from '@/lib/payment-classification';
+
+export { shouldExcludeFromCashRevenue } from '@/lib/payment-classification';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 export type PayRow = {
@@ -44,6 +46,7 @@ function revenueIdentityKey(p: PayRow): string {
 }
 
 export type RevenueSummary = {
+  /** Real cash collected — credits, comps, and discounts are excluded. */
   grossCents: number;
   paymentCount: number;
   stripeCents: number;
@@ -54,6 +57,7 @@ export type RevenueSummary = {
   applePayCents: number;
   checkCents: number;
   manualCardCents: number;
+  bankTransferCents: number;
   compCents: number;
   creditCents: number;
   otherCents: number;
@@ -109,6 +113,18 @@ export function isTestPaymentRow(
 }
 
 function addChannel(summary: RevenueSummary, channel: ReturnType<typeof classifyPaymentChannel>, amt: number) {
+  if (channel === 'comp') {
+    summary.compCents += amt;
+    return;
+  }
+  if (channel === 'credit') {
+    summary.creditCents += amt;
+    return;
+  }
+  if (!isCashRevenueChannel(channel)) {
+    summary.otherCents += amt;
+    return;
+  }
   summary.grossCents += amt;
   summary.paymentCount += 1;
   if (channel === 'stripe') summary.stripeCents += amt;
@@ -119,8 +135,7 @@ function addChannel(summary: RevenueSummary, channel: ReturnType<typeof classify
   else if (channel === 'apple_pay') summary.applePayCents += amt;
   else if (channel === 'check') summary.checkCents += amt;
   else if (channel === 'manual_card') summary.manualCardCents += amt;
-  else if (channel === 'comp') summary.compCents += amt;
-  else if (channel === 'credit') summary.creditCents += amt;
+  else if (channel === 'bank_transfer') summary.bankTransferCents += amt;
   else summary.otherCents += amt;
 }
 
@@ -144,6 +159,7 @@ export function summarizePayments(
     applePayCents: 0,
     checkCents: 0,
     manualCardCents: 0,
+    bankTransferCents: 0,
     compCents: 0,
     creditCents: 0,
     otherCents: 0,
@@ -161,10 +177,17 @@ export function summarizePayments(
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
+
+    const channel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p as PayRow);
+    if (channel === 'credit' || channel === 'comp') {
+      addChannel(summary, channel, amt);
+      continue;
+    }
+    if (shouldExcludeFromCashRevenue(p)) continue;
+
     const key = revenueIdentityKey(p);
     if (key && seenRevenueKeys.has(key)) continue;
     if (key) seenRevenueKeys.add(key);
-    const channel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p as PayRow);
     addChannel(summary, channel, amt);
   }
   return summary;
@@ -257,6 +280,19 @@ export function buildRevenueDiagnostics(
       continue;
     }
 
+    const channel = classifyPaymentChannel(method, str(p.payment_kind), p);
+    if (channel === 'credit' || channel === 'comp') {
+      exclusions.push({ id, amountCents: amt, method, reason: `Non-cash ${channel} — not counted in cash revenue` });
+      pushAudit(p, false, `Non-cash ${channel} — not counted in cash revenue`);
+      byMethod[channel] = (byMethod[channel] ?? 0) + amt;
+      continue;
+    }
+    if (shouldExcludeFromCashRevenue(p)) {
+      exclusions.push({ id, amountCents: amt, method, reason: 'Excluded from cash revenue guard' });
+      pushAudit(p, false, 'Excluded from cash revenue guard');
+      continue;
+    }
+
     const key = revenueIdentityKey(p);
     if (key) {
       const group = duplicateMap.get(key) ?? [];
@@ -272,8 +308,7 @@ export function buildRevenueDiagnostics(
 
     rowsCounted += 1;
     grossCents += amt;
-    pushAudit(p, true, 'Counted in revenue');
-    const channel = classifyPaymentChannel(method, str(p.payment_kind), p);
+    pushAudit(p, true, 'Counted in cash revenue');
     byMethod[channel] = (byMethod[channel] ?? 0) + amt;
   }
 
