@@ -156,6 +156,8 @@ export function summarizePayments(
     if (opts?.toIso && ts && ts > opts.toIso) continue;
     if (!isPaymentSucceeded(p) || isPaymentVoided(p)) continue;
     if (p.exclude_from_revenue === true || p.refunded_at) continue;
+    const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
+    if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
@@ -231,6 +233,12 @@ export function buildRevenueDiagnostics(
     if (p.exclude_from_revenue === true) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Manually excluded from revenue' });
       pushAudit(p, false, 'Manually excluded from revenue');
+      continue;
+    }
+    const payMeta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
+    if (payMeta?.duplicate_of_stripe === true || payMeta?.merged_into_payment_id) {
+      exclusions.push({ id, amountCents: amt, method, reason: 'Merged duplicate Stripe payment row' });
+      pushAudit(p, false, 'Merged duplicate Stripe payment row');
       continue;
     }
     if (p.refunded_at) {

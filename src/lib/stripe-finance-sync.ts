@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
+import { resolveStripePaymentTarget, upsertMergedStripePayment } from '@/lib/stripe-payment-resolve';
 
 export type StripeFinanceSnapshot = {
   paymentAvailableCents: number | null;
@@ -32,40 +33,53 @@ function errorMessage(e: unknown) {
   return e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : 'Unavailable';
 }
 
-async function writeStripeChargePayment(db: SupabaseClient, row: Record<string, unknown>, fallbackRow: Record<string, unknown>) {
-  const piId = typeof row.stripe_payment_intent_id === 'string' ? row.stripe_payment_intent_id : '';
-  let up = await db.from('payments').upsert(row, { onConflict: 'stripe_payment_intent_id' });
-  if (!up.error) return up;
+async function writeStripeChargePayment(
+  db: SupabaseClient,
+  stripe: Stripe,
+  row: Record<string, unknown>,
+  charge: Stripe.Charge,
+) {
+  const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? charge.id;
+  const sessionId = typeof charge.metadata?.checkout_session_id === 'string' ? charge.metadata.checkout_session_id : null;
+  const paidAt = new Date(charge.created * 1000).toISOString();
+  const amountCents = charge.amount;
 
-  if (piId) {
-    const existing = await db
-      .from('payments')
-      .select('id')
-      .eq('stripe_payment_intent_id', piId)
-      .maybeSingle();
-    if (!existing.error && existing.data?.id) {
-      return db.from('payments').update(row).eq('id', existing.data.id);
-    }
+  const target = await resolveStripePaymentTarget(db, stripe, {
+    charge,
+    paymentIntentId: piId,
+    sessionId,
+    chargeId: charge.id,
+    amountCents,
+    customerEmail: charge.billing_details?.email,
+    metadata: charge.metadata,
+  });
+
+  const result = await upsertMergedStripePayment(db, stripe, {
+    appointmentId: target.appointmentId ?? (typeof row.appointment_id === 'string' ? row.appointment_id : null),
+    fallbackBookingId: target.fallbackBookingId ?? (typeof row.fallback_booking_id === 'string' ? row.fallback_booking_id : null),
+    customerId: target.customerId,
+    amountCents,
+    status: 'succeeded',
+    paymentKind: String(charge.metadata?.stripe_checkout_kind ?? row.payment_kind ?? 'stripe_charge'),
+    stripeCheckoutSessionId: sessionId || (typeof row.stripe_checkout_session_id === 'string' ? row.stripe_checkout_session_id : null),
+    stripePaymentIntentId: piId,
+    stripeChargeId: charge.id,
+    paidAt,
+    email: charge.billing_details?.email ?? null,
+    source: 'stripe_finance_sync',
+    matchReason: target.matchReason,
+    metadata: {
+      stripe_charge_id: charge.id,
+      customer_email: charge.billing_details?.email ?? null,
+      customer_name: charge.billing_details?.name ?? null,
+      receipt_url: charge.receipt_url ?? null,
+    },
+  });
+
+  if (!result.ok) {
+    return { error: { message: result.error ?? 'upsert failed' } };
   }
-
-  up = await db.from('payments').insert(row);
-  if (!up.error) return up;
-
-  if (/fallback_booking_id|appointment_id|stripe_checkout_session_id|paid_at|payment_kind|provider|metadata|is_test|exclude_from_revenue|schema cache|Could not find|unique|constraint/i.test(up.error.message)) {
-    if (piId) {
-      const existing = await db
-        .from('payments')
-        .select('id')
-        .eq('stripe_payment_intent_id', piId)
-        .maybeSingle();
-      if (!existing.error && existing.data?.id) {
-        return db.from('payments').update(fallbackRow).eq('id', existing.data.id);
-      }
-    }
-    return db.from('payments').insert(fallbackRow);
-  }
-
-  return up;
+  return { error: null };
 }
 
 export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFinanceSnapshot> {
@@ -195,43 +209,7 @@ export async function syncRecentStripeFinance(stripe: Stripe, db: SupabaseClient
     const charges = await stripe.charges.list({ limit: 100 });
     for (const charge of charges.data) {
       if (charge.status !== 'succeeded' || charge.amount <= 0) continue;
-      const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? charge.id;
-      const sessionId = typeof charge.metadata?.checkout_session_id === 'string' ? charge.metadata.checkout_session_id : null;
-      const appointmentId = typeof charge.metadata?.appointment_id === 'string' ? charge.metadata.appointment_id : null;
-      const fallbackBookingId = typeof charge.metadata?.fallback_booking_id === 'string' ? charge.metadata.fallback_booking_id : null;
-      const paidAt = new Date(charge.created * 1000).toISOString();
-
-      const row: Record<string, unknown> = {
-        amount_cents: charge.amount,
-        status: 'succeeded',
-        payment_method: 'stripe',
-        payment_kind: charge.metadata?.stripe_checkout_kind ?? 'stripe_charge',
-        created_at: paidAt,
-        paid_at: paidAt,
-        stripe_payment_intent_id: piId,
-        stripe_checkout_session_id: sessionId,
-        appointment_id: appointmentId,
-        fallback_booking_id: fallbackBookingId,
-        provider: 'stripe',
-        is_test: false,
-        exclude_from_revenue: false,
-        metadata: {
-          source: 'stripe_finance_sync',
-          stripe_charge_id: charge.id,
-          customer_email: charge.billing_details?.email ?? null,
-          customer_name: charge.billing_details?.name ?? null,
-          receipt_url: charge.receipt_url ?? null,
-        },
-      };
-
-      const fallbackRow = {
-        amount_cents: charge.amount,
-        status: 'succeeded',
-        payment_method: 'stripe',
-        created_at: paidAt,
-        stripe_payment_intent_id: piId,
-      };
-      const up = await writeStripeChargePayment(db, row, fallbackRow);
+      const up = await writeStripeChargePayment(db, stripe, {}, charge);
       if (up.error) {
         summary.errors.push(`Charge ${charge.id}: ${up.error.message}`);
         console.warn('[stripe-finance-sync] charge payment upsert failed', charge.id, up.error.message);

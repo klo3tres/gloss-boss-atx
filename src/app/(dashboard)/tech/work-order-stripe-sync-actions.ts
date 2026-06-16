@@ -9,6 +9,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { Row } from '@/lib/work-order-resolve';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
+import { resolveStripePaymentTarget, upsertMergedStripePayment } from '@/lib/stripe-payment-resolve';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -78,69 +79,48 @@ async function upsertStripePaymentForJob(params: {
   const status = charge?.status === 'failed' || paymentIntent?.status === 'requires_payment_method' ? 'failed' : 'succeeded';
   if (status !== 'succeeded') return { ok: false as const, error: `Stripe object is not succeeded. Current status: ${status}.`, paymentId: null as string | null };
   const paidAt = new Date(((sessionObj?.created ?? paymentIntent?.created ?? charge?.created ?? Math.floor(Date.now() / 1000)) as number) * 1000).toISOString();
-  const payload: Record<string, unknown> = {
-    appointment_id: isFallback ? null : jobId,
-    fallback_booking_id: isFallback ? jobId : null,
-    customer_id: str(job.customer_id) || null,
-    email: str(job.guest_email) || emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge) || null,
-    amount_cents: amountCents,
-    status,
-    payment_method: 'stripe',
-    payment_kind: str(sessionObj?.metadata?.stripe_checkout_kind || paymentIntent?.metadata?.stripe_checkout_kind || charge?.metadata?.stripe_checkout_kind) || 'stripe_repair',
-    provider: 'stripe',
-    stripe_checkout_session_id: sessionId || null,
-    stripe_payment_intent_id: paymentIntentId || null,
-    stripe_charge_id: chargeId || null,
-    paid_at: paidAt,
-    created_at: paidAt,
-    exclude_from_revenue: false,
-    is_test: false,
+
+  const target = await resolveStripePaymentTarget(admin, stripe, {
+    session: sessionObj,
+    paymentIntent,
+    charge,
+    sessionId,
+    paymentIntentId,
+    chargeId,
+    amountCents,
+    customerEmail: str(job.guest_email) || emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge),
     metadata: {
-      source: 'work_order_stripe_repair',
+      ...sessionObj?.metadata,
+      ...paymentIntent?.metadata,
+      ...charge?.metadata,
+    },
+  });
+
+  const merged = await upsertMergedStripePayment(admin, stripe, {
+    appointmentId: isFallback ? null : target.appointmentId ?? jobId,
+    fallbackBookingId: isFallback ? target.fallbackBookingId ?? jobId : null,
+    customerId: str(job.customer_id) || target.customerId,
+    amountCents,
+    status,
+    paymentKind: str(sessionObj?.metadata?.stripe_checkout_kind || paymentIntent?.metadata?.stripe_checkout_kind || charge?.metadata?.stripe_checkout_kind) || 'stripe_repair',
+    stripeCheckoutSessionId: sessionId || null,
+    stripePaymentIntentId: paymentIntentId || null,
+    stripeChargeId: chargeId || null,
+    paidAt,
+    email: str(job.guest_email) || emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge) || null,
+    source: 'work_order_stripe_repair',
+    matchReason: params.sourceReason,
+    metadata: {
       reason: params.sourceReason,
       stripe_customer_email: emailOfSession(sessionObj) || emailOfIntent(paymentIntent) || emailOfCharge(charge) || null,
     },
-  };
+  });
 
-  let existing: Row | null = null;
-  if (paymentIntentId) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_payment_intent_id', paymentIntentId).maybeSingle();
-    existing = (data as Row | null) ?? null;
-  }
-  if (!existing && sessionId) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_checkout_session_id', sessionId).maybeSingle();
-    existing = (data as Row | null) ?? null;
-  }
-  if (!existing && chargeId) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_charge_id', chargeId).maybeSingle();
-    existing = (data as Row | null) ?? null;
+  if (!merged.ok) {
+    return { ok: false as const, error: merged.error ?? 'Payment write failed.', paymentId: null as string | null };
   }
 
-  const write = existing?.id
-    ? await admin.from('payments').update(payload).eq('id', existing.id).select('id').maybeSingle()
-    : await admin.from('payments').insert(payload).select('id').maybeSingle();
-  if (write.error) {
-    return { ok: false as const, error: `Database ${existing?.id ? 'update' : 'insert'} blocked: ${write.error.message}`, paymentId: null as string | null };
-  }
-
-  const paymentId = str((write.data as Row | null)?.id || existing?.id);
-  if (charge?.balance_transaction) {
-    const txId = typeof charge.balance_transaction === 'string' ? charge.balance_transaction : charge.balance_transaction.id;
-    if (txId) {
-      try {
-        const tx = await stripe.balanceTransactions.retrieve(txId);
-        await upsertLedgerFromBalanceTransaction(admin, tx, {
-          paymentIntentId,
-          chargeId,
-          paymentId,
-          workOrderId: isFallback ? null : jobId,
-        });
-      } catch (e) {
-        return { ok: false as const, error: `Payment row wrote, but ledger balance transaction sync failed: ${e instanceof Error ? e.message : String(e)}`, paymentId };
-      }
-    }
-  }
-  return { ok: true as const, error: null, paymentId };
+  return { ok: true as const, error: null, paymentId: merged.paymentId };
 }
 
 export async function syncStripePaymentsForWorkOrderAction(formData: FormData): Promise<StripeSyncResult> {

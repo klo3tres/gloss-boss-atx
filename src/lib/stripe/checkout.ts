@@ -7,6 +7,12 @@ import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { notifyBookingCheckoutPaid } from '@/lib/booking-checkout-notify';
 import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { fetchPaymentsForJob, findDepositPayment } from '@/lib/payments-resolve';
+import {
+  buildCheckoutStripeMetadata,
+  resolveStripePaymentTarget,
+  updateAppointmentStripeIds,
+  upsertMergedStripePayment,
+} from '@/lib/stripe-payment-resolve';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
@@ -66,7 +72,7 @@ export async function createDepositCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, payment_status, deposit_amount_cents, base_price_cents, guest_email, guest_name, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+      .select('id, access_token, status, payment_status, deposit_amount_cents, base_price_cents, guest_email, guest_name, customer_id, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -120,6 +126,17 @@ export async function createDepositCheckoutSession(params: {
         message: 'Customer credits covered the card amount due.',
       };
     }
+    const stripeMeta = buildCheckoutStripeMetadata({
+      appointment_id: String(appt.id),
+      work_order_id: String(appt.id),
+      customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
+      access_token: accessToken.trim(),
+      stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
+      customer_name: String(appt.guest_name ?? ''),
+      service_name: serviceName,
+      vehicle_summary: vehicleSummary.slice(0, 500),
+      service_address: serviceAddress.slice(0, 500),
+    });
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: appt.guest_email ?? undefined,
@@ -138,15 +155,7 @@ export async function createDepositCheckoutSession(params: {
       ],
       success_url: `${origin}/book/confirmation?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
       cancel_url: `${origin}/book?cancelled=1`,
-      metadata: {
-        appointment_id: appt.id,
-        access_token: accessToken.trim(),
-        stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
-        customer_name: String(appt.guest_name ?? ''),
-        service_name: serviceName,
-        vehicle_summary: vehicleSummary.slice(0, 500),
-        service_address: serviceAddress.slice(0, 500),
-      },
+      ...stripeMeta,
     });
 
     await upsertSessionIdSafe(admin, appt.id, session.id);
@@ -177,7 +186,7 @@ async function createFallbackDepositCheckoutSession(params: {
 
   const { data: row, error } = await admin
     .from('booking_fallbacks')
-    .select('id, access_token, deposit_amount_cents, base_price_cents, guest_email, guest_name, status, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+    .select('id, access_token, deposit_amount_cents, base_price_cents, guest_email, guest_name, customer_id, status, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
     .eq('id', fallbackBookingId)
     .maybeSingle();
 
@@ -201,6 +210,16 @@ async function createFallbackDepositCheckoutSession(params: {
     const serviceName = String(row.service_slug ?? 'Service').replace(/-/g, ' ');
     const vehicleSummary = String(row.vehicle_description ?? 'Vehicle');
     const serviceAddress = [row.service_address, row.service_city, row.service_state, row.service_zip].filter(Boolean).join(', ');
+    const stripeMeta = buildCheckoutStripeMetadata({
+      fallback_booking_id: String(row.id),
+      customer_id: row.customer_id != null ? String(row.customer_id) : '',
+      access_token: accessToken,
+      stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
+      customer_name: String(row.guest_name ?? ''),
+      service_name: serviceName,
+      vehicle_summary: vehicleSummary.slice(0, 500),
+      service_address: serviceAddress.slice(0, 500),
+    });
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: typeof row.guest_email === 'string' ? row.guest_email : undefined,
@@ -219,15 +238,7 @@ async function createFallbackDepositCheckoutSession(params: {
       ],
       success_url: `${origin}/intake?session_id={CHECKOUT_SESSION_ID}&token=${encodeURIComponent(accessToken)}&fallback_booking_id=${row.id}`,
       cancel_url: `${origin}/book?cancelled=1`,
-      metadata: {
-        fallback_booking_id: String(row.id),
-        access_token: accessToken,
-        stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
-        customer_name: String(row.guest_name ?? ''),
-        service_name: serviceName,
-        vehicle_summary: vehicleSummary.slice(0, 500),
-        service_address: serviceAddress.slice(0, 500),
-      },
+      ...stripeMeta,
     });
 
     await admin
@@ -270,7 +281,7 @@ export async function createFieldInvoiceCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, deposit_amount_cents, guest_email, base_price_cents')
+      .select('id, access_token, status, deposit_amount_cents, guest_email, customer_id, base_price_cents')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -297,6 +308,15 @@ export async function createFieldInvoiceCheckoutSession(params: {
       return { ok: false, error: 'Invalid invoice amount' };
     }
 
+    const stripeMeta = buildCheckoutStripeMetadata({
+      appointment_id: String(appt.id),
+      work_order_id: String(appt.id),
+      customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
+      access_token: accessToken,
+      technician_id: technicianId,
+      tech_field_invoice: '1',
+      stripe_checkout_kind: 'field_full',
+    });
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: appt.guest_email ?? undefined,
@@ -315,13 +335,7 @@ export async function createFieldInvoiceCheckoutSession(params: {
       ],
       success_url: `${origin}/intake?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken}`,
       cancel_url: `${origin}/tech?invoice=cancel`,
-      metadata: {
-        appointment_id: appt.id,
-        access_token: accessToken,
-        technician_id: technicianId,
-        tech_field_invoice: '1',
-        stripe_checkout_kind: 'field_full',
-      },
+      ...stripeMeta,
     });
 
     await upsertSessionIdSafe(admin, appt.id, session.id);
@@ -372,6 +386,17 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
     }
 
     const token = String(appt.access_token ?? '');
+    const stripeMeta = buildCheckoutStripeMetadata({
+      appointment_id: appointmentId,
+      work_order_id: appointmentId,
+      fallback_booking_id: '',
+      customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
+      access_token: token,
+      technician_id: technicianId ?? '',
+      stripe_checkout_kind: 'customer_final_balance',
+      payment_type: 'remaining_balance',
+      original_deposit_payment_id: depositPayment?.id ? String(depositPayment.id) : '',
+    });
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: typeof appt.guest_email === 'string' ? appt.guest_email : undefined,
@@ -390,17 +415,7 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
       ],
       success_url: `${origin}/customer?payment=success&appointment_id=${appointmentId}`,
       cancel_url: `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
-      metadata: {
-        appointment_id: appointmentId,
-        fallback_booking_id: '',
-        customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
-        access_token: token,
-        technician_id: technicianId ?? '',
-        stripe_checkout_kind: 'customer_final_balance',
-        payment_type: 'remaining_balance',
-        work_order_id: appointmentId,
-        original_deposit_payment_id: depositPayment?.id ? String(depositPayment.id) : '',
-      },
+      ...stripeMeta,
     });
 
     await admin
@@ -603,12 +618,31 @@ export async function processCheckoutSessionCompleted(params: {
     }
   }
 
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null;
+
+  if (!appointmentId) {
+    const target = await resolveStripePaymentTarget(admin, null, {
+      session,
+      sessionId: session.id,
+      paymentIntentId,
+      amountCents: session.amount_total ?? 0,
+      customerEmail: session.customer_details?.email ?? session.customer_email,
+    });
+    appointmentId = target.appointmentId ?? undefined;
+  }
+
   const amount = session.amount_total ?? 0;
 
   if (!appointmentId) {
     console.warn('[checkout] checkout.session.completed missing appointment / fallback', session.id);
     return;
   }
+
+  await updateAppointmentStripeIds(admin, appointmentId, {
+    sessionId: session.id,
+    paymentIntentId,
+  });
 
   const kind = session.metadata?.stripe_checkout_kind;
   const isField = session.metadata?.tech_field_invoice === '1' || kind === 'field_full';
@@ -627,23 +661,31 @@ export async function processCheckoutSessionCompleted(params: {
         ? (apptForPay.data as { customer_id: string }).customer_id
         : null;
 
-    const paymentRow: Record<string, unknown> = {
-      appointment_id: appointmentId,
-      customer_id: customerIdEarly,
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id:
-        typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null,
-      amount_cents: amount,
-      status: 'succeeded',
-      payment_method: 'stripe',
-      payment_kind: isFinalBalance ? 'customer_final_balance' : isField ? 'field_full' : isBookingFull ? 'booking_full' : 'deposit',
-      paid_at: new Date().toISOString(),
-    };
-    if (technicianId && typeof technicianId === 'string') {
-      paymentRow.technician_id = technicianId;
-    }
+    const paymentKind = isFinalBalance
+      ? 'customer_final_balance'
+      : isField
+        ? 'field_full'
+        : isBookingFull
+          ? 'booking_full'
+          : 'deposit';
 
-    const payResult = await upsertPaymentRow(admin, paymentRow);
+    const payResult = await upsertMergedStripePayment(admin, null, {
+      appointmentId,
+      customerId: customerIdEarly,
+      amountCents: amount,
+      status: 'succeeded',
+      paymentKind,
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: paymentIntentId,
+      paidAt: new Date().toISOString(),
+      email: (apptForPay.data as { guest_email?: string } | null)?.guest_email ?? session.customer_details?.email ?? session.customer_email,
+      source: 'checkout_session_completed',
+      matchReason: 'checkout.session.completed',
+      metadata: {
+        technician_id: technicianId,
+        stripe_checkout_kind: paymentKind,
+      },
+    });
     if (!payResult.ok) {
       console.error('[checkout] payment row not saved', appointmentId, payResult.error);
       const { logPaymentDebugEvent } = await import('@/lib/payment-debug');
@@ -651,7 +693,7 @@ export async function processCheckoutSessionCompleted(params: {
         appointmentId,
         customerEmail: (apptForPay.data as { guest_email?: string } | null)?.guest_email,
         eventType: 'checkout_payment_upsert_failed',
-        paymentMode: paymentRow.payment_kind as string,
+        paymentMode: paymentKind,
         errorMessage: payResult.error,
         metadata: { session_id: session.id, amount_cents: amount },
       });
@@ -669,6 +711,10 @@ export async function processCheckoutSessionCompleted(params: {
         console.warn('[checkout] owner notify payment upsert failed', notifyErr);
       }
       throw new Error(payResult.error ?? 'payment row upsert failed');
+    }
+
+    if (technicianId && typeof technicianId === 'string' && payResult.paymentId) {
+      await admin.from('payments').update({ technician_id: technicianId }).eq('id', payResult.paymentId);
     }
 
     const extras: Record<string, unknown> = {};
@@ -714,14 +760,6 @@ export async function processCheckoutSessionCompleted(params: {
       .select('guest_email, guest_name, scheduled_start, base_price_cents, deposit_amount_cents')
       .eq('id', appointmentId)
       .maybeSingle();
-
-    const paymentKind = isFinalBalance
-      ? 'customer_final_balance'
-      : isBookingFull
-        ? 'booking_full'
-        : isField
-          ? 'field_full'
-          : 'deposit';
 
     void notifyBookingCheckoutPaid({
       admin,

@@ -7,6 +7,7 @@ import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { fetchPaymentsForJob } from '@/lib/payments-resolve';
 import { resolveJobPricing, syncJobBalanceDue } from '@/lib/job-pricing-display';
 import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
+import { resolveStripePaymentTarget, upsertMergedStripePayment } from '@/lib/stripe-payment-resolve';
 
 type Row = Record<string, unknown>;
 
@@ -91,7 +92,31 @@ async function maybeFindAppointment(admin: SupabaseClient, input: {
   customerEmail?: string | null;
   amountCents?: number;
   occurredAt?: string;
+  stripe?: Stripe;
+  session?: Stripe.Checkout.Session | null;
+  paymentIntent?: Stripe.PaymentIntent | null;
+  charge?: Stripe.Charge | null;
 }) {
+  const target = await resolveStripePaymentTarget(admin, input.stripe, {
+    session: input.session,
+    paymentIntent: input.paymentIntent,
+    charge: input.charge,
+    sessionId: input.checkoutSessionId,
+    paymentIntentId: input.paymentIntentId,
+    chargeId: input.chargeId,
+    amountCents: input.amountCents,
+    customerEmail: input.customerEmail,
+  });
+
+  if (target.appointmentId) {
+    const { data } = await admin.from('appointments').select('*').eq('id', target.appointmentId).maybeSingle();
+    if (data) return { appointment: data as Row, fallback: null as Row | null };
+  }
+  if (target.fallbackBookingId) {
+    const { data } = await admin.from('booking_fallbacks').select('*').eq('id', target.fallbackBookingId).maybeSingle();
+    if (data) return { appointment: null as Row | null, fallback: data as Row };
+  }
+
   const appointmentId = str(input.appointmentId);
   if (appointmentId) {
     const { data } = await admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
@@ -104,93 +129,7 @@ async function maybeFindAppointment(admin: SupabaseClient, input: {
     if (data) return { appointment: null as Row | null, fallback: data as Row };
   }
 
-  const sessionId = str(input.checkoutSessionId);
-  if (sessionId) {
-    const { data: appt } = await admin.from('appointments').select('*').eq('stripe_checkout_session_id', sessionId).maybeSingle();
-    if (appt) return { appointment: appt as Row, fallback: null as Row | null };
-    const { data: fallback } = await admin.from('booking_fallbacks').select('*').eq('stripe_checkout_session_id', sessionId).maybeSingle();
-    if (fallback) return { appointment: null as Row | null, fallback: fallback as Row };
-  }
-
-  const pi = str(input.paymentIntentId);
-  const charge = str(input.chargeId);
-  if (pi || charge) {
-    const { data } = pi
-      ? await admin.from('payments').select('appointment_id, fallback_booking_id').eq('stripe_payment_intent_id', pi).limit(1)
-      : await admin.from('payments').select('appointment_id, fallback_booking_id').eq('stripe_charge_id', charge).limit(1);
-    const p = data?.[0] as Row | undefined;
-    if (p?.appointment_id) {
-      const { data: appt } = await admin.from('appointments').select('*').eq('id', String(p.appointment_id)).maybeSingle();
-      if (appt) return { appointment: appt as Row, fallback: null as Row | null };
-    }
-    if (p?.fallback_booking_id) {
-      const { data: fallback } = await admin.from('booking_fallbacks').select('*').eq('id', String(p.fallback_booking_id)).maybeSingle();
-      if (fallback) return { appointment: null as Row | null, fallback: fallback as Row };
-    }
-  }
-
-  const email = str(input.customerEmail).toLowerCase();
-  if (email.includes('@')) {
-    const { data } = await admin
-      .from('appointments')
-      .select('*')
-      .ilike('guest_email', email)
-      .order('created_at', { ascending: false })
-      .limit(12);
-    const rows = (data ?? []) as Row[];
-    const amount = input.amountCents ?? 0;
-    const best = rows.find((r) => {
-      const base = typeof r.base_price_cents === 'number' ? r.base_price_cents : 0;
-      const deposit = typeof r.deposit_amount_cents === 'number' ? r.deposit_amount_cents : 0;
-      return amount > 0 && (Math.abs(amount - base) <= 2 || Math.abs(amount - deposit) <= 2);
-    }) ?? rows[0];
-    if (best) return { appointment: best, fallback: null as Row | null };
-  }
-
   return { appointment: null as Row | null, fallback: null as Row | null };
-}
-
-async function upsertPayment(admin: SupabaseClient, row: Row): Promise<Row | null> {
-  const pi = str(row.stripe_payment_intent_id);
-  const session = str(row.stripe_checkout_session_id);
-  const charge = str(row.stripe_charge_id);
-
-  let existing: Row | null = null;
-  if (pi) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_payment_intent_id', pi).maybeSingle();
-    existing = (data as Row | null) ?? null;
-  }
-  if (!existing && session) {
-    const { data } = await admin.from('payments').select('*').eq('stripe_checkout_session_id', session).maybeSingle();
-    existing = (data as Row | null) ?? null;
-  }
-  if (!existing && charge) {
-    const { data, error } = await admin.from('payments').select('*').eq('stripe_charge_id', charge).maybeSingle();
-    if (!error) existing = (data as Row | null) ?? null;
-  }
-
-  if (existing?.id) {
-    const { data, error } = await admin.from('payments').update(row).eq('id', existing.id).select('*').maybeSingle();
-    if (!error) return (data as Row | null) ?? { ...existing, ...row };
-    if (!isSchemaDriftError(error.message)) console.warn('[stripe-automation] payment update', error.message);
-    return existing;
-  }
-
-  const { data, error } = await admin.from('payments').insert(row).select('*').maybeSingle();
-  if (!error) return data as Row | null;
-  if (isSchemaDriftError(error.message)) {
-    const lean = {
-      appointment_id: row.appointment_id ?? null,
-      stripe_checkout_session_id: row.stripe_checkout_session_id ?? null,
-      stripe_payment_intent_id: row.stripe_payment_intent_id ?? null,
-      amount_cents: row.amount_cents ?? 0,
-      status: row.status ?? 'succeeded',
-    };
-    const leanInsert = await admin.from('payments').insert(lean).select('*').maybeSingle();
-    if (!leanInsert.error) return leanInsert.data as Row | null;
-  }
-  console.warn('[stripe-automation] payment insert', error.message);
-  return null;
 }
 
 async function ensureReceipt(admin: SupabaseClient, payment: Row | null, input: {
@@ -292,7 +231,7 @@ export async function automateStripePayment(params: {
   const customerName = session?.customer_details?.name ?? charge?.billing_details?.name ?? (str(meta.customer_name) || null);
 
   const found = await maybeFindAppointment(params.admin, {
-    appointmentId: str(meta.appointment_id) || null,
+    appointmentId: str(meta.appointment_id) || str(meta.work_order_id) || null,
     fallbackBookingId: str(meta.fallback_booking_id) || null,
     checkoutSessionId: sessionId,
     paymentIntentId,
@@ -300,6 +239,10 @@ export async function automateStripePayment(params: {
     customerEmail,
     amountCents,
     occurredAt,
+    stripe: params.stripe,
+    session,
+    paymentIntent: pi,
+    charge,
   });
   const appointment = found.appointment;
   const fallback = found.fallback;
@@ -307,29 +250,30 @@ export async function automateStripePayment(params: {
   const fallbackBookingId = str(fallback?.id) || null;
   const customerId = str(appointment?.customer_id) || str(fallback?.customer_id) || null;
 
-  const payment = await upsertPayment(params.admin, {
-    appointment_id: appointmentId,
-    fallback_booking_id: fallbackBookingId,
-    customer_id: customerId,
-    amount_cents: amountCents,
+  const paymentKind = str(meta.stripe_checkout_kind) || str(meta.payment_type) || 'stripe_automated';
+
+  const merged = await upsertMergedStripePayment(params.admin, params.stripe ?? null, {
+    appointmentId,
+    fallbackBookingId,
+    customerId,
+    amountCents,
     status: charge?.status === 'failed' || pi?.status === 'requires_payment_method' ? 'failed' : 'succeeded',
-    payment_method: 'stripe',
-    payment_kind: str(meta.stripe_checkout_kind) || str(meta.payment_type) || 'stripe_automated',
-    provider: 'stripe',
-    stripe_checkout_session_id: sessionId,
-    stripe_payment_intent_id: paymentIntentId,
-    stripe_charge_id: chargeId,
-    paid_at: occurredAt,
-    created_at: occurredAt,
-    exclude_from_revenue: false,
-    is_test: false,
+    paymentKind,
+    stripeCheckoutSessionId: sessionId,
+    stripePaymentIntentId: paymentIntentId,
+    stripeChargeId: chargeId,
+    paidAt: occurredAt,
+    email: customerEmail,
+    source: 'stripe_webhook_automation',
+    matchReason: found.appointment || found.fallback ? 'webhook_automation' : 'unmatched',
     metadata: {
-      source: 'stripe_webhook_automation',
       event_type: params.eventType,
       customer_email: customerEmail,
       customer_name: customerName,
     },
   });
+
+  const payment = merged.paymentId ? ({ id: merged.paymentId } as Row) : null;
 
   const receipt = await ensureReceipt(params.admin, payment, {
     appointmentId,
