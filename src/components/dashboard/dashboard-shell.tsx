@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Menu, X, Bell, ShieldAlert, Sparkles, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -93,14 +93,14 @@ const adminLinks = adminNavGroups.flatMap((g) => g.links);
 const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
-  { href: '/tech', label: 'Overview' },
-  { href: '/admin/goals', label: 'Goals' },
-  { href: '/tech/work-orders', label: 'Active Work Orders' },
-  { href: '/tech#routes', label: 'Route' },
-  { href: '/tech#field-lead-capture', label: 'Leads' },
-  { href: '/tech#mileage', label: 'Mileage' },
-  { href: '/tech#supplies', label: 'Supply Requests' },
-  { href: '/tech#field-invoice', label: 'Field Tools' },
+  { href: '/tech?tab=overview', label: 'Overview' },
+  { href: '/tech?tab=jobs', label: 'Assigned Jobs' },
+  { href: '/tech?tab=active', label: 'Active Job' },
+  { href: '/tech?tab=routes', label: 'Routes & Directions' },
+  { href: '/tech?tab=leads', label: 'Leads & CRM' },
+  { href: '/tech?tab=mileage', label: 'Gas & Mileage Log' },
+  { href: '/tech?tab=supplies', label: 'Supply Requests' },
+  { href: '/tech?tab=tools', label: 'Field Invoicing' },
   { href: '/tech/resources', label: 'SOPs' },
 ];
 
@@ -125,6 +125,8 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
   const [navOpen, setNavOpen] = useState(false);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
   const [currentHash, setCurrentHash] = useState('');
@@ -246,11 +248,19 @@ export function DashboardShell({
       : `${panelLabel[role]} panel`;
 
   const linkClass = (href: string) => {
-    const [pathPart, hashPart] = href.split('#');
+    const [pathAndQuery, hashPart] = href.split('#');
+    const [pathPart, queryPart] = pathAndQuery.split('?');
     const hasHash = Boolean(hashPart);
+    const hasQuery = Boolean(queryPart);
+    
     let isActive = false;
+    
     if (hasHash) {
       isActive = pathname === pathPart && currentHash === `#${hashPart}`;
+    } else if (hasQuery) {
+      const urlParams = new URLSearchParams(queryPart);
+      const urlTab = urlParams.get('tab');
+      isActive = pathname === pathPart && (currentTab === urlTab || (!currentTab && urlTab === 'overview'));
     } else {
       isActive =
         pathname === href ||
@@ -258,7 +268,7 @@ export function DashboardShell({
     }
     return `block rounded-lg border px-3 py-2 text-sm transition ${
       isActive
-        ? 'border-gold/50 bg-gold/10 text-gold-soft'
+        ? 'border-gold/50 bg-gold/10 text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.15)]'
         : 'border-transparent text-zinc-300 hover:border-gold/30 hover:bg-black/40 hover:text-gold-soft'
     }`;
   };
@@ -354,9 +364,17 @@ export function DashboardShell({
               }`}
               title="Open System Notifications"
             >
-              <Bell className="h-5 w-5" />
+              <div className="relative">
+                <Bell className="h-5 w-5" />
+                {hasAlertActivity && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gold"></span>
+                  </span>
+                )}
+              </div>
               {(unreadCount > 0 || systemAlerts.length > 0 || outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()))) && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-lg">
+                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-lg border border-black">
                   {unreadCount + systemAlerts.length + outboxEvents.filter((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())).length}
                 </span>
               )}

@@ -141,7 +141,7 @@ function OperationsCard({
   );
 }
 
-export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics: OwnerDashboardSnapshot; isSuperAdmin?: boolean }) {
+export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }: { metrics: OwnerDashboardSnapshot; isSuperAdmin?: boolean; goals?: any[] }) {
   const [activeDrawer, setActiveDrawer] = useState<
     | 'open-balances'
     | 'pending-deposits'
@@ -693,24 +693,218 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
     }
   };
 
+  const getAlertAction = (alertText: string) => {
+    const text = alertText.toLowerCase();
+    if (text.includes('open balance') || text.includes('receivable')) {
+      return (
+        <button
+          type="button"
+          onClick={() => setActiveDrawer('open-balances')}
+          className="shrink-0 rounded-lg bg-rose-500/25 border border-rose-500/40 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-200 hover:bg-rose-500/35 transition-all"
+        >
+          Collect Balance
+        </button>
+      );
+    }
+    if (text.includes('unassigned') || text.includes('need attention')) {
+      return (
+        <Link
+          href="/admin/dispatch"
+          className="shrink-0 rounded-lg bg-cyan-500/25 border border-cyan-500/40 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500/35 transition-all"
+        >
+          Assign Tech
+        </Link>
+      );
+    }
+    if (text.includes('supply request')) {
+      return (
+        <Link
+          href="/admin/supply-requests"
+          className="shrink-0 rounded-lg bg-amber-500/25 border border-amber-500/40 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-amber-200 hover:bg-amber-500/35 transition-all"
+        >
+          Review Requests
+        </Link>
+      );
+    }
+    if (text.includes('store credit') || text.includes('credit expiring')) {
+      return (
+        <button
+          type="button"
+          onClick={() => setActiveDrawer('credits')}
+          className="shrink-0 rounded-lg bg-rose-500/25 border border-rose-500/40 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-200 hover:bg-rose-500/35 transition-all"
+        >
+          Inspect Credits
+        </button>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-8 pb-10">
       {/* Alert Banner if any */}
       {metrics.alerts.length > 0 ? (
         <ul className="space-y-2">
-          {metrics.alerts.map((a) => (
-            <motion.li
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              key={a}
-              className="flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/90"
-            >
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-              <span>{a}</span>
-            </motion.li>
-          ))}
+          {metrics.alerts.map((a) => {
+            const action = getAlertAction(a);
+            return (
+              <motion.li
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={a}
+                className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/90"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <span>{a}</span>
+                </div>
+                {action}
+              </motion.li>
+            );
+          })}
         </ul>
       ) : null}
+
+      {/* Operational Goals (Large, Glowing, Interactive) */}
+      <section className="gb-premium-card rounded-3xl border border-gold/30 bg-black/55 p-6 shadow-[0_0_50px_rgba(212,175,55,0.15)] relative overflow-hidden">
+        <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/10 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute -bottom-12 -right-12 h-40 w-40 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
+        
+        <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-6">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-gold animate-pulse" />
+            <span className="text-sm font-black uppercase tracking-[0.2em] text-white">Active Operational Targets</span>
+          </div>
+          <Link href="/admin/goals" className="text-[10px] font-black uppercase text-gold hover:underline">
+            Goal Configurator →
+          </Link>
+        </div>
+
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {goals && goals.length > 0 ? (
+            goals.map((g) => {
+              const isCents = g.unit === 'cents';
+              const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
+              const isComplete = g.status === 'completed' || pct >= 100;
+              const displayVal = isCents ? displayMoney(g.current_value) : String(g.current_value);
+              const targetVal = isCents ? displayMoney(g.target_value) : String(g.target_value);
+              
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setActiveDrawer('goals')}
+                  className="group text-left rounded-2xl border border-white/10 bg-zinc-950/40 p-5 transition-all duration-300 hover:border-gold/45 hover:bg-black/60 hover:shadow-[0_0_30px_rgba(212,175,55,0.12)] focus:outline-none relative overflow-hidden"
+                >
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-gold-soft transition">{g.title}</p>
+                      <p className="mt-2 font-mono text-xl font-black text-white">
+                        {displayVal}
+                        <span className="text-xs text-zinc-500 font-medium"> / {targetVal}</span>
+                      </p>
+                    </div>
+                    <div className="relative h-12 w-12 shrink-0">
+                      <svg className="h-12 w-12 -rotate-90" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.04)" strokeWidth="10" fill="none" />
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          stroke={isComplete ? '#10b981' : '#d4af37'}
+                          strokeWidth="10"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeDasharray="251"
+                          strokeDashoffset={251 - (251 * pct) / 100}
+                          className="transition-all duration-500"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="font-mono text-[10px] font-black text-white">{pct}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${
+                        isComplete ? 'from-emerald-500 to-teal-400' : 'from-gold via-gold-soft to-amber-400'
+                      }`}
+                      style={{ width: `${pct}%` }} 
+                    />
+                  </div>
+                  
+                  <div className="mt-2.5 flex justify-between items-center text-[9px] text-zinc-500 font-medium">
+                    <span className="capitalize">{g.goal_type.replace(/_/g, ' ')}</span>
+                    {g.period_end ? (
+                      <span>Ends {new Date(g.period_end).toLocaleDateString()}</span>
+                    ) : (
+                      <span>No due date</span>
+                    )}
+                  </div>
+                  
+                  <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-gold transition-all duration-300 group-hover:w-full" />
+                </button>
+              );
+            })
+          ) : (
+            /* Fallback Goals (if none configured) */
+            [
+              { title: 'MTD Revenue Target', current: metrics.revenueMonth, target: '$10,000.00', pct: Math.min(100, Math.round((parseFloat(metrics.revenueMonth.replace(/[^0-9.]/g, '')) / 10000) * 100)) },
+              { title: 'Client Repeat Retention', current: `${metrics.customerRetentionRate}%`, target: '70%', pct: Math.min(100, Math.round((metrics.customerRetentionRate / 70) * 100)) },
+              { title: 'Loyalty Portal Signups', current: `${metrics.loyaltyParticipation}%`, target: '50%', pct: Math.min(100, Math.round((metrics.loyaltyParticipation / 50) * 100)) }
+            ].map((g, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setActiveDrawer('goals')}
+                className="group text-left rounded-2xl border border-white/10 bg-zinc-950/40 p-5 transition-all duration-300 hover:border-gold/45 hover:bg-black/60 hover:shadow-[0_0_30px_rgba(212,175,55,0.12)] focus:outline-none relative overflow-hidden"
+              >
+                <div className="flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-gold-soft transition">{g.title}</p>
+                    <p className="mt-2 font-mono text-xl font-black text-white">
+                      {g.current}
+                      <span className="text-xs text-zinc-500 font-medium"> / {g.target}</span>
+                    </p>
+                  </div>
+                  <div className="relative h-12 w-12 shrink-0">
+                    <svg className="h-12 w-12 -rotate-90" viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.04)" strokeWidth="10" fill="none" />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        stroke="#d4af37"
+                        strokeWidth="10"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray="251"
+                        strokeDashoffset={251 - (251 * g.pct) / 100}
+                        className="transition-all duration-500"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="font-mono text-[10px] font-black text-white">{g.pct}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400 transition-all duration-500" style={{ width: `${g.pct}%` }} />
+                </div>
+                
+                <div className="mt-2.5 flex justify-between items-center text-[9px] text-zinc-500 font-medium">
+                  <span>Automatic Tracked</span>
+                  <span>Rolling Month</span>
+                </div>
+                <div className="absolute bottom-0 left-0 h-[2px] w-0 bg-gold transition-all duration-300 group-hover:w-full" />
+              </button>
+            ))
+          )}
+        </div>
+      </section>
 
       {/* Expiring Store Credits Banner */}
       {metrics.creditMetrics?.expiringSoon && metrics.creditMetrics.expiringSoon.length > 0 ? (

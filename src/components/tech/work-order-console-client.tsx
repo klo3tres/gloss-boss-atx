@@ -25,7 +25,7 @@ import { AppointmentScheduleControls } from '@/components/admin/appointment-sche
 import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
-import { techSendCustomSmsAction } from '@/app/(dashboard)/tech/tech-actions';
+import { techSendCustomSmsAction, techSaveJobNotesAction } from '@/app/(dashboard)/tech/tech-actions';
 import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
@@ -254,7 +254,7 @@ export function WorkOrderConsoleClient({
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'customer' | 'vehicle' | 'notes' | 'documents'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'customer' | 'vehicle' | 'photos' | 'payments' | 'receipt' | 'loyalty' | 'notes' | 'advanced'>('overview');
   const [isContactOpen, setIsContactOpen] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -708,6 +708,213 @@ export function WorkOrderConsoleClient({
         </div>
       )}
 
+      {/* === CUSTOMER TAB === */}
+      {activeTab === 'customer' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Column 1: Profile & Connections */}
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Customer Profile</SectionEyebrow>
+                {data.customerId && (
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gold-soft">
+                    CRM ID: {data.customerId.slice(0, 8).toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[9px] uppercase font-bold text-zinc-500">Full Name</p>
+                  <p className="text-lg font-bold text-white mt-0.5">{data.guestName}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[9px] uppercase font-bold text-zinc-500">Phone Number</p>
+                    <p className="text-sm font-semibold text-zinc-300 mt-0.5">{data.guestPhone || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase font-bold text-zinc-500">Email Address</p>
+                    <p className="text-sm font-semibold text-zinc-300 mt-0.5 break-all">{data.guestEmail || '—'}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-4">
+                  <p className="text-[9px] uppercase font-bold text-zinc-500">Service Location Address</p>
+                  <p className="text-sm font-semibold text-zinc-200 mt-0.5">{data.fullAddress || 'No address provided'}</p>
+                </div>
+
+                {/* Quick Connect Actions */}
+                <div className="border-t border-white/5 pt-4 space-y-2.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft mb-2">Quick Connects</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <a
+                      href={`tel:${data.guestPhone}`}
+                      className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                    >
+                      <PhoneCall className="h-3.5 w-3.5 text-gold-soft" /> Call Customer
+                    </a>
+                    <a
+                      href={`sms:${data.guestPhone}`}
+                      className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 text-gold-soft" /> Send SMS
+                    </a>
+                    <a
+                      href={data.googleDirectionsHref || data.mapsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-gold-soft" /> Google Directions
+                    </a>
+                    {data.appleMapsHref && (
+                      <a
+                        href={data.appleMapsHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-zinc-400" /> Apple Directions
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyAddress}
+                    className="w-full flex items-center justify-center gap-2 p-3 bg-zinc-950/20 border border-dashed border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 transition duration-200"
+                  >
+                    {copiedAddress ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-zinc-400" />}
+                    {copiedAddress ? 'Copied Address!' : 'Copy Full Address'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 2: Edit CRM Form */}
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Edit Customer & Service Address</SectionEyebrow>
+              </div>
+
+              <form action={updateDetailsAction} className="space-y-4">
+                <input type="hidden" name="id" value={data.id} />
+                <input type="hidden" name="source" value={data.source} />
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Customer Name</label>
+                  <input
+                    type="text"
+                    name="guestName"
+                    defaultValue={data.guestName}
+                    required
+                    className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      name="guestPhone"
+                      defaultValue={data.guestPhone}
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Email</label>
+                    <input
+                      type="email"
+                      name="guestEmail"
+                      defaultValue={data.guestEmail}
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-4 space-y-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Address Information</p>
+                  
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">Street Address</label>
+                    <input
+                      type="text"
+                      name="serviceAddress"
+                      defaultValue={data.serviceAddress}
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">City</label>
+                      <input
+                        type="text"
+                        name="serviceCity"
+                        defaultValue={data.serviceCity}
+                        className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">State</label>
+                      <input
+                        type="text"
+                        name="serviceState"
+                        defaultValue={data.serviceState}
+                        className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">ZIP / Postal Code</label>
+                    <input
+                      type="text"
+                      name="serviceZip"
+                      defaultValue={data.serviceZip}
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,175,55,0.25)]"
+                  >
+                    Save Contact Details
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === VEHICLE TAB === */}
+      {activeTab === 'vehicle' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div id="wo-vehicles" className="scroll-mt-28">
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Active Vehicles Configuration</SectionEyebrow>
+                <PremiumBadge tone="gold">{data.vehicles.length} Vehicle(s)</PremiumBadge>
+              </div>
+              <WorkOrderVehiclesForm
+                id={data.id}
+                source={data.source}
+                initialVehicles={data.vehicles}
+                defaultService={data.vehicleForms.defaultService}
+                defaultClass={data.vehicleForms.defaultClass}
+                saveAction={updateVehiclesAction}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* === PHOTOS TAB === */}
       {activeTab === 'photos' && (
         <div className="space-y-6 animate-in fade-in duration-200">
@@ -829,7 +1036,7 @@ export function WorkOrderConsoleClient({
           <div id='wo-payment' className='scroll-mt-28'>
             <div id="wo-payment-card" className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-                <SectionEyebrow>Order Ledger — payment & receipt</SectionEyebrow>
+                <SectionEyebrow>Order Payments — invoices & transactions</SectionEyebrow>
                 <PremiumBadge tone={data.paymentComplete ? 'emerald' : 'amber'}>
                   {data.paymentComplete ? 'Paid' : 'Unpaid'}
                 </PremiumBadge>
@@ -838,7 +1045,6 @@ export function WorkOrderConsoleClient({
               {data.ledgerResolveError ? (
                 <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
               ) : null}
-              {data.canAdvancedRepair && data.receiptParityDebug ? <ReceiptLedgerDebugPanel parity={data.receiptParityDebug} /> : null}
               {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
                 <WorkOrderLedgerPanel
                   jobId={jobId}
@@ -891,25 +1097,107 @@ export function WorkOrderConsoleClient({
                   customerId={data.customerId}
                   credits={data.credits}
                   redemptions={data.redemptions}
+                  showOnlyPayments={true}
                 />
               ) : !data.ledgerResolveError ? (
                 <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
                   Order ledger unavailable — refresh the page.
                 </p>
               ) : null}
-              
-              {!data.isFallback ? (
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <WorkOrderMileagePanel
-                    appointmentId={jobId}
-                    workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
-                  />
-                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === RECEIPT TAB === */}
+      {activeTab === 'receipt' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div id='wo-receipt' className='scroll-mt-28'>
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Order Receipt & Breakdown</SectionEyebrow>
+                {data.receiptPdfHref && (
+                  <a
+                    href={data.receiptPdfHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-gold-soft hover:underline font-bold"
+                  >
+                    Download PDF Receipt
+                  </a>
+                )}
+              </div>
+
+              {data.ledgerResolveError ? (
+                <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
+              ) : null}
+              {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
+                <WorkOrderLedgerPanel
+                  jobId={jobId}
+                  isFallback={data.isFallback}
+                  source={data.isFallback ? 'fallback' : 'appointment'}
+                  appointmentId={data.isFallback ? undefined : jobId}
+                  fallbackBookingId={data.isFallback ? jobId : undefined}
+                  orderSourceLabel={data.orderSourceLabel ?? 'Work order'}
+                  isTest={data.isTestOrder}
+                  vehicles={data.vehicles.map((v, index) => ({
+                    index,
+                    label: v.label,
+                    service: v.service,
+                    priceCents: v.priceCents,
+                    priceLabel: v.priceLabel,
+                  }))}
+                  discounts={data.ledgerDiscounts}
+                  payments={data.ledgerPayments}
+                  pricingSnapshot={data.pricingSnapshot}
+                  pricing={data.jobPricing!}
+                  breakdownLines={data.receiptBreakdownLines}
+                  balanceDue={data.balanceDue}
+                  balanceDueCents={data.balanceDueCents}
+                  finalTotal={data.finalTotal}
+                  depositPaid={data.depositPaid}
+                  totalPaid={data.totalPaid}
+                  paymentComplete={data.paymentComplete}
+                  receiptPdfHref={data.receiptPdfHref}
+                  customLineItems={data.customLineItems ?? []}
+                  promoCode={data.promoCode}
+                  pricingOverrideReason={data.pricingOverrideReason}
+                  canEditPricing={canEditPricing}
+                  canManagePayments={Boolean(data.canManagePayments)}
+                  canAdvancedRepair={Boolean(data.canAdvancedRepair)}
+                  workOrderPath={data.workOrderPath}
+                  customerName={data.guestName}
+                  recordCashAction={recordCashAction}
+                  stripeSessionId={data.stripeSessionId}
+                  stripePaymentIntent={data.stripePaymentIntent}
+                  ledgerWarnings={data.ledgerWarnings}
+                  ledgerTotals={data.ledgerTotals}
+                  recentPaymentsForRepair={data.recentPayments.map((p) => ({
+                    id: p.id ?? '',
+                    amount: p.amount,
+                    method: p.method,
+                    status: p.status,
+                    stripeSession: p.stripe,
+                  }))}
+                  unassignedPaymentDiagnostics={data.unassignedPaymentDiagnostics ?? []}
+                  customerId={data.customerId}
+                  credits={data.credits}
+                  redemptions={data.redemptions}
+                  showOnlyReceipt={true}
+                />
+              ) : !data.ledgerResolveError ? (
+                <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+                  Order ledger unavailable — refresh the page.
+                </p>
               ) : null}
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Loyalty Punch Card Controls */}
+      {/* === LOYALTY TAB === */}
+      {activeTab === 'loyalty' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
           {data.customerId ? (
             <div id='wo-loyalty' className='scroll-mt-32'>
               <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
@@ -1016,263 +1304,180 @@ export function WorkOrderConsoleClient({
                 </div>
               </div>
             </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* === CUSTOMER TAB === */}
-      {activeTab === 'customer' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-              <SectionEyebrow>Customer CRM Profile</SectionEyebrow>
-              <PremiumBadge tone="zinc">Details & Contact</PremiumBadge>
+          ) : (
+            <div className='gb-premium-card text-center py-12 px-6 rounded-3xl border border-white/10 bg-black/45 space-y-4 shadow-xl'>
+              <p className='text-sm text-zinc-400'>
+                Loyalty punching requires a registered customer account.
+              </p>
             </div>
-
-            <div className='grid gap-4 md:grid-cols-2 text-sm text-zinc-300'>
-              <div className="space-y-2">
-                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Contact Details</p>
-                <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-2">
-                  <p><span className="text-zinc-500">Name:</span> <strong className="text-white">{data.guestName}</strong></p>
-                  <p><span className="text-zinc-500">Phone:</span> <strong className="text-white">{data.guestPhone || 'None'}</strong></p>
-                  <p><span className="text-zinc-500">Email:</span> <strong className="text-white">{data.guestEmail || 'None'}</strong></p>
-                </div>
-
-                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Quick Connect Links</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <a
-                    href={`tel:${data.guestPhone}`}
-                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                  >
-                    <PhoneCall className="h-4 w-4 text-gold-soft mb-1" />
-                    Call
-                  </a>
-                  <a
-                    href={`sms:${data.guestPhone}`}
-                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                  >
-                    <MessageSquare className="h-4 w-4 text-gold-soft mb-1" />
-                    SMS
-                  </a>
-                  <a
-                    href={`mailto:${data.guestEmail}`}
-                    className="flex flex-col items-center justify-center p-3.5 bg-black/45 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                  >
-                    ✉ Email
-                  </a>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500">Service Location</p>
-                <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-2">
-                  <p className="text-white font-medium">{data.fullAddress || 'No address provided'}</p>
-                  
-                  {data.mapsHref || data.googleDirectionsHref || data.appleMapsHref ? (
-                    <div className="mt-1 flex flex-wrap gap-3">
-                      {(data.googleDirectionsHref || data.mapsHref) ? (
-                        <a
-                          href={data.googleDirectionsHref || data.mapsHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-gold-soft hover:underline font-bold"
-                        >
-                          <MapPin className="h-3.5 w-3.5" />
-                          Google Maps
-                        </a>
-                      ) : null}
-                      {data.appleMapsHref ? (
-                        <a
-                          href={data.appleMapsHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:underline font-bold"
-                        >
-                          <MapPin className="h-3.5 w-3.5" />
-                          Apple Maps
-                        </a>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                
-                {(data.accessLocation || data.accessWater || data.accessPower || data.accessParking || data.gateNotes) && (
-                  <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-1 text-xs">
-                    <p className="font-bold text-[9px] uppercase tracking-wider text-zinc-500 mb-1">Access Notes</p>
-                    {data.accessLocation && <p><span className="text-zinc-500">Location:</span> {data.accessLocation}</p>}
-                    {data.accessWater && <p><span className="text-zinc-500">Water Source:</span> {data.accessWater}</p>}
-                    {data.accessPower && <p><span className="text-zinc-500">Power Source:</span> {data.accessPower}</p>}
-                    {data.accessParking && <p><span className="text-zinc-500">Parking Setup:</span> {data.accessParking}</p>}
-                    {data.gateNotes && <p><span className="text-zinc-500">Gate/Code Notes:</span> {data.gateNotes}</p>}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Profile edit form */}
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <p className="font-bold text-white uppercase text-[10px] tracking-wider text-zinc-500 mb-3">Edit Customer & Location Details</p>
-              <form action={updateDetailsAction} className='grid gap-3 sm:grid-cols-2'>
-                <input type='hidden' name='id' value={jobId} />
-                <input type='hidden' name='source' value={data.source} />
-                
-                <label className="block text-[9px] uppercase font-bold text-zinc-500">
-                  Guest Name
-                  <input name='guestName' defaultValue={data.guestName} placeholder='Guest Name' className='gb-input mt-1 focus:border-gold' />
-                </label>
-                
-                <label className="block text-[9px] uppercase font-bold text-zinc-500">
-                  Phone Number
-                  <input name='guestPhone' defaultValue={data.guestPhone} placeholder='Phone Number' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
-                  Email Address
-                  <input name='guestEmail' defaultValue={data.guestEmail} placeholder='Email Address' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
-                  Street Address
-                  <input name='serviceAddress' defaultValue={data.serviceAddress} placeholder='Street Address' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <label className="block text-[9px] uppercase font-bold text-zinc-500">
-                  City
-                  <input name='serviceCity' defaultValue={data.serviceCity} placeholder='City' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <label className="block text-[9px] uppercase font-bold text-zinc-500">
-                  State
-                  <input name='serviceState' defaultValue={data.serviceState} placeholder='State' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <label className="block text-[9px] uppercase font-bold text-zinc-500 sm:col-span-2">
-                  ZIP Code
-                  <input name='serviceZip' defaultValue={data.serviceZip} placeholder='ZIP Code' className='gb-input mt-1 focus:border-gold' />
-                </label>
-
-                <button type='submit' className='sm:col-span-2 rounded-2xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs font-black uppercase text-gold-soft hover:bg-gold/20 transition duration-200 mt-2'>
-                  Save Customer Details
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* === VEHICLE TAB === */}
-      {activeTab === 'vehicle' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-              <SectionEyebrow>Vehicles Configuration</SectionEyebrow>
-              <PremiumBadge tone="zinc">{data.vehicles.length} Vehicle{data.vehicles.length === 1 ? '' : 's'}</PremiumBadge>
-            </div>
-
-            <WorkOrderVehiclesForm
-              id={jobId}
-              source={data.source}
-              defaultService={data.vehicleForms.defaultService}
-              defaultClass={data.vehicleForms.defaultClass}
-              saveAction={updateVehiclesAction}
-              initialVehicles={data.vehicles.map((v) => ({
-                year: v.year,
-                make: v.make,
-                model: v.model,
-                description: v.description,
-                color: v.color,
-                service: v.service,
-                vehicleClass: v.vehicleClass,
-                priceCents: v.priceCents,
-              }))}
-            />
-          </div>
+          )}
         </div>
       )}
 
       {/* === NOTES TAB === */}
       {activeTab === 'notes' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-              <SectionEyebrow>Chronological Notes</SectionEyebrow>
-              <PremiumBadge tone="zinc">{data.notes.length} Note{data.notes.length === 1 ? '' : 's'}</PremiumBadge>
-            </div>
-
-            {data.notes.length === 0 ? (
-              <p className='text-sm text-zinc-500 py-6 text-center bg-black/20 border border-dashed border-white/5 rounded-2xl'>No operational notes recorded yet.</p>
-            ) : (
-              <ul className='space-y-3'>
-                {data.notes.map((n) => (
-                  <li key={n.id} className='rounded-xl border border-white/10 bg-zinc-950/30 px-4 py-3 text-sm'>
-                    <p className='text-[10px] font-bold uppercase text-gold-soft'>{n.vehicleLabel} · {n.time}</p>
-                    <p className='mt-1 whitespace-pre-wrap text-zinc-300 leading-relaxed'>{n.body}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Timeline & notifications outbox */}
-          <div id='wo-timeline'>
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Column 1: Existing Notes list */}
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-                <SectionEyebrow>Timeline & Notifications</SectionEyebrow>
-                <PremiumBadge tone="zinc">{data.timeline.length} Events</PremiumBadge>
+                <SectionEyebrow>Saved Notes Timeline</SectionEyebrow>
+                <PremiumBadge tone="zinc">{data.notes.length} Note(s)</PremiumBadge>
               </div>
 
-              <TimelineRail events={data.timeline} />
+              {data.notes.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-white/5 rounded-2xl bg-black/20 text-zinc-500 text-sm">
+                  No notes recorded for this work order yet.
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                  {data.notes.map((n) => (
+                    <div key={n.id} className="rounded-2xl border border-white/10 bg-zinc-950/40 p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-gold-soft bg-gold/10 px-2 py-0.5 rounded border border-gold/25">
+                          {n.vehicleLabel}
+                        </span>
+                        <span className="text-[9px] font-mono text-zinc-500">{n.time}</span>
+                      </div>
+                      <p className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                        {n.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              {data.outbox.length > 0 ? (
-                <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">SMS & Email Outbox History</p>
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                    {data.outbox.map((o) => {
-                      const isEmail = String(o.kind).toLowerCase().includes('email');
-                      const isSent = String(o.status).toLowerCase().includes('sent') || String(o.status).toLowerCase().includes('delivered');
-                      return (
-                        <div
-                          key={o.id}
-                          className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 px-3.5 py-2.5"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="text-base text-zinc-400 shrink-0">
-                              {isEmail ? '✉' : '🗪'}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-white uppercase tracking-wide">
-                                {o.kind}
-                              </p>
-                              <p className="text-[9px] text-zinc-500 mt-0.5">{o.time}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                                isSent
-                                  ? 'border border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
-                                  : 'border border-amber-500/25 bg-amber-500/10 text-amber-200'
-                              }`}
-                            >
-                              {o.status}
-                            </span>
-                            {o.skipped ? (
-                              <p className="text-[9px] text-zinc-500 mt-0.5 italic">{o.skipped}</p>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
+            {/* Column 2: Save notes form */}
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>Add Work Order Note</SectionEyebrow>
+              </div>
+
+              <form
+                action={async (formData) => {
+                  await techSaveJobNotesAction(formData);
+                  alert('Notes saved to this work order.');
+                }}
+                className="space-y-4"
+              >
+                {!data.isFallback ? <input type="hidden" name="appointmentId" value={data.id} /> : null}
+                {data.isFallback ? <input type="hidden" name="fallbackBookingId" value={data.id} /> : null}
+                {data.workflowSessionId ? <input type="hidden" name="workflowSessionId" value={data.workflowSessionId} /> : null}
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                    Select Vehicle Scope
+                  </label>
+                  <select
+                    name="vehicleIndex"
+                    className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-xs"
+                  >
+                    <option value="-1">All Vehicles</option>
+                    {data.vehicles.map((v, idx) => (
+                      <option key={idx} value={idx}>
+                        Vehicle {idx + 1}: {v.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                    Internal notes (Staff view only)
+                  </label>
+                  <textarea
+                    name="internalNotes"
+                    rows={3}
+                    placeholder="Internal team notes, special handling, customer context..."
+                    className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-xs"
+                  />
+                </div>
+
+                <div className="grid gap-3 grid-cols-2">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                      Before Restoration Notes
+                    </label>
+                    <textarea
+                      name="beforeNotes"
+                      rows={2}
+                      placeholder="e.g. Paint swirls, heavy mud..."
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                      After Restoration Notes
+                    </label>
+                    <textarea
+                      name="afterNotes"
+                      rows={2}
+                      placeholder="e.g. Clay bar finish, wax coated..."
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                      Damage Observed Notes
+                    </label>
+                    <textarea
+                      name="damageNotes"
+                      rows={2}
+                      placeholder="e.g. Dent on fender, cracked wheel..."
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                      Upsell Suggestions
+                    </label>
+                    <textarea
+                      name="upsellNotes"
+                      rows={2}
+                      placeholder="e.g. Recommend ceramic coating..."
+                      className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-[11px]"
+                    />
                   </div>
                 </div>
-              ) : null}
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                    Customer-visible summary (Shared on receipt)
+                  </label>
+                  <textarea
+                    name="notes"
+                    rows={2}
+                    placeholder="Summary visible to the customer on their receipt..."
+                    className="gb-input bg-black/40 border-white/10 focus:border-gold transition text-xs"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    name="customerVisible"
+                    className="rounded border-zinc-700 bg-black text-gold focus:ring-0 h-4 w-4"
+                  />
+                  <span>Mark customer-visible summary on receipt</span>
+                </label>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,175,55,0.25)]"
+                  >
+                    Save & Log Notes
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       )}
 
-      {/* === DOCUMENTS TAB === */}
-      {activeTab === 'documents' && (
+      {/* === ADVANCED TAB === */}
+      {activeTab === 'advanced' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           <section id='wo-agreement' className='scroll-mt-28'>
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
@@ -1304,6 +1509,87 @@ export function WorkOrderConsoleClient({
               </div>
             </div>
           </section>
+
+          <div id='wo-advanced-ledger' className='scroll-mt-28'>
+            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <SectionEyebrow>System Diagnostics & Repair Tools</SectionEyebrow>
+                <PremiumBadge tone="rose">Advanced</PremiumBadge>
+              </div>
+
+              {data.ledgerResolveError ? (
+                <p className='rounded-xl border border-red-500/40 bg-red-950/50 px-4 py-3 text-sm text-red-100'>{data.ledgerResolveError}</p>
+              ) : null}
+              {data.pricingSnapshot && data.jobPricing && data.receiptBreakdownLines && data.ledgerDiscounts && data.ledgerPayments && !data.ledgerResolveError ? (
+                <WorkOrderLedgerPanel
+                  jobId={jobId}
+                  isFallback={data.isFallback}
+                  source={data.isFallback ? 'fallback' : 'appointment'}
+                  appointmentId={data.isFallback ? undefined : jobId}
+                  fallbackBookingId={data.isFallback ? jobId : undefined}
+                  orderSourceLabel={data.orderSourceLabel ?? 'Work order'}
+                  isTest={data.isTestOrder}
+                  vehicles={data.vehicles.map((v, index) => ({
+                    index,
+                    label: v.label,
+                    service: v.service,
+                    priceCents: v.priceCents,
+                    priceLabel: v.priceLabel,
+                  }))}
+                  discounts={data.ledgerDiscounts}
+                  payments={data.ledgerPayments}
+                  pricingSnapshot={data.pricingSnapshot}
+                  pricing={data.jobPricing!}
+                  breakdownLines={data.receiptBreakdownLines}
+                  balanceDue={data.balanceDue}
+                  balanceDueCents={data.balanceDueCents}
+                  finalTotal={data.finalTotal}
+                  depositPaid={data.depositPaid}
+                  totalPaid={data.totalPaid}
+                  paymentComplete={data.paymentComplete}
+                  receiptPdfHref={data.receiptPdfHref}
+                  customLineItems={data.customLineItems ?? []}
+                  promoCode={data.promoCode}
+                  pricingOverrideReason={data.pricingOverrideReason}
+                  canEditPricing={canEditPricing}
+                  canManagePayments={Boolean(data.canManagePayments)}
+                  canAdvancedRepair={Boolean(data.canAdvancedRepair)}
+                  workOrderPath={data.workOrderPath}
+                  customerName={data.guestName}
+                  recordCashAction={recordCashAction}
+                  stripeSessionId={data.stripeSessionId}
+                  stripePaymentIntent={data.stripePaymentIntent}
+                  ledgerWarnings={data.ledgerWarnings}
+                  ledgerTotals={data.ledgerTotals}
+                  recentPaymentsForRepair={data.recentPayments.map((p) => ({
+                    id: p.id ?? '',
+                    amount: p.amount,
+                    method: p.method,
+                    status: p.status,
+                    stripeSession: p.stripe,
+                  }))}
+                  unassignedPaymentDiagnostics={data.unassignedPaymentDiagnostics ?? []}
+                  customerId={data.customerId}
+                  credits={data.credits}
+                  redemptions={data.redemptions}
+                  showOnlyAdvanced={true}
+                />
+              ) : !data.ledgerResolveError ? (
+                <p className='rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'>
+                  Order ledger diagnostics unavailable — refresh the page.
+                </p>
+              ) : null}
+
+              {!data.isFallback ? (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <WorkOrderMileagePanel
+                    appointmentId={jobId}
+                    workOrderPath={data.workOrderPath ?? `/tech/work-orders/${jobId}`}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
 

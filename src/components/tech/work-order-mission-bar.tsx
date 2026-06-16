@@ -7,8 +7,10 @@ import {
   CreditCard,
   FileText,
   User,
-  FileSignature,
   MessageSquare,
+  Car,
+  Sparkles,
+  Wrench,
 } from 'lucide-react';
 
 function MissionBtn({
@@ -18,7 +20,7 @@ function MissionBtn({
   active,
 }: {
   label: string;
-  icon: ReactNode;
+  icon: React.ReactNode;
   onClick?: () => void;
   active?: boolean;
 }) {
@@ -57,6 +59,18 @@ export function WorkOrderMissionBar({
           active={activeTab === 'overview'}
         />
         <MissionBtn
+          label='Customer'
+          icon={<User className='h-4 w-4' />}
+          onClick={() => onTabChange('customer')}
+          active={activeTab === 'customer'}
+        />
+        <MissionBtn
+          label='Vehicle'
+          icon={<Car className='h-4 w-4' />}
+          onClick={() => onTabChange('vehicle')}
+          active={activeTab === 'vehicle'}
+        />
+        <MissionBtn
           label='Photos'
           icon={<Camera className='h-4 w-4' />}
           onClick={() => onTabChange('photos')}
@@ -69,16 +83,16 @@ export function WorkOrderMissionBar({
           active={activeTab === 'payments'}
         />
         <MissionBtn
-          label='Customer'
-          icon={<User className='h-4 w-4' />}
-          onClick={() => onTabChange('customer')}
-          active={activeTab === 'customer'}
+          label='Receipt'
+          icon={<FileText className='h-4 w-4' />}
+          onClick={() => onTabChange('receipt')}
+          active={activeTab === 'receipt'}
         />
         <MissionBtn
-          label='Vehicle'
-          icon={<FileText className='h-4 w-4' />}
-          onClick={() => onTabChange('vehicle')}
-          active={activeTab === 'vehicle'}
+          label='Loyalty'
+          icon={<Sparkles className='h-4 w-4' />}
+          onClick={() => onTabChange('loyalty')}
+          active={activeTab === 'loyalty'}
         />
         <MissionBtn
           label='Notes'
@@ -87,10 +101,10 @@ export function WorkOrderMissionBar({
           active={activeTab === 'notes'}
         />
         <MissionBtn
-          label='Documents'
-          icon={<FileSignature className='h-4 w-4' />}
-          onClick={() => onTabChange('documents')}
-          active={activeTab === 'documents'}
+          label='Advanced'
+          icon={<Wrench className='h-4 w-4' />}
+          onClick={() => onTabChange('advanced')}
+          active={activeTab === 'advanced'}
         />
       </div>
     </div>

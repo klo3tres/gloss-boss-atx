@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   CalendarDays,
@@ -219,7 +220,18 @@ export function TechPremiumShell({
   const goalPct =
     goalTargetCents != null && goalTargetCents > 0 ? Math.min(100, Math.round((revenueWeekCents / goalTargetCents) * 100)) : 0;
 
-  const [opsTab, setOpsTab] = useState<'routes' | 'mileage' | 'supplies' | 'leads'>('routes');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const activeTab = searchParams.get('tab') || 'overview';
+
+  const handleTabChange = (newTab: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', newTab);
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   const [mileageMsg, setMileageMsg] = useState<string | null>(null);
   const [supplyMsg, setSupplyMsg] = useState<string | null>(null);
   const [leadMsg, setLeadMsg] = useState<string | null>(null);
@@ -227,43 +239,12 @@ export function TechPremiumShell({
   const [supplyBusy, setSupplyBusy] = useState(false);
   const [leadBusy, setLeadBusy] = useState(false);
 
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash) {
-        const cleanHash = hash.replace('#', '');
-        
-        if (['routes', 'mileage', 'supplies', 'leads'].includes(cleanHash)) {
-          setOpsTab(cleanHash as 'routes' | 'mileage' | 'supplies' | 'leads');
-          setTimeout(() => {
-            const element = document.getElementById('routes');
-            if (element) {
-              element.scrollIntoView({ behavior: 'smooth' });
-            }
-          }, 50);
-        } else {
-          const element = document.getElementById(cleanHash);
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-          }
-        }
-      }
-    };
-
-    const timeoutId = setTimeout(handleHashChange, 100);
-    window.addEventListener('hashchange', handleHashChange);
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('hashchange', handleHashChange);
-    };
-  }, []);
-
   return (
     <div className='relative min-h-screen overflow-hidden pb-24'>
       <div className='pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gold/10 blur-[100px]' aria-hidden />
       <div className='pointer-events-none absolute -left-32 top-1/3 h-64 w-64 rounded-full bg-amber-500/5 blur-[90px]' aria-hidden />
 
-      <header className='relative mb-10 flex flex-col gap-6 border-b border-white/10 pb-8 lg:flex-row lg:items-center lg:justify-between'>
+      <header className='relative mb-6 flex flex-col gap-6 border-b border-white/10 pb-6 lg:flex-row lg:items-center lg:justify-between'>
         <div className='flex items-start gap-4'>
           <div className='relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-gold/40 bg-gradient-to-br from-gold/30 to-black text-xl font-black text-gold-soft shadow-[0_0_28px_rgba(212,166,77,0.4)]'>
             {initial}
@@ -285,6 +266,48 @@ export function TechPremiumShell({
           </span>
         </div>
       </header>
+
+      {/* Premium Field Terminal Tab Switcher Pill Rail */}
+      <div className='mb-6 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-white/5'>
+        {[
+          { id: 'overview', label: 'Overview', icon: <Gauge className='h-4 w-4' /> },
+          { id: 'jobs', label: 'Jobs List', icon: <CalendarDays className='h-4 w-4' /> },
+          { 
+            id: 'active', 
+            label: 'Active Work Order', 
+            icon: (
+              <div className='relative'>
+                <Timer className='h-4 w-4' />
+                {activeJob && (
+                  <span className='absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-emerald-500' />
+                )}
+              </div>
+            ) 
+          },
+          { id: 'routes', label: 'Route Dispatch', icon: <Navigation className='h-4 w-4' /> },
+          { id: 'leads', label: 'Leads CRM', icon: <UserPlus className='h-4 w-4' /> },
+          { id: 'mileage', label: 'Gas & Mileage', icon: <Fuel className='h-4 w-4' /> },
+          { id: 'supplies', label: 'Supplies Request', icon: <PackageOpen className='h-4 w-4' /> },
+          { id: 'tools', label: 'Field Invoicing', icon: <Zap className='h-4 w-4' /> },
+        ].map((t) => {
+          const isActive = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type='button'
+              onClick={() => handleTabChange(t.id)}
+              className={`flex items-center gap-1.5 shrink-0 rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-wider transition duration-200 ${
+                isActive
+                  ? 'border-gold bg-gold/15 text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+                  : 'border-white/10 bg-zinc-950/40 text-zinc-400 hover:border-gold/30 hover:text-gold-soft'
+              }`}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {isSuperAdmin ? (
         <form
@@ -320,406 +343,395 @@ export function TechPremiumShell({
         </div>
       ) : null}
 
-      <section className={`${cardGlow} relative mb-10 overflow-hidden`}>
-        <div className='pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_top,rgba(212,166,77,0.14),transparent_55%)]' />
-        <p className='relative text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Live dispatch metrics</p>
-        <div className='relative mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5'>
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'
-          >
-            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-              <CalendarDays className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
-              Jobs today
-            </p>
-            <p className='mt-2.5 text-3xl font-black text-white'>{todayJobs.length}</p>
-          </motion.div>
-          <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
-            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-              <TrendingUp className='h-3.5 w-3.5 text-emerald-400' aria-hidden />
-              Revenue (jobs)
-            </p>
-            <p className='mt-2.5 text-lg font-black text-white'>
-              ${(revenueTodayCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>today</span>
-            </p>
-            <p className='text-sm font-bold text-gold-soft mt-0.5'>
-              ${(revenueWeekCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>7d booked</span>
-            </p>
-          </div>
-          <div className='rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-emerald-500/40 transition duration-300'>
-            <p className='text-[10px] font-black uppercase tracking-wider text-emerald-400/90'>Stripe (completed)</p>
-            <p className='mt-2.5 text-lg font-black text-white'>
-              ${(performance.revenueTodayFromPayments / 100).toFixed(0)}{' '}
-              <span className='text-xs font-normal text-zinc-500'>today</span>
-            </p>
-            <p className='text-sm font-bold text-emerald-200/95 mt-0.5'>
-              ${(performance.revenueWeekFromPayments / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>week</span>
-            </p>
-          </div>
-          <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
-            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-              <Timer className='h-3.5 w-3.5 text-zinc-400' aria-hidden />
-              Avg completion
-            </p>
-            <p className='mt-2.5 text-lg font-black text-white'>
-              {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'}
-            </p>
-            <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>
-              Timers (30d) · {analytics.completedCount} active jobs · {performance.jobsCompleted} total
-            </p>
-          </div>
-          <div className='rounded-xl border border-gold/30 bg-black/70 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/45 transition duration-300'>
-            <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-              <Target className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
-              {goalLabel ?? 'Weekly goal'}
-            </p>
-            <div className='mt-2 h-2 overflow-hidden rounded-full bg-zinc-900'>
-              <motion.div
-                className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400'
-                initial={{ width: 0 }}
-                animate={{ width: `${goalPct}%` }}
-                transition={{ duration: 0.8, ease: 'easeOut' }}
-              />
-            </div>
-            <p className='mt-2 text-[10px] text-zinc-400 leading-tight'>
-              {goalTargetCents != null ? (
-                <>
-                  {goalPct}% of ${(goalTargetCents / 100).toFixed(0)} target (7d vs goal)
-                </>
-              ) : (
-                'Goal row is pending in database'
-              )}
-            </p>
-          </div>
-        </div>
-      </section>
+      {/* === CONDITIONAL TAB RENDERING === */}
 
-      <div id="active-work-orders" className="scroll-mt-28">
-        {activeJob ? (
-          <section className='mb-10 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
-            <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
-              <div>
-                <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Live Work Order</p>
-                <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
-                  {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
-                </h2>
-                <p className='mt-1 text-sm text-zinc-400'>
-                  {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
+      {/* 1. OVERVIEW TAB */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section className={`${cardGlow} relative overflow-hidden`}>
+            <div className='pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_top,rgba(212,166,77,0.14),transparent_55%)]' />
+            <p className='relative text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Live dispatch metrics</p>
+            <div className='relative mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5'>
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'
+              >
+                <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+                  <CalendarDays className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
+                  Jobs today
                 </p>
-                <p className='mt-1 text-xs text-zinc-500'>
-                  {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
-                  {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
-                  {activeJob.payment_status ?? 'payment pending'}
+                <p className='mt-2.5 text-3xl font-black text-white'>{todayJobs.length}</p>
+              </motion.div>
+              <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
+                <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+                  <TrendingUp className='h-3.5 w-3.5 text-emerald-400' aria-hidden />
+                  Revenue (jobs)
                 </p>
-                <p className='mt-1 text-xs text-zinc-500'>
-                  Directions:{' '}
-                  {activeJob.service_address ? (
-                    <a
-                      href={directionsHref(activeJob.service_address)}
-                      target='_blank'
-                      rel='noreferrer'
-                      className='text-gold-soft underline underline-offset-4'
-                    >
-                      {activeJob.service_address}
-                    </a>
+                <p className='mt-2.5 text-lg font-black text-white'>
+                  ${(revenueTodayCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>today</span>
+                </p>
+                <p className='text-sm font-bold text-gold-soft mt-0.5'>
+                  ${(revenueWeekCents / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>7d booked</span>
+                </p>
+              </div>
+              <div className='rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-emerald-500/40 transition duration-300'>
+                <p className='text-[10px] font-black uppercase tracking-wider text-emerald-400/90'>Stripe (completed)</p>
+                <p className='mt-2.5 text-lg font-black text-white'>
+                  ${(performance.revenueTodayFromPayments / 100).toFixed(0)}{' '}
+                  <span className='text-xs font-normal text-zinc-500'>today</span>
+                </p>
+                <p className='text-sm font-bold text-emerald-200/95 mt-0.5'>
+                  ${(performance.revenueWeekFromPayments / 100).toFixed(0)} <span className='text-xs font-normal text-zinc-500'>week</span>
+                </p>
+              </div>
+              <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
+                <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+                  <Timer className='h-3.5 w-3.5 text-zinc-400' aria-hidden />
+                  Avg completion
+                </p>
+                <p className='mt-2.5 text-lg font-black text-white'>
+                  {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'}
+                </p>
+                <p className='mt-1 text-[9px] text-zinc-500 leading-tight'>
+                  Timers (30d) · {analytics.completedCount} active jobs · {performance.jobsCompleted} total
+                </p>
+              </div>
+              <div className='rounded-xl border border-gold/30 bg-black/70 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/45 transition duration-300'>
+                <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+                  <Target className='h-3.5 w-3.5 text-gold-soft' aria-hidden />
+                  {goalLabel ?? 'Weekly goal'}
+                </p>
+                <div className='mt-2 h-2 overflow-hidden rounded-full bg-zinc-900'>
+                  <motion.div
+                    className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400'
+                    initial={{ width: 0 }}
+                    animate={{ width: `${goalPct}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                  />
+                </div>
+                <p className='mt-2 text-[10px] text-zinc-400 leading-tight'>
+                  {goalTargetCents != null ? (
+                    <>
+                      {goalPct}% of ${(goalTargetCents / 100).toFixed(0)} target (7d vs goal)
+                    </>
                   ) : (
-                    <span className='text-zinc-600'>No service address on file — contact customer.</span>
+                    'Goal row is pending in database'
                   )}
                 </p>
               </div>
-              <div className='flex flex-wrap items-center gap-3'>
-                <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
-                  <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
-                  <LiveTimer startedAt={activeJob.timerStartedAt} />
+            </div>
+          </section>
+
+          <div className='grid gap-6 md:grid-cols-2'>
+            <section className={cardGlow}>
+              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Completed today</p>
+              <p className='mt-2 text-3xl font-black text-white'>{completedTodayCount}</p>
+              <p className='mt-1 text-xs text-zinc-500'>Finished jobs assigned to you since midnight.</p>
+            </section>
+
+            <section className={cardGlow}>
+              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Performance (30 days)</p>
+              <p className='mt-2 text-lg font-black text-white'>
+                Avg {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'}
+              </p>
+              <p className='mt-1 text-xs text-zinc-500'>
+                {performance.jobsCompleted} completed jobs · Stripe week ${(performance.revenueWeekFromPayments / 100).toFixed(0)}
+              </p>
+            </section>
+          </div>
+
+          <section className='mt-4'>
+            <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick actions</p>
+            <div className='grid gap-3 grid-cols-2 sm:grid-cols-4'>
+              <Link href='/tech/workflow' className={actionBtn}>
+                <ClipboardCheck className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
+                Walk-in workflow
+              </Link>
+              <button type='button' onClick={() => handleTabChange('tools')} className={actionBtn}>
+                <Zap className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
+                Field invoice
+              </button>
+              <button type='button' onClick={() => handleTabChange('leads')} className={actionBtn}>
+                <FileText className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
+                Capture lead
+              </button>
+              <Link href='/tech/resources' className={actionBtn}>
+                <Sparkles className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
+                SOPs & docs
+              </Link>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* 2. JOBS TAB */}
+      {activeTab === 'jobs' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section>
+            <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Today ({todayJobs.length})</h2>
+            {todayJobs.length === 0 ? (
+              <p className='text-sm text-zinc-500 py-6 text-center border border-dashed border-white/5 rounded-2xl bg-black/20'>No jobs scheduled for today.</p>
+            ) : (
+              <ul className='space-y-3'>
+                {todayJobs.map((j) => (
+                  <li key={j.id} className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/45 px-4 py-3 hover:border-gold/30 transition'>
+                    <div>
+                      <p className='font-bold text-white'>{j.guest_name ?? 'Customer'}</p>
+                      <p className='text-xs text-zinc-400'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {j.service_slug.replace(/-/g, ' ')}</p>
+                    </div>
+                    <Link href={workOrderHref(j)} className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black hover:bg-gold-soft transition duration-250'>
+                      Open
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs ({assignedJobs.length})</h2>
+            <TechJobsClient jobs={assignedJobs.length ? assignedJobs : jobs} />
+          </section>
+          
+          <section className='mt-6 border-t border-white/5 pt-6'>
+            <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-300'>Open lead pool</p>
+            {poolLeads.length === 0 ? (
+              <p className='text-sm text-zinc-500 py-6 text-center border border-dashed border-white/5 rounded-2xl bg-black/20'>Pool is empty — admins mark leads &quot;in pool&quot; from CRM.</p>
+            ) : (
+              <ul className='space-y-3'>
+                {poolLeads.map((l) => (
+                  <li
+                    key={l.id}
+                    className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3'
+                  >
+                    <div>
+                      <p className='font-semibold text-white'>{l.name}</p>
+                      <p className='text-xs text-zinc-500'>{l.status}</p>
+                      {l.phone ? <p className='text-xs text-zinc-400'>{l.phone}</p> : null}
+                    </div>
+                    <form action={techClaimLeadAction}>
+                      <input type='hidden' name='leadId' value={l.id} />
+                      <button
+                        type='submit'
+                        className='rounded-lg bg-emerald-500/90 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black hover:brightness-110'
+                      >
+                        Claim lead
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* 3. ACTIVE TAB */}
+      {activeTab === 'active' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {activeJob ? (
+            <section className='rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 via-black to-zinc-950 p-5 shadow-[0_0_36px_rgba(16,185,129,0.12)]'>
+              <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+                <div>
+                  <p className='text-[10px] font-black uppercase tracking-[0.28em] text-emerald-300'>Live Work Order</p>
+                  <h2 className='mt-1 text-xl font-black uppercase tracking-tight text-white'>
+                    {activeJob.guest_name ?? 'Walk-in customer'} · {activeJob.vehicle_description ?? 'Vehicle TBD'}
+                  </h2>
+                  <p className='mt-1 text-sm text-zinc-400'>
+                    {activeJob.service_slug.replace(/-/g, ' ')} · before {activeJob.beforePhotoCount ?? 0} · after {activeJob.afterPhotoCount ?? 0}
+                  </p>
+                  <p className='mt-1 text-xs text-zinc-500'>
+                    {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
+                    {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
+                    {activeJob.payment_status ?? 'payment pending'}
+                  </p>
+                  <p className='mt-1 text-xs text-zinc-500'>
+                    Directions:{' '}
+                    {activeJob.service_address ? (
+                      <a
+                        href={directionsHref(activeJob.service_address)}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='text-gold-soft underline underline-offset-4'
+                      >
+                        {activeJob.service_address}
+                      </a>
+                    ) : (
+                      <span className='text-zinc-600'>No service address on file — contact customer.</span>
+                    )}
+                  </p>
                 </div>
-                <TechTimerControls
-                  appointmentId={activeJob.isFallback ? null : activeJob.id}
-                  fallbackBookingId={activeJob.fallback_booking_id ?? null}
-                  workflowSessionId={activeJob.workflowSessionId ?? null}
-                  initialTimerId={activeJob.timerId ?? null}
-                />
-                <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
-                  Open Work Order
+                <div className='flex flex-wrap items-center gap-3'>
+                  <div className='rounded-xl border border-emerald-500/25 bg-black/40 px-4 py-2 text-sm'>
+                    <span className='mr-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300'>Timer running</span>
+                    <LiveTimer startedAt={activeJob.timerStartedAt} />
+                  </div>
+                  <TechTimerControls
+                    appointmentId={activeJob.isFallback ? null : activeJob.id}
+                    fallbackBookingId={activeJob.fallback_booking_id ?? null}
+                    workflowSessionId={activeJob.workflowSessionId ?? null}
+                    initialTimerId={activeJob.timerId ?? null}
+                  />
+                  <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black shadow-md hover:bg-gold-soft transition'>
+                    Open Work Order
+                  </Link>
+                </div>
+              </div>
+              <div className='mt-4 grid gap-2 grid-cols-2 lg:grid-cols-4'>
+                <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Agreement: <span className={activeJob.hasIntake ? 'text-emerald-300' : 'text-amber-300'}>{activeJob.hasIntake ? 'signed/on file' : 'needs review'}</span></div>
+                <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Notes: <span className={activeJob.fieldNotesPreview ? 'text-emerald-300' : 'text-zinc-500'}>{activeJob.fieldNotesPreview ? 'saved' : 'ready'}</span></div>
+                <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
+                <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
+              </div>
+              <div className='mt-4 grid gap-4 lg:grid-cols-2'>
+                <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+                  <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Before Photos</p>
+                  {activeJob.beforePhotos?.length ? (
+                    <div className='mt-3 grid grid-cols-4 gap-2'>
+                      {activeJob.beforePhotos.map((photo) => (
+                        <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                          <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className='mt-2 space-y-2'>
+                      <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
+                      <Link href={workOrderHref(activeJob)} className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                        Upload before photo now
+                      </Link>
+                    </div>
+                  )}
+                </div>
+                <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
+                  <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>After Photos</p>
+                  {activeJob.afterPhotos?.length ? (
+                    <div className='mt-3 grid grid-cols-4 gap-2'>
+                      {activeJob.afterPhotos.map((photo) => (
+                        <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
+                          <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className='mt-2 text-xs text-zinc-500'>Use Upload After Photos when the job is ready for closeout.</p>
+                  )}
+                </div>
+              </div>
+              <div className='mt-4 flex flex-wrap gap-2 items-center'>
+                <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.2)] hover:bg-gold-soft transition'>
+                  Open Work Order Console
+                </Link>
+                <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200 transition'>
+                  Complete & Closeout Job
                 </Link>
               </div>
-            </div>
-            <div className='mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
-              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Agreement: <span className={activeJob.hasIntake ? 'text-emerald-300' : 'text-amber-300'}>{activeJob.hasIntake ? 'signed/on file' : 'needs review'}</span></div>
-              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Notes: <span className={activeJob.fieldNotesPreview ? 'text-emerald-300' : 'text-zinc-500'}>{activeJob.fieldNotesPreview ? 'saved' : 'ready'}</span></div>
-              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Started: <span className='text-white'>{activeJob.timerStartedAt ? new Date(activeJob.timerStartedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'just now'}</span></div>
-              <div className='rounded-xl border border-white/10 bg-black/35 p-3 text-xs text-zinc-300'>Status: <span className='text-emerald-300'>{activeJob.isFallback ? 'fallback in progress' : activeJob.status.replace(/_/g, ' ')}</span></div>
-            </div>
-            <div className='mt-4 grid gap-4 lg:grid-cols-2'>
-              <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
-                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Before Photos</p>
-                {activeJob.beforePhotos?.length ? (
-                  <div className='mt-3 grid grid-cols-4 gap-2'>
-                    {activeJob.beforePhotos.map((photo) => (
-                      <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                        <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
-                        <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className='mt-2 space-y-2'>
-                    <p className='text-xs text-amber-200'>Before photo missing. The work order can stay open because this job is already started.</p>
-                    <Link href={workOrderHref(activeJob)} className='inline-flex rounded-lg border border-gold/35 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
-                      Upload before photo now
+
+              <details className='group mt-4 w-full rounded-2xl border border-white/5 bg-zinc-950/45 p-4 transition-all duration-200'>
+                <summary className='flex cursor-pointer items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white select-none focus:outline-none'>
+                  <span>Advanced Job Operations & Actions</span>
+                  <ChevronRight className='h-4 w-4 text-zinc-500 transition-transform duration-200 group-open:rotate-90' />
+                </summary>
+                <div className='mt-4 space-y-4 border-t border-white/5 pt-4 flex flex-col gap-3'>
+                  {/* Upload Photos & Save Notes Quick Redirects */}
+                  <div className='flex flex-wrap gap-2'>
+                    <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
+                      Upload After Photos
+                    </Link>
+                    <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
+                      Save Notes
                     </Link>
                   </div>
-                )}
-              </div>
-              <div className='rounded-2xl border border-white/10 bg-black/30 p-3'>
-                <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>After Photos</p>
-                {activeJob.afterPhotos?.length ? (
-                  <div className='mt-3 grid grid-cols-4 gap-2'>
-                    {activeJob.afterPhotos.map((photo) => (
-                      <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                        <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
-                        <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className='mt-2 text-xs text-zinc-500'>Use Upload After Photos when the job is ready for closeout.</p>
-                )}
-              </div>
-            </div>
-            <div className='mt-4 flex flex-wrap gap-2 items-center'>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.2)] hover:bg-gold-soft transition'>
-                Open Work Order
-              </Link>
-              <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-200 transition'>
-                Complete Job
-              </Link>
-            </div>
 
-            <details className='group mt-4 w-full rounded-2xl border border-white/5 bg-zinc-950/45 p-4 transition-all duration-200'>
-              <summary className='flex cursor-pointer items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white select-none focus:outline-none'>
-                <span>Advanced Job Operations & Actions</span>
-                <ChevronRight className='h-4 w-4 text-zinc-500 transition-transform duration-200 group-open:rotate-90' />
-              </summary>
-              <div className='mt-4 space-y-4 border-t border-white/5 pt-4 flex flex-col gap-3'>
-                {/* Upload Photos & Save Notes Quick Redirects */}
-                <div className='flex flex-wrap gap-2'>
-                  <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
-                    Upload After Photos
-                  </Link>
-                  <Link href={workOrderHref(activeJob)} className='rounded-lg border border-white/10 hover:border-gold/30 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-300 transition'>
-                    Save Notes
-                  </Link>
-                </div>
-
-                {/* Notifications Dispatch */}
-                <div className='space-y-2.5'>
-                  <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Customer Alerts & Messages</p>
-                  <div className='grid gap-3 sm:grid-cols-3'>
-                    {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
-                      <div key={`top-${kind}`} className='rounded-xl bg-black/45 border border-white/5 p-3 flex flex-col justify-between space-y-2'>
-                        <NotificationSendForm
-                          kind={kind}
-                          appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
-                          fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
-                          buttonClassName='w-full text-center rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/30 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300 transition'
-                        >
-                          {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Pay Now Link' : 'Review Request'}
-                        </NotificationSendForm>
-                        <p className='text-[8px] text-zinc-500 leading-normal'>
-                          {kind === 'last_touches'
-                            ? 'Alert customer that service is wrapping up.'
-                            : kind === 'payment_link'
-                              ? 'Send Stripe balance checkout page link.'
-                              : 'Send Google review invitation link.'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cash Recording and Archiving */}
-                <div className='grid gap-4 md:grid-cols-2 border-t border-white/5 pt-4'>
-                  <form action={techRecordCashPaymentAction} className='flex flex-col gap-2 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-3.5 text-xs'>
-                    <p className='text-[10px] font-black uppercase tracking-wider text-emerald-300'>Record Cash Received</p>
-                    {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
-                    {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                    <div className="flex gap-2">
-                      <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
-                      <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
+                  {/* Notifications Dispatch */}
+                  <div className='space-y-2.5'>
+                    <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Customer Alerts & Messages</p>
+                    <div className='grid gap-3 sm:grid-cols-3'>
+                      {(['last_touches', 'payment_link', 'review_request'] as const).map((kind) => (
+                        <div key={`top-${kind}`} className='rounded-xl bg-black/45 border border-white/5 p-3 flex flex-col justify-between space-y-2'>
+                          <NotificationSendForm
+                            kind={kind}
+                            appointmentId={!activeJob.isFallback ? activeJob.id : undefined}
+                            fallbackBookingId={activeJob.fallback_booking_id ?? undefined}
+                            buttonClassName='w-full text-center rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/30 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300 transition'
+                          >
+                            {kind === 'last_touches' ? 'Last Touches' : kind === 'payment_link' ? 'Pay Now Link' : 'Review Request'}
+                          </NotificationSendForm>
+                          <p className='text-[8px] text-zinc-500 leading-normal'>
+                            {kind === 'last_touches'
+                              ? 'Alert customer that service is wrapping up.'
+                              : kind === 'payment_link'
+                                ? 'Send Stripe balance checkout page link.'
+                                : 'Send Google review invitation link.'}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <button type='submit' className='w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black py-2 text-xs font-black uppercase tracking-wider transition'>
-                      Record Cash Payment
-                    </button>
-                  </form>
+                  </div>
 
-                  <div className='flex flex-col justify-between rounded-xl border border-red-500/10 bg-red-500/5 p-3.5 text-xs'>
-                    <div>
-                      <p className='text-[10px] font-black uppercase tracking-wider text-red-300'>System Diagnostics</p>
-                      <p className='text-[10px] text-zinc-500 mt-1'>Archive this job if it is a test run or system duplicate. This cannot be undone.</p>
-                    </div>
-                    <form action={techArchiveTestWorkOrderAction} className='mt-2.5'>
+                  {/* Cash Recording and Archiving */}
+                  <div className='grid gap-4 md:grid-cols-2 border-t border-white/5 pt-4'>
+                    <form action={techRecordCashPaymentAction} className='flex flex-col gap-2 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-3.5 text-xs'>
+                      <p className='text-[10px] font-black uppercase tracking-wider text-emerald-300'>Record Cash Received</p>
                       {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
                       {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
-                      <ConfirmSubmitButton message='Archive this test job?' className='w-full text-center rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 py-2 text-xs font-black uppercase tracking-wider text-red-300 transition'>
-                        Archive Test Job
-                      </ConfirmSubmitButton>
+                      <div className="flex gap-2">
+                        <input name='amountReceived' inputMode='decimal' placeholder='Cash $' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
+                        <input name='changeGiven' inputMode='decimal' placeholder='Change' className='w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500' />
+                      </div>
+                      <button type='submit' className='w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black py-2 text-xs font-black uppercase tracking-wider transition'>
+                        Record Cash Payment
+                      </button>
                     </form>
+
+                    <div className='flex flex-col justify-between rounded-xl border border-red-500/10 bg-red-500/5 p-3.5 text-xs'>
+                      <div>
+                        <p className='text-[10px] font-black uppercase tracking-wider text-red-300'>System Diagnostics</p>
+                        <p className='text-[10px] text-zinc-500 mt-1'>Archive this job if it is a test run or system duplicate. This cannot be undone.</p>
+                      </div>
+                      <form action={techArchiveTestWorkOrderAction} className='mt-2.5'>
+                        {!activeJob.isFallback ? <input type='hidden' name='appointmentId' value={activeJob.id} /> : null}
+                        {activeJob.fallback_booking_id ? <input type='hidden' name='fallbackBookingId' value={activeJob.fallback_booking_id} /> : null}
+                        <ConfirmSubmitButton message='Archive this test job?' className='w-full text-center rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 py-2 text-xs font-black uppercase tracking-wider text-red-300 transition'>
+                          Archive Test Job
+                        </ConfirmSubmitButton>
+                      </form>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </details>
-          </section>
-        ) : null}
-
-        <section className='mb-10'>
-          <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Today ({todayJobs.length})</h2>
-          {todayJobs.length === 0 ? (
-            <p className='text-sm text-zinc-500'>No jobs scheduled for today.</p>
+              </details>
+            </section>
           ) : (
-            <ul className='space-y-3'>
-              {todayJobs.map((j) => (
-                <li key={j.id} className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3'>
-                  <div>
-                    <p className='font-bold text-white'>{j.guest_name ?? 'Customer'}</p>
-                    <p className='text-xs text-zinc-500'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {j.service_slug.replace(/-/g, ' ')}</p>
-                  </div>
-                  <Link href={workOrderHref(j)} className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'>
-                    Open
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className='gb-premium-card text-center py-16 px-6 rounded-3xl border border-white/10 bg-black/45 space-y-4 shadow-xl'>
+              <div className='mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-400'>
+                <Timer className='h-8 w-8 text-zinc-500' />
+              </div>
+              <h3 className='text-lg font-bold text-white'>No Active Job</h3>
+              <p className='text-sm text-zinc-400 max-w-md mx-auto leading-relaxed'>
+                You do not have a live work order running right now. Go to the <span className='text-gold-soft font-bold cursor-pointer underline hover:text-gold' onClick={() => handleTabChange('jobs')}>Jobs List</span> tab and click <strong className='text-white'>Open</strong> on your scheduled job to begin.
+              </p>
+            </div>
           )}
-        </section>
-      </div>
-
-      <section className='mb-10'>
-        <h2 className='mb-3 text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Assigned jobs ({assignedJobs.length})</h2>
-        <TechJobsClient jobs={assignedJobs.length ? assignedJobs : jobs} />
-      </section>
-
-      <section className={`${cardGlow} mb-10`}>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Completed today</p>
-        <p className='mt-2 text-3xl font-black text-white'>{completedTodayCount}</p>
-        <p className='mt-1 text-xs text-zinc-500'>Finished jobs assigned to you since midnight.</p>
-      </section>
-
-      <section className={`${cardGlow} mb-10`}>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Performance (30 days)</p>
-        <p className='mt-2 text-sm text-zinc-400'>
-          Avg {performance.avgCompletionMinutes != null ? `${performance.avgCompletionMinutes} min` : '—'} · {performance.jobsCompleted} completed · Stripe week $
-          {(performance.revenueWeekFromPayments / 100).toFixed(0)}
-        </p>
-      </section>
-
-      <section className='mt-10'>
-        <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Assigned leads</p>
-        {assignedLeads.length === 0 ? (
-          <p className='text-sm text-zinc-500'>No leads directly assigned — check the open pool below.</p>
-        ) : (
-          <ul className='grid gap-3 sm:grid-cols-2'>
-            {assignedLeads.map((l) => (
-              <li
-                key={l.id}
-                className='rounded-2xl border border-white/10 bg-zinc-950/90 p-4 text-sm text-zinc-300 shadow-[0_0_24px_rgba(212,166,77,0.06)]'
-              >
-                <p className='font-bold text-white'>{l.name}</p>
-                <p className='text-[10px] uppercase tracking-wider text-zinc-500'>
-                  {l.status} · {l.contact_attempts} attempts
-                </p>
-                {l.phone ? <p className='mt-1 text-xs'>{l.phone}</p> : null}
-                {l.notes ? <p className='mt-2 line-clamp-2 text-xs text-zinc-500'>{l.notes}</p> : null}
-                <form className='mt-3' action={techUpdateLeadStatusAction}>
-                  <input type='hidden' name='leadId' value={l.id} />
-                  <label className='text-[10px] text-zinc-500'>
-                    Update status
-                    <select
-                      name='status'
-                      defaultValue={
-                        l.status === 'contacted' || l.status === 'quoted' || l.status === 'no_response' || l.status === 'lost'
-                          ? l.status
-                          : 'contacted'
-                      }
-                      className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
-                    >
-                      <option value='contacted'>Contacted</option>
-                      <option value='quoted'>Quoted</option>
-                      <option value='no_response'>No response</option>
-                      <option value='lost'>Lost</option>
-                    </select>
-                  </label>
-                  <button
-                    type='submit'
-                    className='mt-2 w-full rounded border border-gold/35 py-1.5 text-[10px] font-black uppercase text-gold-soft'
-                  >
-                    Save status
-                  </button>
-                </form>
-                <form className='mt-3' action={techUpdateLeadNotesAction}>
-                  <input type='hidden' name='leadId' value={l.id} />
-                  <label className='text-[10px] text-zinc-500'>
-                    Notes
-                    <textarea
-                      name='notes'
-                      rows={2}
-                      defaultValue={l.notes ?? ''}
-                      className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
-                    />
-                  </label>
-                  <button type='submit' className='mt-1 text-[10px] font-bold uppercase text-zinc-400 underline'>
-                    Save notes
-                  </button>
-                </form>
-                {l.status !== 'booked' ? (
-                  <form className='mt-2 flex gap-2' action={techArchiveOwnLeadAction}>
-                    <input type='hidden' name='leadId' value={l.id} />
-                    <ConfirmSubmitButton message='Archive this test lead?' className='text-[10px] font-bold uppercase text-amber-200 underline'>
-                      Archive Test Lead
-                    </ConfirmSubmitButton>
-                  </form>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Field Operations Center Overhaul */}
-      <section id='routes' className='mb-10 scroll-mt-28 rounded-3xl border border-gold/20 bg-gradient-to-br from-zinc-950 via-black to-zinc-950/95 p-5 shadow-[0_0_40px_rgba(212,166,77,0.05)]'>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Field Operations Center</p>
-        
-        {/* Ops Tabs Navigation */}
-        <div className='mt-4 flex gap-1.5 overflow-x-auto pb-1 border-b border-white/5'>
-          {(['routes', 'mileage', 'supplies', 'leads'] as const).map((tab) => (
-            <button
-              key={tab}
-              type='button'
-              onClick={() => setOpsTab(tab)}
-              className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${
-                opsTab === tab
-                  ? 'bg-gold text-black shadow-[0_0_12px_rgba(212,166,77,0.25)]'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {tab === 'routes' ? 'Routes & Dispatch' : tab === 'mileage' ? 'Gas & Mileage Log' : tab === 'supplies' ? 'Supply Request' : 'Field Lead Capture'}
-            </button>
-          ))}
         </div>
+      )}
 
-        {/* Tab Content */}
-        <div className='mt-5'>
-          {/* Routes Tab */}
-          {opsTab === 'routes' && (
-            <div className='space-y-4'>
+      {/* 4. ROUTES TAB */}
+      {activeTab === 'routes' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section className='rounded-3xl border border-gold/20 bg-gradient-to-br from-zinc-950 via-black to-zinc-950/95 p-6 shadow-[0_0_40px_rgba(212,166,77,0.05)]'>
+            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Field Route Dispatch</p>
+            <div className='mt-5 space-y-4'>
               <p className='text-xs text-zinc-400'>Unified daily route mapping. Select destinations to launch step-by-step navigation.</p>
               {todayJobs.length === 0 ? (
-                <p className='text-xs text-zinc-500 italic py-4 text-center'>No jobs scheduled for today to map.</p>
+                <p className='text-xs text-zinc-500 italic py-6 text-center border border-dashed border-white/5 rounded-2xl bg-black/20'>No jobs scheduled for today to map.</p>
               ) : (
-                <div className='space-y-3.5'>
-                  <div className='space-y-2'>
+                <div className='space-y-4.5'>
+                  <div className='space-y-2.5'>
                     {todayJobs.map((j, i) => (
-                      <div key={j.id} className='flex items-center justify-between rounded-xl bg-zinc-900/40 p-3 border border-white/5 hover:border-gold/20 transition'>
+                      <div key={j.id} className='flex items-center justify-between rounded-xl bg-zinc-900/40 p-3.5 border border-white/5 hover:border-gold/20 transition'>
                         <div className='flex items-start gap-2.5'>
                           <div className='flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gold/10 text-xs font-black text-gold border border-gold/25'>
                             {i + 1}
@@ -734,7 +746,7 @@ export function TechPremiumShell({
                             href={directionsHref(j.service_address)}
                             target='_blank'
                             rel='noreferrer'
-                            className='rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-200 flex items-center gap-1'
+                            className='rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3.5 py-2 text-[10px] font-black uppercase text-zinc-200 flex items-center gap-1.5'
                           >
                             <Navigation className='h-3 w-3 text-gold-soft' /> Nav
                           </a>
@@ -748,7 +760,7 @@ export function TechPremiumShell({
                       href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(todayJobs.filter(j => j.service_address).map(j => j.service_address).join('|'))}`}
                       target='_blank'
                       rel='noreferrer'
-                      className='w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.25)] hover:bg-gold-soft transition'
+                      className='w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3.5 text-xs font-black uppercase tracking-wider text-black shadow-[0_0_15px_rgba(212,166,77,0.25)] hover:bg-gold-soft transition'
                     >
                       <MapPin className='h-4 w-4' /> Launch Unified Route in Google Maps
                     </a>
@@ -756,127 +768,88 @@ export function TechPremiumShell({
                 </div>
               )}
             </div>
-          )}
+          </section>
+        </div>
+      )}
 
-          {/* Mileage Log Tab */}
-          {opsTab === 'mileage' && (
-            <form
-              id='mileage'
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setMileageBusy(true);
-                setMileageMsg(null);
-                try {
-                  const fd = new FormData(e.currentTarget);
-                  const res = await techLogMileageAction(fd);
-                  if (res.ok) {
-                    setMileageMsg('Mileage and gas purchase logged successfully!');
-                    (e.target as HTMLFormElement).reset();
-                  } else {
-                    setMileageMsg(res.error ?? 'Failed to log mileage.');
-                  }
-                } catch {
-                  setMileageMsg('Network error logging mileage.');
-                } finally {
-                  setMileageBusy(false);
-                }
-              }}
-              className='space-y-3'
-            >
-              <div className='grid gap-3 sm:grid-cols-2'>
-                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                  Link to Job (Optional)
-                  <select name='appointmentId' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white'>
-                    <option value=''>Standalone Log (No linked job)</option>
-                    {jobs.map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.guest_name ?? 'Job'} - {j.vehicle_description ?? 'TBD'}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                  Gas cost ($)
-                  <input name='gasCost' type='number' step='0.01' min='0' placeholder='0.00' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
-                </label>
-                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                  Odometer Start (mi) *
-                  <input name='startMileage' type='number' step='0.1' min='0' required placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
-                </label>
-                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                  Odometer End (mi)
-                  <input name='endMileage' type='number' step='0.1' min='0' placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
-                </label>
-              </div>
-              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                Notes
-                <textarea name='notes' rows={2} placeholder='Specify vehicle info, gas station, or route notes' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
-              </label>
-              <button
-                type='submit'
-                disabled={mileageBusy}
-                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50'
-              >
-                {mileageBusy ? 'Saving Log...' : 'Submit Mileage & Gas Log'}
-              </button>
-              {mileageMsg && <p className='text-xs text-gold-soft mt-1.5'>{mileageMsg}</p>}
-            </form>
-          )}
+      {/* 5. LEADS TAB */}
+      {activeTab === 'leads' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section>
+            <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Assigned Leads</p>
+            {assignedLeads.length === 0 ? (
+              <p className='text-sm text-zinc-500 py-6 text-center border border-dashed border-white/5 rounded-2xl bg-black/20'>No leads directly assigned — check the open pool below.</p>
+            ) : (
+              <ul className='grid gap-3 sm:grid-cols-2'>
+                {assignedLeads.map((l) => (
+                  <li
+                    key={l.id}
+                    className='rounded-2xl border border-white/10 bg-zinc-950/90 p-4 text-sm text-zinc-300 shadow-[0_0_24px_rgba(212,166,77,0.06)]'
+                  >
+                    <p className='font-bold text-white'>{l.name}</p>
+                    <p className='text-[10px] uppercase tracking-wider text-zinc-500'>
+                      {l.status} · {l.contact_attempts} attempts
+                    </p>
+                    {l.phone ? <p className='mt-1 text-xs'>{l.phone}</p> : null}
+                    {l.notes ? <p className='mt-2 line-clamp-2 text-xs text-zinc-500'>{l.notes}</p> : null}
+                    <form className='mt-3' action={techUpdateLeadStatusAction}>
+                      <input type='hidden' name='leadId' value={l.id} />
+                      <label className='text-[10px] text-zinc-500'>
+                        Update status
+                        <select
+                          name='status'
+                          defaultValue={
+                            l.status === 'contacted' || l.status === 'quoted' || l.status === 'no_response' || l.status === 'lost'
+                              ? l.status
+                              : 'contacted'
+                          }
+                          className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                        >
+                          <option value='contacted'>Contacted</option>
+                          <option value='quoted'>Quoted</option>
+                          <option value='no_response'>No response</option>
+                          <option value='lost'>Lost</option>
+                        </select>
+                      </label>
+                      <button
+                        type='submit'
+                        className='mt-2 w-full rounded border border-gold/35 py-1.5 text-[10px] font-black uppercase text-gold-soft'
+                      >
+                        Save status
+                      </button>
+                    </form>
+                    <form className='mt-3' action={techUpdateLeadNotesAction}>
+                      <input type='hidden' name='leadId' value={l.id} />
+                      <label className='text-[10px] text-zinc-500'>
+                        Notes
+                        <textarea
+                          name='notes'
+                          rows={2}
+                          defaultValue={l.notes ?? ''}
+                          className='mt-1 w-full rounded border border-zinc-700 bg-black px-2 py-1 text-xs text-white'
+                        />
+                      </label>
+                      <button type='submit' className='mt-1 text-[10px] font-bold uppercase text-zinc-400 underline'>
+                        Save notes
+                      </button>
+                    </form>
+                    {l.status !== 'booked' ? (
+                      <form className='mt-2 flex gap-2' action={techArchiveOwnLeadAction}>
+                        <input type='hidden' name='leadId' value={l.id} />
+                        <ConfirmSubmitButton message='Archive this test lead?' className='text-[10px] font-bold uppercase text-amber-200 underline'>
+                          Archive Test Lead
+                        </ConfirmSubmitButton>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-          {/* Supply Request Tab */}
-          {opsTab === 'supplies' && (
+          <section className='rounded-3xl border border-white/5 bg-zinc-950/50 p-6 space-y-4'>
+            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Register Field Lead Opportunity</p>
             <form
-              id='supplies'
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setSupplyBusy(true);
-                setSupplyMsg(null);
-                try {
-                  const fd = new FormData(e.currentTarget);
-                  const res = await techSubmitSupplyRequestAction(fd);
-                  if (res.ok) {
-                    setSupplyMsg('Supply request submitted to manager review.');
-                    (e.target as HTMLFormElement).reset();
-                  } else {
-                    setSupplyMsg(res.error ?? 'Failed to submit supply request.');
-                  }
-                } catch {
-                  setSupplyMsg('Network error submitting request.');
-                } finally {
-                  setSupplyBusy(false);
-                }
-              }}
-              className='space-y-3'
-            >
-              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                Items Requested *
-                <textarea
-                  name='items'
-                  rows={2}
-                  required
-                  placeholder='e.g., 10x Microfiber Towels, 1gal Tire Shine, 1x Clay Bar kit'
-                  className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white font-mono'
-                />
-              </label>
-              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
-                Internal Notes / Urgency
-                <textarea name='notes' rows={2} placeholder='Detail warehouse locations or job deadlines' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
-              </label>
-              <button
-                type='submit'
-                disabled={supplyBusy}
-                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50'
-              >
-                {supplyBusy ? 'Submitting...' : 'Submit Supply Request'}
-              </button>
-              {supplyMsg && <p className='text-xs text-gold-soft mt-1.5'>{supplyMsg}</p>}
-            </form>
-          )}
-
-          {/* Lead Capture Tab */}
-          {opsTab === 'leads' && (
-            <form
-              id='field-lead-capture'
               onSubmit={async (e) => {
                 e.preventDefault();
                 setLeadBusy(true);
@@ -901,20 +874,20 @@ export function TechPremiumShell({
               <div className='grid gap-3 sm:grid-cols-2'>
                 <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
                   Customer Full Name *
-                  <input name='name' required placeholder='e.g. John Doe' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                  <input name='name' required placeholder='e.g. John Doe' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
                 </label>
                 <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
                   Phone Number
-                  <input name='phone' placeholder='512-555-0199' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                  <input name='phone' placeholder='512-555-0199' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
                 </label>
                 <label className='block text-[10px] uppercase text-zinc-500 font-bold sm:col-span-2'>
                   Email Address
-                  <input name='email' type='email' placeholder='customer@domain.com' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                  <input name='email' type='email' placeholder='customer@domain.com' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
                 </label>
               </div>
               <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
                 Upsell / Lead Opportunity Details
-                <textarea name='notes' rows={3} placeholder='Door-knocking detail, neighbor of today’s job, vehicle interest details...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white' />
+                <textarea name='notes' rows={3} placeholder='Door-knocking detail, neighbor of today’s job, vehicle interest details...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
               </label>
               <button
                 type='submit'
@@ -925,78 +898,184 @@ export function TechPremiumShell({
               </button>
               {leadMsg && <p className='text-xs text-gold-soft mt-1.5'>{leadMsg}</p>}
             </form>
-          )}
-        </div>
-      </section>
-
-      <section className='mt-8'>
-        <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick actions</p>
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <Link href='/tech/workflow' className={actionBtn}>
-            <ClipboardCheck className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
-            Walk-in workflow
-          </Link>
-          <Link href='/tech#field-invoice' className={actionBtn}>
-            <Zap className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
-            Field invoice
-          </Link>
-          <button type='button' onClick={() => setOpsTab('leads')} className={actionBtn}>
-            <FileText className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
-            Capture lead
-          </button>
-          <Link href='/tech/resources' className={actionBtn}>
-            <Sparkles className='h-4 w-4 opacity-80 transition group-hover:scale-110' aria-hidden />
-            SOPs & docs
-          </Link>
-        </div>
-      </section>
-
-      <section className='mt-10'>
-        <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-300'>Open lead pool</p>
-        {poolLeads.length === 0 ? (
-          <p className='text-sm text-zinc-500'>Pool is empty — admins mark leads &quot;in pool&quot; from CRM.</p>
-        ) : (
-          <ul className='space-y-3'>
-            {poolLeads.map((l) => (
-              <li
-                key={l.id}
-                className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3'
-              >
-                <div>
-                  <p className='font-semibold text-white'>{l.name}</p>
-                  <p className='text-xs text-zinc-500'>{l.status}</p>
-                  {l.phone ? <p className='text-xs text-zinc-400'>{l.phone}</p> : null}
-                </div>
-                <form action={techClaimLeadAction}>
-                  <input type='hidden' name='leadId' value={l.id} />
-                  <button
-                    type='submit'
-                    className='rounded-lg bg-emerald-500/90 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black hover:brightness-110'
-                  >
-                    Claim lead
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <div id='field-invoice' className='mt-10 scroll-mt-28'>
-        {activeJob ? (
-          <TechFieldTools linkAppointmentId={activeJob.id} />
-        ) : (
-          <section className={cardGlow}>
-            <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Field tools</p>
-            <p className='mt-2 text-sm text-zinc-400'>
-              Timer and job notes appear here after you start or select an active job. Use the walk-in workflow for same-day jobs.
-            </p>
-            <Link href='/tech/workflow' className='mt-4 inline-block rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black'>
-              Start walk-in workflow
-            </Link>
           </section>
-        )}
-      </div>
+
+          <section>
+            <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-emerald-300'>Open Lead Pool</p>
+            {poolLeads.length === 0 ? (
+              <p className='text-sm text-zinc-500 py-6 text-center border border-dashed border-white/5 rounded-2xl bg-black/20'>Pool is empty — admins mark leads &quot;in pool&quot; from CRM.</p>
+            ) : (
+              <ul className='space-y-3'>
+                {poolLeads.map((l) => (
+                  <li
+                    key={l.id}
+                    className='flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3'
+                  >
+                    <div>
+                      <p className='font-semibold text-white'>{l.name}</p>
+                      <p className='text-xs text-zinc-500'>{l.status}</p>
+                      {l.phone ? <p className='text-xs text-zinc-400'>{l.phone}</p> : null}
+                    </div>
+                    <form action={techClaimLeadAction}>
+                      <input type='hidden' name='leadId' value={l.id} />
+                      <button
+                        type='submit'
+                        className='rounded-lg bg-emerald-500/90 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black hover:brightness-110'
+                      >
+                        Claim lead
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* 6. MILEAGE TAB */}
+      {activeTab === 'mileage' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section className='rounded-3xl border border-white/5 bg-zinc-950/50 p-6 space-y-4'>
+            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Gas & Mileage Log</p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setMileageBusy(true);
+                setMileageMsg(null);
+                try {
+                  const fd = new FormData(e.currentTarget);
+                  const res = await techLogMileageAction(fd);
+                  if (res.ok) {
+                    setMileageMsg('Mileage and gas purchase logged successfully!');
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    setMileageMsg(res.error ?? 'Failed to log mileage.');
+                  }
+                } catch {
+                  setMileageMsg('Network error logging mileage.');
+                } finally {
+                  setMileageBusy(false);
+                }
+              }}
+              className='space-y-3'
+            >
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Link to Job (Optional)
+                  <select name='appointmentId' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold'>
+                    <option value=''>Standalone Log (No linked job)</option>
+                    {jobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.guest_name ?? 'Job'} - {j.vehicle_description ?? 'TBD'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Gas cost ($)
+                  <input name='gasCost' type='number' step='0.01' min='0' placeholder='0.00' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Odometer Start (mi) *
+                  <input name='startMileage' type='number' step='0.1' min='0' required placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
+                </label>
+                <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                  Odometer End (mi)
+                  <input name='endMileage' type='number' step='0.1' min='0' placeholder='0.0' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
+                </label>
+              </div>
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Notes
+                <textarea name='notes' rows={2} placeholder='Specify vehicle info, gas station, or route notes' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
+              </label>
+              <button
+                type='submit'
+                disabled={mileageBusy}
+                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50 shadow-md'
+              >
+                {mileageBusy ? 'Saving Log...' : 'Submit Mileage & Gas Log'}
+              </button>
+              {mileageMsg && <p className='text-xs text-gold-soft mt-1.5'>{mileageMsg}</p>}
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* 7. SUPPLIES TAB */}
+      {activeTab === 'supplies' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section className='rounded-3xl border border-white/5 bg-zinc-950/50 p-6 space-y-4'>
+            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Supply Request Submission</p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSupplyBusy(true);
+                setSupplyMsg(null);
+                try {
+                  const fd = new FormData(e.currentTarget);
+                  const res = await techSubmitSupplyRequestAction(fd);
+                  if (res.ok) {
+                    setSupplyMsg('Supply request submitted for manager review.');
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    setSupplyMsg(res.error ?? 'Failed to submit supply request.');
+                  }
+                } catch {
+                  setSupplyMsg('Network error submitting request.');
+                } finally {
+                  setSupplyBusy(false);
+                }
+              }}
+              className='space-y-3'
+            >
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Items Requested *
+                <textarea
+                  name='items'
+                  rows={2}
+                  required
+                  placeholder='e.g., 10x Microfiber Towels, 1gal Tire Shine, 1x Clay Bar kit'
+                  className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-gold'
+                />
+              </label>
+              <label className='block text-[10px] uppercase text-zinc-500 font-bold'>
+                Internal Notes / Urgency
+                <textarea name='notes' rows={2} placeholder='Detail warehouse locations or job deadlines' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:outline-none focus:border-gold' />
+              </label>
+              <button
+                type='submit'
+                disabled={supplyBusy}
+                className='w-full rounded-xl border border-gold/45 bg-gold/10 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/15 transition disabled:opacity-50 shadow-md'
+              >
+                {supplyBusy ? 'Submitting...' : 'Submit Supply Request'}
+              </button>
+              {supplyMsg && <p className='text-xs text-gold-soft mt-1.5'>{supplyMsg}</p>}
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* 8. TOOLS TAB */}
+      {activeTab === 'tools' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div id='field-invoice' className='scroll-mt-28'>
+            {activeJob ? (
+              <TechFieldTools linkAppointmentId={activeJob.id} />
+            ) : (
+              <section className={cardGlow}>
+                <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Field Tools & Invoicing</p>
+                <p className='mt-2 text-sm text-zinc-400'>
+                  Timer and job notes appear here after you start or select an active job. Use the walk-in workflow for same-day jobs.
+                </p>
+                <Link href='/tech/workflow' className='mt-4 inline-block rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black shadow-md hover:bg-gold-soft transition'>
+                  Start walk-in workflow
+                </Link>
+              </section>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
