@@ -55,8 +55,11 @@ function photoUrl(row: Row) {
   return str(row.thumbnail_url || row.public_url || row.media_url || row.file_url);
 }
 
+import { appleMapsDirectionsUrl, googleMapsDirectionsUrl, googleMapsSearchUrl } from '@/lib/map-links';
+import { fetchWeatherForAddress } from '@/lib/weather-forecast';
+
 function mapsHref(address: string) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  return googleMapsSearchUrl(address);
 }
 
 async function completeWorkOrderFormAction(formData: FormData) {
@@ -615,6 +618,10 @@ export default async function TechWorkOrderDetailPage({
     }));
   }
 
+  const weather = fullAddress
+    ? await fetchWeatherForAddress(fullAddress, str(row.scheduled_start) || undefined)
+    : { ok: false as const, blocker: 'No address for weather lookup.' };
+
   const consoleData: any = {
     id,
     canonicalId: queryId,
@@ -685,6 +692,9 @@ export default async function TechWorkOrderDetailPage({
     serviceState: str(row.service_state) || 'TX',
     serviceZip: str(row.service_zip),
     mapsHref: fullAddress ? mapsHref(fullAddress) : '#',
+    googleDirectionsHref: fullAddress ? googleMapsDirectionsUrl(fullAddress) : '',
+    appleMapsHref: fullAddress ? appleMapsDirectionsUrl(fullAddress) : '',
+    weather,
     baseSubtotal: displayMoney(pricing.prePromoCents),
     balanceDue: displayMoney(pricing.remainingBalanceCents),
     balanceDueCents: pricing.remainingBalanceCents,

@@ -8,6 +8,7 @@ import {
   type RevenueDiagnostics,
 } from '@/lib/revenue-metrics';
 import { classifyPaymentChannel } from '@/lib/payment-classification';
+import { classifyOpenBalance, isActionableOpenBalance, isStaleOpenBalance, type OpenBalanceAppt } from '@/lib/open-balance-filters';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 
 export type FinancialSummary = {
@@ -57,6 +58,8 @@ export type FinancialSnapshot = {
   recentExpenses: FinancialDetailRow[];
   openBalances: FinancialDetailRow[];
   pendingDeposits: FinancialDetailRow[];
+  staleOpenBalances: FinancialDetailRow[];
+  staleOpenBalancesCents: number;
   diagnostics: RevenueDiagnostics & {
     ledgerRowsLoaded: number;
     expenseRowsLoaded: number;
@@ -241,8 +244,10 @@ export async function getFinancialSnapshot(
   const customerMap = new Map<string, { label: string; email: string | null; count: number; revenueCents: number }>();
   let completedJobs = 0;
   let openBalancesCents = 0;
+  let staleOpenBalancesCents = 0;
   let pendingDepositsCents = 0;
   const openBalances: FinancialDetailRow[] = [];
+  const staleOpenBalances: FinancialDetailRow[] = [];
   const pendingDeposits: FinancialDetailRow[] = [];
 
   for (const row of apptRows) {
@@ -250,17 +255,23 @@ export async function getFinancialSnapshot(
     const paymentStatus = str(row.payment_status).toLowerCase();
     const balance = Math.max(0, cents(row.balance_due_cents));
     const deposit = Math.max(0, cents(row.deposit_amount_cents));
+    const detail: FinancialDetailRow = {
+      id: str(row.id),
+      label: str(row.guest_name) || 'Customer',
+      amountCents: balance,
+      occurredAt: str(row.scheduled_start) || null,
+      source: 'appointments',
+      customer: str(row.guest_name) || null,
+      href: `/admin/work-orders/${str(row.id)}`,
+    };
     if (balance > 0 && !['cancelled', 'deleted', 'archived'].includes(status)) {
-      openBalancesCents += balance;
-      openBalances.push({
-        id: str(row.id),
-        label: str(row.guest_name) || 'Customer',
-        amountCents: balance,
-        occurredAt: str(row.scheduled_start) || null,
-        source: 'appointments',
-        customer: str(row.guest_name) || null,
-        href: `/admin/work-orders/${str(row.id)}`,
-      });
+      if (isActionableOpenBalance(row)) {
+        openBalancesCents += balance;
+        openBalances.push(detail);
+      } else if (isStaleOpenBalance(row)) {
+        staleOpenBalancesCents += balance;
+        staleOpenBalances.push({ ...detail, category: classifyOpenBalance(row as OpenBalanceAppt).reason });
+      }
     }
     if ((paymentStatus === 'awaiting_deposit' || status === 'pending') && deposit > 0) {
       pendingDepositsCents += deposit;
@@ -328,6 +339,8 @@ export async function getFinancialSnapshot(
     recentExpenses: recentExpenses.sort((a, b) => str(b.occurredAt).localeCompare(str(a.occurredAt))).slice(0, 25),
     openBalances: openBalances.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
     pendingDeposits: pendingDeposits.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
+    staleOpenBalances: staleOpenBalances.sort((a, b) => b.amountCents - a.amountCents).slice(0, 50),
+    staleOpenBalancesCents,
     diagnostics: {
       ...diagnostics,
       ledgerRowsLoaded: ledgerRows.length,

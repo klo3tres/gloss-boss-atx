@@ -121,6 +121,16 @@ export async function getStripeFinanceSnapshot(stripe: Stripe): Promise<StripeFi
   const syncTreasury = process.env.STRIPE_ENABLE_TREASURY_SYNC === 'true';
   const syncIssuing = process.env.STRIPE_ENABLE_ISSUING_SYNC === 'true';
 
+  if (!syncTreasury) {
+    treasuryUnavailableReason =
+      'Card/Treasury sync disabled — set STRIPE_ENABLE_TREASURY_SYNC=true in Vercel after Stripe Treasury is enabled on your account.';
+  }
+
+  if (!syncIssuing) {
+    issuingUnavailableReason =
+      'Issuing card spend sync disabled — set STRIPE_ENABLE_ISSUING_SYNC=true in Vercel after Stripe Issuing is enabled.';
+  }
+
   if (syncTreasury) {
     try {
       const treasury = (stripe as unknown as { treasury?: { financialAccounts?: { list: (args: { limit: number }) => Promise<{ data: Array<{ id: string; balance?: { cash?: { usd?: number }; inbound_pending?: { usd?: number }; outbound_pending?: { usd?: number } } }> }> } } }).treasury;

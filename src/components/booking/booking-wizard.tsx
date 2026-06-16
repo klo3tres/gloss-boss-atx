@@ -21,6 +21,7 @@ import { slotConflictsWithBlocks, type BookedBlock } from '@/lib/booking-slot-bl
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { BookingWeatherHint } from '@/components/weather/booking-weather-hint';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
 import {
@@ -502,6 +503,11 @@ export function BookingWizard() {
     () => (bookingDateKey ? getTimeSlotsForDate(bookingDateKey, bookingRules) : []),
     [bookingDateKey, bookingRules],
   );
+
+  const bookingScheduledIso = useMemo(() => {
+    if (!bookingDateKey || !bookingTimeValue) return undefined;
+    return new Date(`${bookingDateKey}T${bookingTimeValue}:00`).toISOString();
+  }, [bookingDateKey, bookingTimeValue]);
 
   const claimedOfferSnap = useMemo(() => {
     if (!offerFromUrl) return null;
@@ -1606,6 +1612,13 @@ export function BookingWizard() {
                 </div>
               ) : null}
               {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
+              <BookingWeatherHint
+                serviceAddress={serviceAddress}
+                serviceCity={serviceCity}
+                serviceState={serviceState}
+                serviceZip={serviceZip}
+                scheduledIso={bookingScheduledIso}
+              />
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Vehicle 1 (year / make / model)</span>

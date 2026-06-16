@@ -65,6 +65,8 @@ export default async function AdminDashboardPage() {
       pendingDepositsCents: 0,
     },
     openBalanceRows: [],
+    staleBalanceRows: [],
+    staleBalancesCents: 0,
     pendingDepositRows: [],
     expenseRows: [],
     cardSpendRows: [],

@@ -235,6 +235,24 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
               </div>
             </div>
 
+            <details className="rounded-xl border border-zinc-700/50 bg-zinc-950/50 p-4">
+              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Stale / test balances (excluded from active total) — {displayMoney(metrics.staleBalancesCents ?? 0)}
+              </summary>
+              <div className="mt-3 space-y-2">
+                {(metrics.staleBalanceRows ?? []).length === 0 ? (
+                  <p className="text-xs text-zinc-500">No stale balances hidden from active dashboard.</p>
+                ) : (
+                  (metrics.staleBalanceRows ?? []).slice(0, 8).map((item) => (
+                    <div key={item.id} className="flex justify-between text-xs text-zinc-400 border-b border-white/5 py-2 last:border-0">
+                      <span>{item.label} · {item.category ?? 'stale'}</span>
+                      <span className="font-mono">{displayMoney(item.amountCents)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-200">
               <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Automated Reminder Rules</p>
               <p className="mt-1 text-zinc-400">Reminders are scheduled to send automatically at 24 hours, 3 days, and 7 days post-completion if a balance remains outstanding.</p>

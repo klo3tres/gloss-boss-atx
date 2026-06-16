@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { appleMapsDirectionsUrl, googleMapsDirectionsUrl } from '@/lib/map-links';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { assignAppointmentTechnicianAction } from '../dispatch-job-actions';
@@ -298,7 +299,10 @@ export default async function AdminWorkOrdersPage() {
                         ) : null}
                         {!isFallback && str(r.customer_id) ? <Link href={`/admin/customers/${str(r.customer_id)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Customer</Link> : null}
                         {fullAddress ? (
-                          <a href={mapsHref(fullAddress)} target='_blank' rel='noreferrer' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Directions</a>
+                          <>
+                            <a href={googleMapsDirectionsUrl(fullAddress)} target='_blank' rel='noreferrer' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Google Maps</a>
+                            <a href={appleMapsDirectionsUrl(fullAddress)} target='_blank' rel='noreferrer' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Apple Maps</a>
+                          </>
                         ) : (
                           <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
                         )}

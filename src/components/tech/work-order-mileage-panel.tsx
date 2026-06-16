@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { addJobMileageLogActionState } from '@/app/(dashboard)/admin/operations/operations-actions';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { getBusinessHomeBaseAddress } from '@/lib/business-location';
 
 export function WorkOrderMileagePanel({
   appointmentId,
@@ -20,7 +21,9 @@ export function WorkOrderMileagePanel({
     <section className='gb-premium-card mt-4 rounded-2xl border border-white/10 p-4'>
       <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Mileage</p>
       <p className='mt-1 text-xs text-zinc-500'>
-        Log round-trip or manual miles for this job. Automatic distance from maps requires an API key — use manual entry for now.
+        Log round-trip or manual miles for this job. Home base: {getBusinessHomeBaseAddress()}. Set{' '}
+        <code className='text-zinc-400'>BUSINESS_HOME_BASE_ADDRESS</code> in env for exact routing. Automatic distance from maps requires{' '}
+        <code className='text-zinc-400'>GOOGLE_MAPS_API_KEY</code>.
       </p>
       {msg ? <p className='mt-2 text-xs text-emerald-200'>{msg}</p> : null}
       <ToastActionForm

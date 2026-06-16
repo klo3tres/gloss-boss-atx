@@ -146,6 +146,14 @@ export default async function StripeSyncPage({ searchParams }: { searchParams?: 
         </section>
       ) : null}
 
+      {stripeSnapshot?.issuingUnavailableReason || stripeSnapshot?.treasuryUnavailableReason ? (
+        <section className='rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-amber-100'>
+          <p className='text-xs font-black uppercase tracking-wider text-amber-200'>Card spend / Treasury setup</p>
+          {stripeSnapshot?.issuingUnavailableReason ? <p className='mt-2'>{stripeSnapshot.issuingUnavailableReason}</p> : null}
+          {stripeSnapshot?.treasuryUnavailableReason ? <p className='mt-2'>{stripeSnapshot.treasuryUnavailableReason}</p> : null}
+        </section>
+      ) : null}
+
       <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <div>

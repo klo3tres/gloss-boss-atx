@@ -46,7 +46,11 @@ export function WorkOrderStripeDebugPanel({
       if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
       const res = await syncStripePaymentsForWorkOrderAction(fd);
       if (!res.ok) {
-        setMsg({ tone: 'err', text: res.error ?? 'Sync failed' });
+        setMsg({
+          tone: 'err',
+          text: res.error ?? 'Sync failed',
+          detail: [res.blocker ? `Blocker: ${res.blocker}` : '', ...(res.diagnostics ?? [])].filter(Boolean).join('\n'),
+        });
         return;
       }
       setMsg({
@@ -143,6 +147,9 @@ export function WorkOrderStripeDebugPanel({
                 setMsg({
                   tone: res.ok ? 'ok' : 'err',
                   text: res.ok ? `Recorded payment. Rows: ${res.matchedBefore} → ${res.matchedAfter}` : res.error ?? 'Failed',
+                  detail: !res.ok
+                    ? [res.blocker ? `Blocker: ${res.blocker}` : '', ...(res.diagnostics ?? [])].filter(Boolean).join('\n')
+                    : undefined,
                 });
                 if (res.ok) router.refresh();
               });

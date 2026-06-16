@@ -103,7 +103,7 @@ export default async function AdminRevenuePage({
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
     admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class').order('scheduled_start', { ascending: false }).limit(800),
     admin.from('profiles').select('id, full_name, email').in('role', ['technician', 'admin', 'super_admin']),
-    admin.from('customers').select('id, full_name, email').order('full_name').limit(400),
+    admin.from('customers').select('id, full_name, email, phone').order('full_name').limit(400),
   ]);
 
   const techNames: Record<string, string> = {};
@@ -112,7 +112,7 @@ export default async function AdminRevenuePage({
     techNames[row.id] = row.full_name?.trim() || row.email?.trim() || 'Tech';
   }
 
-  const customersList = (customersRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
+  const customersList = (customersRes.data ?? []) as { id: string; full_name: string | null; email: string | null; phone?: string | null }[];
 
   const sumOpts = includeTest
     ? { fromIso: periodStartIso, toIso: now }

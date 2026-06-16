@@ -27,7 +27,9 @@ import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSendCustomSmsAction } from '@/app/(dashboard)/tech/tech-actions';
 import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
-import { type CreditHistoryItem, type CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
+import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
+import type { WeatherSnapshot } from '@/lib/weather-forecast';
+import { JobWeatherIndicator } from '@/components/weather/job-weather-indicator';
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);
@@ -55,6 +57,8 @@ export type WorkOrderConsoleData = {
   serviceState: string;
   serviceZip: string;
   mapsHref: string;
+  appleMapsHref?: string;
+  googleDirectionsHref?: string;
   baseSubtotal: string;
   balanceDue: string;
   balanceDueCents: number;
@@ -67,6 +71,7 @@ export type WorkOrderConsoleData = {
   scheduledStart?: string;
   scheduledEnd?: string;
   scheduledStartIso?: string;
+  weather?: WeatherSnapshot;
   promoCode?: string;
   pricingOverrideReason?: string;
   accessLocation?: string;
@@ -451,6 +456,7 @@ export function WorkOrderConsoleClient({
             <div>
               <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Appointment Time</p>
               <p className="font-semibold text-zinc-300 mt-1">{data.scheduledStart || 'TBD'}</p>
+              {data.weather ? <JobWeatherIndicator weather={data.weather} /> : null}
             </div>
             <div>
               <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">Outstanding Balance</p>
@@ -577,14 +583,25 @@ export function WorkOrderConsoleClient({
               </button>
               
               <a
-                href={data.mapsHref}
+                href={data.googleDirectionsHref || data.mapsHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
                 <MapPin className="h-5 w-5 text-gold-soft" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Directions</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Google</span>
               </a>
+              {data.appleMapsHref ? (
+                <a
+                  href={data.appleMapsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                >
+                  <MapPin className="h-5 w-5 text-zinc-300" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Apple</span>
+                </a>
+              ) : null}
               
               {data.customerId ? (
                 <button
@@ -1051,17 +1068,32 @@ export function WorkOrderConsoleClient({
                 <div className="p-4 bg-zinc-950/40 rounded-2xl border border-white/5 space-y-2">
                   <p className="text-white font-medium">{data.fullAddress || 'No address provided'}</p>
                   
-                  {data.mapsHref && (
-                    <a
-                      href={data.mapsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-gold-soft hover:underline font-bold mt-1"
-                    >
-                      <MapPin className="h-3.5 w-3.5" />
-                      Open Google Maps Directions
-                    </a>
-                  )}
+                  {data.mapsHref || data.googleDirectionsHref || data.appleMapsHref ? (
+                    <div className="mt-1 flex flex-wrap gap-3">
+                      {(data.googleDirectionsHref || data.mapsHref) ? (
+                        <a
+                          href={data.googleDirectionsHref || data.mapsHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-gold-soft hover:underline font-bold"
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
+                          Google Maps
+                        </a>
+                      ) : null}
+                      {data.appleMapsHref ? (
+                        <a
+                          href={data.appleMapsHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:underline font-bold"
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
+                          Apple Maps
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 
                 {(data.accessLocation || data.accessWater || data.accessPower || data.accessParking || data.gateNotes) && (

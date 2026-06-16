@@ -17,13 +17,31 @@ function stripeIdFromObj(value: unknown): string | null {
   return null;
 }
 
+export async function GET() {
+  const admin = tryCreateAdminSupabase();
+  const secrets = await getStripeSecrets(admin);
+  return NextResponse.json({
+    ok: true,
+    endpoint: 'stripe-webhook',
+    method: 'POST required',
+    configured: Boolean(secrets.secretKey && secrets.webhookSecret),
+    stripeKeyPresent: Boolean(secrets.secretKey),
+    webhookSecretPresent: Boolean(secrets.webhookSecret),
+    serviceRolePresent: Boolean(admin),
+    canonicalUrl: 'https://glossbossatx.com/api/stripe/webhook',
+  });
+}
+
 export async function POST(request: Request) {
   const admin = tryCreateAdminSupabase();
   const secrets = await getStripeSecrets(admin);
 
   if (!secrets.secretKey || !secrets.webhookSecret) {
-    console.warn('[api/stripe/webhook] Stripe webhook secret or secret key not configured');
-    return NextResponse.json({ error: 'STRIPE_NOT_CONFIGURED' }, { status: 503 });
+    const msg = !secrets.secretKey
+      ? 'STRIPE_SECRET_KEY missing'
+      : 'STRIPE_WEBHOOK_SECRET missing';
+    console.error('[api/stripe/webhook]', msg);
+    return NextResponse.json({ error: 'STRIPE_NOT_CONFIGURED', blocker: msg }, { status: 503 });
   }
 
   const stripe = new Stripe(secrets.secretKey);
@@ -36,8 +54,25 @@ export async function POST(request: Request) {
   let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(body, signature, secrets.webhookSecret);
-  } catch {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid signature';
+    console.error('[api/stripe/webhook] signature verification failed:', message);
+    return NextResponse.json({ error: 'Invalid signature', detail: message }, { status: 400 });
+  }
+
+  if (admin) {
+    try {
+      await admin.from('notification_outbox').insert({
+        kind: 'stripe_webhook_received',
+        channel: 'internal',
+        provider: 'stripe',
+        status: 'accepted',
+        payload: { event_id: event.id, event_type: event.type },
+        created_at: new Date().toISOString(),
+      });
+    } catch {
+      /* non-blocking */
+    }
   }
 
   try {
@@ -365,6 +400,21 @@ export async function POST(request: Request) {
     }
   } catch (e) {
     console.error('[stripe/webhook] event processing failed', event.type, e);
+    if (admin) {
+      try {
+        await admin.from('notification_outbox').insert({
+          kind: 'stripe_webhook_failed',
+          channel: 'internal',
+          provider: 'stripe',
+          status: 'failed',
+          error_message: e instanceof Error ? e.message : String(e),
+          payload: { event_id: event.id, event_type: event.type },
+          created_at: new Date().toISOString(),
+        });
+      } catch {
+        /* non-blocking */
+      }
+    }
     if (event.type === 'checkout.session.completed' && admin) {
       const session = event.data.object as Stripe.Checkout.Session;
       const { logPaymentDebugEvent } = await import('@/lib/payment-debug');

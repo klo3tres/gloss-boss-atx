@@ -8,6 +8,7 @@ import {
 } from '@/lib/revenue-metrics';
 import { displayMoney } from '@/lib/display-format';
 import { getFinancialSnapshot, type FinancialDetailRow } from '@/lib/financial-ledger';
+import { isActionableOpenBalance } from '@/lib/open-balance-filters';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { workOrderPath } from '@/lib/work-order-links';
 
@@ -106,6 +107,8 @@ export type OwnerDashboardSnapshot = {
   };
   openBalanceRows: FinancialDetailRow[];
   pendingDepositRows: FinancialDetailRow[];
+  staleBalanceRows: FinancialDetailRow[];
+  staleBalancesCents: number;
   expenseRows: FinancialDetailRow[];
   cardSpendRows: FinancialDetailRow[];
   creditMetrics: {
@@ -261,10 +264,11 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   }
 
   const rows = (appts ?? []).filter((a) => !isTestLikeJob(a as Parameters<typeof isTestLikeJob>[0]));
-  const balanceDueCents = rows.reduce(
-    (s, r) => s + (typeof (r as { balance_due_cents?: number }).balance_due_cents === 'number' ? (r as { balance_due_cents: number }).balance_due_cents : 0),
-    0,
-  );
+  const balanceDueCents = rows.reduce((s, r) => {
+    const bal = typeof (r as { balance_due_cents?: number }).balance_due_cents === 'number' ? (r as { balance_due_cents: number }).balance_due_cents : 0;
+    if (bal <= 0) return s;
+    return isActionableOpenBalance(r as Parameters<typeof isActionableOpenBalance>[0]) ? s + bal : s;
+  }, 0);
 
   const pipelineStatuses = new Set(['confirmed', 'assigned', 'deposit_paid', 'balance_due', 'awaiting_deposit', 'pending']);
   const pipelineCount = rows.filter((a) => pipelineStatuses.has(String((a as { status?: string }).status ?? '').toLowerCase())).length;
@@ -585,6 +589,8 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     },
     openBalanceRows: financial?.openBalances ?? [],
     pendingDepositRows: financial?.pendingDeposits ?? [],
+    staleBalanceRows: financial?.staleOpenBalances ?? [],
+    staleBalancesCents: financial?.staleOpenBalancesCents ?? 0,
     expenseRows: financial?.recentExpenses ?? [],
     cardSpendRows,
     creditMetrics: {
