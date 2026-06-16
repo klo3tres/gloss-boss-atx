@@ -30,12 +30,19 @@ export type OwnerBookingEventKind =
   | 'pay_later'
   | 'deposit_paid'
   | 'paid_full'
+  | 'payment_received'
   | 'quote_request'
   | 'ceramic_quote'
   | 'gift_card'
   | 'payment_failed'
   | 'cancelled'
-  | 'rescheduled';
+  | 'rescheduled'
+  | 'job_completed'
+  | 'receipt_sent'
+  | 'credit_issued'
+  | 'credit_redeemed'
+  | 'reward_earned'
+  | 'webhook_failed';
 
 const EVENT_COPY: Record<
   OwnerBookingEventKind,
@@ -46,12 +53,19 @@ const EVENT_COPY: Record<
   pay_later: { headline: 'Pay later booking', subjectPrefix: 'Pay later booking', smsLead: 'Pay later booking' },
   deposit_paid: { headline: 'Deposit received', subjectPrefix: 'Deposit paid', smsLead: 'Deposit paid' },
   paid_full: { headline: 'Paid in full', subjectPrefix: 'Paid in full', smsLead: 'Paid in full' },
+  payment_received: { headline: 'Payment received', subjectPrefix: 'Payment received', smsLead: 'Payment received' },
   quote_request: { headline: 'Quote / contact request', subjectPrefix: 'Quote request', smsLead: 'Quote request' },
   ceramic_quote: { headline: 'Ceramic coating inquiry', subjectPrefix: 'Ceramic quote', smsLead: 'Ceramic quote' },
   gift_card: { headline: 'Gift card purchase', subjectPrefix: 'Gift card', smsLead: 'Gift card sold' },
   payment_failed: { headline: 'Payment failed', subjectPrefix: 'Payment failed', smsLead: 'Payment FAILED' },
   cancelled: { headline: 'Booking cancelled', subjectPrefix: 'Booking cancelled', smsLead: 'Booking CANCELLED' },
   rescheduled: { headline: 'Booking rescheduled', subjectPrefix: 'Booking rescheduled', smsLead: 'Booking RESCHEDULED' },
+  job_completed: { headline: 'Job completed', subjectPrefix: 'Job completed', smsLead: 'Job COMPLETED' },
+  receipt_sent: { headline: 'Receipt sent to customer', subjectPrefix: 'Receipt sent', smsLead: 'Receipt sent' },
+  credit_issued: { headline: 'Customer credit issued', subjectPrefix: 'Credit issued', smsLead: 'Credit ISSUED' },
+  credit_redeemed: { headline: 'Customer credit redeemed', subjectPrefix: 'Credit redeemed', smsLead: 'Credit REDEEMED' },
+  reward_earned: { headline: 'Loyalty reward earned', subjectPrefix: 'Reward earned', smsLead: 'Reward EARNED' },
+  webhook_failed: { headline: 'Stripe webhook failed', subjectPrefix: 'Webhook failed', smsLead: 'Webhook FAILED' },
 };
 
 async function insertOutbox(
@@ -142,16 +156,17 @@ export async function notifyBusinessNewBookingFull(params: {
     try {
       const sms = await sendCustomerSms({
         db: admin,
-        kind: 'admin_new_booking',
-        template_key: 'admin_new_booking',
+        kind: kind,
+        template_key: kind,
         to: ownerPhone,
         appointment_id: params.appointmentId,
         body: smsBody,
-        extraPayload: { dashboard_url: dashUrl, total_cents: params.totalCents, booking_ref: ref },
+        requireConsent: false,
+        extraPayload: { dashboard_url: dashUrl, total_cents: params.totalCents, booking_ref: ref, owner_alert: true },
       });
       await insertOutbox(admin, {
         appointment_id: params.appointmentId,
-        kind: 'admin_new_booking',
+        kind,
         channel: 'sms',
         status: sms.ok ? 'sent' : sms.skipped ? 'skipped' : 'failed',
         provider_message_id: sms.sid ?? null,
@@ -163,7 +178,7 @@ export async function notifyBusinessNewBookingFull(params: {
       console.warn('[business-booking-notify] owner sms', e);
       await insertOutbox(admin, {
         appointment_id: params.appointmentId,
-        kind: 'admin_new_booking',
+        kind,
         channel: 'sms',
         status: 'failed',
         error_message: e instanceof Error ? e.message : String(e),

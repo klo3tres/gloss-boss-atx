@@ -86,6 +86,8 @@ export default async function AdminDashboardPage() {
     notificationRows: [],
   };
 
+  let goals: any[] = [];
+
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {
     const admin = tryCreateAdminSupabase();
     if (!admin) {
@@ -93,6 +95,30 @@ export default async function AdminDashboardPage() {
     } else {
       try {
         metrics = await loadOwnerDashboardSnapshot(admin);
+        
+        // Fetch live goals for the dashboard summary
+        const { data } = await admin
+          .from('admin_goals')
+          .select('*')
+          .neq('status', 'archived')
+          .order('created_at', { ascending: false })
+          .limit(6);
+        if (data) {
+          goals = data.map((g) => {
+            const row = g as Record<string, unknown>;
+            return {
+              id: String(row.id),
+              title: String(row.title),
+              goal_type: String(row.goal_type),
+              target_value: Number(row.target_value ?? 0),
+              current_value: Number(row.current_value ?? 0),
+              unit: String(row.unit ?? 'cents'),
+              status: String(row.status ?? 'active'),
+              period_end: row.period_end != null ? String(row.period_end) : null,
+              technician_id: row.technician_id != null ? String(row.technician_id) : null,
+            };
+          });
+        }
       } catch (e) {
         loadErr = e instanceof Error ? e.message : 'Could not load owner dashboard';
       }
@@ -106,7 +132,7 @@ export default async function AdminDashboardPage() {
           {loadErr}
         </p>
       ) : null}
-      <OwnerCommandCenter metrics={metrics} isSuperAdmin={session.profile?.role === 'super_admin'} />
+      <OwnerCommandCenter metrics={metrics} isSuperAdmin={session.profile?.role === 'super_admin'} goals={goals} />
     </DashboardShell>
   );
 }

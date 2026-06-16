@@ -3,6 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { GoalsDashboardClient, type GoalRow } from '@/components/admin/goals-dashboard-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import type { AppRole } from '@/lib/auth/roles';
+import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { loadAdminGoalsMetrics, syncAdminGoalsCurrentValues } from '@/lib/admin-goals-metrics';
 
@@ -14,13 +15,16 @@ function money(cents: number) {
 
 export default async function AdminGoalsPage() {
   const session = await getSessionWithProfile();
-  if ((session.profile?.role as AppRole | undefined) !== 'super_admin') {
+  const role = session.profile?.role as AppRole | undefined;
+  if (!isStaffRole(role)) {
     return (
-      <DashboardShell title='Goals' subtitle='Super admin only.' role='admin'>
-        <p className='text-sm text-zinc-400'>You need super admin access to manage goals.</p>
+      <DashboardShell title='Goals' subtitle='Staff access required.' role='admin'>
+        <p className='text-sm text-zinc-400'>You need staff access to view goals.</p>
       </DashboardShell>
     );
   }
+  const canEdit = role === 'super_admin';
+  const shellRole = role === 'technician' ? 'technician' : 'admin';
 
   const admin = tryCreateAdminSupabase();
   let goals: GoalRow[] = [];
@@ -64,7 +68,7 @@ export default async function AdminGoalsPage() {
   }
 
   return (
-    <DashboardShell title='Goals dashboard' subtitle='Revenue, jobs, reviews, and technician targets with live progress.' role='admin'>
+    <DashboardShell title='Goals dashboard' subtitle='Revenue, jobs, reviews, and technician targets with live progress.' role={shellRole}>
       <section className='gb-glass mb-6 grid gap-4 rounded-3xl border border-gold/25 p-5 sm:grid-cols-3'>
         <div>
           <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>MTD revenue</p>
@@ -80,7 +84,7 @@ export default async function AdminGoalsPage() {
         </div>
       </section>
 
-      <GoalsDashboardClient goals={goals} technicians={technicians} />
+      <GoalsDashboardClient goals={goals} technicians={technicians} canEdit={canEdit} />
 
       <Link href='/admin' className='mt-6 inline-block text-xs font-bold uppercase text-gold-soft underline'>
         ← Admin

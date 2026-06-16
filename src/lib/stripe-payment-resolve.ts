@@ -325,6 +325,15 @@ async function insertPaymentWithFallback(admin: SupabaseClient, payload: Record<
   return { ok: true as const, paymentId: str(ins.data?.id), result: null };
 }
 
+/** Mark duplicate payment rows excluded from revenue; keeps winner row canonical. */
+export async function excludeDuplicatePaymentRows(
+  admin: SupabaseClient,
+  duplicateIds: string[],
+  winnerId: string,
+) {
+  await markDuplicatePayments(admin, duplicateIds, winnerId);
+}
+
 async function markDuplicatePayments(
   admin: SupabaseClient,
   duplicateIds: string[],

@@ -186,6 +186,16 @@ export async function sendReceiptAction(formData: FormData): Promise<ActionResul
   if (resolvedPaymentId) revalidatePath(`/admin/receipts/${resolvedPaymentId}`);
 
   if (status === 'sent') {
+    void import('@/lib/owner-alerts').then(({ notifyOwnerBookingEvent }) =>
+      notifyOwnerBookingEvent({
+        kind: 'receipt_sent',
+        appointmentId: appointmentId || undefined,
+        guestName: str(job.guest_name || customer.full_name) || undefined,
+        guestEmail: email,
+        totalCents: ledger?.totals.finalTotalCents ?? (typeof payment.amount_cents === 'number' ? payment.amount_cents : 0),
+        extraNote: `Receipt ${receiptNumber} emailed to customer.`,
+      }),
+    );
     return actionOk(
       `Receipt emailed to ${email}. If they do not see it within a few minutes, ask them to check spam and confirm Resend domain is verified for glossbossatx.com.`,
     );

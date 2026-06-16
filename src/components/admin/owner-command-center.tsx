@@ -444,7 +444,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false }: { metrics:
 
             <div className="space-y-5">
               {[
-                { title: 'MTD Revenue Target', target: '$10,000.00', current: metrics.revenueMonth, value: parseFloat(metrics.revenueMonth.replace(/[^0-9.]/g, '')), max: 10000 },
+                { title: 'MTD Revenue Target', target: '$10,000.00', current: metrics.revenueMonth, value: (metrics.financial?.grossRevenueCents ?? 0) / 100, max: 10000 },
                 { title: 'Client Repeat Retention', target: '70% repeat clients', current: `${metrics.customerRetentionRate}%`, value: metrics.customerRetentionRate, max: 70 },
                 { title: 'Loyalty Portal Signups', target: '50% of client base', current: `${metrics.loyaltyParticipation}%`, value: metrics.loyaltyParticipation, max: 50 },
               ].map((goal, idx) => {

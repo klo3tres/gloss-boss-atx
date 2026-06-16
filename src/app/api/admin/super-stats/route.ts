@@ -3,14 +3,9 @@ import { requireProfileRoles } from '@/lib/auth/require-profile-role';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { tryCreateServerSupabase } from '@/lib/supabase/safeClient.server';
+import { fetchPaymentsSince, startOfMonthIso, startOfTodayIso, startOfWeekIso, summarizePayments } from '@/lib/revenue-metrics';
 
 export const runtime = 'nodejs';
-
-function startOfTodayIso(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
 
 function endOfTodayIso(): string {
   const d = new Date();
@@ -18,41 +13,18 @@ function endOfTodayIso(): string {
   return d.toISOString();
 }
 
-function startOfWeekIso(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
-function startOfMonthIso(): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-async function sumSucceededPayments(
-  supabase: NonNullable<Awaited<ReturnType<typeof tryCreateServerSupabase>>>,
+async function sumCanonicalRevenue(
+  admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>,
   fromIso: string,
-  toIso: string
+  toIso: string,
 ): Promise<{ cents: number; count: number }> {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('amount_cents')
-    .eq('status', 'succeeded')
-    .gte('created_at', fromIso)
-    .lte('created_at', toIso);
-
-  if (error || !data) return { cents: 0, count: 0 };
-  const cents = data.reduce((sum, row: { amount_cents: number | null }) => sum + (row.amount_cents ?? 0), 0);
-  return { cents, count: data.length };
+  const payments = await fetchPaymentsSince(admin, fromIso, toIso);
+  const summary = summarizePayments(payments, { excludeTest: true, fromIso, toIso });
+  return { cents: summary.grossCents, count: summary.paymentCount };
 }
 
 export async function GET() {
@@ -75,6 +47,9 @@ export async function GET() {
 
   const last24h = new Date(Date.now() - 86400000).toISOString();
 
+  const weekRev = admin ? await sumCanonicalRevenue(admin, weekStart, now) : { cents: 0, count: 0 };
+  const monthRev = admin ? await sumCanonicalRevenue(admin, monthStart, now) : { cents: 0, count: 0 };
+
   const [
     apptToday,
     activeJobs,
@@ -85,8 +60,6 @@ export async function GET() {
     messagesNew,
     servicesCount,
     profilesStaff,
-    weekRev,
-    monthRev,
     completedMonth,
     latestAppointments,
     latestCustomers,
@@ -130,8 +103,6 @@ export async function GET() {
     supabase.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     supabase.from('services').select('id', { count: 'exact', head: true }).eq('active', true),
     supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', ['admin', 'super_admin', 'technician']),
-    sumSucceededPayments(supabase, weekStart, now),
-    sumSucceededPayments(supabase, monthStart, now),
     supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'completed').is('archived_at', null).gte('updated_at', monthStart).lte('updated_at', now),
     supabase
       .from('appointments')
@@ -168,7 +139,10 @@ export async function GET() {
   ]);
 
   const rows = paymentsTodayRows.data ?? [];
-  const revenueTodayCents = rows.reduce((sum, row: { amount_cents: number | null }) => sum + (row.amount_cents ?? 0), 0);
+  const todaySummary = admin
+    ? summarizePayments(await fetchPaymentsSince(admin, t0, t1), { excludeTest: true, fromIso: t0, toIso: t1 })
+    : { grossCents: rows.reduce((sum, row: { amount_cents: number | null }) => sum + (row.amount_cents ?? 0), 0), paymentCount: rows.length };
+  const revenueTodayCents = todaySummary.grossCents;
 
   const techCounts = new Map<string, number>();
   for (const row of completedForTech.data ?? []) {
@@ -264,7 +238,7 @@ export async function GET() {
     unreadMessages: messagesNew.count ?? 0,
     activeServices: servicesCount.count ?? 0,
     staffProfiles: profilesStaff.count ?? 0,
-    paymentsTodayCount: rows.length,
+    paymentsTodayCount: todaySummary.paymentCount,
     revenueWeekCents: weekRev.cents,
     revenueMonthCents: monthRev.cents,
     paymentsWeekCount: weekRev.count,

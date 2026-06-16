@@ -1,5 +1,13 @@
-import type { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { fetchPaymentsSince, startOfMonthIso, summarizePayments } from '@/lib/revenue-metrics';
+import { startOfMonthIso, fetchPaymentsSince, summarizePayments } from '@/lib/revenue-metrics';
+
+type AdminDb = import('@supabase/supabase-js').SupabaseClient;
+
+function rolling30StartIso() {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
 
 /** Month-to-date operational metrics for admin goals progress. */
 export type AdminGoalsMetrics = {
@@ -7,8 +15,6 @@ export type AdminGoalsMetrics = {
   monthJobs: number;
   avgTicketCents: number;
 };
-
-type AdminDb = NonNullable<ReturnType<typeof tryCreateAdminSupabase>>;
 
 export function currentValueForGoalType(goalType: string, m: AdminGoalsMetrics): number {
   switch (goalType) {
@@ -32,6 +38,7 @@ export function currentValueForGoalType(goalType: string, m: AdminGoalsMetrics):
 
 export async function loadAdminGoalsMetrics(admin: AdminDb): Promise<AdminGoalsMetrics> {
   const startIso = startOfMonthIso();
+  const rollingIso = rolling30StartIso();
   const now = new Date().toISOString();
 
   const { data: appts } = await admin
@@ -47,8 +54,13 @@ export async function loadAdminGoalsMetrics(admin: AdminDb): Promise<AdminGoalsM
     }),
   );
 
-  const payments = await fetchPaymentsSince(admin, startIso, now);
-  const summary = summarizePayments(payments, { excludeTest: true, apptById, fromIso: startIso, toIso: now });
+  const [monthPayments, rollingPayments] = await Promise.all([
+    fetchPaymentsSince(admin, startIso, now),
+    fetchPaymentsSince(admin, rollingIso, now),
+  ]);
+  const monthSummary = summarizePayments(monthPayments, { excludeTest: true, apptById, fromIso: startIso, toIso: now });
+  const rollingSummary = summarizePayments(rollingPayments, { excludeTest: true, apptById, fromIso: rollingIso, toIso: now });
+  const summary = monthSummary.grossCents > 0 ? monthSummary : rollingSummary;
   const monthRevenueCents = summary.grossCents;
   const monthJobs = appts?.length ?? 0;
   const avgTicketCents = summary.paymentCount > 0 ? Math.round(summary.grossCents / summary.paymentCount) : 0;

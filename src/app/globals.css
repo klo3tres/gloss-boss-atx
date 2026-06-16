@@ -18,6 +18,15 @@ body {
   overflow-x: hidden;
 }
 
+/* Prevent mobile browser zoom on form focus */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 .hero-gradient {
   background: radial-gradient(circle at 20% 20%, rgba(212, 166, 77, 0.35), transparent 40%),
     radial-gradient(circle at 80% 70%, rgba(212, 166, 77, 0.18), transparent 45%),

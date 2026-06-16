@@ -57,6 +57,15 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid signature';
     console.error('[api/stripe/webhook] signature verification failed:', message);
+    try {
+      const { notifyOwnerBookingEvent } = await import('@/lib/owner-alerts');
+      await notifyOwnerBookingEvent({
+        kind: 'webhook_failed',
+        extraNote: `Stripe webhook signature verification failed: ${message}`,
+      });
+    } catch {
+      /* non-blocking */
+    }
     return NextResponse.json({ error: 'Invalid signature', detail: message }, { status: 400 });
   }
 

@@ -22,6 +22,8 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
 import { RevenueIssueCreditPanel } from '@/components/admin/revenue-issue-credit-panel';
+import { findDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
+import type { PayRow } from '@/lib/revenue-metrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -294,17 +296,10 @@ export default async function AdminRevenuePage({
     .order('scheduled_start', { ascending: true })
     .limit(6);
 
-  const duplicateMap = new Map<string, AnyRow[]>();
-  for (const p of sixMonthRows) {
-    const key = paymentDuplicateKey(p);
-    if (!key || key.includes('||')) continue;
-    const list = duplicateMap.get(key) ?? [];
-    list.push(p);
-    duplicateMap.set(key, list);
-  }
-  const duplicateGroups = Array.from(duplicateMap.entries())
-    .filter(([, rows]) => rows.length > 1)
-    .map(([key, rows]) => ({ key, rows }));
+  const duplicateGroups = findDuplicatePaymentGroups(sixMonthRows as PayRow[]).map((g) => ({
+    key: g.key,
+    rows: g.rows as AnyRow[],
+  }));
 
   return (
     <DashboardShell title='Revenue Command Center' subtitle='SaaS-quality transaction analytics and business profit ledger.' role='admin'>

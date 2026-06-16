@@ -19,7 +19,8 @@ export async function notifyOwnerBookingEvent(params: {
   extraNote?: string;
 }): Promise<void> {
   const appointmentId = params.appointmentId?.trim();
-  if (!appointmentId && params.kind !== 'gift_card' && params.kind !== 'quote_request' && params.kind !== 'ceramic_quote') {
+  const optionalKinds = new Set<OwnerBookingEventKind>(['gift_card', 'quote_request', 'ceramic_quote', 'webhook_failed']);
+  if (!appointmentId && !optionalKinds.has(params.kind)) {
     console.warn('[owner-alerts] missing appointmentId for', params.kind);
   }
   const id = appointmentId ?? '00000000-0000-0000-0000-000000000000';

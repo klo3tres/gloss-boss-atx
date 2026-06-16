@@ -94,6 +94,7 @@ const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
   { href: '/tech', label: 'Overview' },
+  { href: '/admin/goals', label: 'Goals' },
   { href: '/tech/work-orders', label: 'Active Work Orders' },
   { href: '/tech#routes', label: 'Route' },
   { href: '/tech#field-lead-capture', label: 'Leads' },
@@ -298,6 +299,12 @@ export function DashboardShell({
       </nav>
     );
 
+  const hasAlertActivity =
+    unreadCount > 0 ||
+    systemAlerts.length > 0 ||
+    outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())) ||
+    outboxEvents.length > 0;
+
   return (
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
@@ -340,7 +347,11 @@ export function DashboardShell({
             <button
               type="button"
               onClick={() => setShowNotifications(true)}
-              className="relative rounded-2xl border border-gold/25 bg-black/55 p-3.5 text-gold-soft shadow-[0_0_24px_rgba(212,175,55,0.12)] transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 mt-1"
+              className={`relative rounded-2xl border bg-black/55 p-3.5 text-gold-soft transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 mt-1 ${
+                hasAlertActivity
+                  ? 'border-gold/60 shadow-[0_0_32px_rgba(212,175,55,0.45)] animate-pulse'
+                  : 'border-gold/25 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
+              }`}
               title="Open System Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -447,6 +458,15 @@ export function DashboardShell({
                               <div>
                                 <p className="font-bold capitalize text-white">{kind.replace(/_/g, ' ')}</p>
                                 <p className="mt-1 text-[10px] text-zinc-500">{String(evt.error_message ?? evt.channel ?? 'system')}</p>
+                                {evt.created_at ? (
+                                  <p className="mt-1 text-[10px] font-mono text-zinc-400">
+                                    {new Date(String(evt.created_at)).toLocaleString('en-US', {
+                                      timeZone: 'America/Chicago',
+                                      dateStyle: 'short',
+                                      timeStyle: 'short',
+                                    })}
+                                  </p>
+                                ) : null}
                               </div>
                               <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${failed ? 'bg-rose-500/20 text-rose-100' : 'bg-white/5 text-zinc-400'}`}>
                                 {status}
@@ -470,7 +490,13 @@ export function DashboardShell({
                         <div key={idx} className="relative text-xs">
                           <div className="absolute -left-[13px] top-1.5 h-1.5 w-1.5 rounded-full bg-gold-soft" />
                           <p className="font-bold text-white capitalize">{evt.event_type.replace(/_/g, ' ')}</p>
-                          <p className="text-[9px] text-zinc-500 font-mono mt-0.5">{new Date(evt.created_at).toLocaleTimeString()}</p>
+                          <p className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                            {new Date(evt.created_at).toLocaleString('en-US', {
+                              timeZone: 'America/Chicago',
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            })}
+                          </p>
                         </div>
                       ))}
                     </div>

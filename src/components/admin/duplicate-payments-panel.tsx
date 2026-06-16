@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Check, Trash2, Eye, ShieldAlert, Sparkles } from 'lucide-react';
 import { displayMoney } from '@/lib/display-format';
-import { managePaymentAction } from '@/app/(dashboard)/admin/revenue/actions';
+import { managePaymentAction, repairAllDuplicatePaymentsAction } from '@/app/(dashboard)/admin/revenue/actions';
 
 type AnyRow = {
   id: string;
@@ -39,6 +39,21 @@ export function DuplicatePaymentsPanel({ initialGroups }: DuplicatePaymentsPanel
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [repairMsg, setRepairMsg] = useState<string | null>(null);
+
+  const handleRepairAll = async () => {
+    setRepairMsg(null);
+    setErrorMsg(null);
+    try {
+      const res = await repairAllDuplicatePaymentsAction();
+      if (res.error) setErrorMsg(res.error);
+      else setRepairMsg(`Repaired ${res.repaired ?? 0} group(s); excluded ${res.paymentsExcluded ?? 0} payment(s) and ${res.receiptsExcluded ?? 0} receipt(s).`);
+      router.refresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Repair failed.');
+    }
+  };
+
   const handleAction = async (row: AnyRow, action: 'keep' | 'exclude' | 'mark_test' | 'soft_delete') => {
     setBusyId(row.id);
     setErrorMsg(null);
@@ -65,11 +80,24 @@ export function DuplicatePaymentsPanel({ initialGroups }: DuplicatePaymentsPanel
     <section className='rounded-3xl border border-amber-500/30 bg-zinc-950 p-6 shadow-xl'>
       <div className='flex items-center gap-3 border-b border-white/10 pb-4'>
         <AlertTriangle className='h-6 w-6 text-amber-500' />
-        <div>
+        <div className='flex-1'>
           <h2 className='text-lg font-black uppercase tracking-wider text-white'>Duplicate Payments Manager</h2>
           <p className='text-xs text-zinc-400'>We found {initialGroups.length} groups of suspected duplicate transactions. Manage them below to keep, exclude, or soft delete rows.</p>
         </div>
+        <button
+          type='button'
+          onClick={handleRepairAll}
+          className='rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase text-emerald-200 hover:bg-emerald-500/20'
+        >
+          Repair all safely
+        </button>
       </div>
+
+      {repairMsg ? (
+        <div className='mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs text-emerald-100'>
+          {repairMsg}
+        </div>
+      ) : null}
 
       {errorMsg && (
         <div className='mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-200'>

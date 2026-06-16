@@ -151,9 +151,11 @@ function GoalForm({
 export function GoalsDashboardClient({
   goals,
   technicians,
+  canEdit = true,
 }: {
   goals: GoalRow[];
   technicians: Array<{ id: string; name: string }>;
+  canEdit?: boolean;
 }) {
   const router = useRouter();
   const [editId, setEditId] = useState<string | null>(null);
@@ -164,17 +166,21 @@ export function GoalsDashboardClient({
   return (
     <div className='space-y-8'>
       {/* GOAL CREATOR COLLAPSIBLE */}
-      <GlassCard className="p-0 overflow-hidden border-white/10">
-        <div className="px-6 py-5 border-b border-white/5 bg-zinc-950/20">
-          <SectionEyebrow>Goal Configurator</SectionEyebrow>
-          <p className="text-xs text-zinc-500 mt-1">Configure targets for revenue, jobs, or technicians below.</p>
-        </div>
-        <div className="p-6">
-          <GoalForm technicians={technicians} onDone={refresh} />
-        </div>
-      </GlassCard>
+      {canEdit ? (
+        <GlassCard className="p-0 overflow-hidden border-white/10">
+          <div className="px-6 py-5 border-b border-white/5 bg-zinc-950/20">
+            <SectionEyebrow>Goal Configurator</SectionEyebrow>
+            <p className="text-xs text-zinc-500 mt-1">Configure targets for revenue, jobs, or technicians below.</p>
+          </div>
+          <div className="p-6">
+            <GoalForm technicians={technicians} onDone={refresh} />
+          </div>
+        </GlassCard>
+      ) : (
+        <p className="text-xs text-zinc-500">View-only goals — super admin can create or edit targets.</p>
+      )}
 
-      {editId ? (
+      {canEdit && editId ? (
         <GlassCard className="border-gold/30 bg-gold/5 space-y-4">
           <div className="flex justify-between items-center">
             <SectionEyebrow>Modify Goal Target</SectionEyebrow>
@@ -269,6 +275,7 @@ export function GoalsDashboardClient({
                       <span className="text-[10px] text-zinc-600">No deadline</span>
                     )}
 
+                    {canEdit ? (
                     <div className='flex items-center gap-3 font-black uppercase text-[10px] tracking-wider'>
                       <button type='button' onClick={() => setEditId(g.id)} className='text-gold hover:underline flex items-center gap-1'>
                         <Edit3 className="h-3 w-3" /> Edit
@@ -327,6 +334,7 @@ export function GoalsDashboardClient({
                         <Trash2 className="h-3 w-3" /> Delete
                       </button>
                     </div>
+                    ) : null}
                   </div>
                 </GlassCard>
               );

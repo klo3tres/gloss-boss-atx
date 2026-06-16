@@ -1584,6 +1584,19 @@ export async function techCompleteJobAction(
     serviceLabel: String(appt.service_slug ?? '').replace(/-/g, ' ') || 'Mobile detailing',
   });
 
+  void import('@/lib/owner-alerts').then(({ notifyOwnerBookingEvent }) =>
+    notifyOwnerBookingEvent({
+      kind: 'job_completed',
+      appointmentId,
+      guestName: appt.guest_name != null ? String(appt.guest_name) : undefined,
+      guestEmail: appt.guest_email != null ? String(appt.guest_email) : undefined,
+      guestPhone: appt.guest_phone != null ? String(appt.guest_phone) : undefined,
+      whenIso: String(appt.scheduled_start ?? new Date().toISOString()),
+      totalCents: typeof (appt as { base_price_cents?: number }).base_price_cents === 'number' ? (appt as { base_price_cents: number }).base_price_cents : 0,
+      vehicles: String((appt as { vehicle_description?: string | null }).vehicle_description ?? 'Vehicle'),
+    }),
+  );
+
   revalidatePath('/tech');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
   revalidatePath('/tech');

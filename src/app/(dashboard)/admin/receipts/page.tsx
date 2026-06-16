@@ -3,6 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
 import { bulkReceiptRevenueFlagsAction, updateReceiptRevenueFlagsAction } from './receipt-actions';
+import { summarizePayments, type PayRow } from '@/lib/revenue-metrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,32 @@ export default async function AdminReceiptsPage() {
     }
   }
   const revenueRows = rows.filter(countsForRevenue);
+  const canonicalPayRows: PayRow[] = [];
+  const seenPaymentIds = new Set<string>();
+  for (const r of revenueRows) {
+    const paymentId = str(r.payment_id || r.id);
+    if (paymentId && seenPaymentIds.has(paymentId)) continue;
+    if (paymentId) seenPaymentIds.add(paymentId);
+    canonicalPayRows.push({
+      id: paymentId,
+      payment_id: str(r.payment_id) || null,
+      amount_cents: typeof r.amount_cents === 'number' ? r.amount_cents : null,
+      status: str(r.status || (r.receipt as Row)?.status) || 'paid',
+      payment_method: str(r.payment_method || (r.receipt as Row)?.payment_method) || null,
+      payment_kind: str(r.payment_kind) || null,
+      created_at: str(r.created_at) || null,
+      paid_at: str(r.paid_at || r.created_at) || null,
+      appointment_id: str(r.appointment_id) || null,
+      metadata: (r.metadata && typeof r.metadata === 'object' ? r.metadata : null) as Record<string, unknown> | null,
+      exclude_from_revenue: r.exclude_from_revenue === true || (r.receipt as Row)?.exclude_from_revenue === true,
+      is_test: r.is_test === true || (r.receipt as Row)?.is_test === true,
+      voided_at: str(r.voided_at || (r.receipt as Row)?.voided_at) || null,
+      stripe_checkout_session_id: str(r.stripe_checkout_session_id) || null,
+      stripe_payment_intent_id: str(r.stripe_payment_intent_id) || null,
+      source_table: str(r.receipt_id) && !str(r.payment_id) ? 'receipts' : 'payments',
+    });
+  }
+  const paidTotalCents = summarizePayments(canonicalPayRows).grossCents;
 
   return (
     <DashboardShell title='Receipts' subtitle='Printable and emailable customer receipts reconstructed from payments, bookings, and CRM records.' role='admin'>
@@ -90,8 +117,8 @@ export default async function AdminReceiptsPage() {
         </div>
         <div className='rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-5'>
           <p className='text-xs font-black uppercase tracking-[0.22em] text-emerald-200'>Paid Total</p>
-          <p className='mt-2 text-3xl font-black text-white'>{money(revenueRows.reduce((sum, r) => sum + (typeof r.amount_cents === 'number' ? r.amount_cents : 0), 0))}</p>
-          <p className='mt-1 text-xs text-emerald-100/80'>Excludes test, excluded, voided, refunded, and canceled records.</p>
+          <p className='mt-2 text-3xl font-black text-white'>{money(paidTotalCents)}</p>
+          <p className='mt-1 text-xs text-emerald-100/80'>Canonical cash collected — deduped payments/receipts, credits excluded.</p>
         </div>
         <Link href='/admin/payments' className='rounded-3xl border border-white/10 bg-black/40 p-5 transition hover:border-gold/40 hover:shadow-[0_0_28px_rgba(212,166,77,0.14)]'>
           <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Payments Ledger</p>

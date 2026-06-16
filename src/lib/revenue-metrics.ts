@@ -45,6 +45,11 @@ function revenueIdentityKey(p: PayRow): string {
   return '';
 }
 
+/** Shared revenue identity key for duplicate detection (exported for repair tooling). */
+export function paymentRevenueIdentityKey(p: PayRow): string {
+  return revenueIdentityKey(p);
+}
+
 export type RevenueSummary = {
   /** Real cash collected — credits, comps, and discounts are excluded. */
   grossCents: number;
@@ -174,6 +179,7 @@ export function summarizePayments(
     if (p.exclude_from_revenue === true || p.refunded_at) continue;
     const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
     if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id) continue;
+    if (meta?.duplicate_of_payment === true) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
