@@ -92,9 +92,56 @@ export function NotificationCenterClient({
 
   const failed = outbox.filter((r) => r.status === 'failed' || r.status === 'skipped');
   const sent = outbox.filter((r) => r.status === 'sent' || r.status === 'delivered');
+  const queued = outbox.filter((r) => !['sent', 'delivered', 'failed', 'skipped'].includes(r.status));
 
   return (
     <div className='space-y-6'>
+      <div className='grid gap-3 sm:grid-cols-3'>
+        {[
+          { label: 'Unread signal', value: `${outbox.length} events`, tone: 'gold' },
+          { label: 'Delivered', value: `${sent.length} sent`, tone: 'emerald' },
+          { label: 'Needs review', value: `${failed.length + queued.length} alerts`, tone: failed.length ? 'rose' : 'amber' },
+        ].map((stat) => (
+          <div key={stat.label} className='gb-platform-kpi'>
+            <p className='relative z-10 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500'>{stat.label}</p>
+            <p className={`relative z-10 mt-2 text-2xl font-black uppercase ${stat.tone === 'emerald' ? 'text-emerald-300' : stat.tone === 'rose' ? 'text-rose-300' : 'text-gold-soft'}`}>
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className='gb-glass-card p-5'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div>
+            <p className='text-[10px] font-black uppercase tracking-[0.24em] text-gold-soft'>Live notification timeline</p>
+            <p className='mt-1 text-sm text-zinc-400'>Booking, payment, work order, and technician alerts in one operational stream.</p>
+          </div>
+          <span className='rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+            {failed.length ? 'Action needed' : 'Healthy'}
+          </span>
+        </div>
+        <div className='mt-4 grid gap-2'>
+          {outbox.slice(0, 5).map((evt) => {
+            const isNew = !['sent', 'delivered'].includes(evt.status);
+            return (
+              <div key={evt.id} className={`rounded-2xl border px-4 py-3 ${isNew ? 'border-gold/35 bg-gold/10 shadow-[0_0_24px_rgba(212,175,55,0.12)]' : 'border-white/10 bg-black/35'}`}>
+                <div className='flex items-center justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <p className='truncate text-sm font-black uppercase text-white'>{evt.kind || evt.subject || 'Notification'}</p>
+                    <p className='mt-0.5 text-[11px] text-zinc-500'>{evt.channel} / {evt.created_at ? new Date(evt.created_at).toLocaleString() : 'No timestamp'}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${isNew ? 'bg-gold text-black' : 'bg-white/10 text-zinc-300'}`}>
+                    {evt.status || 'queued'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {outbox.length === 0 ? (
+            <div className='gb-skeleton h-16' />
+          ) : null}
+        </div>
+      </div>
       <div className='flex flex-wrap gap-2'>
         {TABS.map((t) => (
           <button

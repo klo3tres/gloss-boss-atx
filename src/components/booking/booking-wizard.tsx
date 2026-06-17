@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Car, CreditCard, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
+import { Car, Check, CreditCard, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
@@ -85,6 +85,36 @@ function serviceIcon(slug: string) {
 
 function classLabel(c: VehicleClass) {
   return UI_VEHICLE_LABELS[c];
+}
+
+function vehicleClassDesign(c: VehicleClass) {
+  const designs: Record<string, { title: string; image: string; note: string }> = {
+    sedan: {
+      title: 'Sedan',
+      image: 'https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=700&q=80',
+      note: 'Coupes, sedans, compact luxury',
+    },
+    suv: {
+      title: 'SUV',
+      image: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=700&q=80',
+      note: 'Crossovers, family SUVs, EVs',
+    },
+    truck: {
+      title: 'Truck',
+      image: 'https://images.unsplash.com/photo-1605893477799-b99e3b8b93fe?auto=format&fit=crop&w=700&q=80',
+      note: 'Pickups and work vehicles',
+    },
+    oversized: {
+      title: 'Fleet',
+      image: 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=700&q=80',
+      note: 'Large, oversized, commercial',
+    },
+  };
+  return designs[c] ?? {
+    title: classLabel(c),
+    image: 'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=700&q=80',
+    note: 'Custom vehicle profile',
+  };
 }
 
 function serviceDurationLabel(service: ServiceRow) {
@@ -1384,22 +1414,50 @@ export function BookingWizard() {
             </div>
           </section>
 
-          <section>
-            <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>2. Vehicle class (vehicle 1)</p>
-            <div className='mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4'>
-              {UI_VEHICLE_CLASSES.map((c) => (
-                <button
-                  key={c}
-                  type='button'
-                  onClick={() => setVehicleClass(c)}
-                  className={clsx(
-                    'rounded-xl border px-3 py-3 text-xs font-bold uppercase tracking-wider transition sm:text-sm',
-                    vehicleClass === c ? 'border-gold bg-gold/10 text-gold-soft shadow-[0_0_20px_rgba(212,166,77,0.25)]' : 'border-white/15 text-zinc-300 hover:border-gold/30',
-                  )}
-                >
-                  {classLabel(c)}
-                </button>
-              ))}
+          <section className='rounded-3xl border border-gold/20 bg-black/35 p-4 sm:p-5'>
+            <div className='flex flex-wrap items-end justify-between gap-3'>
+              <div>
+                <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>2. Vehicle class (vehicle 1)</p>
+                <h2 className='mt-2 text-lg font-black uppercase text-white'>Choose your vehicle profile</h2>
+              </div>
+              <div className='rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                Live price updates
+              </div>
+            </div>
+            <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+              {UI_VEHICLE_CLASSES.map((c) => {
+                const active = vehicleClass === c;
+                const design = vehicleClassDesign(c);
+                return (
+                  <button
+                    key={c}
+                    type='button'
+                    onClick={() => setVehicleClass(c)}
+                    className={clsx(
+                      'group relative min-h-[190px] overflow-hidden rounded-2xl border p-0 text-left transition duration-300',
+                      active
+                        ? 'border-gold shadow-[0_0_34px_rgba(212,175,55,0.32)] ring-2 ring-gold/40'
+                        : 'border-white/10 hover:border-gold/40 hover:shadow-[0_0_24px_rgba(212,175,55,0.14)]',
+                    )}
+                    aria-pressed={active}
+                  >
+                    <img src={design.image} alt='' className='absolute inset-0 h-full w-full object-cover opacity-48 transition duration-500 group-hover:scale-105 group-hover:opacity-60' />
+                    <span className='absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/15' />
+                    <span className='relative z-10 flex h-full min-h-[190px] flex-col justify-between p-4'>
+                      <span className='flex items-center justify-between gap-3'>
+                        <span className='rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-300'>
+                          {classLabel(c)}
+                        </span>
+                        {active ? <Check className='h-5 w-5 rounded-full bg-gold p-1 text-black' /> : null}
+                      </span>
+                      <span>
+                        <span className='block text-2xl font-black uppercase tracking-tight text-white'>{design.title}</span>
+                        <span className='mt-1 block text-xs font-semibold text-zinc-300'>{design.note}</span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </section>
 
@@ -1425,20 +1483,25 @@ export function BookingWizard() {
                   ))}
                 </select>
               </label>
-              <div className='mt-3 grid grid-cols-2 gap-2'>
-                {UI_VEHICLE_CLASSES.map((c) => (
-                  <button
-                    key={c}
-                    type='button'
-                    onClick={() => updateExtra(idx, { vehicleClass: c })}
-                    className={clsx(
-                      'rounded-xl border px-2 py-2 text-[10px] font-bold uppercase tracking-wider sm:text-xs',
-                      line.vehicleClass === c ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/30',
-                    )}
-                  >
-                    {classLabel(c)}
-                  </button>
-                ))}
+              <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4'>
+                {UI_VEHICLE_CLASSES.map((c) => {
+                  const design = vehicleClassDesign(c);
+                  return (
+                    <button
+                      key={c}
+                      type='button'
+                      onClick={() => updateExtra(idx, { vehicleClass: c })}
+                      className={clsx(
+                        'relative min-h-[88px] overflow-hidden rounded-xl border px-2 py-2 text-[10px] font-bold uppercase tracking-wider sm:text-xs',
+                        line.vehicleClass === c ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300 hover:border-gold/30',
+                      )}
+                    >
+                      <img src={design.image} alt='' className='absolute inset-0 h-full w-full object-cover opacity-30' />
+                      <span className='absolute inset-0 bg-black/60' />
+                      <span className='relative'>{design.title}</span>
+                    </button>
+                  );
+                })}
               </div>
               <label className='mt-3 block text-sm'>
                 <span className='mb-2 block text-zinc-300'>Vehicle (year / make / model)</span>

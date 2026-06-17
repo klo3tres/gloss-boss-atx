@@ -195,6 +195,15 @@ export default function HomePage() {
           <div className='relative z-10 mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.25fr_0.75fr]'>
             <MotionFade>
               <div className="gb-glass-card border border-gold/15 p-6 sm:p-10 shadow-[0_0_60px_rgba(212,175,55,0.05)] bg-black/45 backdrop-blur-xl rounded-3xl">
+                <div className='mb-6 flex items-center gap-4'>
+                  <div className='rounded-2xl border border-gold/25 bg-black/65 p-3 shadow-[0_0_34px_rgba(212,175,55,0.16)]'>
+                    <img src='/brand/glossboss-clean-logo.png' alt='Gloss Boss ATX' className='h-14 w-auto object-contain sm:h-20' />
+                  </div>
+                  <div>
+                    <p className='text-[10px] font-black uppercase tracking-[0.32em] text-gold-soft'>Gloss Boss ATX</p>
+                    <p className='mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400'>Austin luxury mobile detailing</p>
+                  </div>
+                </div>
                 <p className='inline-flex items-center gap-2 rounded-full border border-gold/30 bg-black/60 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.1)]'>
                   <Sparkles size={12} className="text-gold" /> Premium Mobile Auto Detailing
                 </p>

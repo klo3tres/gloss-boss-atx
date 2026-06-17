@@ -475,6 +475,64 @@ export function WorkOrderConsoleClient({
         </div>
       </div>
 
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
+        {[
+          {
+            label: 'Customer',
+            value: data.guestName || 'Customer',
+            meta: data.guestPhone || data.guestEmail || 'Contact details',
+            icon: <User className='h-4 w-4' />,
+            action: () => setActiveDrawer('customer'),
+          },
+          {
+            label: 'Vehicle',
+            value: data.vehicles[0]?.label || data.serviceLabel,
+            meta: `${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'} on order`,
+            icon: <Car className='h-4 w-4' />,
+            action: () => setActiveDrawer('vehicle'),
+          },
+          {
+            label: 'Payment',
+            value: data.balanceDueCents > 0 ? data.balanceDue : 'Paid',
+            meta: data.paymentStatus || data.paymentMethod || 'Payment status',
+            icon: <CreditCard className='h-4 w-4' />,
+            action: () => setActiveTab('payments'),
+          },
+          {
+            label: 'Receipt',
+            value: data.receiptPdfHref ? 'Ready' : 'Pending',
+            meta: data.finalTotal || data.baseSubtotal || 'Total pending',
+            icon: <FileText className='h-4 w-4' />,
+            action: () => setActiveTab('receipt'),
+          },
+          {
+            label: 'Loyalty',
+            value: `${data.loyaltyStampsCount ?? 0} stamps`,
+            meta: data.credits?.length ? `${data.credits.length} credit rows` : 'Rewards tracker',
+            icon: <Sparkles className='h-4 w-4' />,
+            action: () => setActiveDrawer('loyalty'),
+          },
+        ].map((item) => (
+          <button
+            key={item.label}
+            type='button'
+            onClick={item.action}
+            className='gb-platform-kpi group text-left'
+          >
+            <span className='relative z-10 flex items-start gap-3'>
+              <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold-soft transition group-hover:border-gold/50'>
+                {item.icon}
+              </span>
+              <span className='min-w-0'>
+                <span className='block text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500'>{item.label}</span>
+                <span className='mt-1 block truncate text-sm font-black uppercase text-white'>{item.value}</span>
+                <span className='mt-0.5 block truncate text-[11px] text-zinc-400'>{item.meta}</span>
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* 2. CONDITIONAL TAB CONTENTS */}
 
       {/* === OVERVIEW TAB === */}

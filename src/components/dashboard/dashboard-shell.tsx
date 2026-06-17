@@ -314,6 +314,12 @@ export function DashboardShell({
     systemAlerts.length > 0 ||
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
+  const platformPulse = [
+    { label: 'Daily closeout', value: role === 'technician' ? 'Field ready' : 'Revenue ready', pct: 78 },
+    { label: 'Response SLA', value: `${Math.max(0, unreadCount)} open`, pct: unreadCount > 0 ? 46 : 94 },
+    { label: 'Quality streak', value: 'Elite tier', pct: 86 },
+  ];
+
   return (
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
@@ -387,6 +393,22 @@ export function DashboardShell({
               )}
             </button>
           </header>
+          <section className='gb-no-print grid gap-3 sm:grid-cols-3'>
+            {platformPulse.map((item) => (
+              <div key={item.label} className='gb-platform-kpi'>
+                <div className='relative z-10 flex items-center justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <p className='truncate text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500'>{item.label}</p>
+                    <p className='mt-1 text-sm font-black uppercase text-white'>{item.value}</p>
+                  </div>
+                  <Sparkles className='h-4 w-4 shrink-0 text-gold-soft' aria-hidden />
+                </div>
+                <div className='gb-goal-rail relative z-10 mt-3'>
+                  <span style={{ width: `${item.pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </section>
           <SafeRenderBoundary label='Dashboard content'>
             <div className='gb-dashboard-content space-y-6'>{children}</div>
           </SafeRenderBoundary>
