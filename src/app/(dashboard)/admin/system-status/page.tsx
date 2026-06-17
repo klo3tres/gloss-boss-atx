@@ -90,16 +90,18 @@ export default function SystemStatusPage() {
 
   return (
     <DashboardShell
-      title='System status'
-      subtitle='Pre-flight checklist for Supabase, Stripe, webhooks, Resend, Twilio, and production env wiring.'
+      title='System Status'
+      subtitle='Pre-flight operations validation for database, payment APIs, messaging queues, and storage buckets.'
       role='admin'
     >
       {error ? (
-        <p className='rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200'>Could not load status: {error}</p>
+        <section className='mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200'>
+          Could not load system status: {error}
+        </section>
       ) : null}
 
       {!data && !error ? (
-        <div className='space-y-3'>
+        <div className='space-y-4'>
           <div className='h-10 w-48 animate-pulse rounded-lg bg-zinc-900' />
           <div className='h-24 animate-pulse rounded-2xl bg-zinc-900' />
           <div className='h-24 animate-pulse rounded-2xl bg-zinc-900' />
@@ -108,30 +110,37 @@ export default function SystemStatusPage() {
 
       {data ? (
         <div className='space-y-6'>
-          <p className='text-xs text-zinc-500'>Last checked: {new Date(data.timestamp).toLocaleString()}</p>
+          <div className='flex justify-between items-center text-[10px] text-zinc-500 font-bold uppercase tracking-wider'>
+            <span>Checked: {new Date(data.timestamp).toLocaleString()}</span>
+            <span className="text-[9px] py-0.5 px-2 bg-emerald-500/10 text-emerald-300 border border-emerald-500/15 rounded-full">Server Sync Healthy</span>
+          </div>
 
           {r ? (
-            <section className='rounded-2xl border border-gold/35 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.08)] backdrop-blur-sm'>
-              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Integrations at a glance</h2>
-              <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-                <Row label='Stripe (secret key)' ok={r.stripe} />
-                <Row label='Stripe webhook secret' ok={r.stripeWebhook} detail='Required to verify checkout.session.completed.' />
-                <Row label='Resend (send email)' ok={r.resend} />
-                <Row label='Twilio (SMS)' ok={r.twilio} detail='Optional — job SMS hooks no-op when missing.' />
-                <Row label='Supabase service role' ok={r.supabaseServiceRole} detail='Server booking, intake, and admin writes.' />
+            <section className='gb-premium-card rounded-3xl p-6'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft mb-4'>Pre-Flight Readiness Check</h2>
+              <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+                <Row label='Stripe Payments API' ok={r.stripe} />
+                <Row label='Stripe Webhook Receiver' ok={r.stripeWebhook} detail='Session completion dispatcher' />
+                <Row label='Resend Email Outbox' ok={r.resend} />
+                <Row label='Twilio SMS Queue' ok={r.twilio} detail='Optional operations trigger' />
+                <Row label='Supabase Service Client' ok={r.supabaseServiceRole} detail='Database credentials validation' />
                 <Row
-                  label='Business inbox (booking alerts)'
+                  label='Customer Alerts Copy'
                   ok={Boolean(r.businessNotifyEmail)}
-                  detail='CONTACT_NOTIFY_EMAIL or BUSINESS_NOTIFY_EMAIL — shop copy when customers book (still needs Resend).'
+                  detail='Alert mail recipient active'
                 />
               </div>
             </section>
           ) : null}
 
+          {/* Storage Details Collapsed */}
           {data.storage ? (
-            <section className='gb-premium-card rounded-2xl border border-gold/35 p-5'>
-              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Storage & media health</h2>
-              <div className='mt-4 space-y-2'>
+            <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+              <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+                <span>Storage & Bucket Health</span>
+                <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+              </summary>
+              <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
                 <Row
                   label={`Bucket: ${data.storage.jobMediaBucket}`}
                   ok={data.storage.jobMediaBucketExists}
@@ -142,9 +151,9 @@ export default function SystemStatusPage() {
                   ok={data.storage.galleryBucketExists}
                   detail='CMS featured gallery'
                 />
-                <Row label='Service-role upload ready' ok={data.storage.serviceRoleUploadReady} detail='Both buckets visible to service role' />
+                <Row label='Service-Role Upload Permissions' ok={data.storage.serviceRoleUploadReady} detail='Buckets write-access active' />
                 <Row
-                  label='Latest job photo'
+                  label='Latest Job Media Sync'
                   ok={data.storage.latestJobPhoto.ok}
                   detail={
                     data.storage.latestJobPhoto.at
@@ -153,7 +162,7 @@ export default function SystemStatusPage() {
                   }
                 />
                 <Row
-                  label='Latest CMS gallery row'
+                  label='Latest CMS Portfolio Row'
                   ok={data.storage.latestGalleryRow.ok}
                   detail={
                     data.storage.latestGalleryRow.at
@@ -162,25 +171,29 @@ export default function SystemStatusPage() {
                   }
                 />
               </div>
-            </section>
+            </details>
           ) : null}
 
+          {/* Env Checklist Collapsed */}
           {data.envChecklist?.length ? (
-            <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Environment variables</h2>
-              <p className='mt-2 text-xs text-zinc-500'>
-                Required rows must be set for core CRM; optional rows enable email/SMS. Values are not shown — only presence.
-              </p>
-              <div className='mt-4 space-y-2'>
+            <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+              <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+                <span>Environmental Environment Checklist</span>
+                <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+              </summary>
+              <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
+                <p className='text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2'>
+                  Required keys define core operations; optional keys unlock secondary email/SMS notifications.
+                </p>
                 {data.envChecklist.map((row) => (
                   <div
                     key={row.key}
-                    className='flex flex-col gap-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'
+                    className='flex flex-col gap-1 rounded-xl border border-white/5 bg-zinc-950/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'
                   >
                     <div>
                       <p className='text-sm font-semibold text-zinc-200'>{row.key}</p>
                       <p className='mt-1 text-xs text-zinc-500'>{row.detail}</p>
-                      <p className='mt-1 text-[10px] uppercase tracking-wider text-zinc-600'>{row.tier}</p>
+                      <p className='mt-1 text-[9px] uppercase tracking-wider text-zinc-600 font-bold'>{row.tier}</p>
                     </div>
                     <span className={row.ok ? 'text-sm font-bold text-emerald-400' : 'text-sm font-bold text-amber-400'}>
                       {row.ok ? 'Set' : 'Missing'}
@@ -188,133 +201,115 @@ export default function SystemStatusPage() {
                   </div>
                 ))}
               </div>
-            </section>
+            </details>
           ) : null}
 
-          {data.authNotes?.passwordReset ? (
-            <section className='rounded-2xl border border-white/10 bg-black/30 p-5'>
-              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Auth email (password reset)</h2>
-              <p className='mt-2 text-sm text-zinc-400'>{data.authNotes.passwordReset}</p>
-            </section>
-          ) : null}
-
-          <section className='rounded-2xl border border-gold/25 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Supabase Auth Email Branding</h2>
-            <p className='mt-2 text-sm text-zinc-400'>
-              Branded confirm signup, reset password, and magic link templates live in <code className='text-zinc-200'>docs/email-templates</code>.
-              Paste them into Supabase Authentication email templates and keep production redirects on <code className='text-zinc-200'>NEXT_PUBLIC_APP_URL</code>.
-              Remove localhost URLs from production Supabase settings.
-            </p>
-            <div className='mt-4 grid gap-2 sm:grid-cols-2'>
-              <Row label='NEXT_PUBLIC_APP_URL' ok={Boolean(data.env.nextPublicAppUrl && !data.env.nextPublicAppUrl.includes('localhost'))} detail={data.env.nextPublicAppUrl ?? 'Set this to the production domain in Vercel.'} />
-              <Row label='Supabase Site URL' ok={Boolean(data.env.nextPublicAppUrl && !data.env.nextPublicAppUrl.includes('localhost'))} detail='Set Supabase Auth Site URL to the exact production NEXT_PUBLIC_APP_URL.' />
-              <Row label='Redirect URLs' ok detail='Add /login, /dashboard, /customer, /reset-password, /agreement, and /book/complete production URLs.' />
-              <Row label='Resend domain verification' ok={Boolean(data.resend.ready)} detail='If customer email returns 403, verify the sending domain in Resend.' />
-              <Row label='Confirm subject' ok detail='Gloss Boss ATX — Confirm Your Account' />
-              <Row label='Reset subject' ok detail='Gloss Boss ATX — Reset Your Password' />
-            </div>
-          </section>
-
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Supabase</h2>
-            <div className='mt-4 space-y-2'>
+          {/* Supabase Core Collapsed */}
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+            <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+              <span>Supabase Database Connection</span>
+              <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+            </summary>
+            <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
               <Row label='Database reachable (RLS session)' ok={data.supabase.databaseReachable} detail={data.supabase.databaseError} />
               <Row label='NEXT_PUBLIC_SUPABASE_URL' ok={data.env.nextPublicSupabaseUrl} />
               <Row label='NEXT_PUBLIC_SUPABASE_ANON_KEY' ok={data.env.nextPublicSupabaseAnonKey} />
-              <Row label='SUPABASE_SERVICE_ROLE_KEY (server / Vercel)' ok={data.env.supabaseServiceRoleKey} />
+              <Row label='SUPABASE_SERVICE_ROLE_KEY' ok={data.env.supabaseServiceRoleKey} />
             </div>
-          </section>
+          </details>
 
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Stripe</h2>
-            <div className='mt-4 space-y-2'>
-              <Row label='Secret key configured' ok={data.stripe.secretConfigured} detail={`Source: ${data.stripe.keySource}`} />
-              <Row label='Webhook signing secret' ok={data.stripe.webhookSecretConfigured} />
-              <Row label='Publishable key' ok={data.stripe.publishableConfigured} />
-              <div className='rounded-xl border border-white/10 bg-black/30 px-4 py-3'>
-                <p className='text-sm font-semibold text-zinc-200'>Detected mode</p>
-                <p className='mt-1 text-sm uppercase tracking-wider text-gold-soft'>{data.stripe.mode}</p>
+          {/* Stripe Core Collapsed */}
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+            <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+              <span>Stripe Gateway Configurations</span>
+              <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+            </summary>
+            <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
+              <Row label='Secret API Key Configured' ok={data.stripe.secretConfigured} detail={`Source: ${data.stripe.keySource}`} />
+              <Row label='Webhook Signing Secret' ok={data.stripe.webhookSecretConfigured} />
+              <Row label='Publishable Key Configured' ok={data.stripe.publishableConfigured} />
+              <div className='flex justify-between items-center rounded-xl border border-white/5 bg-zinc-950/40 px-4 py-3'>
+                <p className='text-xs font-black uppercase text-zinc-400'>Stripe Operating Mode</p>
+                <span className='rounded bg-gold/15 border border-gold/20 px-2.5 py-1 text-xs font-black uppercase tracking-wider text-gold-soft'>{data.stripe.mode}</span>
               </div>
             </div>
-          </section>
+          </details>
 
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Resend</h2>
-            <div className='mt-4 space-y-2'>
-              <Row label='RESEND_API_KEY' ok={data.resend.apiKeyConfigured} />
-              <Row label='RESEND_FROM_EMAIL' ok={data.resend.fromEmailConfigured} />
-              {typeof data.resend.ready === 'boolean' ? (
-                <Row label='Ready to send transactional mail' ok={data.resend.ready} detail='Both API key and From must be set.' />
-              ) : null}
-              <p className='rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-400'>
-                Without Resend, confirmations and receipts are logged only; no customer email is sent.
+          {/* Resend & Email Branding */}
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+            <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+              <span>Email Courier Services (Resend)</span>
+              <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+            </summary>
+            <div className="mt-5 pt-5 border-t border-white/5 space-y-4">
+              <div className='space-y-3'>
+                <Row label='RESEND_API_KEY' ok={data.resend.apiKeyConfigured} />
+                <Row label='RESEND_FROM_EMAIL' ok={data.resend.fromEmailConfigured} />
+                {typeof data.resend.ready === 'boolean' ? (
+                  <Row label='Transactional Mail Ready' ok={data.resend.ready} detail='Both API key and Sender are active.' />
+                ) : null}
+              </div>
+              <p className='text-[10px] text-zinc-500 font-medium'>
+                Templates confirming signups, resets, and checks reside in <code className='text-zinc-300 font-mono'>docs/email-templates</code>. Configure these templates in your Supabase Auth Console.
               </p>
+              <div className='grid gap-3 sm:grid-cols-2 mt-3'>
+                <Row label='NEXT_PUBLIC_APP_URL' ok={Boolean(data.env.nextPublicAppUrl && !data.env.nextPublicAppUrl.includes('localhost'))} detail={data.env.nextPublicAppUrl ?? 'Set domain in Vercel to allow login redirects.'} />
+                <Row label='Verified Sending Domain' ok={Boolean(data.resend.ready)} detail='Ensure the sending domain is verified in Resend.' />
+              </div>
             </div>
-          </section>
+          </details>
 
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Twilio</h2>
-            <div className='mt-4 space-y-2'>
+
+
+          {/* Twilio SMS Core */}
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+            <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+              <span>SMS Dispatch Settings (Twilio)</span>
+              <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+            </summary>
+            <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
               {data.twilio ? (
                 <>
                   <Row label='TWILIO_ACCOUNT_SID' ok={data.twilio.accountSidConfigured} />
                   <Row label='TWILIO_AUTH_TOKEN' ok={data.twilio.authTokenConfigured} />
                   <Row
                     label='TWILIO_MESSAGING_SERVICE_SID'
-                    ok={Boolean((data.twilio as { messagingServiceConfigured?: boolean }).messagingServiceConfigured)}
+                    ok={Boolean((data.twilio as any).messagingServiceConfigured)}
                   />
                   <Row label='TWILIO_FROM_NUMBER (fallback)' ok={data.twilio.fromNumberConfigured} />
                   {typeof data.twilio.ready === 'boolean' ? (
-                    <Row label='Ready to send SMS' ok={data.twilio.ready} detail='SID + token + Messaging Service SID (or From number).' />
+                    <Row label='SMS Queue Active' ok={data.twilio.ready} detail='Credentials and messaging service valid.' />
                   ) : null}
                 </>
               ) : (
-                <p className='text-xs text-zinc-500'>Twilio status unavailable — refresh after deploy.</p>
+                <p className='text-xs text-zinc-500'>Twilio environment configuration is not detected.</p>
               )}
             </div>
-          </section>
+          </details>
 
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Google review & notifications</h2>
-            <p className='mt-2 text-xs text-zinc-400'>
-              Set the public review button from <span className='text-gold-soft'>Admin → Website CMS</span> (saves to review settings and{' '}
-              <code className='text-zinc-300'>site_settings.google_review_url</code>). Optional business inbox: configure Resend above; SMS via
-              Twilio.
-            </p>
-          </section>
-
-          <section className='rounded-2xl border border-gold/20 bg-zinc-950/80 p-5 shadow-[0_0_24px_rgba(212,166,77,0.06)] backdrop-blur-sm'>
-            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>App URL & webhooks</h2>
-            <div className='mt-4 space-y-2'>
+          {/* App URLs and Webhook Hints */}
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+            <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+              <span>Webhook Routing Coordinates</span>
+              <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+            </summary>
+            <div className="mt-5 pt-5 border-t border-white/5 space-y-3">
               <Row
                 label='NEXT_PUBLIC_APP_URL'
                 ok={Boolean(data.env.nextPublicAppUrl)}
-                detail={data.env.nextPublicAppUrl ?? 'Set for Stripe redirects and webhook URL hints.'}
+                detail={data.env.nextPublicAppUrl ?? 'Sets origin parameter for webhook checks.'}
               />
-              <div className='rounded-xl border border-white/10 bg-black/30 px-4 py-3'>
-                <p className='text-sm font-semibold text-zinc-200'>Stripe webhook (canonical)</p>
-                <p className='mt-2 break-all font-mono text-xs text-zinc-400'>{data.webhooks.primaryUrlHint}</p>
+              <div className='rounded-xl border border-white/5 bg-zinc-950/40 px-4 py-3.5'>
+                <p className='text-xs font-black uppercase text-zinc-400'>Stripe Webhook canonical Endpoint</p>
+                <p className='mt-2 break-all font-mono text-xs text-gold-soft'>{data.webhooks.primaryUrlHint}</p>
               </div>
               {data.webhooks.legacyUrlHint ? (
-                <div className='rounded-xl border border-white/10 bg-black/30 px-4 py-3'>
-                  <p className='text-sm font-semibold text-zinc-200'>Legacy webhook path</p>
-                  <p className='mt-2 break-all font-mono text-xs text-zinc-400'>{data.webhooks.legacyUrlHint}</p>
+                <div className='rounded-xl border border-white/5 bg-zinc-950/40 px-4 py-3.5'>
+                  <p className='text-xs font-black uppercase text-zinc-400'>Legacy webhook path</p>
+                  <p className='mt-2 break-all font-mono text-xs text-zinc-500'>{data.webhooks.legacyUrlHint}</p>
                 </div>
               ) : null}
             </div>
-          </section>
-
-          <details className='rounded-2xl border border-white/10 bg-black/40 p-4'>
-            <summary className='cursor-pointer text-xs font-bold uppercase tracking-wider text-zinc-300'>Full environment checklist</summary>
-            <ul className='mt-3 list-inside list-disc space-y-1 font-mono text-[11px] text-zinc-500'>
-              <li>NEXT_PUBLIC_SUPABASE_URL — public Supabase project URL</li>
-              <li>NEXT_PUBLIC_SUPABASE_ANON_KEY — browser-safe key</li>
-              <li>SUPABASE_SERVICE_ROLE_KEY — server-only; required for messages, some admin writes, booking fallbacks</li>
-              <li>STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</li>
-              <li>RESEND_API_KEY, RESEND_FROM_EMAIL</li>
-              <li>TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID (preferred) or TWILIO_FROM_NUMBER (optional)</li>
-              <li>NEXT_PUBLIC_APP_URL — canonical site URL for redirects</li>
-            </ul>
           </details>
         </div>
       ) : null}

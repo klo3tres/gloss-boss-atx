@@ -117,30 +117,38 @@ export default async function AdminCustomersPage() {
         </p>
       ) : null}
 
-      {/* Add Customer Form */}
-      <section className='rounded-3xl border border-gold/25 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black p-6 shadow-lg'>
-        <h2 className='text-sm font-black uppercase text-gold-soft tracking-wider'>Add customer profile</h2>
-        <p className='mt-1 text-xs text-zinc-500'>Creates a new CRM profile row. Customers can later sign up using the same email to link their account.</p>
-        <form action={createCustomerAction} className='mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-          <label className='block text-xs text-zinc-400 sm:col-span-2'>
-            Email Address
-            <input name='email' type='email' placeholder='name@domain.com' required className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Full Name
-            <input name='full_name' placeholder='First Last' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
-          </label>
-          <label className='block text-xs text-zinc-400'>
-            Phone Number
-            <input name='phone' placeholder='(512) 555-0199' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
-          </label>
-          <div className='flex items-end sm:col-span-2 lg:col-span-4 mt-2'>
-            <button type='submit' className='rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black shadow-md hover:brightness-110 transition'>
-              Create CRM Profile
-            </button>
-          </div>
-        </form>
-      </section>
+      {/* Add Customer Form Collapsed */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <User className="h-4 w-4 text-gold-soft" />
+            <span>Add New Customer CRM Profile</span>
+          </span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900">Toggle Form</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5 space-y-4">
+          <p className='text-xs text-zinc-500'>Creates a new CRM profile row. Customers can later sign up using the same email to link their account.</p>
+          <form action={createCustomerAction} className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+            <label className='block text-xs text-zinc-400 sm:col-span-2'>
+              Email Address
+              <input name='email' type='email' placeholder='name@domain.com' required className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              Full Name
+              <input name='full_name' placeholder='First Last' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              Phone Number
+              <input name='phone' placeholder='(512) 555-0199' className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2.5 text-sm text-white focus:border-gold/50 focus:ring-1 focus:ring-gold/50 outline-none transition' />
+            </label>
+            <div className='flex items-end sm:col-span-2 lg:col-span-4 mt-2'>
+              <button type='submit' className='rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black shadow-md hover:brightness-110 transition'>
+                Create CRM Profile
+              </button>
+            </div>
+          </form>
+        </div>
+      </details>
 
       {/* Directory Grid */}
       <section className='mt-8 rounded-3xl border border-gold/20 bg-zinc-950/60 p-6'>

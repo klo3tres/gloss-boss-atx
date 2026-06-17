@@ -106,7 +106,11 @@ async function adminRecordCashPaymentFormAction(formData: FormData) {
   await adminRecordCashPaymentAction(formData);
 }
 
-export default async function AdminWorkOrdersPage() {
+export default async function AdminWorkOrdersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const admin = tryCreateAdminSupabase();
   if (!admin) {
     return (
@@ -115,6 +119,9 @@ export default async function AdminWorkOrdersPage() {
       </DashboardShell>
     );
   }
+
+  const sp = searchParams ? await searchParams : {};
+  const activeBucket = String(sp.bucket || 'Active');
 
   const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
@@ -157,43 +164,144 @@ export default async function AdminWorkOrdersPage() {
     .filter((r) => !['archived', 'deleted', 'expired'].includes(str(r.status)) && !r.archived_at)
     .map((r) => ({ ...r, kind: 'fallback' }));
   const rows: Row[] = [...appts, ...fallbacks].sort((a, b) => new Date(str(b.scheduled_start || b.created_at)).getTime() - new Date(str(a.scheduled_start || a.created_at)).getTime());
-  const buckets = ['Paid bookings', 'Unpaid bookings', 'Active', 'Completed', 'Fallback / test'];
+  
+  const buckets = ['Active', 'Paid bookings', 'Unpaid bookings', 'Completed', 'Fallback / test'];
+
+  // Calculate circular completion metrics
+  const totalJobs = rows.filter(r => str(r.kind) !== 'fallback').length;
+  const completedJobs = rows.filter(r => str(r.status) === 'completed').length;
+  const completionRate = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
+  
+  const circ = 2 * Math.PI * 36;
+  const strokeDashoffset = circ - (Math.min(100, Math.max(0, completionRate)) / 100) * circ;
+
+  const bucketRows = rows.filter((r) => statusBucket(r) === activeBucket);
 
   return (
     <DashboardShell title='Work orders' subtitle='Operational job board connected to payments, dispatch, and customers.' role='admin'>
-      <div className='mb-4 flex flex-wrap gap-2 text-xs'>
-        <Link href='/admin/payments' className='rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 font-bold uppercase text-emerald-200'>
-          Payments / Receipts
-        </Link>
-        <Link href='/admin/dispatch' className='rounded-lg border border-gold/40 px-3 py-2 font-bold uppercase text-gold-soft'>
-          Dispatch
-        </Link>
-        <Link href='/admin/customers' className='rounded-lg border border-white/15 px-3 py-2 font-bold uppercase text-zinc-300'>
-          Customers
-        </Link>
-        <Link href='/admin/work-orders/add-past' className='rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-bold uppercase text-gold-soft'>
-          Add past job
-        </Link>
+      
+      {/* QUICK COMMAND NAVIGATION */}
+      <div className='mb-4 flex flex-wrap gap-2 text-xs items-center justify-between'>
+        <div className="flex flex-wrap gap-2">
+          <Link href='/admin/payments' className='rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 font-bold uppercase text-emerald-200'>
+            Payments / Receipts
+          </Link>
+          <Link href='/admin/dispatch' className='rounded-lg border border-gold/40 px-3 py-2 font-bold uppercase text-gold-soft'>
+            Dispatch
+          </Link>
+          <Link href='/admin/customers' className='rounded-lg border border-white/15 px-3 py-2 font-bold uppercase text-zinc-300'>
+            Customers
+          </Link>
+          <Link href='/admin/work-orders/add-past' className='rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-bold uppercase text-gold-soft'>
+            Add past job
+          </Link>
+        </div>
         <form action={clearStaleActiveTestRecordsFormAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>
           <ConfirmSubmitButton message='Clear stale active test timers/sessions/fallbacks?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>
             Clear stale active tests
           </ConfirmSubmitButton>
         </form>
       </div>
+
       {appointmentsRes.error ? <p className='mb-3 text-sm text-amber-200'>Appointments: {appointmentsRes.error.message}</p> : null}
       {fallbacksRes.error ? <p className='mb-3 text-sm text-amber-200'>Fallbacks: {fallbacksRes.error.message}</p> : null}
-      <div className='grid gap-4 xl:grid-cols-2'>
-        {buckets.map((bucket) => {
-          const bucketRows = rows.filter((r) => statusBucket(r) === bucket);
-          return (
-            <section key={bucket} className='rounded-2xl border border-gold/20 bg-zinc-950/90 p-4 shadow-[0_0_24px_rgba(212,166,77,0.08)]'>
-              <div className='flex items-center justify-between gap-3'>
-                <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>{bucket}</h2>
-                <span className='rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-zinc-300'>{bucketRows.length}</span>
-              </div>
-              <div className='mt-4 space-y-3'>
-                {bucketRows.length === 0 ? <p className='rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-zinc-500'>No work orders in this bucket.</p> : null}
-                {bucketRows.map((r) => {
+
+      {/* RECONCILIATION COMMAND CENTER HERO */}
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr] mb-6">
+        
+        {/* SVG Dial & Work Focus */}
+        <div className="rounded-3xl border border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/40 transition-all duration-300">
+          <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="space-y-4 text-center sm:text-left min-w-0 flex-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Work Order Cockpit</span>
+            <div>
+              <p className="text-zinc-400 text-xs">Total Schedule Completion Rate</p>
+              <h2 className="mt-1 font-mono text-4xl font-black text-white tracking-tight">
+                {completedJobs} / {totalJobs} Completed
+              </h2>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
+              We have dispatched and reset <strong className="text-white">{completedJobs}</strong> out of <strong className="text-white">{totalJobs}</strong> schedule items this period.
+            </p>
+          </div>
+          
+          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-zinc-950/60 border border-white/10 p-2 shadow-inner">
+            <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="36" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="none" />
+              <circle
+                cx="40"
+                cy="40"
+                r="36"
+                className="text-gold-soft transition-all duration-1000 ease-out"
+                strokeWidth="6"
+                strokeDasharray={circ}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="none"
+              />
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center">
+              <span className="font-mono text-2xl font-black text-white">{completionRate}%</span>
+              <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Rate</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Summary Cards */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Active timers</span>
+            <p className="mt-2 font-mono text-3xl font-black text-emerald-400">{rows.filter(r => str(r.status) === 'in_progress').length}</p>
+            <p className="text-[9px] text-zinc-500 mt-1">Technicians on location</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Needs assigning</span>
+            <p className="mt-2 font-mono text-3xl font-black text-amber-400">{rows.filter(r => !r.assigned_technician_id && !str(r.kind).includes('fallback')).length}</p>
+            <p className="text-[9px] text-zinc-500 mt-1">Pending dispatch slots</p>
+          </div>
+        </div>
+
+      </div>
+
+      {/* BUCKET TABS SELECTOR */}
+      <div className="flex justify-center mb-8">
+        <div className="inline-flex flex-wrap justify-center gap-1.5 rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md shadow-lg">
+          {buckets.map((b) => {
+            const count = rows.filter((r) => statusBucket(r) === b).length;
+            return (
+              <Link
+                key={b}
+                href={`/admin/work-orders?bucket=${encodeURIComponent(b)}`}
+                className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-300 ${
+                  activeBucket === b
+                    ? 'bg-gold text-black shadow-[0_0_15px_rgba(212,175,55,0.3)]'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {b} ({count})
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* DISPLAY SELECTED BUCKET */}
+      <div className='grid gap-4'>
+        <section className='rounded-3xl border border-gold/15 bg-zinc-950/90 p-5 shadow-[0_0_24px_rgba(212,166,77,0.04)]'>
+          <div className='flex items-center justify-between gap-3 border-b border-white/5 pb-3 mb-5'>
+            <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>{activeBucket}</h2>
+            <span className='rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-zinc-300'>{bucketRows.length} total</span>
+          </div>
+          
+          <div className='space-y-4'>
+            {bucketRows.length === 0 ? (
+              <p className='rounded-2xl border border-dashed border-white/10 p-10 text-center text-sm text-zinc-500'>
+                No work orders in the "{activeBucket}" queue.
+              </p>
+            ) : null}
+            
+            {bucketRows.map((r) => {
                   const isFallback = str(r.kind) === 'fallback';
                   const agreement = agreementByAppt.get(str(r.id));
                   const payment =
@@ -327,9 +435,7 @@ export default async function AdminWorkOrdersPage() {
                 })}
               </div>
             </section>
-          );
-        })}
-      </div>
-    </DashboardShell>
-  );
-}
+          </div>
+        </DashboardShell>
+      );
+    }

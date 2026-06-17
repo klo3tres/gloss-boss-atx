@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   archiveAdminGoalAction,
   completeAdminGoalAction,
@@ -9,7 +10,7 @@ import {
   saveAdminGoalAction,
 } from '@/app/(dashboard)/admin/goals/goals-actions';
 import { GlassCard, PremiumBadge, SectionEyebrow } from '@/components/ui/premium';
-import { Target, Calendar, User, CheckCircle2, Archive, Trash2, Edit3, Plus } from 'lucide-react';
+import { Target, Calendar, User, CheckCircle2, Archive, Trash2, Edit3, Plus, X } from 'lucide-react';
 
 export type GoalRow = {
   id: string;
@@ -73,7 +74,7 @@ function GoalForm({
         });
       }}
     >
-      <SectionEyebrow>{initial ? 'Edit Goal' : 'New Goal Target'}</SectionEyebrow>
+      <SectionEyebrow>{initial ? 'Edit Goal Details' : 'New Goal Details'}</SectionEyebrow>
       {initial ? <input type='hidden' name='id' value={initial.id} /> : null}
       
       <div className='grid gap-4 sm:grid-cols-2'>
@@ -141,7 +142,7 @@ function GoalForm({
       
       <div className="flex justify-end pt-2">
         <button type='submit' disabled={pending} className='rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase tracking-widest text-black shadow-md hover:brightness-110 disabled:opacity-50 transition duration-200'>
-          {pending ? 'Saving…' : initial ? 'Update Goal' : 'Create Goal'}
+          {pending ? 'Saving…' : initial ? 'Update Target' : 'Create Target'}
         </button>
       </div>
     </form>
@@ -159,51 +160,35 @@ export function GoalsDashboardClient({
 }) {
   const router = useRouter();
   const [editId, setEditId] = useState<string | null>(null);
+  const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [pending, start] = useTransition();
 
   const refresh = () => router.refresh();
 
   return (
     <div className='space-y-8'>
-      {/* GOAL CREATOR COLLAPSIBLE */}
-      {canEdit ? (
-        <GlassCard className="p-0 overflow-hidden border-white/10">
-          <div className="px-6 py-5 border-b border-white/5 bg-zinc-950/20">
-            <SectionEyebrow>Goal Configurator</SectionEyebrow>
-            <p className="text-xs text-zinc-500 mt-1">Configure targets for revenue, jobs, or technicians below.</p>
-          </div>
-          <div className="p-6">
-            <GoalForm technicians={technicians} onDone={refresh} />
-          </div>
-        </GlassCard>
-      ) : (
-        <p className="text-xs text-zinc-500">View-only goals — super admin can create or edit targets.</p>
-      )}
-
-      {canEdit && editId ? (
-        <GlassCard className="border-gold/30 bg-gold/5 space-y-4">
-          <div className="flex justify-between items-center">
-            <SectionEyebrow>Modify Goal Target</SectionEyebrow>
-            <button type="button" onClick={() => setEditId(null)} className="text-xs font-bold uppercase text-zinc-400 hover:text-white transition">Cancel</button>
-          </div>
-          <GoalForm
-            initial={goals.find((g) => g.id === editId)}
-            technicians={technicians}
-            onDone={() => {
-              setEditId(null);
-              refresh();
-            }}
-          />
-        </GlassCard>
-      ) : null}
-
-      {/* GOALS GRID */}
+      {/* ACTIVE & SYNCED TARGETS SECTION */}
       <div>
-        <SectionEyebrow className="mb-4">Active & Synced Targets</SectionEyebrow>
+        <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-6">
+          <SectionEyebrow>Active & Synced Targets</SectionEyebrow>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditId(null);
+                setShowCreateDrawer(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black hover:bg-gold-soft transition shadow-md"
+            >
+              <Plus className="h-3.5 w-3.5" /> Create Goal
+            </button>
+          )}
+        </div>
+
         <div className='grid gap-6 lg:grid-cols-2'>
           {goals.length === 0 ? (
             <GlassCard className='text-center py-12 border border-dashed border-white/10 bg-black/20 lg:col-span-2'>
-              <p className='text-xs text-zinc-500 italic'>No goals currently set. Create one above to track progress.</p>
+              <p className='text-xs text-zinc-500 italic'>No goals currently set. Click &quot;Create Goal&quot; above to track progress.</p>
             </GlassCard>
           ) : (
             goals.map((g) => {
@@ -276,64 +261,64 @@ export function GoalsDashboardClient({
                     )}
 
                     {canEdit ? (
-                    <div className='flex items-center gap-3 font-black uppercase text-[10px] tracking-wider'>
-                      <button type='button' onClick={() => setEditId(g.id)} className='text-gold hover:underline flex items-center gap-1'>
-                        <Edit3 className="h-3 w-3" /> Edit
-                      </button>
-                      
-                      {g.status !== 'completed' && (
+                      <div className='flex items-center gap-3 font-black uppercase text-[10px] tracking-wider'>
+                        <button type='button' onClick={() => setEditId(g.id)} className='text-gold hover:underline flex items-center gap-1'>
+                          <Edit3 className="h-3 w-3" /> Edit
+                        </button>
+                        
+                        {g.status !== 'completed' && (
+                          <button
+                            type='button'
+                            disabled={pending}
+                            onClick={() =>
+                              start(async () => {
+                                const fd = new FormData();
+                                fd.set('id', g.id);
+                                await completeAdminGoalAction(fd);
+                                refresh();
+                              })
+                            }
+                            className='text-emerald-400 hover:underline flex items-center gap-0.5'
+                          >
+                            <CheckCircle2 className="h-3 w-3" /> Complete
+                          </button>
+                        )}
+                        
+                        {g.status !== 'archived' && (
+                          <button
+                            type='button'
+                            disabled={pending}
+                            onClick={() =>
+                              start(async () => {
+                                const fd = new FormData();
+                                fd.set('id', g.id);
+                                await archiveAdminGoalAction(fd);
+                                refresh();
+                              })
+                            }
+                            className='text-amber-200 hover:underline flex items-center gap-0.5'
+                          >
+                            <Archive className="h-3 w-3" /> Archive
+                          </button>
+                        )}
+                        
                         <button
                           type='button'
                           disabled={pending}
-                          onClick={() =>
+                          onClick={() => {
+                            if (!confirm('Delete this goal permanently?')) return;
                             start(async () => {
                               const fd = new FormData();
                               fd.set('id', g.id);
-                              await completeAdminGoalAction(fd);
+                              await deleteAdminGoalAction(fd);
                               refresh();
-                            })
-                          }
-                          className='text-emerald-400 hover:underline flex items-center gap-0.5'
+                            });
+                          }}
+                          className='text-rose-300 hover:underline flex items-center gap-0.5'
                         >
-                          <CheckCircle2 className="h-3 w-3" /> Complete
+                          <Trash2 className="h-3 w-3" /> Delete
                         </button>
-                      )}
-                      
-                      {g.status !== 'archived' && (
-                        <button
-                          type='button'
-                          disabled={pending}
-                          onClick={() =>
-                            start(async () => {
-                              const fd = new FormData();
-                              fd.set('id', g.id);
-                              await archiveAdminGoalAction(fd);
-                              refresh();
-                            })
-                          }
-                          className='text-amber-200 hover:underline flex items-center gap-0.5'
-                        >
-                          <Archive className="h-3 w-3" /> Archive
-                        </button>
-                      )}
-                      
-                      <button
-                        type='button'
-                        disabled={pending}
-                        onClick={() => {
-                          if (!confirm('Delete this goal permanently?')) return;
-                          start(async () => {
-                            const fd = new FormData();
-                            fd.set('id', g.id);
-                            await deleteAdminGoalAction(fd);
-                            refresh();
-                          });
-                        }}
-                        className='text-rose-300 hover:underline flex items-center gap-0.5'
-                      >
-                        <Trash2 className="h-3 w-3" /> Delete
-                      </button>
-                    </div>
+                      </div>
                     ) : null}
                   </div>
                 </GlassCard>
@@ -342,6 +327,62 @@ export function GoalsDashboardClient({
           )}
         </div>
       </div>
+
+      {/* Slide-over Drawer for Creating/Editing Goals */}
+      <AnimatePresence>
+        {(showCreateDrawer || editId) && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setShowCreateDrawer(false);
+                setEditId(null);
+              }}
+              className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-lg border-l border-gold/20 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">
+                    {editId ? 'Modify Goal Target' : 'Create Goal Target'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCreateDrawer(false);
+                    setEditId(null);
+                  }}
+                  className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <GoalForm
+                initial={editId ? goals.find((g) => g.id === editId) : undefined}
+                technicians={technicians}
+                onDone={() => {
+                  setShowCreateDrawer(false);
+                  setEditId(null);
+                  refresh();
+                }}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

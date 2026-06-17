@@ -377,14 +377,24 @@ export function LeadsAdminClient({
                       const techLabel = tid ? techById[tid] ?? tid.slice(0, 8) : '';
                       const contactAttempts = Number(r.contact_attempts ?? 0);
                       
+                      const stageGlows: Record<string, string> = {
+                        new: 'shadow-[inset_4px_0_0_0_#3b82f6] border-blue-500/20',
+                        quoted: 'shadow-[inset_4px_0_0_0_#f59e0b] border-amber-500/20',
+                        follow_up: 'shadow-[inset_4px_0_0_0_#a855f7] border-purple-500/20',
+                        scheduled: 'shadow-[inset_4px_0_0_0_#06b6d4] border-cyan-500/20',
+                        won: 'shadow-[inset_4px_0_0_0_#10b981] border-emerald-500/20',
+                        lost: 'shadow-[inset_4px_0_0_0_#71717a] border-zinc-500/20',
+                      };
+                      const glowClass = stageGlows[stage.id] ?? 'border-white/5';
+
                       return (
                         <li
                           key={id}
                           onClick={() => setActiveLeadId(id)}
-                          className={`group relative rounded-2xl border p-4 transition-all duration-300 cursor-pointer bg-zinc-900/60 hover:bg-zinc-900 ${
+                          className={`group relative rounded-2xl border p-4 pl-5 transition-all duration-300 cursor-pointer bg-zinc-900/60 hover:bg-zinc-900 ${glowClass} ${
                             isSel 
-                              ? 'border-gold bg-gold/5 shadow-[0_0_20px_rgba(212,175,55,0.06)]' 
-                              : 'border-white/5 hover:border-zinc-700'
+                              ? 'border-gold bg-gold/5 shadow-[0_0_20px_rgba(212,175,55,0.06),_inset_4px_0_0_0_#d4af37]' 
+                              : 'hover:border-zinc-700/50'
                           }`}
                         >
                           {/* Selection Checkbox */}

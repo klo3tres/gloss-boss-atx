@@ -319,12 +319,15 @@ export function DashboardShell({
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
-        <div className='gb-no-print flex items-center justify-between lg:hidden'>
-          <p className='text-xs font-bold uppercase tracking-widest text-gold-soft'>Menu</p>
+        <div className='gb-no-print flex items-center justify-between lg:hidden w-full bg-zinc-950/85 border border-gold/15 rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-[0_0_15px_rgba(212,175,55,0.08)]'>
+          <div className="flex items-center gap-2">
+            <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-7 w-auto object-contain filter brightness-110" />
+            <span className='text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>Gloss Boss ATX</span>
+          </div>
           <button
             type='button'
             onClick={() => setNavOpen((v) => !v)}
-            className='rounded-lg border border-gold/30 p-2 text-gold-soft'
+            className='rounded-lg border border-gold/30 p-2 text-gold-soft hover:bg-gold/10 transition'
             aria-expanded={navOpen}
             aria-label='Toggle navigation'
           >
@@ -341,17 +344,22 @@ export function DashboardShell({
             navOpen ? 'fixed left-4 right-4 top-20 max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:max-h-none' : 'hidden lg:block'
           }`}
         >
-          <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
-          <h2 className='mt-3 text-lg font-black uppercase'>{panelTitle}</h2>
+          <div className="flex flex-col items-center mb-5 border-b border-white/5 pb-4">
+            <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-16 w-auto object-contain filter brightness-110 mb-2" />
+            <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+          </div>
+          <h2 className='text-base font-black uppercase text-center text-white mb-2'>{panelTitle}</h2>
           {NavLinks}
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
-          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-start justify-between gap-4'>
-            <div className="min-w-0 flex-1">
-              <div className='pointer-events-none float-right h-20 w-20 rounded-full bg-gold/10 blur-2xl' aria-hidden />
-              <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
-              <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
+          <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-center justify-between gap-4'>
+            <div className="min-w-0 flex-1 flex items-center gap-4">
+              <img src="/brand/glossboss-clean-logo.png" alt="Logo" className="h-12 w-auto object-contain filter brightness-110 hidden md:block" />
+              <div>
+                <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
+                <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>
+              </div>
             </div>
             
             <button

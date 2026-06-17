@@ -125,50 +125,87 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>Could not load team: {err}</p>
       ) : null}
 
-      <div className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <p className='text-sm text-zinc-400'>
-          Technicians and admins appear here. Super admins can <span className='text-gold-soft'>assign roles</span>,{' '}
-          <span className='text-gold-soft'>reset passwords</span>, <span className='text-gold-soft'>edit display names</span>, and{' '}
-          <span className='text-gold-soft'>create staff</span> below — feedback is shown inline (no page redirects).
-        </p>
-        <div className='gb-admin-table-wrap mt-4'>
-          <table className='w-full min-w-[720px] border-collapse text-left text-sm'>
-            <thead>
-              <tr className='border-b border-white/10 text-xs uppercase tracking-wider text-zinc-500'>
-                <th className='py-2 pr-3'>Name</th>
-                <th className='py-2 pr-3'>Role</th>
-                <th className='py-2 pr-3'>Profile ID</th>
-                <th className='py-2 pr-3'>Active</th>
-                <th className='py-2 pr-3'>Since</th>
-                {isSuper ? <th className='py-2'>Actions</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {staff.map((p) => (
-                <tr key={p.id} className='border-b border-white/5 text-zinc-200'>
-                  <td className='py-2 pr-3 font-medium text-white'>
-                    <Link href={`/admin/team/${encodeURIComponent(p.id)}`} className='hover:text-gold-soft hover:underline'>
-                      {displayName(p)}
-                    </Link>
-                  </td>
-                  <td className='py-2 pr-3'>
-                    <span className='rounded-full border border-gold/30 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-soft'>{p.role}</span>
-                  </td>
-                  <td className='py-2 pr-3 font-mono text-xs text-zinc-500'>{p.id}</td>
-                  <td className='py-2 pr-3 text-xs'>
-                    {p.active ? (
-                      <span className='rounded-full border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300'>
-                        Active
-                      </span>
-                    ) : (
-                      <span className='rounded-full border border-rose-500/40 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-200'>
-                        Inactive
-                      </span>
-                    )}
-                  </td>
-                  <td className='py-2 pr-3 text-xs text-zinc-500'>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
-                  {isSuper ? (
-                    <td className='py-2 align-top'>
+      <div className='space-y-6'>
+        {/* CRM Info Banner */}
+        <div className='gb-premium-card rounded-3xl border border-white/5 bg-zinc-950/45 p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4'>
+          <div className='max-w-xl'>
+            <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Team Management Panel</p>
+            <p className='mt-2 text-xs text-zinc-400 leading-relaxed'>
+              Configure access tokens, set roles, adjust display profiles, and review active technician assignments. 
+              Changes persist instantly inside active database session logs.
+            </p>
+          </div>
+          <span className="rounded-full bg-white/5 border border-white/10 px-3.5 py-1 text-xs text-zinc-300 font-bold shrink-0 self-start md:self-center">
+            {staff.length} Active Staff Members
+          </span>
+        </div>
+
+        {/* Profile cards grid */}
+        <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
+          {staff.map((p) => {
+            const initials = displayName(p)
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2);
+
+            return (
+              <div 
+                key={p.id}
+                className='relative group flex flex-col justify-between rounded-2xl border border-white/5 bg-zinc-950/40 p-5 hover:border-gold/30 hover:shadow-[0_0_24px_rgba(212,175,55,0.06)] transition duration-300'
+              >
+                <div>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='flex items-center gap-3 min-w-0'>
+                      <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/10 border border-gold/20 text-gold-soft font-black text-sm group-hover:border-gold/40 transition'>
+                        {initials}
+                      </div>
+                      <div className='min-w-0'>
+                        <h3 className='font-bold text-white group-hover:text-gold-soft transition truncate leading-snug'>
+                          {displayName(p)}
+                        </h3>
+                        <p className='text-xs text-zinc-500 truncate mt-0.5'>{p.email}</p>
+                      </div>
+                    </div>
+
+                    <span className='rounded-full border border-gold/30 px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-gold-soft shrink-0'>
+                      {p.role.replace('_', ' ')}
+                    </span>
+                  </div>
+
+                  <div className='mt-4 space-y-2 border-t border-white/5 pt-3.5 text-xs text-zinc-400'>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-zinc-500'>Profile Status</span>
+                      {p.active ? (
+                        <span className='rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-300 tracking-wider'>
+                          Active Duty
+                        </span>
+                      ) : (
+                        <span className='rounded-full bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 text-[8px] font-black uppercase text-rose-300 tracking-wider'>
+                          Suspended
+                        </span>
+                      )}
+                    </div>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-zinc-500'>Since</span>
+                      <span className='text-zinc-300 font-medium'>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</span>
+                    </div>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-zinc-500'>Internal ID</span>
+                      <span className='font-mono text-[10px] text-zinc-500'>{p.id.slice(0, 12)}…</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Super-admin account actions toggler */}
+                {isSuper && (
+                  <details className='mt-4 pt-3 border-t border-white/5 text-xs group'>
+                    <summary className='cursor-pointer text-[10px] font-black uppercase tracking-wider text-zinc-500 hover:text-gold-soft transition flex items-center justify-between select-none'>
+                      <span>System Credentials</span>
+                      <span className='rounded-md border border-white/10 px-2 py-0.5 text-[8px] bg-zinc-950/40 group-open:bg-zinc-900 transition'>Manage User</span>
+                    </summary>
+                    <div className='mt-3 pt-3 border-t border-white/5'>
                       <StaffRowSuperClient
                         profileId={p.id}
                         initialRole={p.role}
@@ -176,34 +213,48 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                         initialActive={p.active}
                         currentUserId={session.user?.id ?? ''}
                       />
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {staff.length === 0 && !err ? <p className='mt-4 text-sm text-zinc-500'>No staff profiles found.</p> : null}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
         </div>
-        {isSuper ? (
-          <section className='mt-8 rounded-2xl border border-gold/25 bg-black/40 p-5'>
-            <h2 className='text-sm font-bold uppercase tracking-wider text-gold-soft'>Create technician (or admin)</h2>
-            <p className='mt-2 text-xs text-zinc-500'>
-              Creates a Supabase auth user, assigns role on profile, and allows immediate login (or invite fallback). Password must be at least 8 characters.
-            </p>
-            <CreateStaffClient />
-          </section>
+
+        {staff.length === 0 && !err ? (
+          <p className='py-12 text-center text-sm text-zinc-500 border border-dashed border-white/10 rounded-2xl'>
+            No administrative staff or field technicians registered in roster.
+          </p>
         ) : null}
 
-        {isSuper ? (
-          <Link href='/admin/super' className='mt-6 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
-            Open command center (metrics)
-          </Link>
-        ) : null}
+        {/* Collapsible creation drawer */}
+        {isSuper && (
+          <details className='rounded-3xl border border-gold/15 bg-black/45 p-6 group'>
+            <summary className='cursor-pointer font-bold text-xs uppercase tracking-[0.25em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between'>
+              <span>Create New Staff Profile</span>
+              <span className='text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900 transition'>Toggle Form</span>
+            </summary>
+            <div className='mt-5 pt-5 border-t border-white/5'>
+              <p className='text-xs text-zinc-500 mb-4'>
+                Creates a Supabase auth user credentials block, assigns specified authorization role on profile, and allows immediate login. 
+                Password must be at least 8 characters.
+              </p>
+              <CreateStaffClient />
+            </div>
+          </details>
+        )}
       </div>
 
-      <Link href='/admin' className='mt-8 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
-        ← Admin overview
-      </Link>
+      <div className="mt-8 pt-4 border-t border-white/5 flex gap-4">
+        <Link href='/admin' className='text-xs font-bold uppercase tracking-widest text-gold-soft hover:underline'>
+          ← Admin Overview
+        </Link>
+        {isSuper && (
+          <Link href='/admin/super' className='text-xs font-bold uppercase tracking-widest text-gold-soft hover:underline'>
+            Command center metrics
+          </Link>
+        )}
+      </div>
     </DashboardShell>
   );
 }

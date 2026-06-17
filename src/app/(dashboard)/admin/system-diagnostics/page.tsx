@@ -244,105 +244,184 @@ export default async function SystemDiagnosticsPage() {
   if (featuredGallery.length > 0 && publishedHomepage.length === 0) warnings.push({ title: 'Featured gallery rows not visible on homepage', fix: 'Mark featured rows as published/active or republish through Website & Gallery → Before/After Publisher.' });
   if (!resendConfigured()) warnings.push({ title: 'Missing Resend email keys', fix: 'Add RESEND_API_KEY and RESEND_FROM_EMAIL in environmental configuration to enable email sending.' });
 
+  const healthScore = Math.max(10, 100 - warnings.length * 15);
+  const healthTone = healthScore >= 85 ? 'text-emerald-400' : healthScore >= 60 ? 'text-amber-400' : 'text-rose-500';
+  const healthBorder = healthScore >= 85 ? 'border-emerald-500/20' : healthScore >= 60 ? 'border-amber-500/20' : 'border-rose-500/20';
+
   return (
-    <DashboardShell title='System diagnostics' subtitle='Root-cause audit for Stripe, revenue, gallery, goals, loyalty, and production data health.' role='super_admin'>
-      {warnings.length > 0 ? (
-        <section className='grid gap-3 lg:grid-cols-2'>
-          {warnings.map((w) => <WarningCard key={w.title} title={w.title} fix={w.fix} />)}
-        </section>
-      ) : (
-        <div className='rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100'>No critical diagnostics warnings detected in this snapshot.</div>
-      )}
+    <DashboardShell title='System Diagnostics' subtitle='Operations auditing console for Stripe APIs, webhook dispatch, and database sync health.' role='super_admin'>
+      
+      {/* Top Fold: Health Dial and Actionable Warnings */}
+      <section className='grid gap-6 lg:grid-cols-[1fr_2fr] mb-8'>
+        {/* Health Circular Meter */}
+        <div className={`gb-premium-card rounded-3xl p-6 flex flex-col items-center justify-center text-center border ${healthBorder}`}>
+          <p className='gb-luxury-eyebrow mb-4'>System Health Index</p>
+          <div className="relative h-28 w-28 shrink-0">
+            <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.03)" strokeWidth="8" fill="none" />
+              <circle
+                cx="50"
+                cy="50"
+                r="40"
+                stroke={healthScore >= 85 ? '#10b981' : healthScore >= 60 ? '#f59e0b' : '#ef4444'}
+                strokeWidth="8"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray="251"
+                strokeDashoffset={251 - (251 * healthScore) / 100}
+                className="transition-all duration-700"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-mono text-2xl font-black text-white">{healthScore}%</span>
+              <span className="text-[9px] uppercase tracking-wider text-zinc-500">Status</span>
+            </div>
+          </div>
+          <p className={`mt-4 text-xs font-black uppercase tracking-wider ${healthTone}`}>
+            {healthScore >= 85 ? 'All Systems Operational' : healthScore >= 60 ? 'Degraded Performance' : 'Immediate Audit Required'}
+          </p>
+        </div>
 
-      <section className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-5'>
-        <div className='flex flex-wrap items-center justify-between gap-3'>
+        {/* Actionable Warning Items */}
+        <div className='gb-premium-card rounded-3xl p-6 flex flex-col justify-between'>
           <div>
-            <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Stripe diagnostics</p>
-            <p className='mt-1 text-xs text-zinc-500'>Runtime secret source: {secrets.source} · mode: {stripeMode}</p>
+            <p className='gb-luxury-eyebrow mb-3'>System Action Required</p>
+            {warnings.length > 0 ? (
+              <div className='space-y-2.5 max-h-[140px] overflow-y-auto pr-1'>
+                {warnings.map((w, idx) => (
+                  <div key={idx} className="rounded-xl border border-amber-500/15 bg-amber-500/5 px-3 py-2 flex items-start gap-2.5 text-xs text-amber-200/80 leading-snug">
+                    <span className="shrink-0 h-4 w-4 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-[10px] text-amber-300 font-bold">!</span>
+                    <div>
+                      <strong className="text-white block font-semibold">{w.title}</strong>
+                      <span className="text-[10px] text-zinc-400">{w.fix}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className='text-xs text-zinc-400 py-6 text-center border border-dashed border-white/5 rounded-xl'>
+                Zero system warnings detected. Database schemas and APIs are healthy.
+              </p>
+            )}
           </div>
-          <Link href='/admin/stripe-sync' className='rounded-xl border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Open Stripe sync</Link>
-        </div>
-        <div className='mt-4 grid gap-3 md:grid-cols-3'>
-          <StatCard label='STRIPE_SECRET_KEY exists' value={yesNo(Boolean(secrets.secretKey))} bad={!secrets.secretKey} />
-          <StatCard label='STRIPE_WEBHOOK_SECRET exists' value={yesNo(Boolean(secrets.webhookSecret))} bad={!secrets.webhookSecret} />
-          <StatCard label='Stripe account id' value={stripeAccountId} />
-          <StatCard label='Balance API status' value={balanceStatus} detail={balanceResponse} bad={balanceStatus === 'Failed'} />
-          <StatCard label='Payment intents list' value={paymentIntentStatus} bad={paymentIntentStatus.startsWith('Failed')} />
-          <StatCard label='Charges list' value={chargesStatus} detail={latestStripeCharge} bad={chargesStatus.startsWith('Failed')} />
-          <StatCard label='Balance transactions list' value={balanceTxStatus} bad={balanceTxStatus.startsWith('Failed')} />
-          <StatCard label='Stripe payments found via API' value={stripePaymentsFound} />
-          <StatCard label='Stripe payments written to DB' value={stripePaymentsWritten} />
-          <StatCard label='Duplicate Stripe transaction groups' value={duplicateStripeTransactions} bad={duplicateStripeTransactions > 0} />
-          <StatCard label='Latest webhook/debug event' value={str(latestDebug?.event_type) || 'None'} detail={str(latestDebug?.created_at || latestDebug?.error_message)} bad={!latestDebug} />
-          <StatCard label='Last sync time / error' value={str(ledger.rows.find((r) => str(r.category) === 'sync_marker')?.created_at) || 'No sync marker'} detail={str(latestDebug?.error_message) || 'No latest error row'} />
-        </div>
-      </section>
-
-      <section className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Finance diagnostics</p>
-        <div className='mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6'>
-          {Object.entries(tableCounts).map(([key, value]) => <StatCard key={key} label={key} value={value.count} detail={value.error ?? undefined} bad={Boolean(value.error)} />)}
-          <StatCard label='Rows included this month' value={revenueDiagnostics.rowsCounted} />
-          <StatCard label='Rows excluded this month' value={revenueDiagnostics.rowsExcluded} bad={revenueDiagnostics.rowsExcluded > 0} />
-          <StatCard label='Gross counted this month' value={displayMoney(revenueDiagnostics.grossCents)} />
-          <StatCard label='Duplicate payment groups' value={duplicateGroups.length} bad={duplicateGroups.length > 0} />
-          <StatCard label='Duplicate rows auto-excluded' value={revenueDiagnostics.duplicateExtraCount} bad={revenueDiagnostics.duplicateExtraCount > 0} />
-        </div>
-        <div className='mt-5 grid gap-4 lg:grid-cols-2'>
-          <div className='rounded-2xl border border-white/10 bg-black/35 p-4'>
-            <p className='text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500'>Payment method breakdown</p>
-            <ul className='mt-3 grid gap-2 sm:grid-cols-2'>
-              {['cash', 'stripe', 'zelle', 'venmo', 'cash_app', 'manual_card', 'check', 'other'].map((key) => (
-                <li key={key} className='flex justify-between rounded-xl border border-white/10 px-3 py-2 text-xs'>
-                  <span className='text-zinc-300'>{key.replace(/_/g, ' ')}</span>
-                  <span className='font-mono text-gold-soft'>{displayMoney(revenueDiagnostics.byMethod[key] ?? 0)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className='rounded-2xl border border-white/10 bg-black/35 p-4'>
-            <p className='text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500'>Excluded reason counts</p>
-            <ul className='mt-3 space-y-2'>
-              {Object.entries(exclusionReasons).map(([reason, count]) => (
-                <li key={reason} className='flex justify-between rounded-xl border border-white/10 px-3 py-2 text-xs'>
-                  <span className='text-zinc-300'>{reason}</span>
-                  <span className='font-mono text-amber-200'>{count}</span>
-                </li>
-              ))}
-              {Object.keys(exclusionReasons).length === 0 ? <li className='text-xs text-zinc-500'>No excluded rows detected in full payment/receipt scan.</li> : null}
-            </ul>
+          <div className="flex justify-end gap-3 mt-4 border-t border-white/5 pt-4">
+            <Link href='/admin/stripe-sync' className='rounded-xl bg-zinc-900 border border-white/10 hover:border-gold/30 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-zinc-300 hover:text-gold-soft transition duration-200'>
+              Force Stripe Sync
+            </Link>
+            <Link href='/admin' className='rounded-xl bg-gold hover:brightness-110 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black transition duration-200'>
+              Command Center
+            </Link>
           </div>
         </div>
       </section>
 
-      <section className='grid gap-5 lg:grid-cols-2'>
-        <div className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-5'>
-          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Gallery diagnostics</p>
-          <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-            <StatCard label='job_media count' value={jobMedia.rows.length} detail={jobMedia.error ?? undefined} bad={Boolean(jobMedia.error)} />
-            <StatCard label='job_photos count' value={jobPhotos.rows.length} detail={jobPhotos.error ?? undefined} bad={Boolean(jobPhotos.error)} />
+      {/* Stripe Diagnostics Section */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group' open={warnings.some(w => w.title.includes('Stripe'))}>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Stripe Integration Diagnostics</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5 space-y-4">
+          <p className="text-xs text-zinc-500 font-medium">Runtime secret source: {secrets.source} · mode: {stripeMode} · account ID: {stripeAccountId}</p>
+          <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+            <StatCard label='STRIPE_SECRET_KEY exists' value={yesNo(Boolean(secrets.secretKey))} bad={!secrets.secretKey} />
+            <StatCard label='STRIPE_WEBHOOK_SECRET exists' value={yesNo(Boolean(secrets.webhookSecret))} bad={!secrets.webhookSecret} />
+            <StatCard label='Stripe account id' value={stripeAccountId} />
+            <StatCard label='Balance API status' value={balanceStatus} detail={balanceResponse} bad={balanceStatus === 'Failed'} />
+            <StatCard label='Payment intents list' value={paymentIntentStatus} bad={paymentIntentStatus.startsWith('Failed')} />
+            <StatCard label='Charges list' value={chargesStatus} detail={latestStripeCharge} bad={chargesStatus.startsWith('Failed')} />
+            <StatCard label='Balance transactions list' value={balanceTxStatus} bad={balanceTxStatus.startsWith('Failed')} />
+            <StatCard label='Stripe payments found via API' value={stripePaymentsFound} />
+            <StatCard label='Stripe payments written to DB' value={stripePaymentsWritten} />
+            <StatCard label='Duplicate Stripe transaction groups' value={duplicateStripeTransactions} bad={duplicateStripeTransactions > 0} />
+            <StatCard label='Latest webhook/debug event' value={str(latestDebug?.event_type) || 'None'} detail={str(latestDebug?.created_at || latestDebug?.error_message)} bad={!latestDebug} />
+            <StatCard label='Last sync time / error' value={str(ledger.rows.find((r) => str(r.category) === 'sync_marker')?.created_at) || 'No sync marker'} detail={str(latestDebug?.error_message) || 'No latest error row'} />
+          </div>
+        </div>
+      </details>
+
+      {/* Financial Diagnostics Section */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Finance & Ledger Diagnostics</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5 space-y-6">
+          <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+            {Object.entries(tableCounts).map(([key, value]) => (
+              <StatCard key={key} label={`${key.replace(/_/g, ' ')} rows`} value={value.count} detail={value.error ?? undefined} bad={Boolean(value.error)} />
+            ))}
+          </div>
+          
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className='rounded-2xl border border-white/5 bg-zinc-950/30 p-4'>
+              <p className='text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500 mb-3'>Payment method breakdown (MTD)</p>
+              <ul className='grid gap-2 sm:grid-cols-2'>
+                {['cash', 'stripe', 'zelle', 'venmo', 'cash_app', 'manual_card', 'check', 'other'].map((key) => (
+                  <li key={key} className='flex justify-between rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-xs'>
+                    <span className='text-zinc-400 capitalize'>{key.replace(/_/g, ' ')}</span>
+                    <span className='font-mono font-bold text-white'>{displayMoney(revenueDiagnostics.byMethod[key] ?? 0)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className='rounded-2xl border border-white/5 bg-zinc-950/30 p-4'>
+              <p className='text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500 mb-3'>Exclusion statistics</p>
+              <ul className='space-y-2'>
+                {Object.entries(exclusionReasons).map(([reason, count]) => (
+                  <li key={reason} className='flex justify-between rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-xs'>
+                    <span className='text-zinc-400 capitalize'>{reason.replace(/_/g, ' ')}</span>
+                    <span className='font-mono font-bold text-amber-200'>{count}</span>
+                  </li>
+                ))}
+                {Object.keys(exclusionReasons).length === 0 ? <li className='text-xs text-zinc-500 italic py-4 text-center'>No active exclusions detected.</li> : null}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      {/* Gallery & Content Section */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Website Gallery & Media Assets</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5">
+          <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+            <StatCard label='job_media count' value={jobMedia.rows.length} bad={Boolean(jobMedia.error)} />
+            <StatCard label='job_photos count' value={jobPhotos.rows.length} bad={Boolean(jobPhotos.error)} />
             <StatCard label='Work orders with photos' value={workOrdersWithPhotos} />
             <StatCard label='Photos missing vehicle index/label' value={photosMissingVehicleIndex.length} bad={photosMissingVehicleIndex.length > 0} />
             <StatCard label='Photos missing URL/path' value={photosMissingUrl.length} bad={photosMissingUrl.length > 0} />
-            <StatCard label='gallery_images count' value={gallery.rows.length} detail={gallery.error ?? undefined} bad={Boolean(gallery.error)} />
+            <StatCard label='gallery_images count' value={gallery.rows.length} bad={Boolean(gallery.error)} />
             <StatCard label='Featured gallery count' value={featuredGallery.length} />
             <StatCard label='Published homepage count' value={publishedHomepage.length} bad={featuredGallery.length > 0 && publishedHomepage.length === 0} />
           </div>
         </div>
+      </details>
 
-        <div className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-5'>
-          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Goals / loyalty diagnostics</p>
-          <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-            <StatCard label='Goals count' value={goals.rows.length} detail={goals.error ?? undefined} bad={Boolean(goals.error)} />
+      {/* Target Goals & Memberships */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Operational Targets & Loyalty Rules</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Details</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5">
+          <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+            <StatCard label='Goals count' value={goals.rows.length} bad={Boolean(goals.error)} />
             <StatCard label='Active goals count' value={activeGoals.length} />
             <StatCard label='Technician goals count' value={techGoals.length} />
-            <StatCard label='Loyalty rules count' value={loyaltyRules.rows.length} detail={loyaltyRules.error ?? undefined} bad={Boolean(loyaltyRules.error)} />
-            <StatCard label='Customer stamp rows' value={customerStamps.rows.length} detail={customerStamps.error ?? undefined} bad={Boolean(customerStamps.error)} />
-            <StatCard label='Membership plans count' value={memberships.rows.length} detail={memberships.error ?? undefined} bad={Boolean(memberships.error)} />
-            <StatCard label='Active memberships count' value={activeMemberships.length} detail={customerMemberships.error ?? undefined} bad={Boolean(customerMemberships.error)} />
+            <StatCard label='Loyalty rules count' value={loyaltyRules.rows.length} bad={Boolean(loyaltyRules.error)} />
+            <StatCard label='Customer stamp rows' value={customerStamps.rows.length} bad={Boolean(customerStamps.error)} />
+            <StatCard label='Membership plans count' value={memberships.rows.length} bad={Boolean(memberships.error)} />
+            <StatCard label='Active memberships count' value={activeMemberships.length} bad={Boolean(customerMemberships.error)} />
           </div>
         </div>
-      </section>
+      </details>
+
     </DashboardShell>
   );
 }
+
+

@@ -191,114 +191,133 @@ function ServiceMetaForm({
   const [inclusions, setInclusions] = useState((service.inclusions ?? []).join('\n'));
 
   return (
-    <article className='rounded-xl border border-white/10 bg-black/40 p-4'>
-      <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
-        <div>
-          <p className='text-sm font-semibold text-white'>
-            {service.title} <span className='text-zinc-500'>({service.slug})</span>
-          </p>
-          <p className='mt-1 text-xs text-zinc-500'>Duration is used to block late booking times before checkout.</p>
+    <details className='group rounded-xl border border-white/5 bg-black/40 p-4 transition duration-200'>
+      <summary className='cursor-pointer list-none select-none flex items-center justify-between'>
+        <div className='flex items-center gap-3 min-w-0'>
+          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+          <div className='min-w-0'>
+            <p className='text-sm font-bold text-white group-hover:text-gold-soft transition truncate'>
+              {service.title} <span className='text-zinc-500 font-mono text-xs'>({service.slug})</span>
+            </p>
+            <p className='text-[10px] text-zinc-500 truncate mt-0.5'>Click to expand setup variables</p>
+          </div>
         </div>
+        <div className='flex items-center gap-2 shrink-0'>
+          <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider border ${
+            active ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' : 'bg-zinc-800 text-zinc-500 border-white/5'
+          }`}>
+            {active ? 'Active' : 'Inactive'}
+          </span>
+          <span className='text-[10px] text-zinc-500 font-normal py-1 px-2.5 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900 transition'>Configure</span>
+        </div>
+      </summary>
+
+      <div className='mt-4 pt-4 border-t border-white/5 space-y-4'>
+        <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <p className='text-xs text-zinc-500'>Configure public details, duration blocking bounds, and package specs.</p>
+          </div>
+          <button
+            type='button'
+            disabled={disabled}
+            onClick={() => setActive((value) => !value)}
+            className='text-[10px] font-black uppercase tracking-wider text-gold-soft bg-zinc-900 border border-white/5 px-2.5 py-1 rounded-lg hover:border-gold/30 hover:bg-gold/5 transition'
+          >
+            {active ? 'Set inactive' : 'Set active'}
+          </button>
+        </div>
+
+        <div className='grid gap-3 md:grid-cols-4'>
+          <label className='text-xs text-zinc-400'>
+            Minimum duration
+            <select
+              value={minMinutes}
+              onChange={(e) => setMinMinutes(e.target.value)}
+              className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+            >
+              {DURATION_OPTIONS.map((option) => (
+                <option key={`min-${option.value}`} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className='text-xs text-zinc-400'>
+            Maximum duration
+            <select
+              value={maxMinutes}
+              onChange={(e) => setMaxMinutes(e.target.value)}
+              className='mt-1.5 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+            >
+              {DURATION_OPTIONS.map((option) => (
+                <option key={`max-${option.value}`} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200 cursor-pointer hover:border-gold/20 transition'>
+            <input type='checkbox' checked={active} onChange={(e) => setActive(e.target.checked)} className='accent-gold' />
+            Active
+          </label>
+          <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200 cursor-pointer hover:border-gold/20 transition'>
+            <input type='checkbox' checked={comingSoon} onChange={(e) => setComingSoon(e.target.checked)} className='accent-gold' />
+            Coming soon
+          </label>
+          <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200 cursor-pointer hover:border-gold/20 transition md:col-span-2'>
+            <input type='checkbox' checked={quoteRequired} onChange={(e) => setQuoteRequired(e.target.checked)} className='accent-gold' />
+            Quote required
+          </label>
+        </div>
+
+        <div className='mt-3 grid gap-3 md:grid-cols-2'>
+          <label className='text-xs text-zinc-400'>
+            Public description
+            <textarea
+              value={publicDescription}
+              onChange={(e) => setPublicDescription(e.target.value)}
+              rows={3}
+              className='mt-1.5 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='text-xs text-zinc-400'>
+            Included services (one per line)
+            <textarea
+              value={inclusions}
+              onChange={(e) => setInclusions(e.target.value)}
+              rows={3}
+              className='mt-1.5 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='text-xs text-zinc-400 md:col-span-2'>
+            Admin notes
+            <textarea
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+              rows={2}
+              className='mt-1.5 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+        </div>
+
         <button
           type='button'
           disabled={disabled}
-          onClick={() => setActive((value) => !value)}
-          className='text-xs font-bold uppercase text-gold-soft'
+          onClick={() => {
+            const fd = new FormData();
+            fd.set('serviceId', service.id);
+            fd.set('active', active ? 'true' : 'false');
+            fd.set('comingSoon', comingSoon ? 'true' : 'false');
+            fd.set('quoteRequired', quoteRequired ? 'true' : 'false');
+            fd.set('estimatedMinMinutes', minMinutes);
+            fd.set('estimatedMaxMinutes', maxMinutes);
+            fd.set('publicDescription', publicDescription);
+            fd.set('adminNotes', adminNotes);
+            fd.set('inclusions', inclusions);
+            onSave(fd);
+          }}
+          className='mt-4 rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110 disabled:opacity-50 transition'
         >
-          {active ? 'Set inactive' : 'Set active'}
+          Save service setup
         </button>
       </div>
-
-      <div className='mt-4 grid gap-3 md:grid-cols-4'>
-        <label className='text-xs text-zinc-400'>
-          Minimum duration
-          <select
-            value={minMinutes}
-            onChange={(e) => setMinMinutes(e.target.value)}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          >
-            {DURATION_OPTIONS.map((option) => (
-              <option key={`min-${option.value}`} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className='text-xs text-zinc-400'>
-          Maximum duration
-          <select
-            value={maxMinutes}
-            onChange={(e) => setMaxMinutes(e.target.value)}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          >
-            {DURATION_OPTIONS.map((option) => (
-              <option key={`max-${option.value}`} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200'>
-          <input type='checkbox' checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active
-        </label>
-        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200'>
-          <input type='checkbox' checked={comingSoon} onChange={(e) => setComingSoon(e.target.checked)} />
-          Coming soon
-        </label>
-        <label className='flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-bold uppercase text-zinc-200 md:col-span-2'>
-          <input type='checkbox' checked={quoteRequired} onChange={(e) => setQuoteRequired(e.target.checked)} />
-          Quote required
-        </label>
-      </div>
-
-      <div className='mt-3 grid gap-3 md:grid-cols-2'>
-        <label className='text-xs text-zinc-400'>
-          Public description
-          <textarea
-            value={publicDescription}
-            onChange={(e) => setPublicDescription(e.target.value)}
-            rows={3}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
-        <label className='text-xs text-zinc-400'>
-          Included services (one per line)
-          <textarea
-            value={inclusions}
-            onChange={(e) => setInclusions(e.target.value)}
-            rows={3}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
-        <label className='text-xs text-zinc-400 md:col-span-2'>
-          Admin notes
-          <textarea
-            value={adminNotes}
-            onChange={(e) => setAdminNotes(e.target.value)}
-            rows={2}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
-      </div>
-
-      <button
-        type='button'
-        disabled={disabled}
-        onClick={() => {
-          const fd = new FormData();
-          fd.set('serviceId', service.id);
-          fd.set('active', active ? 'true' : 'false');
-          fd.set('comingSoon', comingSoon ? 'true' : 'false');
-          fd.set('quoteRequired', quoteRequired ? 'true' : 'false');
-          fd.set('estimatedMinMinutes', minMinutes);
-          fd.set('estimatedMaxMinutes', maxMinutes);
-          fd.set('publicDescription', publicDescription);
-          fd.set('adminNotes', adminNotes);
-          fd.set('inclusions', inclusions);
-          onSave(fd);
-        }}
-        className='mt-4 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-50'
-      >
-        Save service setup
-      </button>
-    </article>
+    </details>
   );
 }
 

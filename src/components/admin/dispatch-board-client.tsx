@@ -423,6 +423,13 @@ export function DispatchBoardClient({
     </section>
   );
 
+  const totalJobsCount = jobs.length;
+  const assignedJobsCount = jobs.filter(j => j.assigned_technician_id).length;
+  const assignmentRate = totalJobsCount > 0 ? Math.round((assignedJobsCount / totalJobsCount) * 100) : 0;
+  
+  const circ = 2 * Math.PI * 36;
+  const strokeDashoffset = circ - (Math.min(100, Math.max(0, assignmentRate)) / 100) * circ;
+
   return (
     <div className="space-y-6">
       {msg ? (
@@ -430,6 +437,66 @@ export function DispatchBoardClient({
           {msg}
         </p>
       ) : null}
+
+      {/* DISPATCH HEALTH HERO BAR */}
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        
+        {/* SVG Dial & Route Health */}
+        <div className="rounded-3xl border border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/40 transition-all duration-300">
+          <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="space-y-4 text-center sm:text-left min-w-0 flex-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Dispatch Cockpit</span>
+            <div>
+              <p className="text-zinc-400 text-xs">Route Assignment Rate</p>
+              <h2 className="mt-1 font-mono text-4xl font-black text-white tracking-tight">
+                {assignedJobsCount} / {totalJobsCount} Scheduled
+              </h2>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
+              We have assigned technicians to <strong className="text-white">{assignedJobsCount}</strong> out of <strong className="text-white">{totalJobsCount}</strong> active schedules.
+            </p>
+          </div>
+          
+          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-zinc-950/60 border border-white/10 p-2 shadow-inner">
+            <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="36" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="none" />
+              <circle
+                cx="40"
+                cy="40"
+                r="36"
+                className="text-gold-soft transition-all duration-1000 ease-out"
+                strokeWidth="6"
+                strokeDasharray={circ}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="none"
+              />
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center">
+              <span className="font-mono text-2xl font-black text-white">{assignmentRate}%</span>
+              <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Route</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Summary Cards */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Unassigned Today</span>
+            <p className="mt-2 font-mono text-3xl font-black text-amber-400">
+              {jobs.filter(j => !j.assigned_technician_id && dispatchColumn(j) === 'today').length}
+            </p>
+            <p className="text-[9px] text-zinc-500 mt-1">Pending tech matches</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Total Techs</span>
+            <p className="mt-2 font-mono text-3xl font-black text-emerald-400">{technicians.length}</p>
+            <p className="text-[9px] text-zinc-500 mt-1">Active field routes</p>
+          </div>
+        </div>
+
+      </div>
 
       <GlassCard className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1">

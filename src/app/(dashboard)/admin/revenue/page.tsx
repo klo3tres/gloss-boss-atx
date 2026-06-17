@@ -575,142 +575,148 @@ export default async function AdminRevenuePage({
         <DuplicatePaymentsPanel initialGroups={duplicateGroups} />
       </div>
 
-      <section className='mt-8 rounded-2xl border border-white/10 bg-black/40 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · last 30 days</p>
-        <dl className='mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Payment rows loaded</dt>
-            <dd className='font-mono font-bold text-white'>{monthDiagnostics.rowsLoaded}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Rows counted</dt>
-            <dd className='font-mono font-bold text-emerald-400'>{monthDiagnostics.rowsCounted}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Rows excluded</dt>
-            <dd className='font-mono font-bold text-amber-300'>{monthDiagnostics.rowsExcluded}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Gross collected</dt>
-            <dd className='font-mono font-bold text-gold-soft'>{money(monthDiagnostics.grossCents)}</dd>
-          </div>
-        </dl>
-        <dl className='mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Ledger rows</dt>
-            <dd className='font-mono font-bold text-white'>{financial.diagnostics.ledgerRowsLoaded}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Expense rows</dt>
-            <dd className='font-mono font-bold text-white'>{financial.diagnostics.expenseRowsLoaded}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Business expenses</dt>
-            <dd className='font-mono font-bold text-white'>{financial.diagnostics.businessExpenseRowsLoaded}</dd>
-          </div>
-          <div className='rounded-xl border border-white/10 px-3 py-2'>
-            <dt className='text-zinc-500'>Mileage logs</dt>
-            <dd className='font-mono font-bold text-white'>{financial.diagnostics.mileageRowsLoaded}</dd>
-          </div>
-        </dl>
-        {Object.keys(monthDiagnostics.byMethod).length > 0 ? (
-          <div className='mt-4'>
-            <p className='text-[10px] font-black uppercase text-zinc-500'>Total by method</p>
-            <ul className='mt-2 flex flex-wrap gap-2 text-xs'>
-              {Object.entries(monthDiagnostics.byMethod).map(([ch, cents]) => (
-                <li key={ch} className='rounded-full border border-white/10 px-3 py-1 font-mono text-zinc-200'>
-                  {ch}: {money(cents)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {monthDiagnostics.duplicateGroups.length > 0 ? (
-          <div className='mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4'>
-            <p className='text-[10px] font-black uppercase tracking-[0.2em] text-amber-200'>Duplicate payment protection</p>
-            <p className='mt-1 text-xs text-amber-100/80'>
-              {monthDiagnostics.duplicateExtraCount} duplicate row{monthDiagnostics.duplicateExtraCount === 1 ? '' : 's'} are being ignored in revenue math so Stripe/manual double-entry does not inflate totals.
-            </p>
-            <ul className='mt-3 space-y-2 text-xs text-amber-50/90'>
-              {monthDiagnostics.duplicateGroups.slice(0, 8).map((group) => (
-                <li key={group.key} className='rounded-xl border border-amber-500/20 bg-black/30 px-3 py-2'>
-                  <span className='font-mono'>{group.key}</span> · {money(group.amountCents)} · {group.ids.length} matching rows
-                </li>
-              ))}
-            </ul>
-            <Link href='/admin/system-diagnostics' className='mt-3 inline-block text-[10px] font-black uppercase text-gold-soft underline'>
-              Open diagnostics
-            </Link>
-          </div>
-        ) : null}
-        {monthDiagnostics.exclusions.length > 0 ? (
-          <div className='mt-4 max-h-48 overflow-y-auto'>
-            <p className='text-[10px] font-black uppercase text-zinc-500'>Exclusion reasons (sample)</p>
-            <ul className='mt-2 space-y-1 text-xs text-zinc-400'>
-              {monthDiagnostics.exclusions.map((ex) => (
-                <li key={`${ex.id}-${ex.reason}`}>
-                  {ex.id.slice(0, 8)}… · {money(ex.amountCents)} · {ex.method} — {ex.reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <p className='mt-3 text-xs text-zinc-500'>No excluded rows in this period (or all rows counted).</p>
-        )}
-        <div className='mt-5 overflow-x-auto rounded-2xl border border-white/10'>
-          <table className='min-w-[980px] w-full text-left text-xs'>
-            <thead className='bg-white/[0.03] text-[10px] uppercase tracking-[0.16em] text-zinc-500'>
-              <tr>
-                <th className='px-3 py-2'>Source</th>
-                <th className='px-3 py-2'>Amount</th>
-                <th className='px-3 py-2'>Status</th>
-                <th className='px-3 py-2'>Included?</th>
-                <th className='px-3 py-2'>Reason</th>
-                <th className='px-3 py-2'>Revenue key</th>
-                <th className='px-3 py-2'>Stripe IDs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthDiagnostics.auditRows.length === 0 ? (
+      <details className="mt-8 rounded-2xl border border-white/10 bg-black/40 p-5 group">
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Show System Revenue Diagnostics & Ledgers</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900">Toggle View</span>
+        </summary>
+        <div className="mt-6 pt-6 border-t border-white/5 space-y-4">
+          <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue diagnostics (admin) · last 30 days</p>
+          <dl className='mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Payment rows loaded</dt>
+              <dd className='font-mono font-bold text-white'>{monthDiagnostics.rowsLoaded}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Rows counted</dt>
+              <dd className='font-mono font-bold text-emerald-400'>{monthDiagnostics.rowsCounted}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Rows excluded</dt>
+              <dd className='font-mono font-bold text-amber-300'>{monthDiagnostics.rowsExcluded}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Gross collected</dt>
+              <dd className='font-mono font-bold text-gold-soft'>{money(monthDiagnostics.grossCents)}</dd>
+            </div>
+          </dl>
+          <dl className='mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4'>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Ledger rows</dt>
+              <dd className='font-mono font-bold text-white'>{financial.diagnostics.ledgerRowsLoaded}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Expense rows</dt>
+              <dd className='font-mono font-bold text-white'>{financial.diagnostics.expenseRowsLoaded}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Business expenses</dt>
+              <dd className='font-mono font-bold text-white'>{financial.diagnostics.businessExpenseRowsLoaded}</dd>
+            </div>
+            <div className='rounded-xl border border-white/10 px-3 py-2'>
+              <dt className='text-zinc-500'>Mileage logs</dt>
+              <dd className='font-mono font-bold text-white'>{financial.diagnostics.mileageRowsLoaded}</dd>
+            </div>
+          </dl>
+          {Object.keys(monthDiagnostics.byMethod).length > 0 ? (
+            <div className='mt-4'>
+              <p className='text-[10px] font-black uppercase text-zinc-500'>Total by method</p>
+              <ul className='mt-2 flex flex-wrap gap-2 text-xs'>
+                {Object.entries(monthDiagnostics.byMethod).map(([ch, cents]) => (
+                  <li key={ch} className='rounded-full border border-white/10 px-3 py-1 font-mono text-zinc-200'>
+                    {ch}: {money(cents)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {monthDiagnostics.duplicateGroups.length > 0 ? (
+            <div className='mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4'>
+              <p className='text-[10px] font-black uppercase tracking-[0.2em] text-amber-200'>Duplicate payment protection</p>
+              <p className='mt-1 text-xs text-amber-100/80'>
+                {monthDiagnostics.duplicateExtraCount} duplicate row{monthDiagnostics.duplicateExtraCount === 1 ? '' : 's'} are being ignored in revenue math so Stripe/manual double-entry does not inflate totals.
+              </p>
+              <ul className='mt-3 space-y-2 text-xs text-amber-50/90'>
+                {monthDiagnostics.duplicateGroups.slice(0, 8).map((group) => (
+                  <li key={group.key} className='rounded-xl border border-amber-500/20 bg-black/30 px-3 py-2'>
+                    <span className='font-mono'>{group.key}</span> · {money(group.amountCents)} · {group.ids.length} matching rows
+                  </li>
+                ))}
+              </ul>
+              <Link href='/admin/system-diagnostics' className='mt-3 inline-block text-[10px] font-black uppercase text-gold-soft underline'>
+                Open diagnostics
+              </Link>
+            </div>
+          ) : null}
+          {monthDiagnostics.exclusions.length > 0 ? (
+            <div className='mt-4 max-h-48 overflow-y-auto'>
+              <p className='text-[10px] font-black uppercase text-zinc-500'>Exclusion reasons (sample)</p>
+              <ul className='mt-2 space-y-1 text-xs text-zinc-400'>
+                {monthDiagnostics.exclusions.map((ex) => (
+                  <li key={`${ex.id}-${ex.reason}`}>
+                    {ex.id.slice(0, 8)}… · {money(ex.amountCents)} · {ex.method} — {ex.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className='mt-3 text-xs text-zinc-500'>No excluded rows in this period (or all rows counted).</p>
+          )}
+          <div className='mt-5 overflow-x-auto rounded-2xl border border-white/10'>
+            <table className='min-w-[980px] w-full text-left text-xs'>
+              <thead className='bg-white/[0.03] text-[10px] uppercase tracking-[0.16em] text-zinc-500'>
                 <tr>
-                  <td colSpan={7} className='px-3 py-6 text-center text-zinc-500'>No payment or receipt rows loaded for this period.</td>
+                  <th className='px-3 py-2'>Source</th>
+                  <th className='px-3 py-2'>Amount</th>
+                  <th className='px-3 py-2'>Status</th>
+                  <th className='px-3 py-2'>Included?</th>
+                  <th className='px-3 py-2'>Reason</th>
+                  <th className='px-3 py-2'>Revenue key</th>
+                  <th className='px-3 py-2'>Stripe IDs</th>
                 </tr>
-              ) : (
-                monthDiagnostics.auditRows.map((row) => (
-                  <tr key={`${row.sourceTable}-${row.id}-${row.reason}`} className='border-t border-white/5'>
-                    <td className='px-3 py-2'>
-                      <p className='font-mono text-zinc-300'>{row.sourceTable}</p>
-                      <p className='font-mono text-[10px] text-zinc-600'>{row.id.slice(0, 18)}</p>
-                    </td>
-                    <td className='px-3 py-2 font-mono font-bold text-white'>{money(row.amountCents)}</td>
-                    <td className='px-3 py-2 text-zinc-400'>{row.method} / {row.status}</td>
-                    <td className='px-3 py-2'>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${row.included ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-200'}`}>
-                        {row.included ? 'Included' : 'Excluded'}
-                      </span>
-                    </td>
-                    <td className='px-3 py-2 text-zinc-400'>{row.reason}</td>
-                    <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>{row.revenueKey || 'manual/no key'}</td>
-                    <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>
-                      {row.stripePaymentIntentId || row.stripeCheckoutSessionId || 'none'}
-                    </td>
+              </thead>
+              <tbody>
+                {monthDiagnostics.auditRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className='px-3 py-6 text-center text-zinc-500'>No payment or receipt rows loaded for this period.</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  monthDiagnostics.auditRows.map((row) => (
+                    <tr key={`${row.sourceTable}-${row.id}-${row.reason}`} className='border-t border-white/5'>
+                      <td className='px-3 py-2'>
+                        <p className='font-mono text-zinc-300'>{row.sourceTable}</p>
+                        <p className='font-mono text-[10px] text-zinc-600'>{row.id.slice(0, 18)}</p>
+                      </td>
+                      <td className='px-3 py-2 font-mono font-bold text-white'>{money(row.amountCents)}</td>
+                      <td className='px-3 py-2 text-zinc-400'>{row.method} / {row.status}</td>
+                      <td className='px-3 py-2'>
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${row.included ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-200'}`}>
+                          {row.included ? 'Included' : 'Excluded'}
+                        </span>
+                      </td>
+                      <td className='px-3 py-2 text-zinc-400'>{row.reason}</td>
+                      <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>{row.revenueKey || 'manual/no key'}</td>
+                      <td className='px-3 py-2 font-mono text-[10px] text-zinc-500'>
+                        {row.stripePaymentIntentId || row.stripeCheckoutSessionId || 'none'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {month.grossCents === 0 && monthDiagnostics.rowsCounted > 0 ? (
+            <p className='mt-3 text-xs text-amber-200'>
+              Warning: summarize mismatch — diagnostics counted {monthDiagnostics.rowsCounted} rows but summary shows $0. Report this.
+            </p>
+          ) : null}
+          {month.grossCents === 0 && monthDiagnostics.rowsLoaded === 0 ? (
+            <p className='mt-3 text-xs text-zinc-500'>
+              No payment rows in range. Receipts with payments should appear here unless voided, test-hidden, or missing paid_at/created_at.
+            </p>
+          ) : null}
         </div>
-        {month.grossCents === 0 && monthDiagnostics.rowsCounted > 0 ? (
-          <p className='mt-3 text-xs text-amber-200'>
-            Warning: summarize mismatch — diagnostics counted {monthDiagnostics.rowsCounted} rows but summary shows $0. Report this.
-          </p>
-        ) : null}
-        {month.grossCents === 0 && monthDiagnostics.rowsLoaded === 0 ? (
-          <p className='mt-3 text-xs text-zinc-500'>
-            No payment rows in range. Receipts with payments should appear here unless voided, test-hidden, or missing paid_at/created_at.
-          </p>
-        ) : null}
-      </section>
+      </details>
 
       <p className='mt-8 text-xs text-zinc-500'>
         Gross revenue sums succeeded, non-voided payments{includeTest ? ' (including test bookings)' : ' — test bookings excluded by default'}.

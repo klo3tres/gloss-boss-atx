@@ -332,82 +332,150 @@ export default async function AdminAgreementsPage() {
 
 
 
+  const totalSigned = rows.filter((r) => r.statusLabel === 'signed' || r.statusLabel === 'intake').length;
+  const stripeSourceCount = rows.filter((r) => r.source === 'signed_agreements').length;
+  const techSourceCount = rows.filter((r) => r.source === 'job_agreements').length;
+
   return (
+    <DashboardShell 
+      title='Compliance & Agreements' 
+      subtitle='Unified liability acknowledgements, signed agreements, and pre-service check-in audit logs.' 
+      role='admin'
+    >
+      <div className="mb-6 flex items-center justify-between">
+        <Link href='/admin' className='inline-flex items-center gap-1 text-xs font-black uppercase tracking-widest text-gold-soft hover:underline'>
+          ← Admin Command Center
+        </Link>
+        <span className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-zinc-400 font-bold">
+          {rows.length} Audited Logs
+        </span>
+      </div>
 
-    <DashboardShell title='Agreements & Intake' subtitle='Unified liability acknowledgements, signed agreements, and intake submissions.' role='admin'>
+      {/* Overview Statistics Section */}
+      <section className='mb-8 grid gap-4 grid-cols-2 lg:grid-cols-3'>
+        <div className='gb-premium-card rounded-3xl border border-gold/20 bg-zinc-950/90 p-5 shadow-[0_0_24px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/30 transition-all duration-300'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400'>Total Signed Agreements</p>
+          <div className='flex items-baseline gap-2 mt-3'>
+            <span className='font-mono text-3xl font-black text-white'>{totalSigned}</span>
+            <span className='text-[10px] text-emerald-400 font-bold uppercase tracking-wider'>100% compliant</span>
+          </div>
+          <p className='mt-1 text-[10px] text-zinc-500'>Completed liability waivers across booking and field routes.</p>
+        </div>
 
-      <Link href='/admin/cms' className='mb-4 inline-block text-xs font-bold uppercase tracking-wider text-gold-soft underline'>
+        <div className='gb-premium-card rounded-3xl border border-white/5 bg-black/40 p-5 relative overflow-hidden group hover:border-gold/20 transition-all duration-300'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400'>Online Customer Waivers</p>
+          <div className='flex items-baseline gap-2 mt-3'>
+            <span className='font-mono text-3xl font-black text-gold-soft'>{stripeSourceCount}</span>
+            <span className='text-[10px] text-zinc-500'>checkout flow</span>
+          </div>
+          <p className='mt-1 text-[10px] text-zinc-500'>Signed during standard public checkout funnel online.</p>
+        </div>
 
-        ← CMS
+        <div className='gb-premium-card rounded-3xl border border-white/5 bg-black/40 p-5 relative overflow-hidden group hover:border-gold/20 transition-all duration-300 sm:col-span-2 lg:col-span-1'>
+          <p className='text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400'>Field In-Person Waivers</p>
+          <div className='flex items-baseline gap-2 mt-3'>
+            <span className='font-mono text-3xl font-black text-gold-soft'>{techSourceCount}</span>
+            <span className='text-[10px] text-zinc-500'>tech tablet</span>
+          </div>
+          <p className='mt-1 text-[10px] text-zinc-500'>Captured on-site by field technician before details start.</p>
+        </div>
+      </section>
 
-      </Link>
+      {/* Main Audit Feed */}
+      <section className='space-y-4'>
+        <div className='flex items-center justify-between border-b border-white/10 pb-3 mb-5'>
+          <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Real-Time Agreement Ledger</p>
+          <span className='text-[10px] text-zinc-500 font-medium'>Showing last 200 submissions</span>
+        </div>
 
+        {rows.length === 0 ? (
+          <div className='rounded-3xl border border-dashed border-white/10 bg-zinc-950 p-12 text-center flex flex-col items-center justify-center'>
+            <p className='text-sm text-zinc-400 font-bold uppercase tracking-wider'>No Active Signed Waivers Found</p>
+            <p className='text-xs text-zinc-500 mt-1.5'>Waiver records will populate here immediately upon customer execution.</p>
+          </div>
+        ) : (
+          <div className='grid gap-4 md:grid-cols-2'>
+            {rows.map((a) => (
+              <div 
+                key={`${a.source}-${a.id}`} 
+                className='relative group flex flex-col justify-between rounded-2xl border border-white/5 bg-zinc-950/40 p-5 hover:border-gold/25 hover:shadow-[0_0_24px_rgba(212,175,55,0.06)] transition duration-300'
+              >
+                <div>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider border ${
+                        a.source === 'signed_agreements' ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/25' :
+                        a.source === 'job_agreements' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' :
+                        'bg-zinc-800 text-zinc-400 border-white/5'
+                      }`}>
+                        {a.source.replace(/_/g, ' ')}
+                      </span>
+                      <h3 className='font-bold text-white text-base mt-2 truncate group-hover:text-gold-soft transition'>
+                        {a.customerLabel}
+                      </h3>
+                      <p className='text-xs text-zinc-500 truncate mt-0.5'>{a.vehicleLabel}</p>
+                    </div>
 
+                    <div className='text-right shrink-0'>
+                      <span className='rounded bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-300 font-mono'>
+                        {a.statusLabel}
+                      </span>
+                      <p className='text-[10px] text-zinc-500 font-mono mt-1'>{a.dateLabel}</p>
+                    </div>
+                  </div>
 
-      {rows.length === 0 ? (
+                  <div className='mt-4 border-t border-white/5 pt-3 text-xs text-zinc-400'>
+                    <div className='flex items-center gap-2 justify-between'>
+                      <span className='text-[10px] text-zinc-500'>Signer Authorization:</span>
+                      <strong className='text-zinc-300 font-medium font-mono'>{a.signer_legal_name || 'Verified Customer Signature'}</strong>
+                    </div>
+                  </div>
+                </div>
 
-        <p className='rounded-2xl border border-white/10 bg-zinc-950 p-6 text-sm text-zinc-400'>No signed agreements yet.</p>
+                {/* Collapsed Actions inside item card */}
+                <details className='mt-4 pt-3 border-t border-white/5 text-xs group'>
+                  <summary className='cursor-pointer text-[10px] font-black uppercase tracking-wider text-zinc-500 hover:text-gold-soft transition flex items-center justify-between select-none'>
+                    <span>Administrative Tools</span>
+                    <span className='rounded-md border border-white/10 px-2 py-0.5 text-[8px] bg-zinc-950/40 group-open:bg-zinc-900 transition'>Toggle actions</span>
+                  </summary>
+                  
+                  <div className='mt-3 pt-3 border-t border-white/5 flex flex-wrap items-center justify-end gap-2'>
+                    <Link 
+                      href={`/admin/agreements/${encodeURIComponent(`${a.source}:${a.id}`)}`} 
+                      className='rounded-xl bg-gold text-black hover:bg-gold-soft px-3.5 py-2 text-[10px] font-black uppercase tracking-wider transition'
+                    >
+                      Inspect Waiver Document
+                    </Link>
 
-      ) : (
+                    <form action={archiveAgreementAction}>
+                      <input type='hidden' name='id' value={a.id} />
+                      <input type='hidden' name='source' value={a.source} />
+                      <ConfirmSubmitButton 
+                        message='Archive this agreement from active log list?' 
+                        className='rounded-xl border border-amber-500/35 text-amber-300 hover:bg-amber-500/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider transition'
+                      >
+                        Archive Entry
+                      </ConfirmSubmitButton>
+                    </form>
 
-        <ul className='space-y-2'>
-
-          {rows.map((a) => (
-
-            <li key={`${a.source}-${a.id}`} className='flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950 px-4 py-3'>
-
-              <div className='min-w-0 flex-1'>
-
-                <p className='font-semibold text-white'>{a.customerLabel}</p>
-
-                <p className='mt-1 text-xs text-zinc-400'>{a.vehicleLabel}</p>
-
-                <p className='mt-1 text-xs text-gold-soft'>
-
-                  {a.serviceLabel} · {a.dateLabel} · <span className='uppercase'>{a.statusLabel}</span>
-
-                </p>
-
+                    <form action={deleteAgreementAction}>
+                      <input type='hidden' name='id' value={a.id} />
+                      <input type='hidden' name='source' value={a.source} />
+                      <ConfirmSubmitButton 
+                        message='PERMANENTLY delete compliance agreement from records?' 
+                        className='rounded-xl border border-rose-500/35 text-rose-300 hover:bg-rose-500/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider transition'
+                      >
+                        Delete Record
+                      </ConfirmSubmitButton>
+                    </form>
+                  </div>
+                </details>
               </div>
-
-              <div className='flex flex-wrap items-center gap-2'>
-
-                <span className='text-[10px] uppercase text-zinc-600'>{a.source}</span>
-
-                <Link href={`/admin/agreements/${encodeURIComponent(`${a.source}:${a.id}`)}`} className='rounded border border-gold/30 px-3 py-1 text-[10px] font-bold uppercase text-gold-soft'>View</Link>
-
-                <form action={archiveAgreementAction}>
-
-                  <input type='hidden' name='id' value={a.id} />
-
-                  <input type='hidden' name='source' value={a.source} />
-
-                  <ConfirmSubmitButton message='Archive this agreement?' className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</ConfirmSubmitButton>
-
-                </form>
-
-                <form action={deleteAgreementAction}>
-
-                  <input type='hidden' name='id' value={a.id} />
-
-                  <input type='hidden' name='source' value={a.source} />
-
-                  <ConfirmSubmitButton message='Delete this agreement?' className='rounded border border-red-500/30 px-3 py-1 text-[10px] font-bold uppercase text-red-200'>Delete</ConfirmSubmitButton>
-
-                </form>
-
-              </div>
-
-            </li>
-
-          ))}
-
-        </ul>
-
-      )}
-
+            ))}
+          </div>
+        )}
+      </section>
     </DashboardShell>
-
   );
 
 }

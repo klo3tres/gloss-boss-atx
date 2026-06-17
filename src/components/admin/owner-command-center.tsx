@@ -740,6 +740,10 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
     return null;
   };
 
+  const healthPercent = Math.min(100, Math.max(0, metrics.bookingHealth ?? 0));
+  const circ = 2 * Math.PI * 36;
+  const strokeDashoffset = circ - (healthPercent / 100) * circ;
+
   return (
     <div className="space-y-8 pb-10">
       {/* Alert Banner if any */}
@@ -931,18 +935,66 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
       ) : null}
 
       {/* SECTION 1: EXECUTIVE SNAPSHOT (Top Section) */}
-      <section className="gb-glass rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 h-32 w-32 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-          <SectionEyebrow>Executive Snapshot</SectionEyebrow>
-          <span className="text-[10px] font-black uppercase text-gold-soft tracking-wider">Gloss Boss operations</span>
-        </div>
-        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-5">
+      <section className="grid gap-6 lg:grid-cols-[1.3fr_1.7fr]">
+        {/* Booking Health Dial Card */}
+        <GlassCard className="border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/45 transition-all duration-300">
+          <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
+          <div className="space-y-3 text-center sm:text-left min-w-0 flex-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Operational Health</span>
+            <div>
+              <p className="text-zinc-400 text-xs">Booking & Schedule Status</p>
+              <h2 className="mt-1 font-mono text-3xl font-black text-white tracking-tight">
+                {healthInfo.label}
+              </h2>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
+              Your detailing command center is operating at <strong className="text-white">{healthPercent}%</strong> status, reflecting unassigned bookings and active team coverage.
+            </p>
+          </div>
+          
+          <div className="relative flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-zinc-950/60 border border-white/10 p-2 shadow-inner">
+            <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="36" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="none" />
+              <circle
+                cx="40"
+                cy="40"
+                r="36"
+                className="text-gold-soft transition-all duration-1000 ease-out"
+                strokeWidth="6"
+                strokeDasharray={circ}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="none"
+              />
+            </svg>
+            <div className="absolute flex flex-col items-center justify-center">
+              <span className="font-mono text-2.5xl font-black text-white">{healthPercent}%</span>
+              <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Score</span>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* Executive Metrics Grid */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <TodayMetricCard label="Revenue MTD" value={metrics.revenueMonth} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle={`Today: ${metrics.revenueToday}`} />
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} onClick={() => setActiveDrawer('open-balances')} icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} onClick={() => setActiveDrawer('pending-deposits')} icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
           <TodayMetricCard label="Active Jobs" value={metrics.activeJobsCount} onClick={() => setActiveDrawer('bookings')} icon={Zap} colorClass="text-cyan-400" subtitle="Currently in progress" />
           <TodayMetricCard label="Membership MTD" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold" subtitle="MTD active member dues" />
+          
+          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-gold/30 hover:bg-black/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Dispatch Status</span>
+              <div className="rounded-lg bg-zinc-950/60 p-2 border border-white/5 group-hover:border-gold/20 transition-all">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 opacity-85" />
+              </div>
+            </div>
+            <p className="mt-3 font-mono text-lg font-black text-white truncate">
+              {dispatchStatus}
+            </p>
+            <p className="text-[10px] text-zinc-500 font-medium">{techStatusLabel}</p>
+          </div>
         </div>
       </section>
 

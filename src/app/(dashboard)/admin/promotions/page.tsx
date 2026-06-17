@@ -203,8 +203,10 @@ export default async function AdminPromotionsPage() {
       ) : null}
 
       <div className="space-y-6">
-        {/* FREE COMP SECTION */}
-        <FreePromoSection freeRow={freeRow} freeEnabled={freeEnabled} />
+        {/* FREE COMP SECTION COLLAPSED BY DEFAULT */}
+        <CollapsibleSection title="Bypass Comp Promo Code (FREE)" subtitle="Configure or toggle the Stripe bypass comp code ($0 testing)." defaultOpen={false}>
+          <FreePromoSection freeRow={freeRow} freeEnabled={freeEnabled} />
+        </CollapsibleSection>
 
         {/* CUSTOM PROMO CODES MANAGER */}
         <div className="pt-2">

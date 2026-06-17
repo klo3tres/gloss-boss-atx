@@ -173,23 +173,33 @@ export default function LoginForm() {
   };
 
   return (
-    <main className='relative flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground'>
+    <main className='relative flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground gb-luxury-page'>
+      {/* Background scrims */}
+      <div className='pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.12),transparent_45%)]' aria-hidden />
+
       {phase === 'finishing' ? (
-        <div className='pointer-events-none fixed inset-0 z-10 flex items-center justify-center bg-background/40 backdrop-blur-[1px]'>
+        <div className='pointer-events-none fixed inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[2px]'>
           <div className='flex flex-col items-center gap-3'>
             <div className='h-8 w-8 animate-spin rounded-full border-2 border-gold/30 border-t-gold-soft' aria-hidden />
-            <p className='text-sm text-zinc-300'>Opening your dashboard…</p>
+            <p className='text-sm text-zinc-300 font-bold uppercase tracking-wider'>Opening your dashboard…</p>
           </div>
         </div>
       ) : null}
 
       <form
         onSubmit={handleLogin}
-        className={`relative z-[20] w-full max-w-md rounded-2xl border border-gold/20 bg-zinc-950 p-6 transition-opacity ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
+        className={`relative z-[20] w-full max-w-md rounded-3xl border border-gold/15 bg-black/85 p-8 shadow-[0_0_50px_rgba(212,175,55,0.15)] backdrop-blur-xl gb-premium-card transition-opacity duration-300 ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
       >
-        <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Customer Portal</p>
-        <h1 className='mt-3 text-3xl font-black uppercase'>Login</h1>
-        <p className='mt-2 text-sm text-zinc-400'>Secure access to appointments, invoices, and vehicle records.</p>
+        <div className="flex flex-col items-center mb-6">
+          <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-16 w-auto object-contain filter brightness-110 mb-4" />
+          <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>Gloss Boss ATX</p>
+        </div>
+
+        <h1 className='text-2xl font-black uppercase tracking-tight text-white text-center'>Portal Sign In</h1>
+        <p className='mt-2 text-xs text-zinc-400 text-center leading-relaxed'>
+          Secure workspace access for clients, technicians, and administrators.
+        </p>
+
         {!envReady ? (
           <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200'>
             Auth is in setup mode. Add Supabase env keys to activate login.
@@ -197,18 +207,30 @@ export default function LoginForm() {
         ) : null}
 
         <div className='mt-6 space-y-4'>
-          <label className='block text-sm'>
-            <span className='mb-2 block text-zinc-300'>Email</span>
-            <input type='email' value={email} onChange={(e) => setEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
+          <label className='block text-xs font-bold uppercase text-zinc-400'>
+            <span className='mb-2 block'>Email Address</span>
+            <input
+              type='email'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className='gb-input bg-black/40 border-white/10 focus:border-gold transition'
+              required
+            />
           </label>
-          <label className='block text-sm'>
-            <span className='mb-2 block text-zinc-300'>Password</span>
-            <input type='password' value={password} onChange={(e) => setPassword(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
+          <label className='block text-xs font-bold uppercase text-zinc-400'>
+            <span className='mb-2 block'>Password</span>
+            <input
+              type='password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className='gb-input bg-black/40 border-white/10 focus:border-gold transition'
+              required
+            />
           </label>
         </div>
 
         {error ? (
-          <p className='mt-4 text-sm text-red-400' role='alert' aria-live='assertive'>
+          <p className='mt-4 text-xs text-red-400 font-semibold bg-red-950/20 border border-red-500/20 p-2.5 rounded-xl' role='alert' aria-live='assertive'>
             {error}
           </p>
         ) : null}
@@ -216,16 +238,16 @@ export default function LoginForm() {
         <button
           type='submit'
           disabled={phase === 'submitting' || phase === 'finishing' || !envReady}
-          className='mt-6 w-full rounded-lg bg-gold px-4 py-3 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-60'
+          className='mt-6 w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60 hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,175,55,0.25)]'
         >
           {phase === 'submitting' || phase === 'finishing' ? 'Signing in...' : 'Sign In'}
         </button>
 
-        <div className='mt-4 flex items-center justify-between text-xs text-zinc-400'>
-          <Link href='/signup' className='hover:text-gold-soft'>
+        <div className='mt-6 flex items-center justify-between text-xs text-zinc-400 border-t border-white/5 pt-4'>
+          <Link href='/signup' className='hover:text-gold-soft font-semibold'>
             Create account
           </Link>
-          <Link href='/forgot-password' className='hover:text-gold-soft'>
+          <Link href='/forgot-password' className='hover:text-gold-soft font-semibold'>
             Forgot password?
           </Link>
         </div>

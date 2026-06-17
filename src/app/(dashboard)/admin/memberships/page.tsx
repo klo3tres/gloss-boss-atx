@@ -10,6 +10,7 @@ import { CustomerCreditsManager } from '@/components/admin/customer-credits-mana
 import { MembershipPlansManager } from '@/components/admin/membership-plans-manager';
 
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
+import { Award, Upload } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,117 +102,128 @@ export default async function MembershipsAdminPage() {
         <MembershipPlansManager publicPlans={publicPlans as any} />
       </div>
 
-      {/* THREE INTERACTIVE PANELS GRID */}
-      <section className='grid gap-6 lg:grid-cols-3 mb-8'>
-        {/* LOYALTY RULES */}
-        <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
-          <form action={saveLoyaltyRuleAction} className="space-y-4">
-            <div>
-              <SectionEyebrow>Loyalty Rules</SectionEyebrow>
-              <p className='mt-1 text-xs text-zinc-500'>Set reward card parameters for dashboard views.</p>
-            </div>
-            <input type='hidden' name='id' value={String(rules[0]?.id ?? '')} />
-            
-            <label className="block text-xs text-zinc-400">
-              Rule Name
-              <input name='name' defaultValue={String(rules[0]?.name ?? 'Default punch card')} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white' />
-            </label>
-            <label className="block text-xs text-zinc-400">
-              Punches Required
-              <input name='services_required' type='number' defaultValue={Number(rules[0]?.services_required ?? 5)} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono' />
-            </label>
-            <label className="block text-xs text-zinc-400">
-              Reward Description Text
-              <textarea name='reward_description' defaultValue={String(rules[0]?.reward_description ?? 'Complete 5 services, unlock 6th wash/free reward.')} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' rows={3} />
-            </label>
-            
-            <label className='flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1'>
-              <input type='checkbox' name='active' defaultChecked={rules[0]?.active !== false} className='accent-gold' />
-              Rule is active
-            </label>
-            
-            <button className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition'>
-              Save Loyalty Rule
-            </button>
-          </form>
-        </GlassCard>
+      {/* Collapsible Assignment & Punch Controls */}
+      <details className="mb-6 rounded-3xl border border-white/10 bg-black/45 p-5 group">
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Award className="h-4 w-4 text-gold-soft" />
+            <span>Membership Assign & Loyalty Punch Controls</span>
+          </span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900">Toggle Controls</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5 space-y-6">
+          <section className='grid gap-6 lg:grid-cols-3'>
+            {/* LOYALTY RULES */}
+            <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
+              <form action={saveLoyaltyRuleAction} className="space-y-4">
+                <div>
+                  <SectionEyebrow>Loyalty Rules</SectionEyebrow>
+                  <p className='mt-1 text-xs text-zinc-500'>Set reward card parameters for dashboard views.</p>
+                </div>
+                <input type='hidden' name='id' value={String(rules[0]?.id ?? '')} />
+                
+                <label className="block text-xs text-zinc-400">
+                  Rule Name
+                  <input name='name' defaultValue={String(rules[0]?.name ?? 'Default punch card')} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white' />
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Punches Required
+                  <input name='services_required' type='number' defaultValue={Number(rules[0]?.services_required ?? 5)} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono' />
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Reward Description Text
+                  <textarea name='reward_description' defaultValue={String(rules[0]?.reward_description ?? 'Complete 5 services, unlock 6th wash/free reward.')} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' rows={3} />
+                </label>
+                
+                <label className='flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1'>
+                  <input type='checkbox' name='active' defaultChecked={rules[0]?.active !== false} className='accent-gold' />
+                  Rule is active
+                </label>
+                
+                <button className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition'>
+                  Save Loyalty Rule
+                </button>
+              </form>
+            </GlassCard>
 
-        {/* ASSIGN MEMBERSHIP */}
-        <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
-          <form action={assignCustomerMembershipAction} className="space-y-4">
-            <div>
-              <SectionEyebrow>Assign Customer Membership</SectionEyebrow>
-              <p className='mt-1 text-xs text-zinc-500'>Manually allocate a tier level plan to a customer.</p>
-            </div>
-            
-            <label className="block text-xs text-zinc-400">
-              Select Customer
-              <select name='customer_id' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
-              </select>
-            </label>
-            
-            <label className="block text-xs text-zinc-400">
-              Select Plan
-              <select name='membership_plan_id' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
-                {publicPlans.map((p) => <option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}
-              </select>
-            </label>
-            
-            <label className="block text-xs text-zinc-400">
-              Notes
-              <textarea name='notes' placeholder='Optional internal note...' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' rows={3} />
-            </label>
-            
-            <button className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition mt-2'>
-              Assign Membership
-            </button>
-          </form>
-        </GlassCard>
+            {/* ASSIGN MEMBERSHIP */}
+            <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
+              <form action={assignCustomerMembershipAction} className="space-y-4">
+                <div>
+                  <SectionEyebrow>Assign Customer Membership</SectionEyebrow>
+                  <p className='mt-1 text-xs text-zinc-500'>Manually allocate a tier level plan to a customer.</p>
+                </div>
+                
+                <label className="block text-xs text-zinc-400">
+                  Select Customer
+                  <select name='customer_id' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
+                  </select>
+                </label>
+                
+                <label className="block text-xs text-zinc-400">
+                  Select Plan
+                  <select name='membership_plan_id' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
+                    {publicPlans.map((p) => <option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}
+                  </select>
+                </label>
+                
+                <label className="block text-xs text-zinc-400">
+                  Notes
+                  <textarea name='notes' placeholder='Optional internal note...' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' rows={3} />
+                </label>
+                
+                <button className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition mt-2'>
+                  Assign Membership
+                </button>
+              </form>
+            </GlassCard>
 
-        {/* MANUAL LOYALTY STAMPS */}
-        <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
-          <form action={addManualLoyaltyStampAction} className="space-y-4">
-            <div>
-              <SectionEyebrow>Manual Punch Controls</SectionEyebrow>
-              <p className='mt-1 text-xs text-zinc-500'>Credit or void customer loyalty punches manually.</p>
-            </div>
-            
-            <label className="block text-xs text-zinc-400">
-              Select Customer
-              <select name='customerId' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
-                <option value="">-- Choose Customer --</option>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
-              </select>
-            </label>
-            
-            <div className='grid grid-cols-2 gap-2'>
-              <label className='block text-[10px] text-zinc-500 font-bold uppercase'>
-                Punches Count
-                <input name='stampCount' type='number' defaultValue={1} min={1} max={10} className='mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white font-mono' />
-              </label>
-              <label className='block text-[10px] text-zinc-500 font-bold uppercase'>
-                Type
-                <select name='source' className='mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white'>
-                  <option value='admin_manual'>Admin Manual</option>
-                  <option value='tech_manual'>Tech Manual</option>
-                  <option value='membership_bonus'>Membership Bonus</option>
-                  <option value='correction_void'>Correction/Void</option>
-                </select>
-              </label>
-            </div>
-            
-            <label className='block text-xs text-zinc-400'>
-              Note / Reason
-              <input name='reason' placeholder='e.g., Makegood, referral adjustment' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' />
-            </label>
-            
-            <button type='submit' className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition mt-2'>
-              Award Punches
-            </button>
-          </form>
-        </GlassCard>
-      </section>
+            {/* MANUAL LOYALTY STAMPS */}
+            <GlassCard className="border-white/10 bg-zinc-950/40 flex flex-col justify-between">
+              <form action={addManualLoyaltyStampAction} className="space-y-4">
+                <div>
+                  <SectionEyebrow>Manual Punch Controls</SectionEyebrow>
+                  <p className='mt-1 text-xs text-zinc-500'>Credit or void customer loyalty punches manually.</p>
+                </div>
+                
+                <label className="block text-xs text-zinc-400">
+                  Select Customer
+                  <select name='customerId' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white'>
+                    <option value="">-- Choose Customer --</option>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name || c.email || c.id}</option>)}
+                  </select>
+                </label>
+                
+                <div className='grid grid-cols-2 gap-2'>
+                  <label className='block text-[10px] text-zinc-500 font-bold uppercase'>
+                    Punches Count
+                    <input name='stampCount' type='number' defaultValue={1} min={1} max={10} className='mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 py-1.5 text-xs text-white font-mono' />
+                  </label>
+                  <label className='block text-[10px] text-zinc-500 font-bold uppercase'>
+                    Type
+                    <select name='source' className='mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white'>
+                      <option value='admin_manual'>Admin Manual</option>
+                      <option value='tech_manual'>Tech Manual</option>
+                      <option value='membership_bonus'>Membership Bonus</option>
+                      <option value='correction_void'>Correction/Void</option>
+                    </select>
+                  </label>
+                </div>
+                
+                <label className='block text-xs text-zinc-400'>
+                  Note / Reason
+                  <input name='reason' placeholder='e.g., Makegood, referral adjustment' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' />
+                </label>
+                
+                <button type='submit' className='w-full rounded-xl bg-gold py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition mt-2'>
+                  Award Punches
+                </button>
+              </form>
+            </GlassCard>
+          </section>
+        </div>
+      </details>
 
       {/* ACTIVE MEMBERSHIPS */}
       <GlassCard className="mb-8 border-white/10 bg-zinc-950/40">
@@ -252,48 +264,59 @@ export default async function MembershipsAdminPage() {
           <p className='mt-1 text-xs text-zinc-500'>Upload and configure front/back images for the interactive 3D digital cards.</p>
         </div>
 
-        {/* Upload Form */}
-        <form action={saveLoyaltyCardDesignAction} method="POST" encType="multipart/form-data" className='rounded-2xl border border-white/5 bg-black/45 p-5 space-y-4'>
-          <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Upload New Art Design</p>
-          
-          <div className='grid gap-4 sm:grid-cols-3'>
-            <label className='block text-xs text-zinc-400'>
-              Design Name
-              <input name='name' placeholder='e.g., Gloss Boss Gold Edition' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' />
-            </label>
-            <label className='block text-xs text-zinc-400'>
-              Assign to Tier
-              <select name='tier' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white'>
-                <option value='default'>Default Loyalty Card</option>
-                <option value='bronze'>Bronze Tier</option>
-                <option value='silver'>Silver Tier</option>
-                <option value='gold'>Gold Tier</option>
-                <option value='custom'>Custom/Other Tier</option>
-              </select>
-            </label>
-            <label className='block text-xs text-zinc-400 flex items-end'>
-              <span className='flex items-center gap-2 text-zinc-300 pb-2.5 cursor-pointer'>
-                <input type='checkbox' name='active' className='accent-gold h-4 w-4' />
-                Set design active immediately
-              </span>
-            </label>
-          </div>
+        {/* Upload Form Collapsed */}
+        <details className="rounded-2xl border border-white/5 bg-black/45 p-5 group">
+          <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-gold-soft" />
+              <span>Upload New Loyalty Card Design Art</span>
+            </span>
+            <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900">Toggle Upload Form</span>
+          </summary>
+          <div className="mt-5 pt-5 border-t border-white/5">
+            <form action={saveLoyaltyCardDesignAction} method="POST" encType="multipart/form-data" className='space-y-4'>
+              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Upload New Art Design</p>
+              
+              <div className='grid gap-4 sm:grid-cols-3'>
+                <label className='block text-xs text-zinc-400'>
+                  Design Name
+                  <input name='name' placeholder='e.g., Gloss Boss Gold Edition' required className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' />
+                </label>
+                <label className='block text-xs text-zinc-400'>
+                  Assign to Tier
+                  <select name='tier' className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white'>
+                    <option value='default'>Default Loyalty Card</option>
+                    <option value='bronze'>Bronze Tier</option>
+                    <option value='silver'>Silver Tier</option>
+                    <option value='gold'>Gold Tier</option>
+                    <option value='custom'>Custom/Other Tier</option>
+                  </select>
+                </label>
+                <label className='block text-xs text-zinc-400 flex items-end'>
+                  <span className='flex items-center gap-2 text-zinc-300 pb-2.5 cursor-pointer'>
+                    <input type='checkbox' name='active' className='accent-gold h-4 w-4' />
+                    Set design active immediately
+                  </span>
+                </label>
+              </div>
 
-          <div className='grid gap-4 sm:grid-cols-2'>
-            <label className='block text-xs text-zinc-400'>
-              Front Card Image (Recommended size: 3.5 × 2 in, 300 DPI, PNG)
-              <input name='frontImage' type='file' accept='image/png, image/jpeg, image/webp' required className='mt-1.5 w-full text-xs text-zinc-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-gold file:text-black file:uppercase file:cursor-pointer' />
-            </label>
-            <label className='block text-xs text-zinc-400'>
-              Back Card Image (Recommended size: 3.5 × 2 in, 300 DPI, PNG)
-              <input name='backImage' type='file' accept='image/png, image/jpeg, image/webp' required className='mt-1.5 w-full text-xs text-zinc-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-gold file:text-black file:uppercase file:cursor-pointer' />
-            </label>
-          </div>
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <label className='block text-xs text-zinc-400'>
+                  Front Card Image (Recommended size: 3.5 × 2 in, 300 DPI, PNG)
+                  <input name='frontImage' type='file' accept='image/png, image/jpeg, image/webp' required className='mt-1.5 w-full text-xs text-zinc-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-gold file:text-black file:uppercase file:cursor-pointer' />
+                </label>
+                <label className='block text-xs text-zinc-400'>
+                  Back Card Image (Recommended size: 3.5 × 2 in, 300 DPI, PNG)
+                  <input name='backImage' type='file' accept='image/png, image/jpeg, image/webp' required className='mt-1.5 w-full text-xs text-zinc-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-gold file:text-black file:uppercase file:cursor-pointer' />
+                </label>
+              </div>
 
-          <button type='submit' className='rounded-xl bg-gold px-5 py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition'>
-            Upload Card Design
-          </button>
-        </form>
+              <button type='submit' className='rounded-xl bg-gold px-5 py-2.5 text-xs font-black uppercase text-black hover:brightness-110 transition'>
+                Upload Card Design
+              </button>
+            </form>
+          </div>
+        </details>
 
         {/* Existing Designs Grid */}
         <div className='space-y-4'>

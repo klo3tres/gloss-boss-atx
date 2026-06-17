@@ -35,67 +35,83 @@ export function AddonsAdminClient({ initialRows }: { initialRows: AddonRow[] }) 
 
   return (
     <div className='space-y-6'>
-      <section className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-        <h2 className='text-sm font-bold uppercase text-gold-soft'>New add-on</h2>
-        <div className='mt-3 flex flex-wrap gap-3'>
-          <label className='text-xs text-zinc-400'>
-            Label
-            <input
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              className='mt-1 block w-56 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-            />
-          </label>
-          <label className='text-xs text-zinc-400'>
-            Price (USD)
-            <input
-              type='number'
-              min={0}
-              step={1}
-              value={newDollars}
-              onChange={(e) => setNewDollars(Number(e.target.value))}
-              className='mt-1 block w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-            />
-          </label>
-          <button
-            type='button'
-            disabled={creating || !newLabel.trim()}
-            onClick={() => {
-              void (async () => {
-                setCreating(true);
-                setMsg(null);
-                const res = await fetchWithTimeout('/api/admin/addons', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ label: newLabel.trim(), price_cents: Math.round(newDollars * 100), active: true }),
-                  credentials: 'same-origin',
-                  timeoutMs: 20000,
-                });
-                const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-                setCreating(false);
-                if (!res.ok || !data.ok) {
-                  setMsg({ type: 'err', text: data.error ?? 'Create failed' });
-                  return;
-                }
-                setNewLabel('');
-                setMsg({ type: 'ok', text: 'Add-on created.' });
-                router.refresh();
-              })();
-            }}
-            className='self-end rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-40'
-          >
-            Add
-          </button>
+      {/* New Add-on Form Collapsed */}
+      <details className='mb-6 rounded-3xl border border-gold/15 bg-black/45 p-5 group'>
+        <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">
+          <span>Create New Booking Add-on</span>
+          <span className="text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40">Toggle Form</span>
+        </summary>
+        <div className="mt-5 pt-5 border-t border-white/5">
+          <div className='flex flex-wrap gap-4 items-end'>
+            <label className='block text-xs text-zinc-400'>
+              Label / Display Name
+              <input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="e.g. Engine Bay Detail"
+                className='mt-1.5 w-60 rounded-xl border border-zinc-700 bg-black px-3.5 py-2 text-sm text-white focus:border-gold/50 outline-none transition'
+              />
+            </label>
+            <label className='block text-xs text-zinc-400'>
+              Price (USD)
+              <input
+                type='number'
+                min={0}
+                step={1}
+                value={newDollars}
+                onChange={(e) => setNewDollars(Number(e.target.value))}
+                className='mt-1.5 w-28 rounded-xl border border-zinc-700 bg-black px-3.5 py-2 text-sm text-white focus:border-gold/50 outline-none transition'
+              />
+            </label>
+            <button
+              type='button'
+              disabled={creating || !newLabel.trim()}
+              onClick={() => {
+                void (async () => {
+                  setCreating(true);
+                  setMsg(null);
+                  const res = await fetchWithTimeout('/api/admin/addons', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label: newLabel.trim(), price_cents: Math.round(newDollars * 100), active: true }),
+                    credentials: 'same-origin',
+                    timeoutMs: 20000,
+                  });
+                  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+                  setCreating(false);
+                  if (!res.ok || !data.ok) {
+                    setMsg({ type: 'err', text: data.error ?? 'Create failed' });
+                    return;
+                  }
+                  setNewLabel('');
+                  setMsg({ type: 'ok', text: 'Add-on created.' });
+                  router.refresh();
+                })();
+              }}
+              className='rounded-xl bg-gold px-6 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40 hover:brightness-110 transition duration-200 shadow-md'
+            >
+              Add Add-on
+            </button>
+          </div>
         </div>
-      </section>
+      </details>
 
-      <ul className='space-y-4'>
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Active Add-on Catalog</span>
+        <span className="text-[10px] text-zinc-500 font-bold">{initialRows.length} Items</span>
+      </div>
+
+      <ul className='grid gap-4 md:grid-cols-2'>
         {initialRows.map((row) => (
           <AddonEditorRow key={row.id} row={row} onUpdated={() => router.refresh()} onMessage={setMsg} />
         ))}
       </ul>
 
-      {msg ? <p className={`text-sm ${msg.type === 'ok' ? 'text-emerald-300' : 'text-rose-300'}`}>{msg.text}</p> : null}
+      {msg ? (
+        <div className={`mt-4 rounded-xl border p-4 text-xs font-bold leading-relaxed ${msg.type === 'ok' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/20 bg-rose-500/10 text-rose-300'}`}>
+          {msg.text}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -125,50 +141,69 @@ function AddonEditorRow({
   }, [row]);
 
   return (
-    <li className='rounded-2xl border border-gold/20 bg-zinc-950 p-5'>
-      <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-6'>
-        <label className='text-xs text-zinc-400 lg:col-span-2'>
-          Label
-          <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+    <li className='gb-premium-card rounded-2xl p-5 flex flex-col justify-between border border-gold/10'>
+      <div className='space-y-4'>
+        <div className="flex justify-between items-center pb-2.5 border-b border-white/5">
+          <span className="text-xs font-black uppercase text-white tracking-wider">{label || 'Unnamed Add-on'}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-500'}`}>
+            {active ? 'Active' : 'Paused'}
+          </span>
+        </div>
+
+        <div className='grid gap-3 sm:grid-cols-2'>
+          <label className='block text-xs text-zinc-500'>
+            Display Label
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='block text-xs text-zinc-500'>
+            Unique Slug
+            <input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 font-mono text-[10px] text-zinc-400 focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='block text-xs text-zinc-500'>
+            Price (USD)
+            <input
+              type='number'
+              min={0}
+              step={1}
+              value={dollars}
+              onChange={(e) => setDollars(Number(e.target.value))}
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='block text-xs text-zinc-500'>
+            Sort Weight
+            <input
+              type='number'
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+        </div>
+
+        <div className='flex items-center gap-2 bg-black/40 border border-white/5 p-3 rounded-xl'>
+          <input 
+            type='checkbox' 
+            id={`active-check-${row.id}`}
+            checked={active} 
+            onChange={(e) => setActive(e.target.checked)} 
+            className="rounded border-zinc-700 bg-black text-gold focus:ring-gold/30 h-4 w-4"
           />
-        </label>
-        <label className='text-xs text-zinc-400'>
-          Slug
-          <input
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 font-mono text-xs text-white'
-          />
-        </label>
-        <label className='text-xs text-zinc-400'>
-          $ (USD)
-          <input
-            type='number'
-            min={0}
-            step={1}
-            value={dollars}
-            onChange={(e) => setDollars(Number(e.target.value))}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
-        <label className='flex items-end gap-2 text-xs text-zinc-400'>
-          <input type='checkbox' checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active
-        </label>
-        <label className='text-xs text-zinc-400'>
-          Sort
-          <input
-            type='number'
-            value={sortOrder}
-            onChange={(e) => setSortOrder(Number(e.target.value))}
-            className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-          />
-        </label>
+          <label htmlFor={`active-check-${row.id}`} className='text-xs font-semibold text-zinc-300 cursor-pointer select-none'>
+            Publish and enable at checkout
+          </label>
+        </div>
       </div>
-      <div className='mt-3 flex flex-wrap gap-2'>
+
+      <div className='mt-5 pt-4 border-t border-white/5 flex gap-2 justify-end'>
         <button
           type='button'
           disabled={busy}
@@ -189,11 +224,11 @@ function AddonEditorRow({
                 onMessage({ type: 'err', text: r.error });
                 return;
               }
-              onMessage({ type: 'ok', text: 'Saved.' });
+              onMessage({ type: 'ok', text: 'Saved successfully.' });
               onUpdated();
             })();
           }}
-          className='rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-40'
+          className='rounded-xl bg-gold px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40 hover:brightness-110 transition duration-200'
         >
           Save
         </button>
@@ -218,7 +253,7 @@ function AddonEditorRow({
               onUpdated();
             })();
           }}
-          className='rounded-lg border border-red-500/40 px-4 py-2 text-xs font-bold uppercase text-red-300'
+          className='rounded-xl border border-red-500/40 hover:bg-red-500/10 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-red-300 transition duration-200'
         >
           Delete
         </button>
@@ -226,3 +261,4 @@ function AddonEditorRow({
     </li>
   );
 }
+
