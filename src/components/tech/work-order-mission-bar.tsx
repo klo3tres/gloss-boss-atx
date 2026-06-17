@@ -59,18 +59,6 @@ export function WorkOrderMissionBar({
           active={activeTab === 'overview'}
         />
         <MissionBtn
-          label='Customer'
-          icon={<User className='h-4 w-4' />}
-          onClick={() => onTabChange('customer')}
-          active={activeTab === 'customer'}
-        />
-        <MissionBtn
-          label='Vehicle'
-          icon={<Car className='h-4 w-4' />}
-          onClick={() => onTabChange('vehicle')}
-          active={activeTab === 'vehicle'}
-        />
-        <MissionBtn
           label='Photos'
           icon={<Camera className='h-4 w-4' />}
           onClick={() => onTabChange('photos')}
@@ -89,22 +77,10 @@ export function WorkOrderMissionBar({
           active={activeTab === 'receipt'}
         />
         <MissionBtn
-          label='Loyalty'
-          icon={<Sparkles className='h-4 w-4' />}
-          onClick={() => onTabChange('loyalty')}
-          active={activeTab === 'loyalty'}
-        />
-        <MissionBtn
-          label='Notes'
-          icon={<MessageSquare className='h-4 w-4' />}
-          onClick={() => onTabChange('notes')}
-          active={activeTab === 'notes'}
-        />
-        <MissionBtn
-          label='Advanced'
+          label='Tools'
           icon={<Wrench className='h-4 w-4' />}
-          onClick={() => onTabChange('advanced')}
-          active={activeTab === 'advanced'}
+          onClick={() => onTabChange('tools')}
+          active={activeTab === 'tools'}
         />
       </div>
     </div>

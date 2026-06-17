@@ -312,8 +312,7 @@ export function DashboardShell({
   const hasAlertActivity =
     unreadCount > 0 ||
     systemAlerts.length > 0 ||
-    outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())) ||
-    outboxEvents.length > 0;
+    outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
   return (
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>

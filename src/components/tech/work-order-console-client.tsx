@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText, X, Wrench, Sparkles, Car } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
@@ -254,7 +254,8 @@ export function WorkOrderConsoleClient({
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'customer' | 'vehicle' | 'photos' | 'payments' | 'receipt' | 'loyalty' | 'notes' | 'advanced'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'receipt' | 'tools'>('overview');
+  const [activeDrawer, setActiveDrawer] = useState<'customer' | 'vehicle' | 'loyalty' | 'notes' | 'advanced' | null>(null);
   const [isContactOpen, setIsContactOpen] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -426,7 +427,13 @@ export function WorkOrderConsoleClient({
     <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-32 md:space-y-6'>
       <WorkOrderMissionBar
         activeTab={activeTab}
-        onTabChange={(tab: any) => setActiveTab(tab)}
+        onTabChange={(tab: any) => {
+          if (tab === 'tools') {
+            setActiveDrawer('advanced');
+          } else {
+            setActiveTab(tab);
+          }
+        }}
         timerRunning={Boolean(data.openTimerId)}
         hasPreInspection={Boolean(data.preInspection)}
       />
@@ -536,8 +543,9 @@ export function WorkOrderConsoleClient({
 
           {/* Quick Actions Grid */}
           <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40 space-y-4">
-            <SectionEyebrow>Quick Actions</SectionEyebrow>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+            <SectionEyebrow>Quick Actions & Management Console</SectionEyebrow>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {/* Reschedule */}
               <button
                 type="button"
                 onClick={() => {
@@ -547,76 +555,115 @@ export function WorkOrderConsoleClient({
                     if (el) el.scrollIntoView({ behavior: 'smooth' });
                   }, 100);
                 }}
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
                 <Calendar className="h-5 w-5 text-gold-soft" />
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Reschedule</span>
               </button>
-              
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(true)}
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-red-500/30 hover:bg-red-950/10 transition duration-200"
-              >
-                <XCircle className="h-5 w-5 text-red-400" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Cancel Job</span>
-              </button>
-              
+
+              {/* Customer Contact */}
               <button
                 type="button"
                 onClick={() => setIsContactOpen(true)}
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
                 <PhoneCall className="h-5 w-5 text-gold-soft" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact Client</span>
               </button>
-              
+
+              {/* Customer Profile Drawer */}
+              {data.customerId ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveDrawer('customer')}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-gold/20 bg-zinc-950/40 hover:border-gold/50 hover:bg-gold/5 transition duration-200"
+                >
+                  <User className="h-5 w-5 text-gold-soft" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Client CRM</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveDrawer('customer')}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                >
+                  <User className="h-5 w-5 text-zinc-400" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Client CRM</span>
+                </button>
+              )}
+
+              {/* Vehicle Config Drawer */}
+              <button
+                type="button"
+                onClick={() => setActiveDrawer('vehicle')}
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                <Car className="h-5 w-5 text-zinc-300" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Vehicles ({data.vehicles.length})</span>
+              </button>
+
+              {/* Loyalty Stamps Drawer */}
+              <button
+                type="button"
+                onClick={() => setActiveDrawer('loyalty')}
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-gold/20 bg-zinc-950/40 hover:border-gold/50 hover:bg-gold/5 transition duration-200"
+              >
+                <Sparkles className="h-5 w-5 text-gold-soft" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Loyalty Stamps</span>
+              </button>
+
+              {/* Notes Drawer */}
+              <button
+                type="button"
+                onClick={() => setActiveDrawer('notes')}
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+              >
+                <MessageSquare className="h-5 w-5 text-zinc-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Staff Notes ({data.notes.length})</span>
+              </button>
+
+              {/* Copy Address */}
               <button
                 type="button"
                 onClick={handleCopyAddress}
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
                 {copiedAddress ? <Check className="h-5 w-5 text-emerald-400" /> : <Copy className="h-5 w-5 text-zinc-400" />}
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">
                   {copiedAddress ? 'Copied!' : 'Copy Address'}
                 </span>
               </button>
-              
+
+              {/* Directions */}
               <a
                 href={data.googleDirectionsHref || data.mapsHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
-                <MapPin className="h-5 w-5 text-gold-soft" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Google</span>
+                <MapPin className="h-5 w-5 text-zinc-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Directions</span>
               </a>
-              {data.appleMapsHref ? (
-                <a
-                  href={data.appleMapsHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                >
-                  <MapPin className="h-5 w-5 text-zinc-300" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Apple</span>
-                </a>
-              ) : null}
-              
-              {data.customerId ? (
-                <button
-                  onClick={() => setActiveTab('customer')}
-                  className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                >
-                  <User className="h-5 w-5 text-zinc-400" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Profile</span>
-                </button>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 opacity-40 cursor-not-allowed">
-                  <User className="h-5 w-5 text-zinc-600" />
-                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Profile</span>
-                </div>
-              )}
+
+              {/* Advanced System Health Drawer */}
+              <button
+                type="button"
+                onClick={() => setActiveDrawer('advanced')}
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-rose-500/30 hover:bg-rose-950/5 transition duration-200"
+              >
+                <Wrench className="h-5 w-5 text-rose-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Diagnostics</span>
+              </button>
+
+              {/* Cancel Job */}
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-red-500/30 hover:bg-red-950/10 transition duration-200"
+              >
+                <XCircle className="h-5 w-5 text-red-400" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Cancel Job</span>
+              </button>
             </div>
           </div>
 
@@ -709,8 +756,46 @@ export function WorkOrderConsoleClient({
       )}
 
       {/* === CUSTOMER TAB === */}
-      {activeTab === 'customer' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      <AnimatePresence>
+        {activeDrawer === 'customer' && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveDrawer(null)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-2xl border-l border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Customer CRM Details</span>
+                </div>
+                
+                {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
+                <div className="flex gap-2 items-center">
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <span className="h-5 w-[1px] bg-white/10 mx-1" />
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-6 animate-in fade-in duration-200">
           <div className="grid gap-6 md:grid-cols-2">
             {/* Column 1: Profile & Connections */}
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
@@ -891,11 +976,53 @@ export function WorkOrderConsoleClient({
             </div>
           </div>
         </div>
-      )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* === VEHICLE TAB === */}
-      {activeTab === 'vehicle' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      <AnimatePresence>
+        {activeDrawer === 'vehicle' && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveDrawer(null)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-2xl border-l border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Vehicles Configuration</span>
+                </div>
+                
+                {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
+                <div className="flex gap-2 items-center">
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <span className="h-5 w-[1px] bg-white/10 mx-1" />
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-6 animate-in fade-in duration-200">
           <div id="wo-vehicles" className="scroll-mt-28">
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
@@ -913,7 +1040,11 @@ export function WorkOrderConsoleClient({
             </div>
           </div>
         </div>
-      )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* === PHOTOS TAB === */}
       {activeTab === 'photos' && (
@@ -1196,8 +1327,46 @@ export function WorkOrderConsoleClient({
       )}
 
       {/* === LOYALTY TAB === */}
-      {activeTab === 'loyalty' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      <AnimatePresence>
+        {activeDrawer === 'loyalty' && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveDrawer(null)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-2xl border-l border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Loyalty Punches & Credits</span>
+                </div>
+                
+                {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
+                <div className="flex gap-2 items-center">
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <span className="h-5 w-[1px] bg-white/10 mx-1" />
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-6 animate-in fade-in duration-200">
           {data.customerId ? (
             <div id='wo-loyalty' className='scroll-mt-32'>
               <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
@@ -1312,11 +1481,53 @@ export function WorkOrderConsoleClient({
             </div>
           )}
         </div>
-      )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* === NOTES TAB === */}
-      {activeTab === 'notes' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      <AnimatePresence>
+        {activeDrawer === 'notes' && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveDrawer(null)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-2xl border-l border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Internal Staff Notes</span>
+                </div>
+                
+                {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
+                <div className="flex gap-2 items-center">
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <span className="h-5 w-[1px] bg-white/10 mx-1" />
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-6 animate-in fade-in duration-200">
           <div className="grid gap-6 md:grid-cols-2">
             {/* Column 1: Existing Notes list */}
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
@@ -1474,11 +1685,53 @@ export function WorkOrderConsoleClient({
             </div>
           </div>
         </div>
-      )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* === ADVANCED TAB === */}
-      {activeTab === 'advanced' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      <AnimatePresence>
+        {activeDrawer === 'advanced' && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveDrawer(null)}
+              className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm"
+            />
+            
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[110] w-full max-w-2xl border-l border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gold animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.2em] text-gold-soft">Diagnostics & Advanced Tools</span>
+                </div>
+                
+                {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
+                <div className="flex gap-2 items-center">
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Wrench className="h-4 w-4" /></button>
+                  <span className="h-5 w-[1px] bg-white/10 mx-1" />
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-6 animate-in fade-in duration-200">
           <section id='wo-agreement' className='scroll-mt-28'>
             <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
@@ -1591,7 +1844,11 @@ export function WorkOrderConsoleClient({
             </div>
           </div>
         </div>
-      )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {canAdminOverride && data.uploadContextDebug ? (
         <div className='rounded-xl border border-dashed border-gold/30 bg-zinc-950/80 px-4 py-3 font-mono text-[10px] text-zinc-400'>

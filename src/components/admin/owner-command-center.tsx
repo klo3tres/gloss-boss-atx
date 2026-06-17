@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -138,6 +138,258 @@ function OperationsCard({
     </Link>
   ) : (
     inner
+  );
+}
+
+// Interactive Revenue Console with Hover splines and segment highlights
+function InteractiveRevenueDashboard({ metrics }: { metrics: OwnerDashboardSnapshot }) {
+  const [activeTab, setActiveTab] = useState<'trend' | 'allocation'>('trend');
+  const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
+  
+  const chartData = useMemo(() => {
+    return [...metrics.recentPayments].reverse();
+  }, [metrics.recentPayments]);
+
+  const maxVal = useMemo(() => {
+    if (chartData.length === 0) return 1000;
+    return Math.max(...chartData.map(d => parseFloat(d.amount.replace(/[^0-9.]/g, '')) || 0), 1000);
+  }, [chartData]);
+
+  const points = useMemo(() => {
+    return chartData.map((d, i) => {
+      const x = 50 + (i * 410) / Math.max(1, chartData.length - 1);
+      const val = parseFloat(d.amount.replace(/[^0-9.]/g, '')) || 0;
+      const y = 145 - (val / maxVal) * 105;
+      return { x, y, val, label: d.time, customer: d.customer, method: d.method };
+    });
+  }, [chartData, maxVal]);
+
+  const linePath = useMemo(() => {
+    if (points.length < 2) return '';
+    return points.reduce((acc, p, i, a) => {
+      if (i === 0) return `M ${p.x} ${p.y}`;
+      const cpX1 = a[i - 1].x + (p.x - a[i - 1].x) / 2;
+      const cpY1 = a[i - 1].y;
+      const cpX2 = cpX1;
+      const cpY2 = p.y;
+      return `${acc} C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${p.x} ${p.y}`;
+    }, '');
+  }, [points]);
+
+  const areaPath = useMemo(() => {
+    if (points.length === 0) return '';
+    return `${linePath} L ${points[points.length - 1].x} 150 L ${points[0].x} 150 Z`;
+  }, [points, linePath]);
+
+  const mix = metrics.paymentMixMonth;
+  const gross = mix.grossCents || 1;
+  const stripePct = Math.round((mix.stripeCents / gross) * 100);
+  const cashPct = Math.round((mix.cashCents / gross) * 100);
+  const zellePct = Math.round((mix.zelleCents / gross) * 100);
+  const otherPct = Math.round((mix.otherCents / gross) * 100);
+
+  const channels = [
+    { label: 'Stripe', cents: mix.stripeCents, pct: stripePct, color: 'bg-indigo-500', barColor: '#6366f1' },
+    { label: 'Zelle', cents: mix.zelleCents, pct: zellePct, color: 'bg-cyan-500', barColor: '#06b6d4' },
+    { label: 'Cash', cents: mix.cashCents, pct: cashPct, color: 'bg-emerald-500', barColor: '#10b981' },
+    { label: 'Other', cents: mix.otherCents, pct: otherPct, color: 'bg-amber-500', barColor: '#f59e0b' },
+  ].filter(c => c.cents > 0 || c.pct > 0);
+
+  return (
+    <GlassCard className="border-gold/20 bg-black/60 shadow-[0_0_40px_rgba(212,175,55,0.06)] relative overflow-hidden">
+      <div className="absolute -top-12 -right-12 h-32 w-32 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-3 mb-4 gap-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-gold animate-pulse" />
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-white">Interactive Mission Revenue Console</span>
+        </div>
+        <div className="flex rounded-xl bg-black/50 border border-white/10 p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('trend')}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition duration-200 ${
+              activeTab === 'trend' ? 'bg-gold/15 text-gold-soft border border-gold/20' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            Gross Revenue Trend
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('allocation')}
+            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition duration-200 ${
+              activeTab === 'allocation' ? 'bg-gold/15 text-gold-soft border border-gold/20' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            Payment Channels
+          </button>
+        </div>
+      </div>
+
+      <div className="relative min-h-[190px] flex items-center justify-center">
+        {activeTab === 'trend' ? (
+          chartData.length === 0 ? (
+            <div className="text-zinc-500 text-xs py-10 font-medium">No recent transaction data to map.</div>
+          ) : (
+            <div className="w-full relative">
+              <svg className="w-full h-[180px]" viewBox="0 0 500 180" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#d4af37" stopOpacity="0.28" />
+                    <stop offset="100%" stopColor="#d4af37" stopOpacity="0.00" />
+                  </linearGradient>
+                </defs>
+
+                {[0, 0.25, 0.5, 0.75, 1].map((p, idx) => {
+                  const y = 145 - p * 105;
+                  return (
+                    <line key={idx} x1="40" y1={y} x2="480" y2={y} stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
+                  );
+                })}
+
+                {areaPath && <path d={areaPath} fill="url(#chartGrad)" />}
+
+                {linePath && (
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#d4af37"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    className="drop-shadow-[0_2px_8px_rgba(212,175,55,0.3)]"
+                  />
+                )}
+
+                {points.map((p, idx) => (
+                  <circle
+                    key={idx}
+                    cx={p.x}
+                    cy={p.y}
+                    r={hoveredPoint === p ? "5" : "3.5"}
+                    className={`transition-all duration-200 ${
+                      hoveredPoint === p ? "fill-gold stroke-white stroke-2 shadow-[0_0_12px_#d4af37]" : "fill-black stroke-gold/60 stroke-2"
+                    }`}
+                  />
+                ))}
+
+                {points.map((p, idx) => (
+                  <text
+                    key={idx}
+                    x={p.x}
+                    y="170"
+                    textAnchor="middle"
+                    className="font-mono text-[8px] fill-zinc-500 uppercase tracking-widest font-black"
+                  >
+                    {p.label}
+                  </text>
+                ))}
+                
+                {[0, 0.5, 1].map((p, idx) => {
+                  const y = 145 - p * 105;
+                  const labelVal = Math.round(p * maxVal);
+                  return (
+                    <text
+                      key={idx}
+                      x="32"
+                      y={y + 3}
+                      textAnchor="end"
+                      className="font-mono text-[8px] fill-zinc-600 font-bold"
+                    >
+                      ${labelVal}
+                    </text>
+                  );
+                })}
+
+                {points.map((p, idx) => (
+                  <rect
+                    key={idx}
+                    x={p.x - 20}
+                    y="20"
+                    width="40"
+                    height="135"
+                    className="fill-transparent cursor-pointer"
+                    onMouseEnter={() => setHoveredPoint(p)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                  />
+                ))}
+              </svg>
+
+              {hoveredPoint && (
+                <div 
+                  className="absolute bg-black/95 border border-gold/30 rounded-xl p-3 shadow-2xl backdrop-blur-md text-[10px] space-y-1 z-10 pointer-events-none"
+                  style={{
+                    left: `${Math.min(380, Math.max(20, (hoveredPoint.x / 500) * 100 - 15))}%`,
+                    top: `${Math.min(90, (hoveredPoint.y / 180) * 100 - 40)}px`
+                  }}
+                >
+                  <p className="font-black uppercase tracking-wider text-gold-soft">{hoveredPoint.customer}</p>
+                  <p className="font-mono font-bold text-white text-xs">${hoveredPoint.val.toFixed(2)}</p>
+                  <p className="text-zinc-400 capitalize">{hoveredPoint.method} · {hoveredPoint.label}</p>
+                </div>
+              )}
+            </div>
+          )
+        ) : (
+          <div className="w-full py-4 space-y-6">
+            <div className="flex flex-col sm:flex-row items-center gap-6 justify-around">
+              <div className="relative h-32 w-32 shrink-0 flex items-center justify-center">
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.03)" strokeWidth="12" fill="none" />
+                  {(() => {
+                    let accPct = 0;
+                    return channels.map((c, i) => {
+                      const strokeDash = 251.2;
+                      const strokeDashOffset = strokeDash - (strokeDash * c.pct) / 100;
+                      const rotateVal = (accPct / 100) * 360;
+                      accPct += c.pct;
+                      return (
+                        <circle
+                          key={i}
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          stroke={c.barColor}
+                          strokeWidth="12"
+                          fill="none"
+                          strokeDasharray={strokeDash}
+                          strokeDashoffset={strokeDashOffset}
+                          style={{
+                            transformOrigin: '50px 50px',
+                            transform: `rotate(${rotateVal}deg)`,
+                          }}
+                          className="transition-all duration-500 ease-out"
+                        />
+                      );
+                    });
+                  })()}
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center">
+                  <span className="font-mono text-xs font-black text-zinc-400">MTD Total</span>
+                  <span className="font-mono text-sm font-black text-white">${(gross / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
+
+              <div className="flex-1 max-w-sm space-y-3 w-full">
+                <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Gross Month-To-Date Channel Mix</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {channels.map((c) => (
+                    <div 
+                      key={c.label}
+                      className="rounded-xl border border-white/5 bg-zinc-950/40 p-2.5 flex items-center gap-2.5 hover:border-white/10 transition"
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full ${c.color} shrink-0`} />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">{c.label}</p>
+                        <p className="font-mono font-bold text-white text-xs mt-0.5">${(c.cents / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })} <span className="text-[9px] text-zinc-500 font-medium">({c.pct}%)</span></p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </GlassCard>
   );
 }
 
@@ -997,6 +1249,9 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
           </div>
         </div>
       </section>
+
+      {/* Interactive Mission Revenue Console */}
+      <InteractiveRevenueDashboard metrics={metrics} />
 
       {/* SECTION 2: ACTIONABLE ALERTS (Middle Section) */}
       <section className="space-y-3">

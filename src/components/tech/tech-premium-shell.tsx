@@ -348,6 +348,56 @@ export function TechPremiumShell({
       {/* 1. OVERVIEW TAB */}
       {activeTab === 'overview' && (
         <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Motivation Goal Header Banner */}
+          <div className="rounded-3xl border border-gold/45 bg-gradient-to-r from-black via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.2)] relative overflow-hidden group hover:border-gold transition duration-300">
+            <div className="absolute top-0 right-0 h-32 w-32 bg-gold/10 rounded-full blur-[60px] pointer-events-none" />
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 text-center md:text-left">
+                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-gold-soft animate-pulse">★ Active Weekly Target ★</p>
+                <h2 className="text-2xl font-black text-white uppercase tracking-tight">{goalLabel ?? 'Driveway Revenue Target'}</h2>
+                <p className="text-xs text-zinc-400 max-w-md">
+                  Keep crushing it! You are at <strong className="text-gold-soft">{goalPct}%</strong> of your weekly goal. Keep pushing to unlock your performance bonus milestone.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-2 justify-center md:justify-start">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${goalPct >= 25 ? 'bg-gold/15 text-gold border-gold/30' : 'bg-white/5 text-zinc-500 border-white/5'}`}>
+                     25% Bronze
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${goalPct >= 50 ? 'bg-gold/15 text-gold border-gold/30' : 'bg-white/5 text-zinc-500 border-white/5'}`}>
+                     50% Silver
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${goalPct >= 75 ? 'bg-gold/15 text-gold border-gold/30' : 'bg-white/5 text-zinc-500 border-white/5'}`}>
+                     75% Gold
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${goalPct >= 100 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-zinc-500 border-white/5'}`}>
+                     100% Elite
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative h-24 w-24 shrink-0 flex items-center justify-center rounded-full bg-zinc-950/80 border border-white/10 p-2 shadow-inner">
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.03)" strokeWidth="6" fill="none" />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="42"
+                    stroke="#d4af37"
+                    strokeWidth="6"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray="264"
+                    strokeDashoffset={264 - (264 * goalPct) / 100}
+                    className="transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center">
+                  <span className="font-mono text-xl font-black text-white">{goalPct}%</span>
+                  <span className="text-[7px] font-black uppercase tracking-wider text-zinc-500">Done</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <section className={`${cardGlow} relative overflow-hidden`}>
             <div className='pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_top,rgba(212,166,77,0.14),transparent_55%)]' />
             <p className='relative text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Live dispatch metrics</p>

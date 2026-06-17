@@ -184,11 +184,16 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
                     / {getIntervalLabel()}
                   </span>
                 </div>
-                {p.discount_percent > 0 && (
-                  <p className="mt-2 text-xs font-black uppercase tracking-wide text-emerald-400 flex items-center gap-1">
-                    <Zap className="h-3.5 w-3.5 fill-emerald-400/20 text-emerald-400" />
-                    {p.discount_percent}% Member Discount Included
-                  </p>
+                 {p.discount_percent > 0 && (
+                  <div className="space-y-1 mt-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-emerald-400 flex items-center gap-1">
+                      <Zap className="h-3.5 w-3.5 fill-emerald-400/20 text-emerald-400" />
+                      {p.discount_percent}% Member Discount Included
+                    </p>
+                    <p className="text-[10px] text-zinc-500 font-medium">
+                      Est. Annual Savings: <strong className="text-emerald-400 font-semibold">{p.tier.toLowerCase().includes('gold') ? '$650+' : p.tier.toLowerCase().includes('silver') ? '$380+' : '$180+'}</strong> / year
+                    </p>
+                  </div>
                 )}
               </div>
 
