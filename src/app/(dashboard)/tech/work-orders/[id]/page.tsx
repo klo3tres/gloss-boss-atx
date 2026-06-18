@@ -5,6 +5,7 @@ import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
 import { buildUnifiedReceiptView } from '@/lib/unified-receipt';
 import type { ReceiptParityDebug } from '@/lib/receipt-totals';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
+import { formatTimerMinutes, isValidTimerForAnalytics, timerDurationMinutes } from '@/lib/timer-integrity';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -346,12 +347,19 @@ export default async function TechWorkOrderDetailPage({
 
   const openTimer = await admin
     .from('tech_job_timers')
-    .select('id, started_at, created_at')
+    .select('id, appointment_id, fallback_booking_id, customer_id, started_at, ended_at, created_at, duration_seconds, running, status')
     .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
     .is('ended_at', null)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  const timerRowsRes = await admin
+    .from('tech_job_timers')
+    .select('id, appointment_id, fallback_booking_id, customer_id, technician_id, started_at, ended_at, created_at, duration_seconds, running, status')
+    .eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId)
+    .order('created_at', { ascending: false })
+    .limit(50);
 
   const [timelineRes, notesRes, outboxRes, agreementRes, paymentsRes] = await Promise.all([
     !isFallback
@@ -625,6 +633,37 @@ export default async function TechWorkOrderDetailPage({
     ? await fetchWeatherForAddress(fullAddress, str(row.scheduled_start) || undefined)
     : { ok: false as const, blocker: 'No address for weather lookup.' };
 
+  const linkedWorkOrder = {
+    id: queryId,
+    status: row.status,
+    archived: row.archived,
+    archived_at: row.archived_at,
+    deleted_at: row.deleted_at,
+    customer_id: row.customer_id,
+    guest_email: row.guest_email,
+    guest_phone: row.guest_phone,
+  };
+  const validTimerRows = ((timerRowsRes.data ?? []) as Row[]).filter((timer) =>
+    isValidTimerForAnalytics(timer, isFallback ? { fallback: linkedWorkOrder } : { appointment: linkedWorkOrder }),
+  );
+  const timerMinutes = validTimerRows
+    .map((timer) => timerDurationMinutes(timer))
+    .filter((mins): mins is number => typeof mins === 'number' && mins > 0);
+  const totalTimerMinutes = timerMinutes.length ? timerMinutes.reduce((sum, mins) => sum + mins, 0) : null;
+  const jobStartedAtIso = str(row.job_started_at);
+  const jobCompletedAtIso = str(row.job_completed_at || row.completed_at);
+  const rawStartMs = jobStartedAtIso ? new Date(jobStartedAtIso).getTime() : NaN;
+  const rawEndMs = jobCompletedAtIso ? new Date(jobCompletedAtIso).getTime() : NaN;
+  const rawJobMinutes =
+    Number.isFinite(rawStartMs) && Number.isFinite(rawEndMs) && rawEndMs >= rawStartMs ? Math.round((rawEndMs - rawStartMs) / 60000) : null;
+  const completedStatus = ['completed', 'closed', 'paid', 'test_comped'].includes(str(row.status).toLowerCase()) || Boolean(jobCompletedAtIso);
+  const durationMinutes = totalTimerMinutes ?? rawJobMinutes;
+  const durationWarning = completedStatus && durationMinutes == null
+    ? 'Completed work order has no valid timer duration.'
+    : completedStatus && durationMinutes != null && durationMinutes < 15
+      ? 'Completed unusually fast. Verify timer start/stop history.'
+      : undefined;
+
   const consoleData: any = {
     id,
     canonicalId: queryId,
@@ -741,6 +780,17 @@ export default async function TechWorkOrderDetailPage({
     technicianName: resolved.technicianName ?? '',
     jobStartedAt: displayChicago(row.job_started_at, ''),
     jobCompletedAt: displayChicago(row.job_completed_at || row.completed_at, ''),
+    jobStartedAtIso,
+    jobCompletedAtIso,
+    timerSummary: {
+      totalMinutes: durationMinutes,
+      label: formatTimerMinutes(durationMinutes),
+      technicianMinutes: totalTimerMinutes,
+      status: str((openTimer.data as Row | null)?.id) ? 'running' : totalTimerMinutes != null ? 'recorded' : 'missing',
+      warning: durationWarning,
+      vehicleCount,
+      perVehicleMinutes: durationMinutes != null ? Math.round(durationMinutes / vehicleCount) : null,
+    },
     requirements,
     timeline: ((timelineRes.data ?? []) as Row[]).map((t) => ({
       id: str(t.id),

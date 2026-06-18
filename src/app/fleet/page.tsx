@@ -144,14 +144,28 @@ export default async function FleetPage() {
             <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Fleet success stories</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {[
-                ['Property management', 'Cleaner resident-facing lots and fewer vendor visits.'],
-                ['Dealerships', 'Inventory stays photo-ready before weekend traffic.'],
-                ['Medical offices', 'Executive and staff vehicles handled on-site between shifts.'],
-                ['Construction companies', 'Work trucks cleaned on cadence without leaving the job rhythm.'],
-              ].map(([title, copy]) => (
-                <div key={title} className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
-                  <p className="font-black text-white">{title}</p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-400">{copy}</p>
+                ['Property management', 'Cleaner resident-facing lots and fewer vendor visits.', 'fleet.property'],
+                ['Dealerships', 'Inventory stays photo-ready before weekend traffic.', 'fleet.dealership'],
+                ['Medical offices', 'Executive and staff vehicles handled on-site between shifts.', 'fleet.medical'],
+                ['Construction companies', 'Work trucks cleaned on cadence without leaving the job rhythm.', 'fleet.construction'],
+                ['Executive fleets', 'Premium recurring care for client-facing leadership vehicles.', 'fleet.corporate'],
+                ['Company vehicles', 'Consistent brand presentation across daily drivers and route vehicles.', 'fleet.industries'],
+              ].map(([title, copy, imageKey]) => (
+                <div key={title} className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/60">
+                  <div className="relative h-32">
+                    <Image
+                      src={mediaUrl(registry, imageKey)}
+                      alt={`${title} fleet detailing`}
+                      fill
+                      unoptimized={mediaUrl(registry, imageKey).startsWith('http')}
+                      className="object-cover opacity-75"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
+                  </div>
+                  <div className="p-4">
+                    <p className="font-black text-white">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">{copy}</p>
+                  </div>
                 </div>
               ))}
             </div>

@@ -111,6 +111,17 @@ export type WorkOrderConsoleData = {
   technicianName: string;
   jobStartedAt: string;
   jobCompletedAt: string;
+  jobStartedAtIso?: string;
+  jobCompletedAtIso?: string;
+  timerSummary?: {
+    totalMinutes: number | null;
+    label: string;
+    technicianMinutes: number | null;
+    status: string;
+    warning?: string;
+    vehicleCount: number;
+    perVehicleMinutes: number | null;
+  };
   recentPayments: Array<{
     id?: string;
     amount: string;
@@ -390,16 +401,22 @@ export function WorkOrderConsoleClient({
 
   // Calculate actual vs expected duration
   const dur = useMemo(() => {
-    if (!data.jobStartedAt) return null;
-    const start = new Date(data.jobStartedAt).getTime();
-    const end = data.jobCompletedAt ? new Date(data.jobCompletedAt).getTime() : Date.now();
+    if (data.timerSummary?.totalMinutes != null) {
+      return {
+        minutes: data.timerSummary.totalMinutes,
+        label: data.jobCompletedAt || data.jobCompletedAtIso ? 'Actual duration' : 'Elapsed time',
+      };
+    }
+    if (!data.jobStartedAtIso) return null;
+    const start = new Date(data.jobStartedAtIso).getTime();
+    const end = data.jobCompletedAtIso ? new Date(data.jobCompletedAtIso).getTime() : Date.now();
     if (Number.isNaN(start) || Number.isNaN(end)) return null;
     const diffMins = Math.round((end - start) / 60000);
     return {
       minutes: diffMins,
-      label: data.jobCompletedAt ? 'Actual duration' : 'Elapsed time',
+      label: data.jobCompletedAtIso ? 'Actual duration' : 'Elapsed time',
     };
-  }, [data.jobStartedAt, data.jobCompletedAt]);
+  }, [data.jobStartedAtIso, data.jobCompletedAtIso, data.jobCompletedAt, data.timerSummary]);
 
   const expectedMins = useMemo(() => {
     if (!data.scheduledStartIso || !data.scheduledEnd) return null;
@@ -481,7 +498,7 @@ export function WorkOrderConsoleClient({
         </div>
       </div>
 
-      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-6'>
         {[
           {
             label: 'Customer',
@@ -518,6 +535,15 @@ export function WorkOrderConsoleClient({
             icon: <Sparkles className='h-4 w-4' />,
             action: () => setActiveDrawer('loyalty'),
           },
+          {
+            label: dur?.label || 'Duration',
+            value: data.timerSummary?.label || (dur ? `${dur.minutes} min` : 'Not recorded'),
+            meta: data.timerSummary?.perVehicleMinutes != null
+              ? `${data.timerSummary.perVehicleMinutes} min / vehicle`
+              : `${data.vehicles.length} vehicle${data.vehicles.length === 1 ? '' : 's'}`,
+            icon: <Clock className='h-4 w-4' />,
+            action: () => setActiveTab('overview'),
+          },
         ].map((item) => (
           <button
             key={item.label}
@@ -538,6 +564,12 @@ export function WorkOrderConsoleClient({
           </button>
         ))}
       </div>
+
+      {data.timerSummary?.warning ? (
+        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs font-semibold text-amber-100">
+          {data.timerSummary.warning}
+        </div>
+      ) : null}
 
       {/* 2. CONDITIONAL TAB CONTENTS */}
 

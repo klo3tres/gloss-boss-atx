@@ -145,9 +145,21 @@ export async function repairDuplicatePaymentGroups(
 
 export async function findAndRepairAllDuplicatePayments(admin: SupabaseClient, limit = 5000): Promise<RepairDuplicateResult> {
   const select =
-    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
+    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, fallback_booking_id, customer_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
   const { data: payments } = await admin.from('payments').select(select).order('created_at', { ascending: false }).limit(limit);
-  const rows = ((payments ?? []) as PayRow[]).map((p) => ({ ...p, source_table: 'payments' as const }));
+  const { data: receipts } = await admin
+    .from('receipts')
+    .select('id, payment_id, receipt_number, amount_cents, final_total_cents, status, payment_method, created_at, appointment_id, fallback_booking_id, customer_id, metadata, is_test, exclude_from_revenue, voided_at, refunded_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  const paymentRows = ((payments ?? []) as PayRow[]).map((p) => ({ ...p, source_table: 'payments' as const }));
+  const receiptRows = ((receipts ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    ...r,
+    amount_cents: typeof r.amount_cents === 'number' ? r.amount_cents : r.final_total_cents,
+    payment_kind: 'receipt',
+    source_table: 'receipts' as const,
+  })) as PayRow[];
+  const rows = [...paymentRows, ...receiptRows];
   const groups = findDuplicatePaymentGroups(rows).filter((g) => g.duplicateIds.length > 0);
   return repairDuplicatePaymentGroups(admin, groups);
 }

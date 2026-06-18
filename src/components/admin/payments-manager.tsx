@@ -23,7 +23,7 @@ import {
   Compass,
   Search
 } from 'lucide-react';
-import { reconcileStripeSessionAction, refundStripePaymentAction } from '@/app/(dashboard)/admin/payments/payment-actions';
+import { excludePaymentFromRevenueAction, reconcileStripeSessionAction, refundStripePaymentAction } from '@/app/(dashboard)/admin/payments/payment-actions';
 
 type PayRow = Record<string, any>;
 
@@ -49,7 +49,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'paid' | 'balance' | 'comp' | 'excluded' | 'duplicate' | 'stripe' | 'cash' | 'credit'>('all');
-  const [showExcluded, setShowExcluded] = useState(true);
+  const [showExcluded, setShowExcluded] = useState(false);
 
   // Group row items
   const grouped = useMemo(() => {
@@ -392,6 +392,29 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                     <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Revenue handling</span>
                     <p className="mt-1 leading-5">{revenueReason}</p>
                   </div>
+                  {activeRow.id && !activeRow.exclude_from_revenue ? (
+                    <form
+                      action={async (fd) => {
+                        await excludePaymentFromRevenueAction(fd);
+                        setActiveRowIndex(null);
+                        window.location.reload();
+                      }}
+                      className="rounded-2xl border border-amber-500/15 bg-amber-500/5 p-3 text-xs"
+                    >
+                      <input type="hidden" name="paymentId" value={activeRow.id} />
+                      <label className="block text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">
+                        Exclude from revenue
+                        <select name="reason" className="mt-2 w-full rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-xs font-bold normal-case tracking-normal text-white">
+                          <option value="test_or_duplicate_cleanup">Test or duplicate cleanup</option>
+                          <option value="manual_admin_correction">Manual admin correction</option>
+                          <option value="non_revenue_record">Non-revenue record</option>
+                        </select>
+                      </label>
+                      <button type="submit" className="mt-3 w-full rounded-xl border border-amber-500/25 bg-black/45 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-200 hover:bg-amber-500/10">
+                        Mark excluded
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
 
                 {/* Checkout session / Payment intent keys */}

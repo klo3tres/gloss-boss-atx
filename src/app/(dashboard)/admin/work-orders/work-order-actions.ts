@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { timerInvalidReasons } from '@/lib/timer-integrity';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -49,30 +50,89 @@ export async function deleteAppointmentWorkOrderAction(formData: FormData) {
 export async function clearStaleActiveTestRecordsAction(formData: FormData) {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false, error: gate.error };
+  const admin = gate.admin;
   const now = new Date().toISOString();
   const staleBefore = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  let invalidTimerCount = 0;
+  let repairedTimerCount = 0;
 
-  await gate.admin
+  await admin
     .from('tech_job_timers')
     .update({ ended_at: now, running: false, status: 'cleared_test' })
     .is('ended_at', null)
     .lt('created_at', staleBefore);
 
-  await gate.admin
+  const { data: timerRows } = await admin
+    .from('tech_job_timers')
+    .select('id, appointment_id, fallback_booking_id, work_order_id, customer_id, started_at, ended_at, created_at, duration_seconds, running, status')
+    .order('created_at', { ascending: false })
+    .limit(1500);
+
+  const timers = (timerRows ?? []) as Array<Record<string, unknown>>;
+  const appointmentIds = [...new Set(timers.map((row) => String(row.appointment_id ?? '').trim()).filter(Boolean))];
+  const fallbackIds = [...new Set(timers.map((row) => String(row.fallback_booking_id ?? '').trim()).filter(Boolean))];
+  const appointments = new Map<string, Record<string, unknown>>();
+  const fallbacks = new Map<string, Record<string, unknown>>();
+
+  if (appointmentIds.length > 0) {
+    const { data } = await admin
+      .from('appointments')
+      .select('id, status, archived, archived_at, deleted_at, customer_id, guest_email, guest_phone')
+      .in('id', appointmentIds);
+    for (const row of data ?? []) appointments.set(String((row as Record<string, unknown>).id), row as Record<string, unknown>);
+  }
+  if (fallbackIds.length > 0) {
+    const { data } = await admin
+      .from('booking_fallbacks')
+      .select('id, status, archived, archived_at, deleted_at, customer_id, guest_email, guest_phone')
+      .in('id', fallbackIds);
+    for (const row of data ?? []) fallbacks.set(String((row as Record<string, unknown>).id), row as Record<string, unknown>);
+  }
+
+  async function markInvalidTimer(id: string, reasons: string[], endedAt: unknown) {
+    const patchAttempts = [
+      { ended_at: endedAt || now, running: false, status: 'excluded_invalid', exclude_from_analytics: true, invalid_reason: reasons.join(',') },
+      { ended_at: endedAt || now, running: false, status: 'excluded_invalid' },
+      { ended_at: endedAt || now, running: false },
+      { status: 'excluded_invalid' },
+    ];
+    for (const patch of patchAttempts) {
+      const { error } = await admin.from('tech_job_timers').update(patch).eq('id', id);
+      if (!error) return true;
+    }
+    return false;
+  }
+
+  for (const timer of timers) {
+    const appointmentId = String(timer.appointment_id ?? '').trim();
+    const fallbackId = String(timer.fallback_booking_id ?? '').trim();
+    const reasons = timerInvalidReasons(timer, {
+      appointment: appointmentId ? appointments.get(appointmentId) ?? null : undefined,
+      fallback: fallbackId ? fallbacks.get(fallbackId) ?? null : undefined,
+    });
+    if (reasons.length === 0) continue;
+    invalidTimerCount += 1;
+    const id = String(timer.id ?? '').trim();
+    if (id && (await markInvalidTimer(id, reasons, timer.ended_at))) repairedTimerCount += 1;
+  }
+
+  await admin
     .from('tech_workflow_sessions')
     .update({ status: 'archived', archived_at: now, updated_at: now })
     .in('status', ['active', 'in_progress'])
     .lt('created_at', staleBefore);
 
-  await gate.admin
+  await admin
     .from('booking_fallbacks')
     .update({ archived: true, archived_at: now, status: 'archived', updated_at: now })
     .or('guest_email.ilike.%test%,guest_name.ilike.%test%,guest_phone.ilike.%555%')
     .in('status', ['pending', 'active', 'in_progress']);
 
   revalidatePath('/admin/work-orders');
+  revalidatePath('/admin');
+  revalidatePath('/admin/system-diagnostics');
   revalidatePath('/tech');
-  return { ok: true };
+  return { ok: true, invalidTimerCount, repairedTimerCount };
 }
 
 export async function bulkWorkOrderAction(formData: FormData) {

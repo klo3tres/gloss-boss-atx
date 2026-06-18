@@ -79,3 +79,32 @@ export async function refundStripePaymentAction(formData: FormData): Promise<voi
   revalidatePath('/admin/payments');
 }
 
+export async function excludePaymentFromRevenueAction(formData: FormData): Promise<void> {
+  const gate = await requireAdmin();
+  if (!gate?.admin) return;
+  const paymentId = String(formData.get('paymentId') ?? '').trim();
+  const reason = String(formData.get('reason') ?? 'admin_cleanup').trim() || 'admin_cleanup';
+  if (!paymentId) return;
+
+  const current = await gate.admin.from('payments').select('metadata').eq('id', paymentId).maybeSingle();
+  const metadata = current.data?.metadata && typeof current.data.metadata === 'object' ? (current.data.metadata as Record<string, unknown>) : {};
+  const update = await gate.admin
+    .from('payments')
+    .update({
+      exclude_from_revenue: true,
+      metadata: {
+        ...metadata,
+        excluded_by_admin: true,
+        excluded_by: gate.userId,
+        excluded_reason: reason,
+        excluded_at: new Date().toISOString(),
+      },
+    })
+    .eq('id', paymentId);
+
+  if (update.error && !isSchemaDriftError(update.error.message)) console.warn('[payments] exclude row', update.error.message);
+  revalidatePath('/admin/payments');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+}
+

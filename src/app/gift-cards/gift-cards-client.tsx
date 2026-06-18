@@ -13,11 +13,13 @@ const giftCardTiers = [
 
 const occasions = [
   { id: 'birthday', label: 'Birthday', key: 'giftcards.birthday' },
-  { id: 'graduation', label: 'Graduation', key: 'giftcards.hero' },
-  { id: 'fathers-day', label: "Father's Day", key: 'giftcards.corporate' },
-  { id: 'mothers-day', label: "Mother's Day", key: 'giftcards.hero' },
-  { id: 'thank-you', label: 'Thank You', key: 'giftcards.birthday' },
+  { id: 'graduation', label: 'Graduation', key: 'giftcards.graduation' },
+  { id: 'fathers-day', label: "Father's Day", key: 'giftcards.fathersDay' },
+  { id: 'mothers-day', label: "Mother's Day", key: 'giftcards.mothersDay' },
+  { id: 'thank-you', label: 'Thank You', key: 'giftcards.thankYou' },
   { id: 'corporate', label: 'Corporate Reward', key: 'giftcards.corporate' },
+  { id: 'holiday', label: 'Holiday', key: 'giftcards.holiday' },
+  { id: 'new-car', label: 'New Car Gift', key: 'giftcards.newCar' },
 ];
 
 export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: boolean }) {
@@ -29,6 +31,7 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
   const [deliveryDate, setDeliveryDate] = useState('');
   const [message, setMessage] = useState('');
   const [occasion, setOccasion] = useState(occasions[0]);
+  const [giftMode, setGiftMode] = useState<'gift' | 'self'>('gift');
   const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +55,7 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
             deliveryDate: deliveryDate || null,
             message: message.trim() || null,
             occasion: occasion.label,
+            sendAsGift: giftMode === 'gift',
           }),
         });
         const data = (await res.json()) as { url?: string; error?: string; message?: string; code?: string };
@@ -70,7 +74,7 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
       }
       setBusy(null);
     },
-    [deliveryDate, email, message, occasion.label, recipientEmail, checkoutAvailable]
+    [deliveryDate, email, giftMode, message, occasion.label, recipientEmail, checkoutAvailable]
   );
 
   useEffect(() => {
@@ -128,13 +132,29 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
         ) : null}
 
         <section className='mt-8 grid gap-4 rounded-3xl border border-gold/20 bg-black/45 p-5 md:grid-cols-2'>
+          <div className='md:col-span-2 grid gap-3 sm:grid-cols-2'>
+            {[
+              ['gift', 'Send as gift', 'Recipient receives the email delivery.'],
+              ['self', 'Buy for myself', 'Keep it under your purchaser email.'],
+            ].map(([id, label, copy]) => (
+              <button
+                key={id}
+                type='button'
+                onClick={() => setGiftMode(id as 'gift' | 'self')}
+                className={`rounded-2xl border p-4 text-left transition ${giftMode === id ? 'border-gold bg-gold/10 text-white' : 'border-white/10 bg-black/35 text-zinc-300'}`}
+              >
+                <span className='block text-xs font-black uppercase tracking-[0.18em]'>{label}</span>
+                <span className='mt-1 block text-xs text-zinc-400'>{copy}</span>
+              </button>
+            ))}
+          </div>
           <label className='text-sm'>
             <span className='mb-2 block text-zinc-300'>Purchaser email</span>
             <input type='email' value={email} onChange={(e) => setEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' placeholder='you@example.com' />
           </label>
           <label className='text-sm'>
             <span className='mb-2 block text-zinc-300'>Recipient email</span>
-            <input type='email' value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' placeholder='recipient@example.com' />
+            <input type='email' disabled={giftMode === 'self'} value={giftMode === 'self' ? email : recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 disabled:opacity-50' placeholder='recipient@example.com' />
           </label>
           <label className='text-sm'>
             <span className='mb-2 block text-zinc-300'>Delivery date</span>
@@ -150,6 +170,15 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
             <span className='mb-2 block text-zinc-300'>Personal message</span>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} placeholder='Enjoy a showroom-level reset from Gloss Boss ATX.' />
           </label>
+        </section>
+
+        <section className='mt-6 grid gap-3 rounded-3xl border border-white/10 bg-zinc-950/55 p-5 sm:grid-cols-4'>
+          {['Good for services', 'Good for add-ons', 'Delivered by email', 'Apply during booking'].map((label) => (
+            <div key={label} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
+              <p className='text-xs font-black uppercase tracking-[0.16em] text-gold-soft'>{label}</p>
+              <p className='mt-2 text-[11px] leading-5 text-zinc-400'>No physical card required unless added later.</p>
+            </div>
+          ))}
         </section>
 
         {error ? <p className='mt-4 text-sm text-red-400'>{error}</p> : null}

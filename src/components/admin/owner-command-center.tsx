@@ -393,6 +393,179 @@ function InteractiveRevenueDashboard({ metrics }: { metrics: OwnerDashboardSnaps
   );
 }
 
+function chicagoDateKey(input: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(input);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '0000';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '00';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '00';
+  return `${year}-${month}-${day}`;
+}
+
+function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['scheduleMonth'] }) {
+  const now = new Date();
+  const monthName = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'America/Chicago' }).format(now);
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const blanks = first.getDay();
+  const todayKey = chicagoDateKey(now);
+  const jobsByDay = new Map<string, OwnerDashboardSnapshot['scheduleMonth']>();
+  for (const job of jobs) {
+    const bucket = jobsByDay.get(job.dayKey) ?? [];
+    bucket.push(job);
+    jobsByDay.set(job.dayKey, bucket);
+  }
+
+  const cells = [
+    ...Array.from({ length: blanks }, (_, i) => ({ type: 'blank' as const, key: `blank-${i}` })),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const date = new Date(now.getFullYear(), now.getMonth(), i + 1);
+      const key = chicagoDateKey(date);
+      return { type: 'day' as const, key, day: i + 1, jobs: jobsByDay.get(key) ?? [] };
+    }),
+  ];
+
+  return (
+    <GlassCard className="border-gold/15 bg-black/45">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+        <div>
+          <SectionEyebrow>Executive Calendar</SectionEyebrow>
+          <p className="mt-1 font-mono text-lg font-black text-white">{monthName}</p>
+        </div>
+        <Link href="/admin/dispatch" className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/10">
+          Open dispatch
+        </Link>
+      </div>
+      <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-[9px] font-black uppercase tracking-wider text-zinc-500">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
+      </div>
+      <div className="mt-2 grid grid-cols-7 gap-1.5">
+        {cells.map((cell) =>
+          cell.type === 'blank' ? (
+            <div key={cell.key} className="min-h-20 rounded-2xl border border-transparent" />
+          ) : (
+            <div
+              key={cell.key}
+              className={`min-h-20 rounded-2xl border p-2 transition-all hover:-translate-y-0.5 ${
+                cell.key === todayKey
+                  ? 'border-gold/50 bg-gold/10 shadow-[0_0_22px_rgba(212,175,55,0.14)]'
+                  : 'border-white/10 bg-zinc-950/55 hover:border-gold/25'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs font-black text-white">{cell.day}</span>
+                {cell.jobs.length > 0 ? <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-black text-gold-soft">{cell.jobs.length}</span> : null}
+              </div>
+              <div className="mt-2 space-y-1">
+                {cell.jobs.slice(0, 2).map((job) => (
+                  <Link key={job.id} href={job.href} className="block truncate rounded-lg bg-black/45 px-1.5 py-1 text-left text-[9px] font-bold text-zinc-300 hover:text-gold-soft">
+                    {job.time} {job.guestName}
+                  </Link>
+                ))}
+                {cell.jobs.length > 2 ? <p className="text-left text-[9px] text-zinc-500">+{cell.jobs.length - 2} more</p> : null}
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </GlassCard>
+  );
+}
+
+function WeatherReadinessWidget() {
+  return (
+    <GlassCard className="border-cyan-400/15 bg-black/45">
+      <SectionEyebrow>Weather Readiness</SectionEyebrow>
+      <p className="mt-4 text-3xl font-black text-white">Austin field check</p>
+      <div className="mt-4 grid gap-2 text-xs text-zinc-300">
+        <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
+          <p className="font-black uppercase tracking-wider text-cyan-200">Provider setup needed</p>
+          <p className="mt-1 text-zinc-500">Connect a weather provider before auto heat, rain, and wind risk appears here.</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
+          <p className="font-black uppercase tracking-wider text-white">Dispatch rule</p>
+          <p className="mt-1 text-zinc-500">Verify heat, rain, and wind before exterior correction or wash work.</p>
+        </div>
+      </div>
+      <Link href="/admin/integrations#weather" className="mt-5 inline-flex rounded-xl border border-cyan-400/30 px-4 py-2 text-xs font-black uppercase text-cyan-200 hover:bg-cyan-400/10">
+        Configure weather
+      </Link>
+    </GlassCard>
+  );
+}
+
+function ExecutiveRecommendations({ metrics }: { metrics: OwnerDashboardSnapshot }) {
+  const recommendations = [
+    {
+      title: 'Close receivables',
+      metric: metrics.balanceDue,
+      action: 'Open balance calls and payment links should happen before new dispatch planning.',
+      href: '/admin/payments',
+      tone: 'text-rose-300',
+    },
+    {
+      title: 'Lock tomorrow',
+      metric: `${metrics.jobsTomorrowCount} jobs`,
+      action: metrics.jobsTomorrowCount > 0 ? 'Confirm assignments, addresses, and first-stop arrival windows.' : 'Use the quiet window to fill the route from leads.',
+      href: '/admin/dispatch',
+      tone: 'text-cyan-300',
+    },
+    {
+      title: 'Raise ticket quality',
+      metric: metrics.averageTicketSize,
+      action: 'Audit add-ons and memberships on upcoming bookings before the customer arrives.',
+      href: '/admin/services',
+      tone: 'text-gold-soft',
+    },
+    {
+      title: 'Recover deposits',
+      metric: metrics.pendingDeposits,
+      action: 'Send deposit reminders for unconfirmed bookings before the route gets crowded.',
+      href: '/admin/booking-health',
+      tone: 'text-amber-300',
+    },
+    {
+      title: 'Repeat engine',
+      metric: `${metrics.customerRetentionRate}%`,
+      action: 'Target recent premium customers with membership and maintenance follow-up.',
+      href: '/admin/customers',
+      tone: 'text-emerald-300',
+    },
+    {
+      title: 'Notification health',
+      metric: `${metrics.notificationRows.filter((n) => ['failed', 'error'].includes(n.status.toLowerCase())).length} blockers`,
+      action: 'Clear failed booking, payment, and work-order notifications before they age.',
+      href: '/admin/notifications',
+      tone: 'text-indigo-300',
+    },
+  ];
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <SectionEyebrow>Actionable BI Recommendations</SectionEyebrow>
+        <Link href="/admin/reports" className="text-[10px] font-black uppercase text-gold-soft">Reports</Link>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {recommendations.map((item) => (
+          <Link key={item.title} href={item.href} className="group rounded-2xl border border-white/10 bg-black/45 p-4 transition-all hover:-translate-y-0.5 hover:border-gold/30 hover:bg-black/60">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">{item.title}</p>
+              <ArrowUpRight className="h-4 w-4 text-zinc-600 transition group-hover:text-gold-soft" />
+            </div>
+            <p className={`mt-3 font-mono text-2xl font-black ${item.tone}`}>{item.metric}</p>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">{item.action}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }: { metrics: OwnerDashboardSnapshot; isSuperAdmin?: boolean; goals?: any[] }) {
   const [activeDrawer, setActiveDrawer] = useState<
     | 'open-balances'
@@ -1192,7 +1365,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         <GlassCard className="border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/45 transition-all duration-300">
           <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
           <div className="space-y-3 text-center sm:text-left min-w-0 flex-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Business Health Score</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Advanced Health Signal</span>
             <div>
               <p className="text-zinc-400 text-xs">Revenue, receivables, dispatch, and customer momentum</p>
               <h2 className="mt-1 font-mono text-3xl font-black text-white tracking-tight">
@@ -1235,7 +1408,10 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} onClick={() => setActiveDrawer('open-balances')} icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} onClick={() => setActiveDrawer('pending-deposits')} icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
           <TodayMetricCard label="Bookings Today" value={metrics.jobsTodayCount} onClick={() => setActiveDrawer('bookings')} icon={Calendar} colorClass="text-cyan-400" subtitle={`${metrics.dispatchCompletedToday} completed`} />
+          <TodayMetricCard label="Jobs Tomorrow" value={metrics.jobsTomorrowCount} href="/admin/dispatch" icon={Calendar} colorClass="text-cyan-300" subtitle="Route planning focus" />
           <TodayMetricCard label="Jobs Scheduled" value={metrics.upcomingAppts.length} href="/admin/dispatch" icon={ClipboardList} colorClass="text-sky-300" subtitle="Upcoming visible jobs" />
+          <TodayMetricCard label="Average Ticket" value={metrics.averageTicketSize} href="/admin/revenue" icon={BadgePercent} colorClass="text-gold-soft" subtitle="Month-to-date quality" />
+          <TodayMetricCard label="Repeat Rate" value={`${metrics.customerRetentionRate}%`} href="/admin/customers" icon={Users} colorClass="text-emerald-300" subtitle="Customers with multiple jobs" />
           <TodayMetricCard label="Fleet Accounts" value={metrics.leadPipeline.convertedCount} href="/admin/fleet" icon={Users} colorClass="text-indigo-300" subtitle="Converted commercial leads" />
           <TodayMetricCard label="Membership Revenue" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold" subtitle={`${metrics.membershipMetrics?.activeTotal ?? 0} active members`} />
           <TodayMetricCard label="Customer Credits" value={displayMoney(metrics.creditMetrics?.outstandingLiabilityCents ?? 0)} onClick={() => setActiveDrawer('credits')} icon={CreditCard} colorClass="text-rose-300" subtitle="Outstanding liability" />
@@ -1256,37 +1432,11 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <GlassCard className="border-gold/15 bg-black/45">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <SectionEyebrow>Upcoming Schedule Calendar</SectionEyebrow>
-            <Link href="/admin/dispatch" className="text-[10px] font-black uppercase text-gold-soft">Open dispatch</Link>
-          </div>
-          <div className="mt-4 grid grid-cols-7 gap-2">
-            {Array.from({ length: 7 }).map((_, i) => {
-              const day = new Date();
-              day.setDate(day.getDate() + i);
-              const dayKey = day.toLocaleDateString('en-US', { weekday: 'short' });
-              const count = metrics.upcomingAppts.filter((a) => String(a.time ?? '').includes(dayKey)).length;
-              return (
-                <div key={dayKey} className="min-h-28 rounded-2xl border border-white/10 bg-zinc-950/60 p-3">
-                  <p className="text-[10px] font-black uppercase text-zinc-500">{dayKey}</p>
-                  <p className="mt-1 text-lg font-black text-white">{day.getDate()}</p>
-                  <div className="mt-3 h-2 rounded-full bg-white/5">
-                    <div className="h-full rounded-full bg-gold" style={{ width: `${Math.min(100, count * 28)}%` }} />
-                  </div>
-                  <p className="mt-2 text-[10px] text-zinc-500">{count} visible jobs</p>
-                </div>
-              );
-            })}
-          </div>
-        </GlassCard>
-        <GlassCard className="border-cyan-400/15 bg-black/45">
-          <SectionEyebrow>Weather Widget</SectionEyebrow>
-          <p className="mt-4 text-3xl font-black text-white">Austin field-readiness</p>
-          <p className="mt-2 text-sm leading-6 text-zinc-400">Weather data appears here when the weather API is configured. Until then, dispatch should verify heat, rain, and wind before exterior work.</p>
-          <Link href="/admin/system-status" className="mt-5 inline-flex rounded-xl border border-cyan-400/30 px-4 py-2 text-xs font-black uppercase text-cyan-200">Check provider setup</Link>
-        </GlassCard>
+        <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} />
+        <WeatherReadinessWidget />
       </section>
+
+      <ExecutiveRecommendations metrics={metrics} />
 
       {/* Interactive Mission Revenue Console */}
       <InteractiveRevenueDashboard metrics={metrics} />

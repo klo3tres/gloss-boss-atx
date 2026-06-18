@@ -4,6 +4,7 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { tryCreateServerSupabase } from '@/lib/supabase/safeClient.server';
 import { fetchPaymentsSince, startOfMonthIso, startOfTodayIso, startOfWeekIso, summarizePayments } from '@/lib/revenue-metrics';
+import { isValidTimerForAnalytics, timerDurationSeconds } from '@/lib/timer-integrity';
 
 export const runtime = 'nodejs';
 
@@ -128,14 +129,19 @@ export async function GET() {
     supabase.from('signed_agreements').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
     supabase.from('leads').select('id', { count: 'exact', head: true }),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'booked'),
-    supabase.from('tech_job_timers').select('duration_seconds').not('duration_seconds', 'is', null).limit(800),
     supabase
       .from('tech_job_timers')
-      .select('duration_seconds, appointment_id, started_at, created_at')
-      .not('duration_seconds', 'is', null)
+      .select('duration_seconds, appointment_id, fallback_booking_id, work_order_id, customer_id, started_at, ended_at, created_at, running, status')
+      .limit(800),
+    supabase
+      .from('tech_job_timers')
+      .select('duration_seconds, appointment_id, fallback_booking_id, work_order_id, customer_id, started_at, ended_at, created_at, running, status')
       .order('duration_seconds', { ascending: false })
-      .limit(8),
-    supabase.from('tech_job_timers').select('technician_id, duration_seconds').not('duration_seconds', 'is', null).limit(1500),
+      .limit(80),
+    supabase
+      .from('tech_job_timers')
+      .select('technician_id, duration_seconds, appointment_id, fallback_booking_id, work_order_id, customer_id, started_at, ended_at, created_at, running, status')
+      .limit(1500),
   ]);
 
   const rows = paymentsTodayRows.data ?? [];
@@ -152,10 +158,11 @@ export async function GET() {
 
   const byTechDurations = new Map<string, number[]>();
   for (const row of timerByTechRows.data ?? []) {
-    const r = row as { technician_id?: string | null; duration_seconds?: number | null };
-    if (!r.technician_id || typeof r.duration_seconds !== 'number' || r.duration_seconds <= 0) continue;
+    const r = row as Record<string, unknown> & { technician_id?: string | null };
+    const seconds = timerDurationSeconds(r);
+    if (!r.technician_id || !seconds || !isValidTimerForAnalytics(r)) continue;
     const arr = byTechDurations.get(r.technician_id) ?? [];
-    arr.push(r.duration_seconds);
+    arr.push(seconds);
     byTechDurations.set(r.technician_id, arr);
   }
 
@@ -175,16 +182,23 @@ export async function GET() {
     .slice(0, 8);
 
   const durs = (timerSamples.data ?? [])
-    .map((r: { duration_seconds?: number }) => r.duration_seconds)
+    .map((r) => {
+      const row = r as Record<string, unknown>;
+      return isValidTimerForAnalytics(row) ? timerDurationSeconds(row) : null;
+    })
     .filter((n): n is number => typeof n === 'number' && n > 0);
   const avgJobMinutesAll = durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 60) : null;
 
-  const ltRows = (longTimerRows.data ?? []) as {
-    duration_seconds: number;
+  const ltRows = ((longTimerRows.data ?? []) as Array<Record<string, unknown> & {
     appointment_id: string | null;
     started_at?: string | null;
     created_at?: string | null;
-  }[];
+  }>)
+    .filter((row) => isValidTimerForAnalytics(row))
+    .map((row) => ({ ...row, duration_seconds: timerDurationSeconds(row) ?? 0 }))
+    .filter((row) => row.duration_seconds > 0)
+    .sort((a, b) => b.duration_seconds - a.duration_seconds)
+    .slice(0, 8);
   const apptIdsForLong = [...new Set(ltRows.map((r) => r.appointment_id).filter(Boolean))] as string[];
   const apptMeta = new Map<string, { service_slug: string; guest_name: string; vehicle_description: string; scheduled_start: string }>();
   if (apptIdsForLong.length > 0) {

@@ -118,7 +118,7 @@ export function SuperAdminDashboard() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Tab selections inside Command Center
-  const [currentTab, setCurrentTab] = useState<'health' | 'revenue' | 'jobs' | 'stripe'>('health');
+  const [currentTab, setCurrentTab] = useState<'health' | 'revenue' | 'jobs' | 'stripe'>('jobs');
 
   useEffect(() => {
     try {
@@ -386,9 +386,9 @@ export function SuperAdminDashboard() {
         {/* Tab Headers */}
         <div className="flex gap-2 border-b border-white/5 pb-2 overflow-x-auto">
           {[
-            { id: 'health', label: 'System & Health Status', icon: HeartPulse },
-            { id: 'revenue', label: 'Revenue Health', icon: DollarSign },
             { id: 'jobs', label: 'Jobs & Timers Health', icon: Briefcase },
+            { id: 'revenue', label: 'Revenue Health', icon: DollarSign },
+            { id: 'health', label: 'Advanced System Health', icon: HeartPulse },
             { id: 'stripe', label: 'Stripe & Connection Diagnostics', icon: CreditCard }
           ].map((tab) => {
             const Icon = tab.icon;

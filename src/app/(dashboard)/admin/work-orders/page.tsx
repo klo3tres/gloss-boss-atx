@@ -31,6 +31,21 @@ function chicago(v: unknown) {
   }).format(new Date(str(v)));
 }
 
+function chicagoDateKey(input: Date | unknown) {
+  const date = input instanceof Date ? input : new Date(str(input));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '0000';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '00';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '00';
+  return `${year}-${month}-${day}`;
+}
+
 function address(r: Row) {
   return [r.service_address, r.service_city, r.service_state, r.service_zip].map(str).filter(Boolean).join(', ');
 }
@@ -170,13 +185,36 @@ export default async function AdminWorkOrdersPage({
   
   const buckets = ['Active', 'Paid bookings', 'Unpaid bookings', 'Completed', 'Fallback / test'];
 
-  // Calculate circular completion metrics
-  const totalJobs = rows.filter(r => str(r.kind) !== 'fallback').length;
-  const completedJobs = rows.filter(r => str(r.status) === 'completed').length;
-  const completionRate = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
-  
-  const circ = 2 * Math.PI * 36;
-  const strokeDashoffset = circ - (Math.min(100, Math.max(0, completionRate)) / 100) * circ;
+  const now = new Date();
+  const todayKey = chicagoDateKey(now);
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+  const activeJobs = rows.filter((r) => ['confirmed', 'assigned', 'deposit_paid', 'in_progress', 'balance_due'].includes(str(r.status)));
+  const needsAssignment = rows.filter((r) => !r.assigned_technician_id && !str(r.kind).includes('fallback') && !['completed', 'cancelled', 'archived'].includes(str(r.status)));
+  const inProgress = rows.filter((r) => str(r.status) === 'in_progress');
+  const awaitingPayment = rows.filter((r) => {
+    const status = str(r.status);
+    const payment = str(r.payment_status);
+    return status === 'balance_due' || payment.includes('balance') || payment.includes('unpaid') || (typeof r.balance_due_cents === 'number' && r.balance_due_cents > 0);
+  });
+  const awaitingReceipt = rows.filter((r) => str(r.status) === 'completed' && !paymentByAppt.has(str(r.id)) && !paymentByFallback.has(str(r.id)));
+  const completedToday = rows.filter((r) => str(r.status) === 'completed' && chicagoDateKey(r.scheduled_start || r.created_at) === todayKey);
+  const scheduledThisWeek = rows.filter((r) => {
+    const scheduled = new Date(str(r.scheduled_start || r.created_at)).getTime();
+    return scheduled >= weekStart.getTime() && scheduled < weekEnd.getTime() && !['cancelled', 'archived'].includes(str(r.status));
+  });
+  const cockpitMetrics = [
+    { label: 'Active jobs', value: activeJobs.length, note: 'Confirmed or in motion', tone: 'text-emerald-300', href: '/admin/work-orders?bucket=Active' },
+    { label: 'Needs assignment', value: needsAssignment.length, note: 'Dispatch owner required', tone: 'text-amber-300', href: '/admin/dispatch' },
+    { label: 'In progress', value: inProgress.length, note: 'Technicians on location', tone: 'text-cyan-300', href: '/admin/work-orders?bucket=Active' },
+    { label: 'Awaiting payment', value: awaitingPayment.length, note: 'Balance or unpaid status', tone: 'text-rose-300', href: '/admin/payments' },
+    { label: 'Awaiting receipt', value: awaitingReceipt.length, note: 'Completed without linked payment', tone: 'text-indigo-300', href: '/admin/receipts' },
+    { label: 'Completed today', value: completedToday.length, note: 'Closed in Austin time', tone: 'text-gold-soft', href: '/admin/work-orders?bucket=Completed' },
+    { label: 'Scheduled this week', value: scheduledThisWeek.length, note: 'Route capacity view', tone: 'text-sky-300', href: '/admin/dispatch' },
+  ];
 
   const bucketRows = rows.filter((r) => statusBucket(r) === activeBucket);
 
@@ -210,59 +248,32 @@ export default async function AdminWorkOrdersPage({
       {fallbacksRes.error ? <p className='mb-3 text-sm text-amber-200'>Fallbacks: {fallbacksRes.error.message}</p> : null}
 
       {/* RECONCILIATION COMMAND CENTER HERO */}
-      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr] mb-6">
+      <div className="grid gap-4 mb-6 xl:grid-cols-[1fr_2fr]">
         
-        {/* SVG Dial & Work Focus */}
-        <div className="rounded-3xl border border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/40 transition-all duration-300">
+        {/* Work Focus */}
+        <div className="rounded-3xl border border-gold/25 bg-black/65 p-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/40 transition-all duration-300">
           <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
-          <div className="space-y-4 text-center sm:text-left min-w-0 flex-1">
+          <div className="space-y-4 min-w-0">
             <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Work Order Cockpit</span>
             <div>
-              <p className="text-zinc-400 text-xs">Total Schedule Completion Rate</p>
-              <h2 className="mt-1 font-mono text-4xl font-black text-white tracking-tight">
-                {completedJobs} / {totalJobs} Completed
-              </h2>
+              <p className="text-zinc-400 text-xs">Next action queue</p>
+              <h2 className="mt-1 font-mono text-4xl font-black text-white tracking-tight">{activeJobs.length} Active</h2>
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
-              We have dispatched and reset <strong className="text-white">{completedJobs}</strong> out of <strong className="text-white">{totalJobs}</strong> schedule items this period.
+              Prioritize assignments, live jobs, payment blockers, and completed jobs that still need receipt cleanup.
             </p>
-          </div>
-          
-          <div className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full bg-zinc-950/60 border border-white/10 p-2 shadow-inner">
-            <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="36" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="none" />
-              <circle
-                cx="40"
-                cy="40"
-                r="36"
-                className="text-gold-soft transition-all duration-1000 ease-out"
-                strokeWidth="6"
-                strokeDasharray={circ}
-                strokeDashoffset={strokeDashoffset}
-                strokeLinecap="round"
-                stroke="currentColor"
-                fill="none"
-              />
-            </svg>
-            <div className="absolute flex flex-col items-center justify-center">
-              <span className="font-mono text-2xl font-black text-white">{completionRate}%</span>
-              <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Rate</span>
-            </div>
           </div>
         </div>
 
         {/* Dynamic Summary Cards */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Active timers</span>
-            <p className="mt-2 font-mono text-3xl font-black text-emerald-400">{rows.filter(r => str(r.status) === 'in_progress').length}</p>
-            <p className="text-[9px] text-zinc-500 mt-1">Technicians on location</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/45 p-5 relative overflow-hidden group hover:border-gold/20 transition duration-300">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Needs assigning</span>
-            <p className="mt-2 font-mono text-3xl font-black text-amber-400">{rows.filter(r => !r.assigned_technician_id && !str(r.kind).includes('fallback')).length}</p>
-            <p className="text-[9px] text-zinc-500 mt-1">Pending dispatch slots</p>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {cockpitMetrics.map((metric) => (
+            <Link key={metric.label} href={metric.href} className="rounded-2xl border border-white/10 bg-black/45 p-4 relative overflow-hidden group hover:-translate-y-0.5 hover:border-gold/25 hover:bg-black/60 transition duration-300">
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{metric.label}</span>
+              <p className={`mt-2 font-mono text-3xl font-black ${metric.tone}`}>{metric.value}</p>
+              <p className="text-[9px] text-zinc-500 mt-1">{metric.note}</p>
+            </Link>
+          ))}
         </div>
 
       </div>

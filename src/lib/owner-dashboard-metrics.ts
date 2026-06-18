@@ -67,8 +67,23 @@ export type OwnerDashboardSnapshot = {
     guestName: string;
     service: string;
     time: string;
+    scheduledStart: string;
+    dayKey: string;
+    href: string;
     status: string;
     price: string;
+  }>;
+  jobsTomorrowCount: number;
+  scheduleMonth: Array<{
+    id: string;
+    guestName: string;
+    service: string;
+    scheduledStart: string;
+    dayKey: string;
+    time: string;
+    status: string;
+    price: string;
+    href: string;
   }>;
   liveFeed: Array<{
     id: string;
@@ -159,9 +174,22 @@ function chicagoShort(iso: string) {
 function isTodayChicago(iso: string) {
   const d = new Date(iso);
   const n = new Date();
-  const fmt = (x: Date) =>
-    x.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
-  return fmt(d) === fmt(n);
+  return dateKeyChicago(d) === dateKeyChicago(n);
+}
+
+function dateKeyChicago(input: string | Date) {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '0000';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '00';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '00';
+  return `${year}-${month}-${day}`;
 }
 
 function startOfRolling30Iso() {
@@ -320,6 +348,10 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     const time = new Date(a.scheduled_start).getTime();
     return time >= startOfWeek && time < endOfWeek && a.status !== 'cancelled';
   }).length;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = dateKeyChicago(tomorrow);
+  const jobsTomorrowCount = rows.filter((a) => dateKeyChicago(a.scheduled_start) === tomorrowKey && a.status !== 'cancelled').length;
 
   // Customer retention calculation
   const customerEmailCounts: Record<string, number> = {};
@@ -376,8 +408,28 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       guestName: a.guest_name || 'Guest',
       service: a.service_slug.replace(/-/g, ' '),
       time: chicagoShort(a.scheduled_start),
+      scheduledStart: a.scheduled_start,
+      dayKey: dateKeyChicago(a.scheduled_start),
+      href: workOrderPath(a.id, { source: 'appointment', shell: 'admin' }),
       status: a.status,
       price: displayMoney(a.base_price_cents ?? 0),
+    }));
+
+  const currentMonthKey = dateKeyChicago(now).slice(0, 7);
+  const scheduleMonth = rows
+    .filter((a) => dateKeyChicago(a.scheduled_start).startsWith(currentMonthKey) && a.status !== 'cancelled')
+    .sort((a, b) => new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime())
+    .slice(0, 120)
+    .map((a) => ({
+      id: a.id,
+      guestName: a.guest_name || 'Guest',
+      service: a.service_slug.replace(/-/g, ' '),
+      scheduledStart: a.scheduled_start,
+      dayKey: dateKeyChicago(a.scheduled_start),
+      time: chicagoShort(a.scheduled_start),
+      status: a.status,
+      price: displayMoney(a.base_price_cents ?? 0),
+      href: workOrderPath(a.id, { source: 'appointment', shell: 'admin' }),
     }));
 
   // Live Dispatch Feed
@@ -573,6 +625,8 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     jobsTodayCount,
     recentPayments,
     upcomingAppts,
+    jobsTomorrowCount,
+    scheduleMonth,
     liveFeed,
     techActivity,
     leadPipeline,

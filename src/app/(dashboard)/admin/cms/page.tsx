@@ -24,6 +24,7 @@ import { WorkOrderUploadsTab } from '@/components/admin/work-order-uploads-tab';
 import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-manager';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { CmsMediaManager } from '@/components/admin/cms-media-manager';
+import { CmsReviewsManager } from '@/components/admin/cms-reviews-manager';
 import { normalizeMediaRegistry } from '@/lib/media-registry';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,9 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   const availErrRaw = typeof sp.availErr === 'string' ? sp.availErr : undefined;
   const mediaOk = typeof sp.mediaOk === 'string';
   const mediaErrRaw = typeof sp.mediaErr === 'string' ? sp.mediaErr : undefined;
+  const reviewOk = typeof sp.reviewOk === 'string';
+  const reviewDeleted = typeof sp.reviewDeleted === 'string';
+  const reviewErrRaw = typeof sp.reviewErr === 'string' ? sp.reviewErr : undefined;
 
   if (!session.supabaseConfigured) {
     return (
@@ -138,6 +142,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   }
 
   let googleReviewUrl = '';
+  let googleApiConfigured = Boolean(process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_BUSINESS_PROFILE_API_KEY || process.env.GOOGLE_API_KEY);
   try {
     const admReview = tryCreateAdminSupabase();
     if (admReview) {
@@ -163,6 +168,45 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     }
   } catch {
     googleReviewUrl = '';
+  }
+
+  let reviewRows: Array<{
+    id: string;
+    customer_name: string;
+    rating: number;
+    testimonial: string;
+    service_label: string;
+    vehicle_label: string;
+    source: string;
+    published: boolean;
+    featured: boolean;
+    created_at: string;
+  }> = [];
+  let reviewLoadErr = '';
+  try {
+    const reviewDb = tryCreateAdminSupabase();
+    const res = reviewDb
+      ? await reviewDb
+          .from('customer_reviews')
+          .select('id, customer_name, rating, testimonial, review_text, service_label, vehicle_label, source, published, featured, created_at')
+          .order('created_at', { ascending: false })
+          .limit(100)
+      : { data: [], error: { message: 'Admin database client unavailable.' } };
+    if (res.error) reviewLoadErr = res.error.message;
+    reviewRows = ((res.data ?? []) as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id ?? ''),
+      customer_name: String(r.customer_name ?? ''),
+      rating: Math.max(1, Math.min(5, Number(r.rating ?? 5))),
+      testimonial: String(r.testimonial ?? r.review_text ?? ''),
+      service_label: String(r.service_label ?? ''),
+      vehicle_label: String(r.vehicle_label ?? ''),
+      source: String(r.source ?? 'Manual'),
+      published: Boolean(r.published),
+      featured: Boolean(r.featured),
+      created_at: String(r.created_at ?? ''),
+    }));
+  } catch (e) {
+    reviewLoadErr = e instanceof Error ? e.message : String(e);
   }
 
   const galleryAdminItems = galleryRows.map((r) => ({
@@ -280,6 +324,9 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       {availErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(availErrRaw)}</p> : null}
       {mediaOk ? <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100'>Media registry saved.</p> : null}
       {mediaErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(mediaErrRaw)}</p> : null}
+      {reviewOk ? <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100'>Review saved.</p> : null}
+      {reviewDeleted ? <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100'>Review deleted.</p> : null}
+      {reviewErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(reviewErrRaw)}</p> : null}
 
       <p className='mb-6 flex flex-wrap gap-4 text-sm text-zinc-400'>
         <Link href='/admin/agreements' className='font-bold text-gold-soft underline'>
@@ -444,9 +491,17 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
       {currentTab === 'reviews' && (
         <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
-          <h2 className='text-lg font-black uppercase tracking-tight text-white'>Reviews and testimonials</h2>
-          <p className='mt-2 text-sm text-zinc-400'>A focused place for social proof, review links, and testimonial content that supports the homepage and booking flow.</p>
-          <Link href='/admin/messages' className='mt-4 inline-flex rounded-xl border border-gold/30 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Review customer messages</Link>
+          {reviewLoadErr ? (
+            <p className='mb-4 rounded-xl border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100'>
+              Reviews table/setup blocker: {reviewLoadErr}
+            </p>
+          ) : null}
+          <CmsReviewsManager
+            rows={reviewRows}
+            googleConfigured={Boolean(googleReviewUrl)}
+            googleReviewUrl={googleReviewUrl}
+            googleApiConfigured={googleApiConfigured}
+          />
         </section>
       )}
 

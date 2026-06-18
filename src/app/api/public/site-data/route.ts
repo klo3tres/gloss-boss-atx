@@ -33,6 +33,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     googleReviewUrl: '',
     homepageVisuals: null,
     mediaRegistry: {},
+    reviews: [],
   };
 }
 
@@ -54,11 +55,13 @@ export async function GET() {
         featuredShowcase: defaultFeaturedShowcaseSlides(),
         featuredShowcaseFromCms: false,
         googleReviewUrl: '',
+        mediaRegistry: {},
+        reviews: [],
       };
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes, reviewsRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -72,6 +75,13 @@ export async function GET() {
       client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb', 'fleet_pricing']),
       client.from('site_settings').select('value').eq('key', 'homepage_visuals').maybeSingle(),
       client.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
+      client
+        .from('customer_reviews')
+        .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, source, service_label, vehicle_label, featured, published')
+        .eq('published', true)
+        .order('featured', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(12),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -94,6 +104,7 @@ export async function GET() {
     if (fErr) schemaWarnings.push(`homepage_content(featured_showcase): ${fErr.message}`);
     if (reviewRes.error) schemaWarnings.push(`review_settings: ${reviewRes.error.message}`);
     if (ssGoogle.error) schemaWarnings.push(`site_settings(google_review_url): ${ssGoogle.error.message}`);
+    if (reviewsRes.error) schemaWarnings.push(`customer_reviews: ${reviewsRes.error.message}`);
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
@@ -194,6 +205,20 @@ export async function GET() {
       googleReviewUrl,
       homepageVisuals: visualsRes.data?.value ? (typeof visualsRes.data.value === 'string' ? JSON.parse(visualsRes.data.value) : visualsRes.data.value) : null,
       mediaRegistry: normalizeMediaRegistry(mediaRes.data?.value ?? null),
+      reviews: reviewsRes.error
+        ? []
+        : ((reviewsRes.data ?? []) as Record<string, unknown>[])
+            .map((r) => ({
+              id: String(r.id ?? ''),
+              reviewerName: String(r.customer_name ?? 'Gloss Boss customer'),
+              rating: Math.max(1, Math.min(5, Number(r.rating ?? 5))),
+              text: String(r.testimonial ?? r.review_text ?? ''),
+              date: String(r.approved_at ?? r.created_at ?? ''),
+              source: String(r.source ?? 'Manual'),
+              vehicleOrService: String(r.vehicle_label ?? r.service_label ?? ''),
+              featured: Boolean(r.featured),
+            }))
+            .filter((r) => r.id && r.text),
       fleetServicesEnabled,
       fleetServicesBlurb,
       fleetPricing,

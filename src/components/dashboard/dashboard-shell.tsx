@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Menu, X, Bell, ShieldAlert, Sparkles, MessageSquare } from 'lucide-react';
+import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
@@ -247,6 +247,18 @@ export function DashboardShell({
       ? `${panelLabel[simNav]} view (simulated)`
       : `${panelLabel[role]} panel`;
 
+  const setSimulationRole = (nextRole: DashboardShellRole) => {
+    if (role !== 'super_admin') return;
+    try {
+      if (nextRole === 'super_admin') sessionStorage.removeItem(GB_NAV_SIM_KEY);
+      else sessionStorage.setItem(GB_NAV_SIM_KEY, nextRole);
+      window.dispatchEvent(new Event(GB_NAV_SIM_EVENT));
+      setSimNav(nextRole === 'super_admin' ? null : nextRole);
+    } catch {
+      setSimNav(null);
+    }
+  };
+
   const linkClass = (href: string) => {
     const [pathAndQuery, hashPart] = href.split('#');
     const [pathPart, queryPart] = pathAndQuery.split('?');
@@ -314,12 +326,6 @@ export function DashboardShell({
     systemAlerts.length > 0 ||
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
-  const platformPulse = [
-    { label: 'Daily closeout', value: role === 'technician' ? 'Field checklist' : 'Closeout review', pct: 78 },
-    { label: 'Response SLA', value: `${Math.max(0, unreadCount)} open`, pct: unreadCount > 0 ? 46 : 94 },
-    { label: 'Quality streak', value: 'Elite tier', pct: 86 },
-  ];
-
   return (
     <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
@@ -367,48 +373,49 @@ export function DashboardShell({
               </div>
             </div>
             
-            <button
-              type="button"
-              onClick={() => setShowNotifications(true)}
-              className={`relative rounded-2xl border bg-black/55 p-3.5 text-gold-soft transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 mt-1 ${
-                hasAlertActivity
-                  ? 'border-gold/60 shadow-[0_0_32px_rgba(212,175,55,0.45)] animate-pulse'
-                  : 'border-gold/25 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
-              }`}
-              title="Open System Notifications"
-            >
-              <div className="relative">
-                <Bell className="h-5 w-5" />
-                {hasAlertActivity && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gold"></span>
+            <div className="flex shrink-0 items-center gap-2">
+              {role === 'super_admin' ? (
+                <label className="hidden rounded-2xl border border-gold/25 bg-black/55 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-[0_0_24px_rgba(212,175,55,0.10)] sm:flex sm:items-center sm:gap-2">
+                  View as
+                  <select
+                    value={simNav ?? 'super_admin'}
+                    onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
+                    className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
+                  >
+                    <option value="super_admin">Super admin</option>
+                    <option value="admin">Admin</option>
+                    <option value="technician">Technician</option>
+                    <option value="customer">Customer</option>
+                  </select>
+                </label>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setShowNotifications(true)}
+                className={`relative rounded-2xl border bg-black/55 p-3.5 text-gold-soft transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 mt-1 ${
+                  hasAlertActivity
+                    ? 'border-gold/60 shadow-[0_0_32px_rgba(212,175,55,0.45)] animate-pulse'
+                    : 'border-gold/25 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
+                }`}
+                title="Open System Notifications"
+              >
+                <div className="relative">
+                  <Bell className="h-5 w-5" />
+                  {hasAlertActivity && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gold"></span>
+                    </span>
+                  )}
+                </div>
+                {(unreadCount > 0 || systemAlerts.length > 0 || outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()))) && (
+                  <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-lg border border-black">
+                    {unreadCount + systemAlerts.length + outboxEvents.filter((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())).length}
                   </span>
                 )}
-              </div>
-              {(unreadCount > 0 || systemAlerts.length > 0 || outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()))) && (
-                <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white shadow-lg border border-black">
-                  {unreadCount + systemAlerts.length + outboxEvents.filter((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase())).length}
-                </span>
-              )}
-            </button>
+              </button>
+            </div>
           </header>
-          <section className='gb-no-print grid gap-3 sm:grid-cols-3'>
-            {platformPulse.map((item) => (
-              <div key={item.label} className='gb-platform-kpi'>
-                <div className='relative z-10 flex items-center justify-between gap-3'>
-                  <div className='min-w-0'>
-                    <p className='truncate text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500'>{item.label}</p>
-                    <p className='mt-1 text-sm font-black uppercase text-white'>{item.value}</p>
-                  </div>
-                  <Sparkles className='h-4 w-4 shrink-0 text-gold-soft' aria-hidden />
-                </div>
-                <div className='gb-goal-rail relative z-10 mt-3'>
-                  <span style={{ width: `${item.pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </section>
           <SafeRenderBoundary label='Dashboard content'>
             <div className='gb-dashboard-content space-y-6'>{children}</div>
           </SafeRenderBoundary>

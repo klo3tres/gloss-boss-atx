@@ -23,9 +23,11 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import {
   isOfferEligiblePublicSiteData,
   type PublicSiteDataPayload,
+  type PublicReview,
   type SiteDataOfferCard,
   type SiteDataMultiCar,
 } from '@/lib/public-site-data';
+import { mediaUrl, type MediaRegistry } from '@/lib/media-registry';
 
 const emptyDeals: DealConfig = {
   websitePromoPercent: 0,
@@ -50,12 +52,6 @@ const faqs = [
   },
 ];
 
-const mockReviews = [
-  { name: 'Marcus T.', role: 'Porsche 911 Owner', quote: 'Absolutely pristine correction work. The mobile setup is self-powered and clean. Hands down best in Austin.', rating: 5 },
-  { name: 'Sarah K.', role: 'Tesla Model Y Owner', quote: 'Very professional, detailed invoice, and perfect interior detailing. Gold member program is definitely worth it.', rating: 5 },
-  { name: 'David L.', role: 'Ford Raptor Owner', quote: 'The ceramic coating looks incredible. They came right to my office building, took care of everything. Highly recommended!', rating: 5 }
-];
-
 const defaultProcessSteps = [
   { title: 'Decontamination & Prep', desc: 'Thorough snow foam hand wash, iron removal, and clay bar treatment to create a perfectly clean slate.', image: 'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=600&q=80', fit: 'cover', position: 'center' },
   { title: 'Correction & Enhancement', desc: 'Precision machine compounding and polishing to eliminate swirls, oxidation, light scratches and bring out maximum depth.', image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=600&q=80', fit: 'cover', position: 'center' },
@@ -72,6 +68,8 @@ export default function HomePage() {
   const [siteLoaded, setSiteLoaded] = useState(false);
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [visuals, setVisuals] = useState<any>(null);
+  const [reviews, setReviews] = useState<PublicReview[]>([]);
+  const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
 
   const packagesForGrid = siteLoaded && services.length > 0 ? services : defaultServicePackages;
   const displayDeals = siteLoaded ? deals : defaultDealConfig;
@@ -101,6 +99,8 @@ export default function HomePage() {
         setSchemaWarnings(data.schemaWarnings ?? []);
         setGoogleReviewUrl(data.googleReviewUrl ?? '');
         setVisuals(data.homepageVisuals ?? null);
+        setReviews(data.reviews ?? []);
+        setMediaRegistry(data.mediaRegistry ?? {});
         setSiteLoaded(true);
       })
       .catch(() => {
@@ -184,7 +184,7 @@ export default function HomePage() {
         <section className='relative flex min-h-screen items-center border-b border-white/10 px-4 pb-16 pt-28 sm:px-6 lg:px-8 overflow-hidden'>
           <div className='absolute inset-0 z-0'>
             <img
-              src={visuals?.hero?.image || 'https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=1900&q=80'}
+              src={visuals?.hero?.image || mediaUrl(mediaRegistry, 'homepage.hero')}
               alt='Premium Detailing Hero'
               style={getObjectStyle(visuals?.hero)}
               className="absolute inset-0 w-full h-full opacity-35"
@@ -442,7 +442,7 @@ export default function HomePage() {
         <section className='relative overflow-hidden border-b border-white/5 bg-zinc-950 px-4 py-20 sm:px-6 lg:px-8'>
           <div className='absolute inset-0 z-0'>
             <img
-              src={visuals?.membership?.image || 'https://images.unsplash.com/photo-1494976388531-dad849ce67e7?auto=format&fit=crop&w=1200&q=80'}
+              src={visuals?.membership?.image || mediaUrl(mediaRegistry, 'homepage.membershipCover')}
               alt='Memberships Banner'
               style={getObjectStyle(visuals?.membership)}
               className="absolute inset-0 w-full h-full opacity-10"
@@ -492,7 +492,7 @@ export default function HomePage() {
         <section className='relative overflow-hidden border-b border-white/5 bg-black px-4 py-20 sm:px-6 lg:px-8'>
           <div className='absolute inset-0 z-0'>
             <img
-              src={visuals?.fleet?.image || 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=1200&q=80'}
+              src={visuals?.fleet?.image || mediaUrl(mediaRegistry, 'homepage.fleetCover')}
               alt='Fleet Cover'
               style={getObjectStyle(visuals?.fleet)}
               className="absolute inset-0 w-full h-full opacity-10"
@@ -503,7 +503,7 @@ export default function HomePage() {
             <MotionFade delay={0.05}>
               <div className="relative border border-white/10 rounded-3xl overflow-hidden aspect-[4/3] bg-zinc-900 shadow-2xl">
                 <img
-                  src={visuals?.fleet?.image || 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=1200&q=80'}
+                  src={visuals?.fleet?.image || mediaUrl(mediaRegistry, 'homepage.fleetCover')}
                   alt='Fleet Image Show'
                   style={getObjectStyle(visuals?.fleet)}
                   className="w-full h-full object-cover"
@@ -582,26 +582,38 @@ export default function HomePage() {
             </div>
           </MotionFade>
 
-          <div className="grid gap-6 md:grid-cols-3">
-            {mockReviews.map((rev, idx) => (
-              <MotionFade key={idx} delay={idx * 0.06}>
-                <blockquote className="rounded-3xl border border-white/5 bg-black p-6 space-y-4 flex flex-col justify-between h-full shadow-md">
-                  <p className="text-xs text-zinc-300 italic leading-relaxed">"{rev.quote}"</p>
-                  <div>
-                    <div className="flex gap-1 mb-2">
-                      {Array.from({ length: rev.rating }).map((_, i) => (
-                        <Star key={i} className="h-3.5 w-3.5 fill-gold text-gold" />
-                      ))}
+          {reviews.length === 0 ? (
+            <div className="mx-auto max-w-2xl rounded-3xl border border-gold/20 bg-black p-8 text-center">
+              <p className="text-sm font-bold text-white">Published customer reviews are being curated.</p>
+              <p className="mt-2 text-xs text-zinc-400">Admin can approve testimonials in CMS. Google reviews appear after the Google review setup is configured.</p>
+              {googleReviewUrl ? (
+                <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft">
+                  Read Google reviews
+                </a>
+              ) : null}
+            </div>
+          ) : (
+            <div className={`grid gap-6 ${reviews.length === 1 ? 'mx-auto max-w-2xl' : reviews.length <= 3 ? 'md:grid-cols-3' : 'md:grid-cols-3'}`}>
+              {reviews.slice(0, reviews.length > 3 ? 6 : 3).map((rev, idx) => (
+                <MotionFade key={rev.id} delay={idx * 0.06}>
+                  <blockquote className="rounded-3xl border border-white/5 bg-black p-6 space-y-4 flex flex-col justify-between h-full shadow-md">
+                    <p className="text-xs text-zinc-300 italic leading-relaxed">"{rev.text}"</p>
+                    <div>
+                      <div className="flex gap-1 mb-2">
+                        {Array.from({ length: rev.rating }).map((_, i) => (
+                          <Star key={i} className="h-3.5 w-3.5 fill-gold text-gold" />
+                        ))}
+                      </div>
+                      <cite className="block not-italic">
+                        <p className="text-xs font-black uppercase text-white">{rev.reviewerName}</p>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">{rev.vehicleOrService || rev.source}</p>
+                      </cite>
                     </div>
-                    <cite className="block not-italic">
-                      <p className="text-xs font-black uppercase text-white">{rev.name}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">{rev.role}</p>
-                    </cite>
-                  </div>
-                </blockquote>
-              </MotionFade>
-            ))}
-          </div>
+                  </blockquote>
+                </MotionFade>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -649,7 +661,7 @@ export default function HomePage() {
         <section className='relative overflow-hidden bg-zinc-950 border-t border-white/5 py-24 px-4 sm:px-6 lg:px-8 text-center'>
           <div className='absolute inset-0 z-0'>
             <img
-              src={visuals?.finalCta?.image || 'https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=1900&q=80'}
+              src={visuals?.finalCta?.image || mediaUrl(mediaRegistry, 'homepage.finalCta')}
               alt='Final CTA Background'
               style={getObjectStyle(visuals?.finalCta)}
               className="absolute inset-0 w-full h-full opacity-15"

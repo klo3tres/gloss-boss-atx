@@ -43,6 +43,8 @@ export default async function AdminDashboardPage() {
     jobsTodayCount: 0,
     recentPayments: [],
     upcomingAppts: [],
+    jobsTomorrowCount: 0,
+    scheduleMonth: [],
     liveFeed: [],
     techActivity: [],
     leadPipeline: {

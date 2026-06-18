@@ -1,9 +1,42 @@
+'use client';
+
 import Image from 'next/image';
+import { useMemo, useRef, useState } from 'react';
+import { ImagePlus, RotateCcw, Trash2, UploadCloud } from 'lucide-react';
 import { saveMediaRegistryAction } from '@/lib/admin/cms-media-actions';
 import { MEDIA_REGISTRY_ITEMS, type MediaRegistry, mediaUrl } from '@/lib/media-registry';
 
+type UploadState = Record<string, { busy?: boolean; error?: string; url?: string }>;
+
 export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
-  const groups = Array.from(new Set(MEDIA_REGISTRY_ITEMS.map((item) => item.group)));
+  const groups = useMemo(() => Array.from(new Set(MEDIA_REGISTRY_ITEMS.map((item) => item.group))), []);
+  const [values, setValues] = useState<MediaRegistry>(registry);
+  const [uploadState, setUploadState] = useState<UploadState>({});
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  async function uploadFile(key: string, file: File | null | undefined) {
+    if (!file) return;
+    setUploadState((prev) => ({ ...prev, [key]: { busy: true } }));
+    const form = new FormData();
+    form.set('file', file);
+    form.set('slot', key.replace(/\./g, '-'));
+    try {
+      const res = await fetch('/api/admin/homepage-visual-upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
+      if (!res.ok || !data.ok || !data.url) {
+        setUploadState((prev) => ({ ...prev, [key]: { busy: false, error: data.error ?? 'Upload failed' } }));
+        return;
+      }
+      setValues((prev) => ({ ...prev, [key]: data.url! }));
+      setUploadState((prev) => ({ ...prev, [key]: { busy: false, url: data.url } }));
+    } catch (e) {
+      setUploadState((prev) => ({ ...prev, [key]: { busy: false, error: e instanceof Error ? e.message : 'Upload failed' } }));
+    }
+  }
 
   return (
     <form action={saveMediaRegistryAction} className="space-y-6">
@@ -11,7 +44,7 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
         <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Central Media Manager</p>
         <h2 className="mt-2 text-2xl font-black uppercase text-white">Every public image has an owner</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-          Replace hero, service, fleet, booking, gift card, membership, technician, promotional, and loyalty imagery from one control surface. Leave a field blank to use the production fallback.
+          Upload from your device, preview, replace, or reset every public visual. Empty slots use production fallbacks. URL entry is available under Advanced.
         </p>
       </div>
 
@@ -20,23 +53,64 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
           <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">{group}</h3>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {MEDIA_REGISTRY_ITEMS.filter((item) => item.group === group).map((item) => {
-              const url = mediaUrl(registry, item.key);
+              const savedValue = values[item.key] ?? '';
+              const url = mediaUrl(values, item.key);
+              const state = uploadState[item.key] ?? {};
               return (
-                <label key={item.key} className="grid gap-3 rounded-2xl border border-white/10 bg-black/35 p-4 md:grid-cols-[140px_1fr]">
+                <div key={item.key} className="grid gap-3 rounded-2xl border border-white/10 bg-black/35 p-4 md:grid-cols-[150px_1fr]">
                   <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/10 bg-black">
                     {url ? <Image src={url} alt={item.label} fill className="object-cover" unoptimized={url.startsWith('http')} /> : null}
+                    {!savedValue ? (
+                      <span className="absolute bottom-2 left-2 rounded-full border border-white/10 bg-black/70 px-2 py-1 text-[9px] font-black uppercase text-zinc-300">
+                        Fallback
+                      </span>
+                    ) : null}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="text-xs font-black uppercase tracking-[0.16em] text-gold-soft">{item.label}</span>
                     <p className="mt-1 text-xs text-zinc-500">{item.description}</p>
+                    <input type="hidden" name={item.key} value={savedValue} />
                     <input
-                      name={item.key}
-                      defaultValue={registry[item.key] ?? ''}
-                      placeholder={item.fallbackUrl}
-                      className="mt-3 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-700 focus:border-gold/45"
+                      ref={(el) => {
+                        fileRefs.current[item.key] = el;
+                      }}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="sr-only"
+                      onChange={(e) => uploadFile(item.key, e.target.files?.[0])}
                     />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileRefs.current[item.key]?.click()}
+                        disabled={state.busy}
+                        className="inline-flex items-center gap-2 rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      >
+                        {state.busy ? <UploadCloud className="h-3.5 w-3.5 animate-pulse" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                        {savedValue ? 'Replace image' : 'Upload image'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setValues((prev) => ({ ...prev, [item.key]: '' }))}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove / reset
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[10px] text-zinc-600">Fallback: {item.fallbackUrl}</p>
+                    {state.error ? <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{state.error}</p> : null}
+                    {state.url ? <p className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Uploaded. Press Save media registry to publish.</p> : null}
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Advanced URL</summary>
+                      <input
+                        value={savedValue}
+                        onChange={(e) => setValues((prev) => ({ ...prev, [item.key]: e.target.value }))}
+                        placeholder={item.fallbackUrl}
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-700 focus:border-gold/45"
+                      />
+                    </details>
                   </div>
-                </label>
+                </div>
               );
             })}
           </div>

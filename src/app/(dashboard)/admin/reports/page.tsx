@@ -7,6 +7,7 @@ import { displayMoney } from '@/lib/display-format';
 import { getFinancialSnapshot } from '@/lib/financial-ledger';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { GlassCard, PremiumBadge, SectionEyebrow, CollapsibleSection } from '@/components/ui/premium';
+import { ReportPrintButton } from '@/components/admin/report-print-button';
 import { Calendar, Download, Eye, TrendingUp, DollarSign, Clock, FileSpreadsheet, ArrowLeft, ArrowUpRight, ShieldAlert, Percent, Activity } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -84,7 +85,7 @@ export default async function ReportsPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <a href={`/api/admin/reports/export?report=revenue&${qs}`} className="rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black">Download data</a>
-            <button type="button" className="rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200">Print / Save PDF</button>
+            <ReportPrintButton />
           </div>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -358,13 +359,7 @@ export default async function ReportsPage({
                 {displayMoney(summary.grossRevenueCents)} - {displayMoney(summary.refundsCents)} - {displayMoney(summary.stripeFeesCents)} - {displayMoney(summary.expensesCents)} = {displayMoney(summary.netProfitCents)}
               </p>
             </div>
-            <button 
-              type="button" 
-              onClick={() => window.print()} 
-              className="rounded-xl bg-white/5 border border-white/10 hover:border-white/30 text-white px-4 py-2 font-bold uppercase tracking-wider text-[10px] transition shrink-0"
-            >
-              Print Reconciled PDF
-            </button>
+            <ReportPrintButton label="Print Reconciled PDF" />
           </div>
 
           <div className="rounded-xl border border-white/5 bg-black/25 p-4 space-y-2">

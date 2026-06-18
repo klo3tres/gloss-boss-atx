@@ -35,12 +35,12 @@ const emptyDeals: DealConfig = {
 const SERVICE_PRESENTATION = [
   {
     match: ['exterior wash', 'exterior-wash'],
-    imageKey: 'services.exterior',
+    imageKey: 'services.exteriorWash',
     ideal: 'Weekly upkeep, pollen resets, and driveway maintenance visits.',
   },
   {
     match: ['exterior detail', 'exterior-detail'],
-    imageKey: 'services.exterior',
+    imageKey: 'services.exteriorDetail',
     ideal: 'Paint-safe gloss recovery before events, sales, or seasonal resets.',
   },
   {

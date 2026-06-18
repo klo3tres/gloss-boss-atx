@@ -55,6 +55,7 @@ export type PublicSiteDataPayload = {
   googleReviewUrl: string;
   homepageVisuals?: any;
   mediaRegistry?: Record<string, string>;
+  reviews?: PublicReview[];
   fleetServicesEnabled?: boolean;
   fleetServicesBlurb?: string;
   fleetPricing?: {
@@ -69,6 +70,17 @@ export type PublicSiteDataPayload = {
     monthlyDiscount: string;
     commercialNotes: string;
   };
+};
+
+export type PublicReview = {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  text: string;
+  date: string;
+  source: string;
+  vehicleOrService: string;
+  featured: boolean;
 };
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */
