@@ -18,7 +18,7 @@ import { GalleryAdminManager } from '@/components/admin/gallery-admin-manager';
 import { FeaturedShowcaseManager } from '@/components/admin/featured-showcase-manager';
 import { defaultFeaturedShowcaseSlides } from '@/lib/public-site-data';
 import { mapAdminGalleryRows, type AdminGalleryRow } from '@/lib/gallery-normalize';
-import { submitHomepageLogoForm, submitNavbarLogoForm } from '@/lib/admin/site-branding-actions';
+import { submitHomepageLogoForm, submitNavbarLogoForm, submitSocialLinksForm } from '@/lib/admin/site-branding-actions';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { WorkOrderUploadsTab } from '@/components/admin/work-order-uploads-tab';
 import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-manager';
@@ -95,16 +95,24 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
   let navbarLogoUrl = '';
   let homepageLogoUrl = '';
+  let socialLinks = { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' };
   let bookingAvail = parseBookingAvailabilityConfig(DEFAULT_BOOKING_AVAILABILITY);
   let homepageVisualsJson = '';
   try {
-    const settingsRes = await supabase.from('site_settings').select('key, value').in('key', ['navbar_logo', 'homepage_logo', 'booking_availability', 'homepage_visuals']);
+    const settingsRes = await supabase
+      .from('site_settings')
+      .select('key, value')
+      .in('key', ['navbar_logo', 'homepage_logo', 'booking_availability', 'homepage_visuals', 'social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']);
     for (const row of settingsRes.data ?? []) {
       const key = typeof row?.key === 'string' ? row.key : '';
       const val = typeof row?.value === 'string' ? row.value.trim() : '';
       if (key === 'navbar_logo' && val) navbarLogoUrl = val;
       if (key === 'homepage_logo' && val) homepageLogoUrl = val;
       if (key === 'homepage_visuals' && val) homepageVisualsJson = val;
+      if (key === 'social_instagram_url') socialLinks.instagramUrl = val;
+      if (key === 'social_tiktok_url') socialLinks.tiktokUrl = val;
+      if (key === 'social_youtube_url') socialLinks.youtubeUrl = val;
+      if (key === 'social_facebook_url') socialLinks.facebookUrl = val;
       if (key === 'booking_availability' && val) {
         try {
           bookingAvail = parseBookingAvailabilityConfig(JSON.parse(val));
@@ -426,6 +434,34 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
               </p>
             ) : null}
             <CmsGoogleReviewClient initialUrl={googleReviewUrl} />
+          </section>
+
+          <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+            <h2 className='text-lg font-black uppercase tracking-tight text-white'>Social media links</h2>
+            <p className='mt-2 text-sm text-zinc-400'>Only saved HTTPS links appear on the public homepage, footer, and social trust strip.</p>
+            <form action={submitSocialLinksForm} className='mt-5 grid gap-4 sm:grid-cols-2'>
+              <label className='block text-xs font-bold uppercase tracking-wider text-zinc-400'>
+                Instagram URL
+                <input name='instagram_url' type='url' defaultValue={socialLinks.instagramUrl} placeholder='https://instagram.com/...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm normal-case text-white' />
+              </label>
+              <label className='block text-xs font-bold uppercase tracking-wider text-zinc-400'>
+                TikTok URL
+                <input name='tiktok_url' type='url' defaultValue={socialLinks.tiktokUrl} placeholder='https://tiktok.com/@...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm normal-case text-white' />
+              </label>
+              <label className='block text-xs font-bold uppercase tracking-wider text-zinc-400'>
+                YouTube URL
+                <input name='youtube_url' type='url' defaultValue={socialLinks.youtubeUrl} placeholder='https://youtube.com/@...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm normal-case text-white' />
+              </label>
+              <label className='block text-xs font-bold uppercase tracking-wider text-zinc-400'>
+                Facebook URL
+                <input name='facebook_url' type='url' defaultValue={socialLinks.facebookUrl} placeholder='https://facebook.com/...' className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm normal-case text-white' />
+              </label>
+              <div className='sm:col-span-2'>
+                <button type='submit' className='rounded-lg bg-gradient-to-r from-gold via-gold-soft to-gold px-5 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110 transition duration-150'>
+                  Save social links
+                </button>
+              </div>
+            </form>
           </section>
 
           <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>

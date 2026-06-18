@@ -1,14 +1,22 @@
 "use client";
 
 import Image from "next/image";
-import { X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import type { PublicSiteDataPayload, SiteDataFeaturedSlide } from '@/lib/public-site-data';
 import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
+import type { PublicGalleryItem } from '@/lib/gallery-normalize';
+import { BeforeAfterSlider } from './before-after-slider';
+import { TransformationLightbox } from './transformation-lightbox';
+
+type RotatorSlide = SiteDataFeaturedSlide & {
+  beforeUrl?: string;
+  afterUrl?: string;
+  galleryItem?: PublicGalleryItem;
+};
 
 export function BeforeAfterRotator() {
-  const [slides, setSlides] = useState<SiteDataFeaturedSlide[]>([]);
+  const [slides, setSlides] = useState<RotatorSlide[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightbox, setLightbox] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -17,7 +25,7 @@ export function BeforeAfterRotator() {
     let cancelled = false;
     Promise.all([
       fetchWithTimeout('/api/gallery/public', { cache: 'no-store', timeoutMs: 8000 }).then(async (r) =>
-        r.ok ? ((await r.json()) as { images?: Array<{ url?: string; image_url?: string; caption?: string | null; featured?: boolean }> }) : null,
+        r.ok ? ((await r.json()) as { images?: PublicGalleryItem[] }) : null,
       ),
       fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 }).then(async (r) => {
         try {
@@ -36,6 +44,9 @@ export function BeforeAfterRotator() {
               id: `gal-${i}`,
               label: publicGalleryDisplayTitle(img as Record<string, unknown>),
               image: String(img.url || img.image_url),
+              beforeUrl: img.beforeUrl ? String(img.beforeUrl) : undefined,
+              afterUrl: img.afterUrl || img.url ? String(img.afterUrl || img.url) : undefined,
+              galleryItem: img,
             })),
           );
           setActiveIndex(0);
@@ -74,16 +85,26 @@ export function BeforeAfterRotator() {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
 
+  const lightboxItems: PublicGalleryItem[] = slides.map((slide) => slide.galleryItem ?? ({
+    id: slide.id,
+    url: slide.afterUrl || slide.image,
+    image_url: slide.afterUrl || slide.image,
+    caption: slide.label,
+    sort_order: 0,
+    order_index: 0,
+    published: true,
+    watermark: false,
+    beforeUrl: slide.beforeUrl,
+    afterUrl: slide.afterUrl || slide.image,
+    vehicleLabel: slide.label,
+    serviceLabel: 'Featured transformation',
+    vehicleClass: 'premium',
+    featured: true,
+    createdAt: new Date().toISOString(),
+  }));
+
   const safeIndex = slides.length ? activeIndex % slides.length : 0;
   const active = slides[safeIndex];
-
-  const go = useCallback(
-    (dir: -1 | 1) => {
-      const n = Math.max(slides.length, 1);
-      setActiveIndex((i) => (i + dir + n) % n);
-    },
-    [slides.length],
-  );
 
   if (!slides.length || !active) {
     return (
@@ -111,14 +132,18 @@ export function BeforeAfterRotator() {
         aria-label={`Open larger preview: ${active.label}`}
       >
         <div className="relative h-44 w-full md:h-52">
-          <Image
-            src={active.image}
-            alt={active.label}
-            fill
-            className="object-cover transition duration-700 group-hover:scale-[1.03]"
-            sizes="(max-width:768px) 100vw, 420px"
-            unoptimized
-          />
+          {active.beforeUrl && active.afterUrl && active.beforeUrl !== active.afterUrl ? (
+            <BeforeAfterSlider beforeUrl={active.beforeUrl} afterUrl={active.afterUrl} aspectRatio="h-full" className="rounded-none border-0" />
+          ) : (
+            <Image
+              src={active.image}
+              alt={active.label}
+              fill
+              className="object-cover transition duration-700 group-hover:scale-[1.03]"
+              sizes="(max-width:768px) 100vw, 420px"
+              unoptimized
+            />
+          )}
           <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
           <span className="absolute bottom-2 left-3 right-3 text-[10px] font-bold uppercase tracking-wider text-white drop-shadow">
             Tap to expand
@@ -154,55 +179,7 @@ export function BeforeAfterRotator() {
       </div>
 
       {lightbox ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Featured transformation preview"
-          className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-black/92 p-4"
-          onClick={() => setLightbox(false)}
-        >
-          <button
-            type="button"
-            aria-label="Close preview"
-            onClick={() => setLightbox(false)}
-            className="absolute right-4 top-4 z-10 rounded-full border border-gold/40 bg-black/80 p-2 text-gold-soft hover:bg-gold/10"
-          >
-            <X className="h-7 w-7" aria-hidden />
-          </button>
-          <div className="max-h-[90vh] max-w-full text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="relative mx-auto h-[min(70vh,520px)] w-[min(100vw-2rem,900px)]">
-              <Image
-                src={active.image}
-                alt={active.label}
-                fill
-                className="object-contain"
-                sizes="900px"
-                priority
-                unoptimized
-              />
-            </div>
-            {slides.length > 1 ? (
-              <div className="mt-4 flex items-center justify-center gap-3">
-                <button
-                  type="button"
-                  className="rounded-full border border-gold/40 px-3 py-1 text-xs font-bold uppercase text-gold-soft"
-                  onClick={() => go(-1)}
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full border border-gold/40 px-3 py-1 text-xs font-bold uppercase text-gold-soft"
-                  onClick={() => go(1)}
-                >
-                  Next
-                </button>
-              </div>
-            ) : null}
-            <p className="mt-3 text-sm text-zinc-300">{active.label}</p>
-            <p className="mt-2 text-[10px] text-zinc-600">Click outside to close</p>
-          </div>
-        </div>
+        <TransformationLightbox items={lightboxItems} activeIndex={safeIndex} onIndex={setActiveIndex} onClose={() => setLightbox(false)} />
       ) : null}
     </article>
   );

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Sparkles, Calendar, Tag, Car } from 'lucide-react';
+import { ArrowRight, Sparkles, Calendar, Tag, Car, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { BeforeAfterSlider } from './before-after-slider';
+import { MotionFade } from './motion-fade';
+import { TransformationLightbox } from './transformation-lightbox';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 
@@ -81,6 +83,8 @@ function isUsableVisualTransformation(item: any) {
 export function FeaturedTransformationsSection({ visuals }: FeaturedTransformationsSectionProps) {
   const [items, setItems] = useState<PublicGalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,72 +170,87 @@ export function FeaturedTransformationsSection({ visuals }: FeaturedTransformati
     displayItems = fallbackItems;
   }
 
+  const safeActive = Math.min(activeIndex, Math.max(0, displayItems.length - 1));
+  const activeItem = displayItems[safeActive] ?? displayItems[0];
+  const setNext = (dir: -1 | 1) => setActiveIndex((idx) => (idx + dir + displayItems.length) % displayItems.length);
+
   return (
-    <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-      {displayItems.map((item) => (
-        <article
-          key={item.id}
-          className="gb-premium-card gb-luxury-card-hover flex flex-col overflow-hidden rounded-3xl border border-gold/15 bg-black/40 p-4 sm:p-5 shadow-[0_0_35px_rgba(212,175,55,0.04)]"
-        >
-          {/* Interactive Slider */}
-          <div className="relative overflow-hidden rounded-2xl">
-            <BeforeAfterSlider
-              beforeUrl={item.beforeUrl!}
-              afterUrl={item.afterUrl!}
-              aspectRatio="aspect-[4/3]"
-              watermark={item.watermark}
-            />
-          </div>
-
-          {/* Details */}
-          <div className="mt-4 flex flex-1 flex-col justify-between">
-            <div>
-              {/* Service & Completion Date row */}
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                <span className="inline-flex items-center gap-1 text-gold-soft">
-                  <Tag className="h-3 w-3" />
-                  {item.serviceLabel || 'Detailing'}
-                </span>
-                <span className="inline-flex items-center gap-1 text-zinc-500">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(item.createdAt)}
-                </span>
+    <>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+        {activeItem ? (
+          <MotionFade>
+            <article className="gb-premium-card overflow-hidden rounded-3xl border border-gold/20 bg-black/50 p-3 shadow-[0_0_45px_rgba(212,175,55,0.08)] sm:p-5">
+              <div className="relative overflow-hidden rounded-2xl">
+                <BeforeAfterSlider beforeUrl={activeItem.beforeUrl!} afterUrl={activeItem.afterUrl!} aspectRatio="aspect-[4/3] sm:aspect-[16/10]" watermark={activeItem.watermark} />
+                <button
+                  type="button"
+                  onClick={() => setLightboxIndex(safeActive)}
+                  className="absolute right-3 bottom-3 z-30 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold/35 bg-black/75 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft backdrop-blur hover:bg-gold hover:text-black"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" /> Fullscreen
+                </button>
               </div>
-
-              {/* Title / Vehicle Year Make Model */}
-              <h3 className="mt-2 text-base font-black tracking-tight text-white uppercase line-clamp-1">
-                {item.vehicleLabel || 'Premium Transformation'}
-              </h3>
-
-              {/* Quick badges */}
-              <div className="mt-2 flex flex-wrap gap-2">
-                {item.vehicleClass && (
-                  <span className="inline-flex items-center gap-1 rounded bg-white/5 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-300">
-                    <Car className="h-2.5 w-2.5" />
-                    {item.vehicleClass.replace('_', ' ')}
-                  </span>
-                )}
-                {item.featured && (
-                  <span className="rounded bg-gold/10 border border-gold/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gold-soft">
-                    Featured
-                  </span>
-                )}
+              <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    <span className="inline-flex items-center gap-1 text-gold-soft"><Tag className="h-3 w-3" />{activeItem.serviceLabel || 'Detailing'}</span>
+                    <span className="inline-flex items-center gap-1 text-zinc-500"><Calendar className="h-3 w-3" />{formatDate(activeItem.createdAt)}</span>
+                  </div>
+                  <h3 className="mt-2 text-xl font-black uppercase tracking-tight text-white sm:text-3xl">{activeItem.vehicleLabel || 'Premium Transformation'}</h3>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setNext(-1)} className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 bg-black/60 text-zinc-200 hover:border-gold/40">
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button type="button" onClick={() => setNext(1)} className="grid h-12 w-12 place-items-center rounded-xl bg-gold text-black">
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
-            </div>
+            </article>
+          </MotionFade>
+        ) : null}
 
-            {/* Link to detail page */}
-            <div className="mt-5 pt-3 border-t border-white/5">
-              <Link
-                href={`/gallery/${item.id}`}
-                className="inline-flex w-full items-center justify-between rounded-xl bg-gold/10 hover:bg-gold/20 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft hover:text-white transition duration-300"
+        <div className="space-y-3">
+          <div className="flex gap-2 overflow-x-auto pb-2 lg:grid lg:grid-cols-1 lg:overflow-visible">
+            {displayItems.map((item, idx) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveIndex(idx)}
+                className={`group flex min-w-[78%] items-center gap-3 rounded-2xl border p-3 text-left transition sm:min-w-[52%] lg:min-w-0 ${
+                  idx === safeActive ? 'border-gold/45 bg-gold/10 shadow-[0_0_24px_rgba(212,175,55,0.12)]' : 'border-white/10 bg-black/35 hover:border-gold/25'
+                }`}
               >
-                <span>Read Full Story</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
+                <img src={item.afterUrl || item.url} alt="" className="h-20 w-24 shrink-0 rounded-xl object-cover" />
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black uppercase text-white">{item.vehicleLabel || 'Transformation'}</p>
+                  <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider text-gold-soft">{item.serviceLabel || 'Detailing'}</p>
+                  <p className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase text-zinc-500"><Car className="h-3 w-3" />{item.vehicleClass?.replace('_', ' ') || 'Premium'}</p>
+                </div>
+              </button>
+            ))}
           </div>
-        </article>
-      ))}
-    </div>
+          <div className="flex gap-1.5">
+            {displayItems.map((item, idx) => (
+              <button
+                key={`dot-${item.id}`}
+                type="button"
+                onClick={() => setActiveIndex(idx)}
+                className={`h-1.5 flex-1 rounded-full transition ${idx === safeActive ? 'bg-gold' : 'bg-white/15'}`}
+                aria-label={`Show transformation ${idx + 1}`}
+              />
+            ))}
+          </div>
+          <Link href="/gallery" className="inline-flex w-full items-center justify-between rounded-xl border border-gold/25 bg-black/45 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft hover:bg-gold/10">
+            <span>Open full portfolio</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+      {lightboxIndex !== null ? (
+        <TransformationLightbox items={displayItems} activeIndex={lightboxIndex} onIndex={setLightboxIndex} onClose={() => setLightboxIndex(null)} />
+      ) : null}
+    </>
   );
 }

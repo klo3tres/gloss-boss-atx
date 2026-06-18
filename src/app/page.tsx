@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Sparkles, X, Check, Star, ShieldCheck, Award, Flame, Calendar, Clock, MapPin, BadgePercent, Zap, Layers } from 'lucide-react';
+import { ArrowRight, Sparkles, X, Check, Star, ShieldCheck, Award, Flame, Calendar, Clock, MapPin, BadgePercent, Zap, Layers, Phone, Mail } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
 import { FeaturedTransformationsSection } from '@/components/marketing/featured-transformations-section';
@@ -67,6 +67,7 @@ export default function HomePage() {
   const [schemaWarnings, setSchemaWarnings] = useState<string[]>([]);
   const [siteLoaded, setSiteLoaded] = useState(false);
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
+  const [socialLinks, setSocialLinks] = useState({ instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' });
   const [visuals, setVisuals] = useState<any>(null);
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
@@ -98,6 +99,7 @@ export default function HomePage() {
         setMultiCar(data.multiCar ?? null);
         setSchemaWarnings(data.schemaWarnings ?? []);
         setGoogleReviewUrl(data.googleReviewUrl ?? '');
+        setSocialLinks(data.socialLinks ?? { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' });
         setVisuals(data.homepageVisuals ?? null);
         setReviews(data.reviews ?? []);
         setMediaRegistry(data.mediaRegistry ?? {});
@@ -124,6 +126,12 @@ export default function HomePage() {
   }, [offers]);
   const [dismissSchemaNotice, setDismissSchemaNotice] = useState(false);
   const showSchemaNotice = schemaWarnings.length > 0 && !dismissSchemaNotice;
+  const socialButtons = [
+    { label: 'Instagram', href: socialLinks.instagramUrl, mark: 'IG' },
+    { label: 'TikTok', href: socialLinks.tiktokUrl, mark: 'TT' },
+    { label: 'YouTube', href: socialLinks.youtubeUrl, mark: 'YT' },
+    { label: 'Facebook', href: socialLinks.facebookUrl, mark: 'FB' },
+  ].filter((item) => item.href);
 
   // Visual helper for crop alignment
   const getObjectStyle = (config: any) => {
@@ -233,21 +241,26 @@ export default function HomePage() {
                   </Link>
                 </div>
 
-                <div className='gb-premium-card mt-8 rounded-2xl border border-gold/15 p-5 text-base sm:p-6'>
+                <div className='gb-premium-card mt-8 rounded-2xl border border-gold/15 bg-black/55 p-4 text-base shadow-[0_0_28px_rgba(212,175,55,0.08)] sm:p-5'>
                   <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick Contact</p>
-                  <div className='mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4'>
-                    <a
-                      href='tel:+15124812319'
-                      className='inline-flex min-h-[48px] items-center justify-center rounded-xl border border-gold/30 bg-black/50 px-5 py-3 text-lg font-bold text-white transition hover:border-gold hover:bg-black/70 sm:text-xl'
-                    >
-                      (512) 481-2319
+                  <div className='mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap'>
+                    <a href='tel:+15124812319' className='inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-gold/35 bg-gold/10 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft transition hover:bg-gold hover:text-black'>
+                      <Phone className="h-4 w-4" /> Call
                     </a>
-                    <a
-                      href='mailto:glossbossatx1@gmail.com'
-                      className='inline-flex min-h-[48px] items-center justify-center break-all rounded-xl border border-white/10 bg-black/50 px-5 py-3 text-sm font-medium text-gold-soft underline decoration-gold/40 underline-offset-4 transition hover:border-gold/40 hover:text-white'
-                    >
-                      glossbossatx1@gmail.com
+                    <a href='mailto:glossbossatx1@gmail.com' className='inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:border-gold/40 hover:text-gold-soft'>
+                      <Mail className="h-4 w-4" /> Email
                     </a>
+                    {socialButtons.map((social) => (
+                      <a
+                        key={social.label}
+                        href={social.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className='inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs font-black uppercase tracking-wider text-zinc-200 transition hover:border-gold/40 hover:text-gold-soft'
+                      >
+                        <span className="grid h-5 w-5 place-items-center rounded-md border border-gold/25 text-[9px] font-black text-gold-soft">{social.mark}</span> {social.label}
+                      </a>
+                    ))}
                   </div>
                   <p className='mt-3 text-xs text-zinc-500'>Austin, Texas & surrounding areas</p>
                 </div>
@@ -321,13 +334,15 @@ export default function HomePage() {
               { icon: Star, label: '5-Star Rated', desc: 'Top Austin detailer' },
               { icon: Check, label: '100% Satisfaction', desc: 'Guaranteed quality' },
             ].map((item, idx) => (
-              <div key={idx} className="flex flex-col items-center space-y-2">
-                <div className="p-2 bg-gold/10 rounded-full border border-gold/20">
-                  <item.icon className="h-5 w-5 text-gold-soft" />
+              <MotionFade key={idx} delay={idx * 0.05}>
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="p-2 bg-gold/10 rounded-full border border-gold/20">
+                    <item.icon className="h-5 w-5 text-gold-soft" />
+                  </div>
+                  <p className="text-xs font-black uppercase tracking-wider text-white">{item.label}</p>
+                  <p className="text-[10px] text-zinc-500">{item.desc}</p>
                 </div>
-                <p className="text-xs font-black uppercase tracking-wider text-white">{item.label}</p>
-                <p className="text-[10px] text-zinc-500">{item.desc}</p>
-              </div>
+              </MotionFade>
             ))}
           </div>
         </div>
@@ -348,7 +363,7 @@ export default function HomePage() {
             </div>
           </MotionFade>
 
-          <div className='mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-4'>
+          <div className='mt-12 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 pr-8 [-ms-overflow-style:none] [scrollbar-width:none] md:grid md:snap-none md:grid-cols-2 md:overflow-visible md:pb-0 md:pr-0 lg:grid-cols-4 [&::-webkit-scrollbar]:hidden'>
             {packagesForGrid.map((service, index) => {
               // Load covers from custom visuals configuration
               const visualCover = visuals?.services?.covers?.[service.id];
@@ -362,6 +377,7 @@ export default function HomePage() {
 
               return (
                 <MotionFade key={`${siteLoaded ? 'live' : 'seed'}-${service.id}`} delay={index * 0.06}>
+                  <div className="min-w-[82%] snap-start sm:min-w-[58%] md:min-w-0">
                   <article className='group rounded-3xl border border-gold/15 bg-zinc-950/80 overflow-hidden transition duration-300 hover:-translate-y-1.5 hover:border-gold/45 shadow-lg flex flex-col h-full'>
                     <div className="relative aspect-[16/10] overflow-hidden border-b border-white/5 bg-zinc-900">
                       <img
@@ -399,6 +415,7 @@ export default function HomePage() {
                       </div>
                     </div>
                   </article>
+                  </div>
                 </MotionFade>
               );
             })}
@@ -617,6 +634,35 @@ export default function HomePage() {
         </div>
       </section>
 
+      {socialButtons.length > 0 ? (
+        <section className="border-b border-white/5 bg-black px-4 py-16 sm:px-6 lg:px-8">
+          <MotionFade>
+            <div className="mx-auto grid max-w-7xl gap-8 rounded-3xl border border-gold/15 bg-zinc-950/70 p-6 shadow-[0_0_36px_rgba(212,175,55,0.06)] sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Watch our work</span>
+                <h2 className="mt-2 text-3xl font-black uppercase tracking-tight text-white sm:text-4xl">Follow the shine</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400">
+                  See recent transformations, behind-the-scenes details, and fresh mobile detailing results from Austin driveways.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
+                {socialButtons.map((social) => (
+                  <a
+                    key={`proof-${social.label}`}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/60 px-5 py-3 text-xs font-black uppercase tracking-wider text-zinc-200 transition hover:border-gold/40 hover:text-gold-soft"
+                  >
+                    <span className="grid h-5 w-5 place-items-center rounded-md border border-gold/25 text-[9px] font-black text-gold-soft">{social.mark}</span> {social.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </MotionFade>
+        </section>
+      ) : null}
+
       {/* SECTION 10: HOURS & SERVICE AREA */}
       <section className='mx-auto w-full max-w-5xl px-4 py-20 sm:px-6 border-b border-white/5'>
         <MotionFade>
@@ -700,9 +746,11 @@ export default function HomePage() {
             </p>
             <p className='text-zinc-400 text-xs mt-1'>Austin, Texas & surrounding areas</p>
             <div className='mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap'>
-              <a href='https://instagram.com/glossbossatx' className='rounded-lg border border-gold/40 px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-gold-soft hover:bg-gold/5 transition'>
-                Instagram
-              </a>
+              {socialButtons.map((social) => (
+                <a key={`footer-${social.label}`} href={social.href} target="_blank" rel="noopener noreferrer" className='inline-flex items-center justify-center gap-2 rounded-lg border border-gold/40 px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-gold-soft hover:bg-gold/5 transition'>
+                  <span className="grid h-5 w-5 place-items-center rounded-md border border-gold/25 text-[9px] font-black text-gold-soft">{social.mark}</span> {social.label}
+                </a>
+              ))}
               <Link href='/book' className='rounded-lg bg-gold px-5 py-3 text-center text-xs font-bold uppercase tracking-widest text-black hover:brightness-110 transition'>
                 Reserve Appointment
               </Link>

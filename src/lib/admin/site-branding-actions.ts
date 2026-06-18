@@ -77,3 +77,31 @@ export async function submitHomepageLogoForm(formData: FormData): Promise<void> 
   }
   redirect('/admin/cms?homeLogoOk=1');
 }
+
+export async function submitSocialLinksForm(formData: FormData): Promise<void> {
+  const session = await getSessionWithProfile();
+  if (!session.user || (session.profile?.role !== 'super_admin' && session.profile?.role !== 'admin')) {
+    redirect('/admin/cms?socialErr=Unauthorized');
+  }
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) redirect('/admin/cms?socialErr=Server%20admin%20client%20unavailable');
+
+  const now = new Date().toISOString();
+  const clean = (key: string) => {
+    const value = String(formData.get(key) ?? '').trim();
+    return value && !value.startsWith('http') ? '' : value;
+  };
+  const rows = [
+    { key: 'social_instagram_url', value: clean('instagram_url'), updated_at: now },
+    { key: 'social_tiktok_url', value: clean('tiktok_url'), updated_at: now },
+    { key: 'social_youtube_url', value: clean('youtube_url'), updated_at: now },
+    { key: 'social_facebook_url', value: clean('facebook_url'), updated_at: now },
+  ];
+  const { error } = await admin.from('site_settings').upsert(rows, { onConflict: 'key' });
+  if (error) redirect(`/admin/cms?socialErr=${encodeURIComponent(error.message)}`);
+
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  redirect('/admin/cms?socialOk=1');
+}

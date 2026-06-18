@@ -31,6 +31,7 @@ function offlinePayload(extraWarnings: string[]): PublicSiteDataPayload {
     featuredShowcase: defaultFeaturedShowcaseSlides(),
     featuredShowcaseFromCms: false,
     googleReviewUrl: '',
+    socialLinks: { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' },
     homepageVisuals: null,
     mediaRegistry: {},
     reviews: [],
@@ -55,13 +56,14 @@ export async function GET() {
         featuredShowcase: defaultFeaturedShowcaseSlides(),
         featuredShowcaseFromCms: false,
         googleReviewUrl: '',
+        socialLinks: { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' },
         mediaRegistry: {},
         reviews: [],
       };
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes, reviewsRes] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes, reviewsRes, socialRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -82,6 +84,7 @@ export async function GET() {
         .order('featured', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(12),
+      client.from('site_settings').select('key, value').in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']),
     ]);
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
@@ -105,6 +108,7 @@ export async function GET() {
     if (reviewRes.error) schemaWarnings.push(`review_settings: ${reviewRes.error.message}`);
     if (ssGoogle.error) schemaWarnings.push(`site_settings(google_review_url): ${ssGoogle.error.message}`);
     if (reviewsRes.error) schemaWarnings.push(`customer_reviews: ${reviewsRes.error.message}`);
+    if (socialRes.error) schemaWarnings.push(`site_settings(social): ${socialRes.error.message}`);
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
@@ -193,6 +197,12 @@ export async function GET() {
       }
     }
 
+    const socialRows = (socialRes.data ?? []) as Array<{ key?: string; value?: unknown }>;
+    const socialValue = (key: string) => {
+      const raw = String(socialRows.find((r) => r.key === key)?.value ?? '').trim();
+      return raw.startsWith('http') ? raw : '';
+    };
+
     const payload: PublicSiteDataPayload = {
       ok: schemaWarnings.length === 0 && svcList.length > 0 && !sErr,
       schemaWarnings,
@@ -203,6 +213,12 @@ export async function GET() {
       featuredShowcase,
       featuredShowcaseFromCms,
       googleReviewUrl,
+      socialLinks: {
+        instagramUrl: socialValue('social_instagram_url'),
+        tiktokUrl: socialValue('social_tiktok_url'),
+        youtubeUrl: socialValue('social_youtube_url'),
+        facebookUrl: socialValue('social_facebook_url'),
+      },
       homepageVisuals: visualsRes.data?.value ? (typeof visualsRes.data.value === 'string' ? JSON.parse(visualsRes.data.value) : visualsRes.data.value) : null,
       mediaRegistry: normalizeMediaRegistry(mediaRes.data?.value ?? null),
       reviews: reviewsRes.error

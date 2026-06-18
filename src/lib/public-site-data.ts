@@ -53,6 +53,12 @@ export type PublicSiteDataPayload = {
   /** True when `featured_showcase` CMS JSON produced at least one published slide. */
   featuredShowcaseFromCms?: boolean;
   googleReviewUrl: string;
+  socialLinks?: {
+    instagramUrl: string;
+    tiktokUrl: string;
+    youtubeUrl: string;
+    facebookUrl: string;
+  };
   homepageVisuals?: any;
   mediaRegistry?: Record<string, string>;
   reviews?: PublicReview[];

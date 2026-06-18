@@ -5,6 +5,7 @@ import { Search, Sparkles, Tag, Car, Calendar, SlidersHorizontal, ArrowRight, X,
 import type { PublicGalleryItem } from '@/lib/gallery-normalize';
 import { publicGalleryDisplayTitle } from '@/lib/gallery-normalize';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { BeforeAfterSlider } from './before-after-slider';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -428,7 +429,6 @@ function GalleryModal({
   // Local Zoom/Pan/ViewMode states
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [sliderVal, setSliderVal] = useState(50);
   const [viewMode, setViewMode] = useState<'slider' | 'before' | 'after'>(hasPair ? 'slider' : 'after');
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -442,32 +442,16 @@ function GalleryModal({
   const imgAfter = swapped ? before : after;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
 
   // Reset zoom/pan when active item changes
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-    setSliderVal(50);
     setViewMode(hasPair ? 'slider' : 'after');
     setSwapped(false);
     setBeforeOffset({ x: 0, y: 0 });
     setBeforeScale(1);
   }, [item.id, hasPair]);
-
-  // Track container width for slider alignment
-  useEffect(() => {
-    if (containerRef.current) {
-      setContainerWidth(containerRef.current.clientWidth);
-    }
-    const handleResize = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.clientWidth);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [item.id]);
 
   const handleZoomIn = () => {
     setZoom((z) => Math.min(3, z + 0.5));
@@ -714,76 +698,9 @@ function GalleryModal({
           className={`relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-gold/20 bg-zinc-950 select-none ${cursorClass}`}
         >
           {viewMode === 'slider' && hasPair ? (
-            <>
-              {/* Right side/background (After image). The frame is hard-masked so pan/zoom never bleeds outside. */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
-                <img
-                  src={imgAfter}
-                  alt="After"
-                  draggable={false}
-                  className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none"
-                  style={{
-                    transform: `scale(${zoom}) translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0px)`,
-                    transformOrigin: 'center center',
-                    transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                  }}
-                />
-              </div>
-
-              {/* Left side clipped reveal (Before image). This is the only image reveal boundary. */}
-              <div
-                className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none select-none"
-                style={{
-                  width: `${sliderVal}%`,
-                }}
-              >
-                <div
-                  className="absolute inset-y-0 left-0 overflow-hidden"
-                  style={{ width: containerWidth ? `${containerWidth}px` : '100vw' }}
-                >
-                  <img
-                    src={imgBefore}
-                    alt="Before"
-                    draggable={false}
-                    className="absolute inset-0 h-full w-full object-contain pointer-events-none select-none max-w-none"
-                    style={{
-                      transform: `scale(${zoom * beforeScale}) translate3d(${(pan.x + beforeOffset.x) / zoom}px, ${(pan.y + beforeOffset.y) / zoom}px, 0px)`,
-                      transformOrigin: 'center center',
-                      transition: isDragging ? 'none' : 'transform 0.15s ease-out',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Slider Line Overlay */}
-              <div
-                className="absolute inset-y-0 w-[2px] bg-gold shadow-[0_0_18px_rgba(212,175,55,0.9)] z-10"
-                style={{ left: `${sliderVal}%` }}
-              >
-                <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-gold bg-black px-3 py-2 text-xs font-black text-gold-soft">
-                  DRAG
-                </span>
-              </div>
-
-              {/* Range Input (only interactive when not zoomed to avoid click-conflict with pan drag) */}
-              {zoom <= 1 && (
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={sliderVal}
-                  onChange={(e) => setSliderVal(Number(e.target.value))}
-                  className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0"
-                />
-              )}
-              
-              <span className="absolute bottom-4 left-4 rounded-lg bg-black/75 px-3 py-1 text-[10px] font-black uppercase text-amber-200 z-10 pointer-events-none select-none">
-                Before
-              </span>
-              <span className="absolute bottom-4 right-4 rounded-lg bg-gold px-3 py-1 text-[10px] font-black uppercase text-black z-10 pointer-events-none select-none">
-                After
-              </span>
-            </>
+            <div className="h-full w-full origin-center transition-transform duration-200" style={{ transform: `scale(${zoom})` }}>
+              <BeforeAfterSlider beforeUrl={imgBefore} afterUrl={imgAfter} aspectRatio="h-full" watermark={item.watermark} className="h-full rounded-none border-0" />
+            </div>
           ) : viewMode === 'before' && hasPair ? (
             <img
               src={imgBefore}
