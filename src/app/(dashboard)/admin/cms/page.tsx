@@ -243,7 +243,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     console.error('Failed to fetch recent job photos', err);
   }
 
-  const currentTab = typeof sp.tab === 'string' ? sp.tab : 'gallery';
+  const currentTab = typeof sp.tab === 'string' ? sp.tab : 'visuals';
 
   return (
     <DashboardShell
@@ -286,13 +286,12 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       {/* Tabs Selector */}
       <div className="flex overflow-x-auto gap-1 border-b border-white/10 pb-1 mb-6">
         {[
-          { id: 'gallery', label: 'Gallery CMS' },
-          { id: 'uploads', label: 'Work Order Photos' },
-          { id: 'visuals', label: 'Homepage Visuals' },
-          { id: 'hours', label: 'Hours & Settings' },
-          { id: 'documents', label: 'Documents' },
-          { id: 'featured', label: 'Featured Transformations' },
-          { id: 'promotions', label: 'Promotions' },
+          { id: 'visuals', label: 'Homepage visuals' },
+          { id: 'featured', label: 'Featured transformations' },
+          { id: 'gallery', label: 'Gallery manager' },
+          { id: 'reviews', label: 'Reviews / testimonials' },
+          { id: 'hours', label: 'Hours / contact' },
+          { id: 'advanced', label: 'Advanced' },
         ].map((tab) => {
           const isActive = currentTab === tab.id;
           return (
@@ -429,7 +428,15 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         </>
       )}
 
-      {currentTab === 'documents' && (
+      {currentTab === 'reviews' && (
+        <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>Reviews and testimonials</h2>
+          <p className='mt-2 text-sm text-zinc-400'>A focused place for social proof, review links, and testimonial content that supports the homepage and booking flow.</p>
+          <Link href='/admin/messages' className='mt-4 inline-flex rounded-xl border border-gold/30 px-4 py-2 text-xs font-black uppercase text-gold-soft'>Review customer messages</Link>
+        </section>
+      )}
+
+      {currentTab === 'advanced' && (
         <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
           <h2 className='text-lg font-black uppercase tracking-tight text-white'>CMS documents</h2>
           <p className='mt-2 text-sm text-zinc-400'>
@@ -472,7 +479,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
         </section>
       )}
 
-      {currentTab === 'promotions' && (
+      {currentTab === 'advanced' && (
         <>
           {oErr ? <p className='mb-4 text-sm text-red-300'>{oErr.message}</p> : null}
           <PromotionsAdminClient initialRows={promotionRows} />

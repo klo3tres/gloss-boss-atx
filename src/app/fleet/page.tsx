@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Building2, CalendarCheck, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { FleetInquiryForm } from '@/components/public/fleet-inquiry-form';
 import { DEFAULT_FLEET_PRICING, parseFleetPricing } from '@/lib/fleet-pricing';
@@ -35,15 +36,30 @@ export default async function FleetPage() {
   return (
     <main className='gb-luxury-page min-h-screen bg-black text-white'>
       <section className='relative overflow-hidden border-b border-gold/20'>
-        <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,166,77,0.18),transparent_30%),linear-gradient(110deg,rgba(0,0,0,0.82),rgba(0,0,0,0.92))]' />
-        <div className='relative mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-8'>
+        <Image
+          src="/assets/black_detailer_driveway_1780873080456.png"
+          alt="Gloss Boss ATX fleet detailing"
+          fill
+          priority
+          className="object-cover opacity-35"
+        />
+        <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(0,0,0,0.96),rgba(0,0,0,0.62),rgba(0,0,0,0.94))]' />
+        <div className='relative mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8'>
           <div>
             <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Gloss Boss ATX Fleet Care</p>
             <h1 className='mt-4 text-4xl font-black uppercase leading-none sm:text-6xl'>Premium mobile detailing for business fleets</h1>
             <p className='mt-5 max-w-2xl text-base leading-7 text-zinc-300'>{blurb}</p>
+            <div className="mt-7 grid max-w-2xl gap-3 sm:grid-cols-3">
+              {['Work trucks', 'Company vehicles', 'Executive fleets'].map((item) => (
+                <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur">
+                  <p className="text-sm font-black text-white">{item}</p>
+                  <p className="mt-1 text-xs text-zinc-400">Recurring on-site care</p>
+                </div>
+              ))}
+            </div>
             <div className='mt-8 flex flex-wrap gap-3'>
-              <a href='#fleet-inquiry' className='rounded-xl bg-gold px-6 py-3 text-sm font-black uppercase text-black'>Request fleet quote</a>
-              <Link href='/book' className='rounded-xl border border-white/15 px-6 py-3 text-sm font-black uppercase text-white'>Book one vehicle</Link>
+              <a href='#fleet-inquiry' className='rounded-xl bg-gold px-6 py-3 text-sm font-black uppercase text-black shadow-[0_0_24px_rgba(212,166,77,0.25)] transition hover:bg-gold-soft'>Request fleet quote</a>
+              <Link href='/book' className='rounded-xl border border-white/15 bg-black/35 px-6 py-3 text-sm font-black uppercase text-white transition hover:border-gold/35'>Book one vehicle</Link>
             </div>
           </div>
           <div className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-6 shadow-[0_0_42px_rgba(212,166,77,0.14)]'>
@@ -66,6 +82,19 @@ export default async function FleetPage() {
       </section>
 
       <section className='mx-auto max-w-7xl px-5 py-14 lg:px-8'>
+        <div className="mb-8 grid gap-4 md:grid-cols-4">
+          {[
+            ['Maintenance plans', 'Exterior refreshes, interior resets, and cadence-based care.'],
+            ['Multi-vehicle discounts', 'Simple tiers for small, mid-size, and large fleets.'],
+            ['On-site service', 'Office lots, warehouses, dealerships, and managed properties.'],
+            ['Recurring schedules', 'Weekly, bi-weekly, monthly, or custom routes.'],
+          ].map(([title, copy]) => (
+            <div key={title} className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5 transition hover:-translate-y-1 hover:border-gold/30">
+              <p className="text-sm font-black uppercase text-white">{title}</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-400">{copy}</p>
+            </div>
+          ))}
+        </div>
         <div className='grid gap-4 md:grid-cols-3'>
           {tiers.map((tier) => (
             <div key={tier.label} className='rounded-3xl border border-gold/20 bg-zinc-950 p-6 transition hover:-translate-y-1 hover:border-gold/45'>
@@ -90,6 +119,21 @@ export default async function FleetPage() {
               </div>
             );
           })}
+        </div>
+        <div className="mt-8 rounded-3xl border border-gold/20 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Example operating plan</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {[
+              ['5 vehicles', pricing.smallDetail],
+              ['12 vehicles', pricing.mediumDetail],
+              ['15+ vehicles', pricing.largeDetail],
+            ].map(([label, detail]) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                <p className="text-lg font-black text-white">{label}</p>
+                <p className="mt-1 text-sm text-zinc-400">{detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 

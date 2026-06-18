@@ -315,7 +315,7 @@ export function DashboardShell({
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
   const platformPulse = [
-    { label: 'Daily closeout', value: role === 'technician' ? 'Field ready' : 'Revenue ready', pct: 78 },
+    { label: 'Daily closeout', value: role === 'technician' ? 'Field checklist' : 'Closeout review', pct: 78 },
     { label: 'Response SLA', value: `${Math.max(0, unreadCount)} open`, pct: unreadCount > 0 ? 46 : 94 },
     { label: 'Quality streak', value: 'Elite tier', pct: 86 },
   ];

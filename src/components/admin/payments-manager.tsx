@@ -20,7 +20,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Layers,
-  Compass
+  Compass,
+  Search
 } from 'lucide-react';
 import { reconcileStripeSessionAction, refundStripePaymentAction } from '@/app/(dashboard)/admin/payments/payment-actions';
 
@@ -46,6 +47,9 @@ function chicago(v: unknown) {
 export function PaymentsManager({ rows }: { rows: PayRow[] }) {
   const [activeTab, setActiveTab] = useState<'recent' | 'pending' | 'refunds' | 'receipts'>('recent');
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'paid' | 'balance' | 'comp' | 'excluded' | 'duplicate' | 'stripe' | 'cash' | 'credit'>('all');
+  const [showExcluded, setShowExcluded] = useState(true);
 
   // Group row items
   const grouped = useMemo(() => {
@@ -54,7 +58,46 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
     const refunds: PayRow[] = [];
     const receipts: PayRow[] = [];
 
+    const q = query.trim().toLowerCase();
+    const matchesQuery = (r: PayRow) => {
+      if (!q) return true;
+      const haystack = [
+        r.id,
+        r.guest_name,
+        r.customer_name,
+        r.guest_email,
+        r.customer_email,
+        r.guest_phone,
+        r.payment_method,
+        r.payment_kind,
+        r.payment_status,
+        r.status,
+        r.amount_cents,
+        r.base_price_cents,
+        r.appointment_id,
+        r.fallback_booking_id,
+        r.stripe_checkout_session_id,
+        r.stripe_payment_intent_id,
+      ].join(' ').toLowerCase();
+      return q.split(/\s+/).every((part) => haystack.includes(part));
+    };
+    const matchesFilter = (r: PayRow) => {
+      const status = String(r.status ?? r.payment_status ?? '').toLowerCase();
+      const method = String(r.payment_method ?? r.payment_kind ?? r.source ?? '').toLowerCase();
+      if (!showExcluded && (r.exclude_from_revenue || r.is_test || r.voided_at)) return false;
+      if (filter === 'paid') return ['succeeded', 'paid', 'deposit_paid'].some((s) => status.includes(s));
+      if (filter === 'balance') return Number(r.balance_due_cents ?? 0) > 0 || status.includes('balance');
+      if (filter === 'comp') return method.includes('comp') || Number(r.amount_cents ?? 0) === 0;
+      if (filter === 'excluded') return Boolean(r.exclude_from_revenue || r.is_test || r.voided_at);
+      if (filter === 'duplicate') return Boolean(r.duplicate_of_payment_id || r.duplicate);
+      if (filter === 'stripe') return Boolean(r.stripe_checkout_session_id || r.stripe_payment_intent_id);
+      if (filter === 'cash') return method.includes('cash') || method.includes('direct');
+      if (filter === 'credit') return method.includes('credit') || method.includes('card');
+      return true;
+    };
+
     rows.forEach((r, idx) => {
+      if (!matchesQuery(r) || !matchesFilter(r)) return;
       const rowWithIndex = { ...r, _originalIndex: idx };
       const hasPaymentRecord = !!r.id;
       const isSucceeded = r.status === 'succeeded' || r.payment_status === 'paid' || r.payment_status === 'deposit_paid';
@@ -80,9 +123,23 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
     });
 
     return { recent, pending, refunds, receipts };
-  }, [rows]);
+  }, [filter, query, rows, showExcluded]);
 
   const activeRow = activeRowIndex !== null ? rows[activeRowIndex] : null;
+  const activeAmount = activeRow ? money(activeRow.amount_cents ?? activeRow.deposit_amount_cents ?? activeRow.base_price_cents) : '—';
+  const activeMethod = activeRow ? String(activeRow.payment_method ?? activeRow.payment_kind ?? activeRow.source ?? '—').replace(/_/g, ' ') : '—';
+  const activeStatus = activeRow ? String(activeRow.payment_status ?? activeRow.status ?? 'unknown').replace(/_/g, ' ') : 'unknown';
+  const revenueReason = activeRow
+    ? activeRow.exclude_from_revenue
+      ? 'Excluded from revenue by receipt/payment flag'
+      : activeRow.is_test
+        ? 'Excluded because this is marked as test data'
+        : activeRow.voided_at
+          ? 'Excluded because the payment is voided'
+          : ['succeeded', 'paid', 'deposit_paid'].some((s) => String(activeRow.status ?? activeRow.payment_status ?? '').toLowerCase().includes(s))
+            ? 'Included when status is paid/succeeded and no exclusion flag is set'
+            : 'Pending or incomplete status'
+    : '';
 
   return (
     <div className="space-y-6">
@@ -112,6 +169,46 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
         <Link href="/admin/receipts" className="text-[10px] font-black uppercase tracking-wider bg-zinc-900 border border-white/5 hover:border-zinc-700 text-zinc-300 px-3.5 py-2.5 rounded-xl transition">
           Open Receipts Board
         </Link>
+      </div>
+
+      <div className="grid gap-3 rounded-3xl border border-gold/15 bg-black/40 p-4 backdrop-blur-xl lg:grid-cols-[1fr_auto]">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gold-soft" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search customer, email, amount, method, Stripe ID, or work order"
+            className="w-full rounded-2xl border border-white/10 bg-zinc-950/85 py-3 pl-11 pr-4 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-gold/45"
+          />
+        </label>
+        <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3 text-xs font-bold text-zinc-300">
+          <input type="checkbox" checked={showExcluded} onChange={(event) => setShowExcluded(event.target.checked)} />
+          Show test / excluded
+        </label>
+        <div className="lg:col-span-2 flex flex-wrap gap-2">
+          {[
+            ['all', 'All'],
+            ['paid', 'Paid'],
+            ['balance', 'Balance due'],
+            ['comp', 'Comp'],
+            ['excluded', 'Excluded'],
+            ['duplicate', 'Duplicate'],
+            ['stripe', 'Stripe'],
+            ['cash', 'Cash/direct'],
+            ['credit', 'Credit'],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFilter(id as any)}
+              className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${
+                filter === id ? 'border-gold/45 bg-gold/15 text-gold-soft' : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Grid panels list */}
@@ -275,13 +372,25 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                   <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Transaction Balance</h4>
                   <div className="grid grid-cols-2 gap-3 bg-zinc-900/20 border border-white/5 p-3 rounded-xl text-xs">
                     <div>
-                      <span className="text-zinc-500 block">Total Base Price</span>
-                      <strong className="text-white font-mono text-sm">{money(activeRow.base_price_cents)}</strong>
+                      <span className="text-zinc-500 block">Amount</span>
+                      <strong className="text-white font-mono text-sm">{activeAmount}</strong>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block">Deposit Captured</span>
-                      <strong className="text-gold-soft font-mono text-sm">{money(activeRow.deposit_amount_cents ?? activeRow.amount_cents)}</strong>
+                      <span className="text-zinc-500 block">Method</span>
+                      <strong className="text-gold-soft text-sm capitalize">{activeMethod}</strong>
                     </div>
+                    <div>
+                      <span className="text-zinc-500 block">Status</span>
+                      <strong className="text-white text-sm capitalize">{activeStatus}</strong>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Timestamp</span>
+                      <strong className="text-white text-sm">{chicago(activeRow.created_at)}</strong>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/5 bg-black/35 p-3 text-xs text-zinc-300">
+                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Revenue handling</span>
+                    <p className="mt-1 leading-5">{revenueReason}</p>
                   </div>
                 </div>
 
@@ -297,6 +406,30 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                       <span className="text-zinc-600">Payment Intent:</span>
                       <span className="truncate max-w-[200px] text-zinc-200">{activeRow.stripe_payment_intent_id ?? '—'}</span>
                     </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Linked Records</h4>
+                  <div className="grid gap-2 text-[10px]">
+                    {(activeRow.appointment_id || activeRow.fallback_booking_id) && (
+                      <Link
+                        href={`/admin/work-orders?bucket=all`}
+                        onClick={() => setActiveRowIndex(null)}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 font-black uppercase tracking-wider text-zinc-300 hover:border-gold/30"
+                      >
+                        Work order: {String(activeRow.appointment_id ?? activeRow.fallback_booking_id).slice(0, 12)}
+                      </Link>
+                    )}
+                    {activeRow.id && (
+                      <Link
+                        href={`/admin/receipts/${activeRow.id}`}
+                        onClick={() => setActiveRowIndex(null)}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 font-black uppercase tracking-wider text-emerald-300 hover:border-emerald-500/30"
+                      >
+                        Receipt / invoice file
+                      </Link>
+                    )}
                   </div>
                 </div>
 

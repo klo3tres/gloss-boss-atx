@@ -296,11 +296,14 @@ function TransformationCard({ img, onOpen }: { img: PublicGalleryItem; onOpen: (
     <button
       type="button"
       onClick={onOpen}
-      className="group block overflow-hidden gb-premium-card gb-luxury-card-hover rounded-3xl border border-gold/15 bg-black text-left shadow-[0_0_35px_rgba(212,175,55,0.03)] hover:border-gold/50 transition duration-300"
+      className="group block overflow-hidden gb-premium-card gb-luxury-card-hover rounded-3xl border border-gold/15 bg-black text-left shadow-[0_0_35px_rgba(212,175,55,0.03)] transition duration-300 hover:-translate-y-1 hover:border-gold/50 hover:shadow-[0_0_44px_rgba(212,175,55,0.16)]"
     >
       {/* Before/After Split Preview or Single image */}
       {hasSlider ? (
         <div className="grid grid-cols-2 gap-[1px] bg-white/5 relative aspect-[4/3] overflow-hidden">
+          <span className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-full border border-gold/35 bg-black/70 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft opacity-95 backdrop-blur transition group-hover:bg-gold group-hover:text-black">
+            <ZoomIn className="h-3 w-3" /> Expand
+          </span>
           <div className="relative h-full w-full">
             <span className="absolute left-2.5 top-2.5 z-10 rounded bg-black/80 border border-white/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-300">
               Before
@@ -338,6 +341,9 @@ function TransformationCard({ img, onOpen }: { img: PublicGalleryItem; onOpen: (
         </div>
       ) : (
         <div className="relative aspect-[4/3] overflow-hidden">
+          <span className="absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-full border border-gold/35 bg-black/70 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft opacity-95 backdrop-blur transition group-hover:bg-gold group-hover:text-black">
+            <ZoomIn className="h-3 w-3" /> Expand
+          </span>
           <img
             src={after}
             alt={caption}

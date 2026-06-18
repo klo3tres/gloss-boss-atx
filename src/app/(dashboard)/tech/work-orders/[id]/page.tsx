@@ -360,8 +360,8 @@ export default async function TechWorkOrderDetailPage({
     admin.from('tech_job_notes').select('id, notes, internal_notes, before_notes, after_notes, damage_notes, upsell_notes, vehicle_index, created_at, created_by').eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId).order('created_at', { ascending: false }).limit(50),
     admin.from('notification_outbox').select('id, kind, channel, status, skipped_reason, created_at, payload').eq(isFallback ? 'fallback_booking_id' : 'appointment_id', queryId).order('created_at', { ascending: false }).limit(30),
     !isFallback
-      ? admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle()
-      : admin.from('signed_agreements').select('id, signed_at').eq('fallback_booking_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle(),
+      ? admin.from('signed_agreements').select('*').eq('appointment_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle()
+      : admin.from('signed_agreements').select('*').eq('fallback_booking_id', queryId).order('signed_at', { ascending: false }).limit(1).maybeSingle(),
     Promise.resolve({ data: [] as Row[] }),
   ]);
 
@@ -385,6 +385,9 @@ export default async function TechWorkOrderDetailPage({
       ? `/admin/agreements/${encodeURIComponent(`signed_agreements:${str(agreementRow.id)}`)}`
       : `/dashboard/agreements/${encodeURIComponent(`signed_agreements:${str(agreementRow.id)}`)}`
     : agreementCaptureHref;
+  const agreementPdfHref = agreementRow?.id
+    ? `/api/agreements/${encodeURIComponent(`signed_agreements:${str(agreementRow.id)}`)}/pdf`
+    : '';
 
   const paymentRows = paymentRowsFetched;
   const orderSnapshot = await loadOrderSnapshot(admin, {
@@ -729,6 +732,12 @@ export default async function TechWorkOrderDetailPage({
     agreementSigned,
     agreementCaptureHref,
     agreementDetailHref,
+    agreementPdfHref,
+    agreementSignerName: str(agreementRow?.signer_name || agreementRow?.signature_name || agreementRow?.customer_name || row.guest_name),
+    agreementSignedAt: displayChicago(agreementRow?.signed_at, ''),
+    agreementSmsConsent: Boolean(agreementRow?.sms_consent || agreementRow?.text_consent || agreementRow?.marketing_sms_consent),
+    agreementPhotoConsent: Boolean(agreementRow?.photo_consent || agreementRow?.photos_consent || agreementRow?.before_after_photo_consent),
+    agreementMediaConsent: Boolean(agreementRow?.media_consent || agreementRow?.marketing_photo_consent || agreementRow?.social_media_consent),
     technicianName: resolved.technicianName ?? '',
     jobStartedAt: displayChicago(row.job_started_at, ''),
     jobCompletedAt: displayChicago(row.job_completed_at || row.completed_at, ''),

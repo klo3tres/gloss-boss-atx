@@ -8,6 +8,7 @@ import { archiveBookingFallbackAction, deleteBookingFallbackAction } from '../bo
 import { adminRecordCashPaymentAction, archiveAppointmentWorkOrderAction, clearStaleActiveTestRecordsAction, deleteAppointmentWorkOrderAction } from './work-order-actions';
 import { workOrderPath, workOrderRecapturePath } from '@/lib/work-order-links';
 import { WorkOrderListCard } from '@/components/admin/work-order-list-card';
+import { WorkOrderLiveSearch } from '@/components/admin/work-order-live-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -293,6 +294,7 @@ export default async function AdminWorkOrdersPage({
             <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>{activeBucket}</h2>
             <span className='rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-zinc-300'>{bucketRows.length} total</span>
           </div>
+          <WorkOrderLiveSearch total={bucketRows.length} />
           
           <div className='space-y-4'>
             {bucketRows.length === 0 ? (
@@ -323,9 +325,26 @@ export default async function AdminWorkOrdersPage({
                   if (str(r.stripe_checkout_session_id)) agreementCaptureParams.set('session_id', str(r.stripe_checkout_session_id));
                   if (str(r.guest_email)) agreementCaptureParams.set('email', str(r.guest_email));
                   if (str(r.guest_phone)) agreementCaptureParams.set('phone', str(r.guest_phone));
+                  const searchText = [
+                    str(r.id),
+                    str(r.status),
+                    str(r.guest_name),
+                    str(r.guest_email),
+                    str(r.guest_phone),
+                    str(r.customer_name),
+                    str(r.customer_email),
+                    str(r.customer_phone),
+                    str(r.service_slug),
+                    vehicles(r),
+                    vehicleLines(r).join(' '),
+                  ].join(' ');
                   return (
-                    <WorkOrderListCard
+                    <div
                       key={`${isFallback ? 'fb' : 'appt'}-${str(r.id)}`}
+                      data-work-order-card
+                      data-search={searchText}
+                    >
+                    <WorkOrderListCard
                       title={
                         <>
                           {str(r.guest_name) || 'Customer'} · {str(r.service_slug).replace(/-/g, ' ') || 'Service'}
@@ -431,6 +450,7 @@ export default async function AdminWorkOrdersPage({
                         )}
                       </div>
                     </WorkOrderListCard>
+                    </div>
                   );
                 })}
               </div>

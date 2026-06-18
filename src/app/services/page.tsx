@@ -31,6 +31,39 @@ const emptyDeals: DealConfig = {
   promoStacksWithMultiCar: true,
 };
 
+const SERVICE_PRESENTATION = [
+  {
+    match: ['exterior wash', 'exterior-wash'],
+    image: '/assets/exterior_wash_driveway_1780872964011.png',
+    ideal: 'Weekly upkeep, pollen resets, and driveway maintenance visits.',
+  },
+  {
+    match: ['exterior detail', 'exterior-detail'],
+    image: '/assets/black_detailer_driveway_1780873080456.png',
+    ideal: 'Paint-safe gloss recovery before events, sales, or seasonal resets.',
+  },
+  {
+    match: ['interior detail', 'interior-detail', 'interior'],
+    image: '/assets/interior_detail_driveway_1780872974449.png',
+    ideal: 'Daily drivers, family vehicles, pet hair, spills, and cabin refreshes.',
+  },
+  {
+    match: ['full detail', 'full-detail', 'full'],
+    image: '/assets/full_detail_driveway_no_people_1780873155626.png',
+    ideal: 'Complete interior and exterior reset for vehicles that need everything.',
+  },
+  {
+    match: ['ceramic', 'coating'],
+    image: '/assets/ceramic_coating_driveway_1780872997033.png',
+    ideal: 'Longer-term protection, deeper gloss, easier washing, and premium finish care.',
+  },
+];
+
+function servicePresentation(service: ServicePackage) {
+  const text = `${service.id} ${service.title} ${service.subtitle ?? ''}`.toLowerCase();
+  return SERVICE_PRESENTATION.find((item) => item.match.some((m) => text.includes(m))) ?? SERVICE_PRESENTATION[0];
+}
+
 function fmtMoney(cents: number) {
   return `$${(cents / 100).toFixed(0)}`;
 }
@@ -278,12 +311,30 @@ export default function ServicesPage() {
             {serviceCards.map((service) => {
               const duration = getDuration(service);
               const isQuoteOnly = !service.sedanPrice || service.quoteRequired || service.comingSoon;
+              const presentation = servicePresentation(service);
 
               return (
                 <article
                   key={service.id}
-                  className="relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 backdrop-blur-md p-6 sm:p-8 hover:border-gold/30 hover:shadow-[0_0_40px_rgba(212,175,55,0.08)] transition-all duration-300"
+                  className="group relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 backdrop-blur-md hover:-translate-y-1 hover:border-gold/30 hover:shadow-[0_0_44px_rgba(212,175,55,0.12)] transition-all duration-300"
                 >
+                  <div className="grid gap-0 lg:grid-cols-[0.9fr_1.35fr]">
+                    <div className="relative min-h-[260px] overflow-hidden">
+                      <Image
+                        src={presentation.image}
+                        alt={`${service.title} vehicle detail`}
+                        fill
+                        className="object-cover opacity-75 transition duration-700 group-hover:scale-105 group-hover:opacity-95"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
+                      <div className="absolute bottom-5 left-5 right-5">
+                        <span className="rounded-full border border-gold/30 bg-black/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-gold-soft backdrop-blur">
+                          Member savings available
+                        </span>
+                        <p className="mt-3 text-sm leading-6 text-zinc-200">{presentation.ideal}</p>
+                      </div>
+                    </div>
+                    <div className="p-6 sm:p-8">
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 pb-6 border-b border-white/5">
                     <div>
                       <h2 className="text-2.5xl font-black uppercase text-white tracking-tight">{service.title}</h2>
@@ -332,7 +383,18 @@ export default function ServicesPage() {
                     </ul>
                   </div>
 
-                  <div className="mt-8 flex justify-end gap-3">
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-black/35 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gold-soft">Popular upgrades</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {PUBLIC_ADDON_PRICING.slice(0, 4).map((addon) => (
+                        <span key={`${service.id}-${addon.label}`} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] font-bold text-zinc-300">
+                          {addon.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex flex-wrap justify-end gap-3">
                     {isQuoteOnly ? (
                       <Link
                         href="/contact"
@@ -345,9 +407,11 @@ export default function ServicesPage() {
                         href={`/book?service=${service.id}&package=${service.id}`}
                         className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black shadow-[0_0_15px_rgba(212,175,55,0.2)] hover:bg-gold-soft transition"
                       >
-                        Book Package
+                        Book this service
                       </Link>
                     )}
+                  </div>
+                    </div>
                   </div>
                 </article>
               );

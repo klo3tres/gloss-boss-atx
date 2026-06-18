@@ -84,6 +84,12 @@ export type WorkOrderConsoleData = {
   agreementSigned: boolean;
   agreementCaptureHref: string;
   agreementDetailHref: string;
+  agreementPdfHref?: string;
+  agreementSignerName?: string;
+  agreementSignedAt?: string;
+  agreementSmsConsent?: boolean;
+  agreementPhotoConsent?: boolean;
+  agreementMediaConsent?: boolean;
   requirements: Array<{ label: string; ok: boolean }>;
   timeline: Array<{ id: string; title: string; time: string }>;
   notes: Array<{ id: string; vehicleLabel: string; time: string; body: string }>;
@@ -1804,6 +1810,38 @@ export function WorkOrderConsoleClient({
                   ? 'Legal liability agreement is signed and on file for this job.'
                   : 'Capture liability and service intake acknowledgement before starting field work — this is step 1 in job progress.'}
               </p>
+              {data.agreementSigned ? (
+                <div className="mt-5 grid gap-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4 text-xs text-zinc-300 sm:grid-cols-2">
+                  <p>
+                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Signer</span>
+                    <strong className="text-white">{data.agreementSignerName || 'Customer signature on file'}</strong>
+                  </p>
+                  <p>
+                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Signed</span>
+                    <strong className="text-white">{data.agreementSignedAt || 'Timestamp on agreement PDF'}</strong>
+                  </p>
+                  <div className="sm:col-span-2 flex flex-wrap gap-2">
+                    {[
+                      ['SMS consent', data.agreementSmsConsent],
+                      ['Photo consent', data.agreementPhotoConsent],
+                      ['Media consent', data.agreementMediaConsent],
+                    ].map(([label, ok]) => (
+                      <span
+                        key={String(label)}
+                        className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                          ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-zinc-500'
+                        }`}
+                      >
+                        {label}: {ok ? 'Yes' : 'Not captured'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-100">
+                  No signed agreement is attached yet. Send or recapture the agreement before starting the job.
+                </div>
+              )}
               <div className='mt-5 flex flex-wrap gap-2'>
                 <Link
                   href={data.agreementCaptureHref}
@@ -1817,6 +1855,14 @@ export function WorkOrderConsoleClient({
                 >
                   View agreement
                 </Link>
+                {data.agreementPdfHref ? (
+                  <Link
+                    href={data.agreementPdfHref}
+                    className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200 hover:bg-white/5 transition'
+                  >
+                    Download agreement PDF
+                  </Link>
+                ) : null}
               </div>
             </div>
           </section>

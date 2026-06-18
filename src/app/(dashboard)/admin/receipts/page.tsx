@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
+import { ReceiptLiveSearch } from '@/components/admin/receipt-live-search';
+import { ReceiptDetailDrawer } from '@/components/admin/receipt-detail-drawer';
 import { bulkReceiptRevenueFlagsAction, updateReceiptRevenueFlagsAction } from './receipt-actions';
 import { summarizePayments, type PayRow } from '@/lib/revenue-metrics';
 
@@ -141,6 +143,7 @@ export default async function AdminReceiptsPage() {
           </div>
           <p className='mt-2 text-xs text-zinc-500'>Select receipt checkboxes below. Delete only removes rows already marked test.</p>
         </form>
+        <ReceiptLiveSearch total={rows.length} />
         <div className='grid gap-3'>
           {rows.length === 0 ? <p className='rounded-xl border border-dashed border-white/10 p-6 text-center text-sm text-zinc-500'>No payments or receipts found.</p> : null}
           {rows.map((r) => {
@@ -148,8 +151,27 @@ export default async function AdminReceiptsPage() {
             const customer = (r.customer && typeof r.customer === 'object' ? r.customer : {}) as Row;
             const id = str(receipt.id || r.payment_id || r.id);
             const receiptNumber = str(receipt.receipt_number) || `RCPT-${id.slice(0, 8).toUpperCase()}`;
+            const statusText = str(receipt.status || r.status || (Number(r.balance_due_cents ?? 0) > 0 ? 'Balance due' : 'Draft'));
+            const customerName = str(r.guest_name || customer.full_name || r.customer_name) || 'Customer';
+            const email = str(r.guest_email || customer.email || r.email);
+            const phone = str(r.guest_phone || customer.phone || r.phone);
+            const balance = Number(r.balance_due_cents ?? receipt.balance_due_cents ?? 0);
+            const lineItems = [str(r.service_slug).replace(/-/g, ' ') || 'Service package'].filter(Boolean);
+            const searchText = [
+              id,
+              receiptNumber,
+              statusText,
+              customerName,
+              email,
+              phone,
+              str(r.payment_id),
+              str(r.appointment_id),
+              str(r.fallback_booking_id),
+              str(r.amount_cents ?? receipt.amount_cents),
+              str(r.payment_method || r.payment_kind || receipt.payment_method),
+            ].join(' ');
             return (
-              <article key={`${id}-${str(r.created_at)}`} className='rounded-2xl border border-white/10 bg-black/35 p-4 transition hover:border-gold/30'>
+              <article key={`${id}-${str(r.created_at)}`} data-receipt-card data-search={searchText} className='rounded-2xl border border-white/10 bg-black/35 p-4 transition hover:border-gold/30'>
                 {str(receipt.id) ? (
                   <label className='mb-3 flex items-center gap-2 text-xs font-bold uppercase text-zinc-400'>
                     <input form='receipt-bulk-form' type='checkbox' name='receiptIds' value={str(receipt.id)} className='h-4 w-4 accent-[var(--gold)]' />
@@ -170,6 +192,26 @@ export default async function AdminReceiptsPage() {
                   </div>
                 </div>
                 <div className='mt-4 flex flex-wrap gap-2'>
+                  <ReceiptDetailDrawer
+                    row={{
+                      id,
+                      receiptNumber,
+                      customer: customerName,
+                      email,
+                      phone,
+                      workOrderId: str(r.appointment_id || r.fallback_booking_id),
+                      paymentId: str(r.payment_id),
+                      amount: money(r.amount_cents ?? receipt.amount_cents),
+                      balance: money(balance),
+                      status: statusText,
+                      sentStatus: str(receipt.sent_status || receipt.last_send_status),
+                      lineItems,
+                      discounts: str(receipt.discount_label || r.promo_code),
+                      pdfHref: `/api/receipts/${encodeURIComponent(id)}/pdf`,
+                      receiptHref: `/admin/receipts/${encodeURIComponent(id)}`,
+                      paymentHref: str(r.payment_id) ? `/admin/payments/${str(r.payment_id)}` : undefined,
+                    }}
+                  />
                   <Link href={`/admin/receipts/${encodeURIComponent(id)}`} className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Open Receipt</Link>
                   {str(r.payment_id) ? <Link href={`/admin/payments/${str(r.payment_id)}`} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Payment</Link> : null}
                   <ReceiptSendForm receiptId={str(receipt.id) || undefined} paymentId={str(r.payment_id) || undefined} />
