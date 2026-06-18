@@ -47,15 +47,16 @@ function vehicleLines(r: Row) {
     return bookingVehicles.map((v, i) => {
       const row = v && typeof v === 'object' ? (v as Row) : {};
       return {
-        label: str(row.vehicle_description || row.description) || `Vehicle ${i + 1}`,
+        label: str(row.vehicle_description || row.description || [row.year, row.make, row.model].map(str).filter(Boolean).join(' ')) || `Vehicle ${i + 1}`,
         service: str(row.service_slug) || str(r.service_slug),
         color: str(row.vehicle_color || row.color) || 'Color not provided',
+        identifiers: [row.license_plate, row.plate, row.vin, row.VIN].map(str).filter(Boolean).join(' '),
         priceCents: typeof row.price_cents === 'number' ? row.price_cents : null,
         status: str(row.status) || str(r.status),
       };
     });
   }
-  return [{ label: str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending', service: str(r.service_slug), color: 'Color not provided', priceCents: typeof r.base_price_cents === 'number' ? r.base_price_cents : null, status: str(r.status) }];
+  return [{ label: str(r.vehicle_description) || str(r.vehicle_class) || 'Vehicle pending', service: str(r.service_slug), color: str(r.vehicle_color || r.color) || 'Color not provided', identifiers: [r.license_plate, r.plate, r.vin, r.VIN].map(str).filter(Boolean).join(' '), priceCents: typeof r.base_price_cents === 'number' ? r.base_price_cents : null, status: str(r.status) }];
 }
 
 function mapsHref(addr: string) {
@@ -160,6 +161,7 @@ export default async function AdminWorkOrdersPage({
     if (sid && !paymentBySession.has(sid)) paymentBySession.set(sid, payment);
   }
   const technicians = ((techRes.data ?? []) as Row[]).filter((t) => t.active !== false);
+  const technicianNameById = new Map(technicians.map((t) => [str(t.id), str(t.full_name || t.email || 'Technician')]));
   const appts = ((appointmentsRes.data ?? []) as Row[]).filter((r) => r.archived !== true && !r.archived_at);
   const fallbacks: Row[] = ((fallbacksRes.data ?? []) as Row[])
     .filter((r) => !['archived', 'deleted', 'expired'].includes(str(r.status)) && !r.archived_at)
@@ -335,8 +337,9 @@ export default async function AdminWorkOrdersPage({
                     str(r.customer_email),
                     str(r.customer_phone),
                     str(r.service_slug),
+                    technicianNameById.get(str(r.assigned_technician_id)) ?? '',
                     vehicles(r),
-                    vehicleLines(r).join(' '),
+                    ...vehicleLines(r).flatMap((v) => [v.label, v.service, v.color, v.identifiers, v.status]),
                   ].join(' ');
                   return (
                     <div

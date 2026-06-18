@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { mediaUrl, type MediaRegistry } from '@/lib/media-registry';
 
 const giftCardTiers = [
   { name: 'Starter Shine', amountCents: 7500, useFor: 'Great for Exterior Wash' },
@@ -10,11 +11,25 @@ const giftCardTiers = [
   { name: 'Boss Level', amountCents: 20000, useFor: 'Great for Full Detail and upgrades' },
 ] as const;
 
+const occasions = [
+  { id: 'birthday', label: 'Birthday', key: 'giftcards.birthday' },
+  { id: 'graduation', label: 'Graduation', key: 'giftcards.hero' },
+  { id: 'fathers-day', label: "Father's Day", key: 'giftcards.corporate' },
+  { id: 'mothers-day', label: "Mother's Day", key: 'giftcards.hero' },
+  { id: 'thank-you', label: 'Thank You', key: 'giftcards.birthday' },
+  { id: 'corporate', label: 'Corporate Reward', key: 'giftcards.corporate' },
+];
+
 export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: boolean }) {
   const searchParams = useSearchParams();
   const cancelled = searchParams.get('cancelled');
   const [email, setEmail] = useState('');
   const [custom, setCustom] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [message, setMessage] = useState('');
+  const [occasion, setOccasion] = useState(occasions[0]);
+  const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +45,14 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
         const res = await fetch('/api/stripe/create-gift-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amountCents, email: email.trim() || null }),
+          body: JSON.stringify({
+            amountCents,
+            email: email.trim() || null,
+            recipientEmail: recipientEmail.trim() || null,
+            deliveryDate: deliveryDate || null,
+            message: message.trim() || null,
+            occasion: occasion.label,
+          }),
         });
         const data = (await res.json()) as { url?: string; error?: string; message?: string; code?: string };
         if (data.url) {
@@ -48,8 +70,21 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
       }
       setBusy(null);
     },
-    [email, checkoutAvailable]
+    [deliveryDate, email, message, occasion.label, recipientEmail, checkoutAvailable]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/site-data', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data: { mediaRegistry?: MediaRegistry }) => {
+        if (!cancelled && data.mediaRegistry) setMediaRegistry(data.mediaRegistry);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const customAmountCents = Math.round(Number(custom) * 100);
   const customValid = Number.isFinite(customAmountCents) && customAmountCents >= 1000 && customAmountCents <= 500_000;
@@ -57,11 +92,23 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
   return (
     <main className='min-h-screen bg-background px-4 py-24 text-foreground sm:px-6'>
       <div className='mx-auto w-full max-w-5xl'>
-        <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
-        <h1 className='mt-3 text-4xl font-black uppercase sm:text-5xl'>Gift cards</h1>
-        <p className='mt-3 max-w-2xl text-zinc-300'>
-          Purchase a digital gift card in seconds. You will be redirected to secure Stripe Checkout. Reference your Stripe receipt email when booking.
-        </p>
+        <section className='grid gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-center'>
+          <div>
+            <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+            <h1 className='mt-3 text-4xl font-black uppercase sm:text-5xl'>Gift the reset they actually want</h1>
+            <p className='mt-3 max-w-2xl text-zinc-300'>
+              Occasion-based digital gift cards for birthdays, graduations, parent days, thank-yous, and corporate rewards.
+            </p>
+          </div>
+          <div className='relative overflow-hidden rounded-3xl border border-gold/25 bg-black p-5 shadow-[0_0_38px_rgba(212,175,55,0.16)]'>
+            <img src={mediaUrl(mediaRegistry, occasion.key)} alt={occasion.label} className='h-52 w-full rounded-2xl object-cover opacity-80' />
+            <div className='absolute inset-x-8 bottom-8 rounded-2xl border border-white/15 bg-black/75 p-4 backdrop-blur'>
+              <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{occasion.label}</p>
+              <p className='mt-1 text-2xl font-black text-white'>Gloss Boss Gift Card</p>
+              <p className='mt-2 line-clamp-2 text-xs text-zinc-300'>{message || 'A premium mobile detail, delivered as a polished gift.'}</p>
+            </div>
+          </div>
+        </section>
 
         {cancelled ? (
           <p className='mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100'>Checkout was cancelled. You have not been charged.</p>
@@ -80,16 +127,30 @@ export function GiftCardsClient({ checkoutAvailable }: { checkoutAvailable: bool
           </div>
         ) : null}
 
-        <label className='mt-8 block max-w-md text-sm'>
-          <span className='mb-2 block text-zinc-300'>Purchaser email (optional)</span>
-          <input
-            type='email'
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
-            placeholder='you@example.com'
-          />
-        </label>
+        <section className='mt-8 grid gap-4 rounded-3xl border border-gold/20 bg-black/45 p-5 md:grid-cols-2'>
+          <label className='text-sm'>
+            <span className='mb-2 block text-zinc-300'>Purchaser email</span>
+            <input type='email' value={email} onChange={(e) => setEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' placeholder='you@example.com' />
+          </label>
+          <label className='text-sm'>
+            <span className='mb-2 block text-zinc-300'>Recipient email</span>
+            <input type='email' value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' placeholder='recipient@example.com' />
+          </label>
+          <label className='text-sm'>
+            <span className='mb-2 block text-zinc-300'>Delivery date</span>
+            <input type='date' value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' />
+          </label>
+          <label className='text-sm'>
+            <span className='mb-2 block text-zinc-300'>Occasion design</span>
+            <select value={occasion.id} onChange={(e) => setOccasion(occasions.find((o) => o.id === e.target.value) ?? occasions[0])} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'>
+              {occasions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </label>
+          <label className='text-sm md:col-span-2'>
+            <span className='mb-2 block text-zinc-300'>Personal message</span>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} placeholder='Enjoy a showroom-level reset from Gloss Boss ATX.' />
+          </label>
+        </section>
 
         {error ? <p className='mt-4 text-sm text-red-400'>{error}</p> : null}
 

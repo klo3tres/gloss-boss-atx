@@ -103,7 +103,7 @@ export default async function AdminRevenuePage({
     fetchPaymentsSince(admin, periodStartIso, now),
     fetchPaymentsSince(admin, startOfYearIso(), now),
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
-    admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class').order('scheduled_start', { ascending: false }).limit(800),
+    admin.from('appointments').select('id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class, booking_pricing_breakdown').order('scheduled_start', { ascending: false }).limit(800),
     admin.from('profiles').select('id, full_name, email').in('role', ['technician', 'admin', 'super_admin']),
     admin.from('customers').select('id, full_name, email, phone').order('full_name').limit(400),
   ]);
@@ -155,6 +155,20 @@ export default async function AdminRevenuePage({
   const balanceDueCents = financial.openBalancesCents || allAppts
     .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
     .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
+  const discountsGivenCents = allAppts.reduce((sum, a) => {
+    const breakdown = a.booking_pricing_breakdown && typeof a.booking_pricing_breakdown === 'object' ? a.booking_pricing_breakdown as Record<string, unknown> : {};
+    return sum + Number(breakdown.offerDiscountCents ?? 0) + Number(breakdown.websitePromoDiscountCents ?? 0) + Number(breakdown.multiCarDiscountCents ?? 0);
+  }, 0);
+  const cfoMetrics = [
+    ['Gross Service Value', money(allAppts.reduce((sum, a) => sum + Number(a.base_price_cents ?? 0), 0)), 'Booked service value before payment timing.', '/admin/work-orders'],
+    ['Cash Collected', money(financial.grossRevenueCents), 'Cleared payment and receipt-backed cash.', '/admin/payments'],
+    ['Credits Issued', money(0), 'Customer credit liability is summarized in Reports.', '/admin/reports'],
+    ['Credits Redeemed', money(0), 'Customer credits applied to jobs are summarized in Reports.', '/admin/reports'],
+    ['Discounts Given', money(discountsGivenCents), 'Promos, offers, and multi-car reductions.', '/admin/promotions'],
+    ['Net Revenue', money(financial.netProfitCents), 'Cash collected minus refunds, fees, and expenses.', '/admin/reports'],
+    ['Outstanding Receivables', money(balanceDueCents), 'Customer balances still due.', '/admin/work-orders'],
+    ['Pending Deposits', money(financial.pendingDepositsCents), 'Booked jobs awaiting required deposits.', '/admin/work-orders'],
+  ];
 
   const { count: completedMonth } = await admin
     .from('appointments')
@@ -326,6 +340,35 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
+      <section className="mb-8 rounded-3xl border border-white/10 bg-black/45 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Business Intelligence</p>
+            <h2 className="mt-2 text-2xl font-black uppercase text-white">What should I do next?</h2>
+          </div>
+          <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">Actionable analytics</span>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {[
+            ['Most popular services', popularServices[0]?.label ?? 'No completed services yet', popularServices.length ? 'Feature this service in homepage CTAs and gallery captions.' : 'Complete jobs will populate this recommendation.'],
+            ['Least popular services', Object.values(serviceBreakdown).sort((a, b) => a.count - b.count)[0]?.label ?? 'No low performer yet', 'Bundle with a high-performing package or test a limited-time offer.'],
+            ['Highest revenue services', Object.values(serviceBreakdown).sort((a, b) => b.revenueCents - a.revenueCents)[0]?.label ?? 'No revenue leader yet', 'Move this package higher in the booking flow and train techs to explain the value.'],
+            ['Average ticket size', avgTicketSize, 'Raise ticket size with the top two add-ons during booking and closeout.'],
+            ['Repeat customer rate', `${Math.round((topCustomers.filter((c) => c.jobCount > 1).length / Math.max(1, topCustomers.length)) * 100)}%`, 'Send rebooking offers to customers with one completed detail.'],
+            ['Technician productivity', techRevenueList[0]?.name ?? 'No leader yet', 'Use the top workflow as the SOP baseline for the team.'],
+            ['Membership conversion', `${completedAppts.length ? Math.round((customersList.length / Math.max(1, completedAppts.length)) * 10) : 0}%`, 'Offer Gold membership after full details and ceramic jobs.'],
+            ['Fleet growth', `${allAppts.filter((a) => String(a.service_slug ?? '').toLowerCase().includes('fleet')).length} jobs`, 'Push fleet inquiry CTA on commercial/gallery traffic.'],
+            ['Upsells not selling', 'Review add-ons', 'If add-ons are absent from receipts, move them into booking cards and technician closeout prompts.'],
+          ].map(([title, value, action]) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{title}</p>
+              <p className="mt-2 text-lg font-black capitalize text-white">{value}</p>
+              <p className="mt-2 text-xs leading-5 text-gold-soft">{action}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Interactive Charts Section */}
       <div className='mb-8'>
         <RevenueChartsClient
@@ -343,6 +386,25 @@ export default async function AdminRevenuePage({
           topCustomers={topCustomers}
         />
       </div>
+
+      <section className="mb-8 rounded-3xl border border-gold/20 bg-black/50 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">CFO-ready revenue map</p>
+            <h2 className="mt-2 text-2xl font-black uppercase text-white">Every number has a definition and a drill-down</h2>
+          </div>
+          <Link href="/admin/reports" className="rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black">Executive reports</Link>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {cfoMetrics.map(([label, value, hint, href]) => (
+            <Link key={label} href={href} className="rounded-2xl border border-white/10 bg-zinc-950/70 p-4 transition hover:border-gold/35">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+              <p className="mt-3 font-mono text-xl font-black text-white">{value}</p>
+              <p className="mt-2 text-[11px] leading-5 text-zinc-500">{hint}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {/* Advanced Breakdowns Section (Phase 2 Additions) */}
       <section className='mb-8 grid grid-cols-1 gap-6 md:grid-cols-3'>

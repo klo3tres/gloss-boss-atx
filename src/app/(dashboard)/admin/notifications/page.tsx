@@ -43,9 +43,31 @@ export default async function AdminNotificationsPage() {
       payload,
     };
   });
+  const emailRows = outboxRows.filter((row) => row.channel.toLowerCase().includes('email') || row.provider.toLowerCase().includes('resend'));
+  const smsRows = outboxRows.filter((row) => row.channel.toLowerCase().includes('sms') || row.provider.toLowerCase().includes('twilio'));
+  const failedRows = outboxRows.filter((row) => ['failed', 'error'].includes(row.status.toLowerCase()) || row.error_message);
+  const pendingRows = outboxRows.filter((row) => ['pending', 'queued', 'new'].includes(row.status.toLowerCase()));
+  const deliveredRows = outboxRows.filter((row) => ['sent', 'delivered', 'success', 'succeeded'].includes(row.status.toLowerCase()));
+  const deliveryHealth = outboxRows.length > 0 ? Math.round((deliveredRows.length / outboxRows.length) * 100) : 100;
 
   return (
     <DashboardShell title='Notification center' subtitle='Templates, delivery log, test send, and provider status.' role='admin'>
+      <section className='grid gap-4 md:grid-cols-3 xl:grid-cols-6'>
+        {[
+          ['Email Status', resendConfigured() ? 'Configured' : 'Setup needed', `${emailRows.length} recent email events`],
+          ['SMS Status', twilioConfigured() ? 'Configured' : 'Setup needed', `${smsRows.length} recent SMS events`],
+          ['Delivery Health', `${deliveryHealth}%`, `${deliveredRows.length}/${outboxRows.length || 0} delivered`],
+          ['Failed Sends', String(failedRows.length), 'Open failures first'],
+          ['Pending Sends', String(pendingRows.length), 'Queued or waiting'],
+          ['Provider Status', resendConfigured() && twilioConfigured() ? 'Healthy' : 'Partial', 'Resend + Twilio'],
+        ].map(([label, value, hint]) => (
+          <div key={label} className='rounded-3xl border border-gold/15 bg-black/45 p-4 shadow-[0_0_24px_rgba(212,175,55,0.07)]'>
+            <p className='text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500'>{label}</p>
+            <p className='mt-3 text-xl font-black text-white'>{value}</p>
+            <p className='mt-1 text-[10px] text-zinc-500'>{hint}</p>
+          </div>
+        ))}
+      </section>
       <section className='gb-glass rounded-3xl border border-gold/25 p-5'>
         <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Variables</p>
         <div className='mt-3 flex flex-wrap gap-2'>

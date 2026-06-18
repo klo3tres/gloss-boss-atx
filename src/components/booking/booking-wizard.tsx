@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Car, Check, CreditCard, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
+import { Car, Check, Clock, CreditCard, Droplets, MapPin, PlugZap, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookingPricing, type BookingPricingBreakdown } from '@/lib/booking-pricing';
@@ -24,6 +24,7 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { BookingWeatherHint } from '@/components/weather/booking-weather-hint';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
+import { mediaUrl, type MediaRegistry } from '@/lib/media-registry';
 import {
   UI_VEHICLE_CLASSES,
   UI_VEHICLE_LABELS,
@@ -87,32 +88,32 @@ function classLabel(c: VehicleClass) {
   return UI_VEHICLE_LABELS[c];
 }
 
-function vehicleClassDesign(c: VehicleClass) {
+function vehicleClassDesign(c: VehicleClass, registry: MediaRegistry) {
   const designs: Record<string, { title: string; image: string; note: string }> = {
     sedan: {
       title: 'Sedan',
-      image: 'https://images.unsplash.com/photo-1617531653520-4893f7bbf978?auto=format&fit=crop&w=700&q=80',
+      image: mediaUrl(registry, 'booking.vehicle.sedan'),
       note: 'Coupes, sedans, compact luxury',
     },
     suv: {
       title: 'SUV',
-      image: 'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=700&q=80',
+      image: mediaUrl(registry, 'booking.vehicle.suv'),
       note: 'Crossovers, family SUVs, EVs',
     },
     truck: {
       title: 'Truck',
-      image: 'https://images.unsplash.com/photo-1605893477799-b99e3b8b93fe?auto=format&fit=crop&w=700&q=80',
+      image: mediaUrl(registry, 'booking.vehicle.truck'),
       note: 'Pickups and work vehicles',
     },
     oversized: {
       title: 'Fleet',
-      image: 'https://images.unsplash.com/photo-1503376780353-7e6692761b13?auto=format&fit=crop&w=700&q=80',
+      image: mediaUrl(registry, 'booking.vehicle.fleet'),
       note: 'Large, oversized, commercial',
     },
   };
   return designs[c] ?? {
     title: classLabel(c),
-    image: 'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=700&q=80',
+    image: mediaUrl(registry, 'booking.vehicle.sedan'),
     note: 'Custom vehicle profile',
   };
 }
@@ -204,6 +205,7 @@ export function BookingWizard() {
   const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
   const [offers, setOffers] = useState<SiteDataOfferCard[]>([]);
   const [deals, setDeals] = useState<DealConfig>(defaultDealConfig);
+  const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
   const freePromoRequested = appliedPromoCode === 'FREE';
 
   useEffect(() => {
@@ -464,10 +466,11 @@ export function BookingWizard() {
     let cancelled = false;
     void fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 })
       .then((r) => r.json())
-      .then((data: { deals?: DealConfig; offers?: SiteDataOfferCard[] }) => {
+      .then((data: { deals?: DealConfig; offers?: SiteDataOfferCard[]; mediaRegistry?: MediaRegistry }) => {
         if (cancelled) return;
         if (data?.deals) setDeals(data.deals);
         if (Array.isArray(data?.offers)) setOffers(data.offers);
+        if (data?.mediaRegistry) setMediaRegistry(data.mediaRegistry);
       })
       .catch(() => {});
     return () => {
@@ -1427,7 +1430,7 @@ export function BookingWizard() {
             <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
               {UI_VEHICLE_CLASSES.map((c) => {
                 const active = vehicleClass === c;
-                const design = vehicleClassDesign(c);
+                const design = vehicleClassDesign(c, mediaRegistry);
                 return (
                   <button
                     key={c}
@@ -1485,7 +1488,7 @@ export function BookingWizard() {
               </label>
               <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4'>
                 {UI_VEHICLE_CLASSES.map((c) => {
-                  const design = vehicleClassDesign(c);
+                  const design = vehicleClassDesign(c, mediaRegistry);
                   return (
                     <button
                       key={c}
@@ -1542,9 +1545,20 @@ export function BookingWizard() {
             <div className='md:col-span-2'>
               <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Service address & access</p>
               <p className='mt-1 text-xs text-zinc-500'>Required before payment so we can confirm drive distance and arrival details.</p>
-              <p className='mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100'>
-                Gloss Boss ATX is a mobile detailing service. At this time, service requires safe access to the vehicle, water access, and power access. Apartment, condo, and shared parking locations may not be serviceable unless water, power, and working space are available. If access is limited, we may contact you to adjust or reschedule your appointment.
-              </p>
+              <div className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+                {[
+                  [Droplets, 'Water access', 'Outdoor spigot or approved water source available at arrival.'],
+                  [PlugZap, 'Power access', 'Standard outlet within safe working distance for equipment.'],
+                  [Clock, 'Arrival window', 'Vehicle accessible, unlocked if needed, and ready at scheduled time.'],
+                  [MapPin, 'Service area', 'Driveway, office lot, or approved space with room to work safely.'],
+                ].map(([Icon, title, copy]) => (
+                  <div key={String(title)} className='rounded-2xl border border-gold/20 bg-gold/10 p-4'>
+                    <Icon className='h-5 w-5 text-gold-soft' />
+                    <p className='mt-3 text-xs font-black uppercase tracking-[0.16em] text-white'>{String(title)}</p>
+                    <p className='mt-1 text-[11px] leading-5 text-zinc-300'>{String(copy)}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Service location type</span>

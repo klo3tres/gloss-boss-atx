@@ -415,6 +415,15 @@ function GalleryModal({
   const after = str(item.afterUrl || item.url);
   const caption = publicGalleryDisplayTitle(item) || 'Gloss Boss transformation';
   const hasPair = before && after && before !== after;
+  const bookingHref = (() => {
+    const hay = `${item.serviceLabel ?? ''} ${item.caption ?? ''} ${item.vehicleLabel ?? ''}`.toLowerCase();
+    if (hay.includes('fleet') || hay.includes('commercial')) return '/fleet#fleet-inquiry';
+    if (hay.includes('ceramic') || hay.includes('coating')) return '/book?service=ceramic-coating&package=ceramic-coating';
+    if (hay.includes('interior')) return '/book?service=interior-detail&package=interior-detail';
+    if (hay.includes('exterior')) return '/book?service=exterior-detail&package=exterior-detail';
+    if (hay.includes('full')) return '/book?service=full-detail&package=full-detail';
+    return '/book';
+  })();
 
   // Local Zoom/Pan/ViewMode states
   const [zoom, setZoom] = useState(1);
@@ -609,6 +618,12 @@ function GalleryModal({
             >
               <X className="h-4 w-4" />
             </button>
+            <a
+              href={bookingHref}
+              className="rounded-xl bg-gold px-4 py-3 text-xs font-black uppercase text-black hover:bg-gold-light transition"
+            >
+              {bookingHref.startsWith('/fleet') ? 'Request fleet quote' : 'Book this service'}
+            </a>
           </div>
         </div>
 

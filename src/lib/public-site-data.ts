@@ -54,6 +54,7 @@ export type PublicSiteDataPayload = {
   featuredShowcaseFromCms?: boolean;
   googleReviewUrl: string;
   homepageVisuals?: any;
+  mediaRegistry?: Record<string, string>;
   fleetServicesEnabled?: boolean;
   fleetServicesBlurb?: string;
   fleetPricing?: {

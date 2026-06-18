@@ -22,6 +22,7 @@ import {
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { OffersMarketingBand } from "@/components/marketing/offers-marketing-band";
 import { FleetInquiryForm } from "@/components/public/fleet-inquiry-form";
+import { mediaUrl, type MediaRegistry } from "@/lib/media-registry";
 
 const emptyDeals: DealConfig = {
   websitePromoPercent: 0,
@@ -34,27 +35,27 @@ const emptyDeals: DealConfig = {
 const SERVICE_PRESENTATION = [
   {
     match: ['exterior wash', 'exterior-wash'],
-    image: '/assets/exterior_wash_driveway_1780872964011.png',
+    imageKey: 'services.exterior',
     ideal: 'Weekly upkeep, pollen resets, and driveway maintenance visits.',
   },
   {
     match: ['exterior detail', 'exterior-detail'],
-    image: '/assets/black_detailer_driveway_1780873080456.png',
+    imageKey: 'services.exterior',
     ideal: 'Paint-safe gloss recovery before events, sales, or seasonal resets.',
   },
   {
     match: ['interior detail', 'interior-detail', 'interior'],
-    image: '/assets/interior_detail_driveway_1780872974449.png',
+    imageKey: 'services.interior',
     ideal: 'Daily drivers, family vehicles, pet hair, spills, and cabin refreshes.',
   },
   {
     match: ['full detail', 'full-detail', 'full'],
-    image: '/assets/full_detail_driveway_no_people_1780873155626.png',
+    imageKey: 'services.full',
     ideal: 'Complete interior and exterior reset for vehicles that need everything.',
   },
   {
     match: ['ceramic', 'coating'],
-    image: '/assets/ceramic_coating_driveway_1780872997033.png',
+    imageKey: 'services.ceramic',
     ideal: 'Longer-term protection, deeper gloss, easier washing, and premium finish care.',
   },
 ];
@@ -79,6 +80,7 @@ export default function ServicesPage() {
   const [fleetEnabled, setFleetEnabled] = useState(false);
   const [fleetBlurb, setFleetBlurb] = useState("");
   const [fleetPricing, setFleetPricing] = useState<PublicSiteDataPayload["fleetPricing"] | null>(null);
+  const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
   const [activeTab, setActiveTab] = useState<'all' | 'exterior' | 'interior' | 'full' | 'ceramic' | 'memberships'>('all');
 
   const packages = !loaded ? [] : services.length > 0 ? services : defaultServicePackages;
@@ -111,6 +113,7 @@ export default function ServicesPage() {
         setFleetEnabled(Boolean(data.fleetServicesEnabled));
         setFleetBlurb(String(data.fleetServicesBlurb ?? ""));
         setFleetPricing(data.fleetPricing ?? null);
+        setMediaRegistry(data.mediaRegistry ?? {});
         setSchemaWarnings(data.schemaWarnings ?? []);
         setLoaded(true);
       })
@@ -181,11 +184,11 @@ export default function ServicesPage() {
 
   // Driveway backgrounds for each tab
   const getTabBackground = () => {
-    if (activeTab === 'exterior') return '/assets/exterior_wash_driveway_1780872964011.png';
-    if (activeTab === 'interior') return '/assets/interior_detail_driveway_1780872974449.png';
-    if (activeTab === 'full') return '/assets/full_detail_driveway_no_people_1780873155626.png';
-    if (activeTab === 'ceramic') return '/assets/ceramic_coating_driveway_1780872997033.png';
-    return '/assets/black_detailer_driveway_1780873080456.png';
+    if (activeTab === 'exterior') return mediaUrl(mediaRegistry, 'services.exterior');
+    if (activeTab === 'interior') return mediaUrl(mediaRegistry, 'services.interior');
+    if (activeTab === 'full') return mediaUrl(mediaRegistry, 'services.full');
+    if (activeTab === 'ceramic') return mediaUrl(mediaRegistry, 'services.ceramic');
+    return mediaUrl(mediaRegistry, 'homepage.hero');
   };
 
   return (
@@ -197,6 +200,7 @@ export default function ServicesPage() {
           alt={`Gloss Boss ATX ${activeTab}`}
           fill
           priority
+          unoptimized={getTabBackground().startsWith('http')}
           className="object-cover object-center opacity-40 brightness-75 scale-102 transition-all duration-700"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
@@ -321,9 +325,10 @@ export default function ServicesPage() {
                   <div className="grid gap-0 lg:grid-cols-[0.9fr_1.35fr]">
                     <div className="relative min-h-[260px] overflow-hidden">
                       <Image
-                        src={presentation.image}
+                        src={mediaUrl(mediaRegistry, presentation.imageKey)}
                         alt={`${service.title} vehicle detail`}
                         fill
+                        unoptimized={mediaUrl(mediaRegistry, presentation.imageKey).startsWith('http')}
                         className="object-cover opacity-75 transition duration-700 group-hover:scale-105 group-hover:opacity-95"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />

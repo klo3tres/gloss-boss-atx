@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { Building2, CalendarCheck, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { FleetInquiryForm } from '@/components/public/fleet-inquiry-form';
 import { DEFAULT_FLEET_PRICING, parseFleetPricing } from '@/lib/fleet-pricing';
+import { mediaUrl, normalizeMediaRegistry } from '@/lib/media-registry';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -11,11 +12,12 @@ export default async function FleetPage() {
   const admin = tryCreateAdminSupabase();
   let blurb = 'Recurring mobile detailing for business fleets, dealerships, executive teams, and property-managed vehicle groups.';
   let pricing = { ...DEFAULT_FLEET_PRICING };
+  let registry = {};
   if (admin) {
     const { data } = await admin
       .from('site_settings')
       .select('key, value')
-      .in('key', ['fleet_services_blurb', 'fleet_pricing'])
+      .in('key', ['fleet_services_blurb', 'fleet_pricing', 'media_registry'])
       .limit(10);
     const rows = (data ?? []) as Record<string, unknown>[];
     blurb = String(rows.find((r) => r.key === 'fleet_services_blurb')?.value ?? blurb);
@@ -25,6 +27,7 @@ export default async function FleetPage() {
     } catch {
       pricing = { ...DEFAULT_FLEET_PRICING };
     }
+    registry = normalizeMediaRegistry(rows.find((r) => r.key === 'media_registry')?.value ?? null);
   }
 
   const tiers = [
@@ -37,10 +40,11 @@ export default async function FleetPage() {
     <main className='gb-luxury-page min-h-screen bg-black text-white'>
       <section className='relative overflow-hidden border-b border-gold/20'>
         <Image
-          src="/assets/black_detailer_driveway_1780873080456.png"
+          src={mediaUrl(registry, 'fleet.hero')}
           alt="Gloss Boss ATX fleet detailing"
           fill
           priority
+          unoptimized={mediaUrl(registry, 'fleet.hero').startsWith('http')}
           className="object-cover opacity-35"
         />
         <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(0,0,0,0.96),rgba(0,0,0,0.62),rgba(0,0,0,0.94))]' />
@@ -132,6 +136,44 @@ export default async function FleetPage() {
                 <p className="text-lg font-black text-white">{label}</p>
                 <p className="mt-1 text-sm text-zinc-400">{detail}</p>
               </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-8 grid gap-5 lg:grid-cols-3">
+          <div className="rounded-3xl border border-white/10 bg-black/40 p-5 lg:col-span-2">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Fleet success stories</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {[
+                ['Property management', 'Cleaner resident-facing lots and fewer vendor visits.'],
+                ['Dealerships', 'Inventory stays photo-ready before weekend traffic.'],
+                ['Medical offices', 'Executive and staff vehicles handled on-site between shifts.'],
+                ['Construction companies', 'Work trucks cleaned on cadence without leaving the job rhythm.'],
+              ].map(([title, copy]) => (
+                <div key={title} className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4">
+                  <p className="font-black text-white">{title}</p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-400">{copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-gold/20 bg-black/40 p-5">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Cost savings example</p>
+            <p className="mt-4 text-3xl font-black text-white">One vendor. One route. One invoice.</p>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">Volume discounts reduce per-vehicle spend as fleet size and service frequency increase.</p>
+          </div>
+        </div>
+        <div className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Commercial testimonials</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {[
+              ['Executive assistant', 'The team shows up prepared and keeps our vehicles client-ready.'],
+              ['Fleet manager', 'Recurring service made vehicle care predictable instead of reactive.'],
+              ['Dealership operator', 'The photo documentation and scheduling discipline are what sold us.'],
+            ].map(([role, quote]) => (
+              <blockquote key={role} className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                <p className="text-sm leading-6 text-zinc-300">"{quote}"</p>
+                <footer className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft">{role}</footer>
+              </blockquote>
             ))}
           </div>
         </div>

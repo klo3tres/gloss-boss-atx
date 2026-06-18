@@ -23,6 +23,8 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { WorkOrderUploadsTab } from '@/components/admin/work-order-uploads-tab';
 import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-manager';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
+import { CmsMediaManager } from '@/components/admin/cms-media-manager';
+import { normalizeMediaRegistry } from '@/lib/media-registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,8 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   const offerErrRaw = typeof sp.offerErr === 'string' ? sp.offerErr : undefined;
   const availOk = typeof sp.availOk === 'string';
   const availErrRaw = typeof sp.availErr === 'string' ? sp.availErr : undefined;
+  const mediaOk = typeof sp.mediaOk === 'string';
+  const mediaErrRaw = typeof sp.mediaErr === 'string' ? sp.mediaErr : undefined;
 
   if (!session.supabaseConfigured) {
     return (
@@ -61,6 +65,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   const galleryRes = await supabase.from('gallery_images').select('*').order('sort_order', { ascending: true });
   const offersRes = await supabase.from('offers').select('*').order('sort_order', { ascending: true });
   const homepageRes = await supabase.from('homepage_content').select('*').order('key', { ascending: true });
+  const mediaRes = await supabase.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle();
 
   type GalleryRow = AdminGalleryRow;
   type HomeRow = { id: string; key: string; value: unknown; updated_at: string };
@@ -273,6 +278,8 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       {offerErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(offerErrRaw)}</p> : null}
       {availOk ? <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100'>Booking availability saved.</p> : null}
       {availErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(availErrRaw)}</p> : null}
+      {mediaOk ? <p className='mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100'>Media registry saved.</p> : null}
+      {mediaErrRaw ? <p className='mb-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100'>{decodeURIComponent(mediaErrRaw)}</p> : null}
 
       <p className='mb-6 flex flex-wrap gap-4 text-sm text-zinc-400'>
         <Link href='/admin/agreements' className='font-bold text-gold-soft underline'>
@@ -287,6 +294,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       <div className="flex overflow-x-auto gap-1 border-b border-white/10 pb-1 mb-6">
         {[
           { id: 'visuals', label: 'Homepage visuals' },
+          { id: 'media', label: 'Media manager' },
           { id: 'featured', label: 'Featured transformations' },
           { id: 'gallery', label: 'Gallery manager' },
           { id: 'reviews', label: 'Reviews / testimonials' },
@@ -343,6 +351,12 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       {currentTab === 'visuals' && (
         <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md bg-black/40'>
           <HomepageVisualsManager initialJson={homepageVisualsJson} />
+        </section>
+      )}
+
+      {currentTab === 'media' && (
+        <section className='mb-6'>
+          <CmsMediaManager registry={normalizeMediaRegistry(mediaRes.data?.value ?? null)} />
         </section>
       )}
 

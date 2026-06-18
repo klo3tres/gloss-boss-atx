@@ -1192,15 +1192,15 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         <GlassCard className="border-gold/25 bg-black/65 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/45 transition-all duration-300">
           <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
           <div className="space-y-3 text-center sm:text-left min-w-0 flex-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Operational Health</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Business Health Score</span>
             <div>
-              <p className="text-zinc-400 text-xs">Booking & Schedule Status</p>
+              <p className="text-zinc-400 text-xs">Revenue, receivables, dispatch, and customer momentum</p>
               <h2 className="mt-1 font-mono text-3xl font-black text-white tracking-tight">
                 {healthInfo.label}
               </h2>
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
-              Your detailing command center is operating at <strong className="text-white">{healthPercent}%</strong> status, reflecting unassigned bookings and active team coverage.
+              Your headquarters is operating at <strong className="text-white">{healthPercent}%</strong>. Watch receivables, pending deposits, and unassigned jobs first.
             </p>
           </div>
           
@@ -1228,16 +1228,21 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         </GlassCard>
 
         {/* Executive Metrics Grid */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <TodayMetricCard label="Revenue MTD" value={metrics.revenueMonth} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle={`Today: ${metrics.revenueToday}`} />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+          <TodayMetricCard label="Today's Revenue" value={metrics.revenueToday} href="/admin/revenue" icon={DollarSign} colorClass="text-emerald-400" subtitle="Cash collected today" />
+          <TodayMetricCard label="This Week Revenue" value={metrics.revenueWeek} href="/admin/revenue" icon={TrendingUp} colorClass="text-emerald-300" subtitle="Week-to-date collections" />
+          <TodayMetricCard label="This Month Revenue" value={metrics.revenueMonth} href="/admin/revenue" icon={DollarSign} colorClass="text-gold" subtitle="Month-to-date collections" />
           <TodayMetricCard label="Open Balances" value={metrics.balanceDue} onClick={() => setActiveDrawer('open-balances')} icon={AlertTriangle} colorClass="text-rose-400" subtitle="Receivables outstanding" />
           <TodayMetricCard label="Pending Deposits" value={metrics.pendingDeposits} onClick={() => setActiveDrawer('pending-deposits')} icon={Clock} colorClass="text-amber-400" subtitle="Awaiting initial deposit" />
-          <TodayMetricCard label="Active Jobs" value={metrics.activeJobsCount} onClick={() => setActiveDrawer('bookings')} icon={Zap} colorClass="text-cyan-400" subtitle="Currently in progress" />
-          <TodayMetricCard label="Membership MTD" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold" subtitle="MTD active member dues" />
+          <TodayMetricCard label="Bookings Today" value={metrics.jobsTodayCount} onClick={() => setActiveDrawer('bookings')} icon={Calendar} colorClass="text-cyan-400" subtitle={`${metrics.dispatchCompletedToday} completed`} />
+          <TodayMetricCard label="Jobs Scheduled" value={metrics.upcomingAppts.length} href="/admin/dispatch" icon={ClipboardList} colorClass="text-sky-300" subtitle="Upcoming visible jobs" />
+          <TodayMetricCard label="Fleet Accounts" value={metrics.leadPipeline.convertedCount} href="/admin/fleet" icon={Users} colorClass="text-indigo-300" subtitle="Converted commercial leads" />
+          <TodayMetricCard label="Membership Revenue" value={metrics.membershipRevenueMonth} onClick={() => setActiveDrawer('memberships')} icon={Sparkles} colorClass="text-gold" subtitle={`${metrics.membershipMetrics?.activeTotal ?? 0} active members`} />
+          <TodayMetricCard label="Customer Credits" value={displayMoney(metrics.creditMetrics?.outstandingLiabilityCents ?? 0)} onClick={() => setActiveDrawer('credits')} icon={CreditCard} colorClass="text-rose-300" subtitle="Outstanding liability" />
           
-          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-gold/30 hover:bg-black/60 flex flex-col justify-between">
+          <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/45 p-5 transition-all duration-300 hover:border-gold/30 hover:bg-black/60 flex flex-col justify-between xl:col-span-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Dispatch Status</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">Revenue Forecast</span>
               <div className="rounded-lg bg-zinc-950/60 p-2 border border-white/5 group-hover:border-gold/20 transition-all">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 opacity-85" />
               </div>
@@ -1245,9 +1250,42 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
             <p className="mt-3 font-mono text-lg font-black text-white truncate">
               {dispatchStatus}
             </p>
-            <p className="text-[10px] text-zinc-500 font-medium">{techStatusLabel}</p>
+            <p className="text-[10px] text-zinc-500 font-medium">{techStatusLabel} · forecast improves when deposits and open balances close</p>
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+        <GlassCard className="border-gold/15 bg-black/45">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <SectionEyebrow>Upcoming Schedule Calendar</SectionEyebrow>
+            <Link href="/admin/dispatch" className="text-[10px] font-black uppercase text-gold-soft">Open dispatch</Link>
+          </div>
+          <div className="mt-4 grid grid-cols-7 gap-2">
+            {Array.from({ length: 7 }).map((_, i) => {
+              const day = new Date();
+              day.setDate(day.getDate() + i);
+              const dayKey = day.toLocaleDateString('en-US', { weekday: 'short' });
+              const count = metrics.upcomingAppts.filter((a) => String(a.time ?? '').includes(dayKey)).length;
+              return (
+                <div key={dayKey} className="min-h-28 rounded-2xl border border-white/10 bg-zinc-950/60 p-3">
+                  <p className="text-[10px] font-black uppercase text-zinc-500">{dayKey}</p>
+                  <p className="mt-1 text-lg font-black text-white">{day.getDate()}</p>
+                  <div className="mt-3 h-2 rounded-full bg-white/5">
+                    <div className="h-full rounded-full bg-gold" style={{ width: `${Math.min(100, count * 28)}%` }} />
+                  </div>
+                  <p className="mt-2 text-[10px] text-zinc-500">{count} visible jobs</p>
+                </div>
+              );
+            })}
+          </div>
+        </GlassCard>
+        <GlassCard className="border-cyan-400/15 bg-black/45">
+          <SectionEyebrow>Weather Widget</SectionEyebrow>
+          <p className="mt-4 text-3xl font-black text-white">Austin field-readiness</p>
+          <p className="mt-2 text-sm leading-6 text-zinc-400">Weather data appears here when the weather API is configured. Until then, dispatch should verify heat, rain, and wind before exterior work.</p>
+          <Link href="/admin/system-status" className="mt-5 inline-flex rounded-xl border border-cyan-400/30 px-4 py-2 text-xs font-black uppercase text-cyan-200">Check provider setup</Link>
+        </GlassCard>
       </section>
 
       {/* Interactive Mission Revenue Console */}

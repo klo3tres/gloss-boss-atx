@@ -102,6 +102,33 @@ export default async function MembershipsAdminPage() {
         <MembershipPlansManager publicPlans={publicPlans as any} />
       </div>
 
+      <GlassCard className="mb-8 border-gold/20 bg-black/45">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <SectionEyebrow>Membership Benefit Governance</SectionEyebrow>
+            <h2 className="mt-2 text-2xl font-black uppercase text-white">Control the benefits members actually receive</h2>
+            <p className="mt-2 text-xs leading-5 text-zinc-400">Use plan descriptions, loyalty rules, customer credits, and offers together to manage priority scheduling, quarterly credits, annual credits, VIP promotions, member-only deals, expiration rules, and promotion visibility.</p>
+          </div>
+          <span className="rounded-full border border-gold/35 bg-gold/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft">Gold is premium</span>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {[
+            ['Priority Scheduling', 'Set in plan benefit copy and dispatch policies.', 'Keep Gold first for peak windows.'],
+            ['Quarterly Credits', 'Issue recurring customer credits from the credit manager.', 'Use 90-day expiration unless overridden.'],
+            ['Annual Credits', 'Create annual loyalty credit batches.', 'Reserve largest annual credit for Gold.'],
+            ['VIP Promotions', 'Use Offers with membership-only labels and visibility windows.', 'Show Gold offers on homepage/services.'],
+            ['Member-Only Deals', 'Attach deal language to public tiers and booking notes.', 'Keep non-member discounts lower.'],
+            ['Expiration Rules', 'Manage credit expiration and voiding from customer credit controls.', 'Surface expiring credits in Command Center.'],
+          ].map(([title, control, action]) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-zinc-950/65 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-white">{title}</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-400">{control}</p>
+              <p className="mt-3 text-[11px] font-bold text-gold-soft">{action}</p>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+
       {/* Collapsible Assignment & Punch Controls */}
       <details className="mb-6 rounded-3xl border border-white/10 bg-black/45 p-5 group">
         <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.2em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between">

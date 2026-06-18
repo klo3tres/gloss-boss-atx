@@ -75,6 +75,34 @@ export default async function ReportsPage({
         </span>
       </div>
 
+      <section className="rounded-3xl border border-gold/20 bg-black/55 p-6 shadow-[0_0_34px_rgba(212,175,55,0.10)]">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-gold-soft">Gloss Boss ATX Financial Packet</p>
+            <h1 className="mt-2 text-3xl font-black uppercase text-white">Executive Summary</h1>
+            <p className="mt-2 text-sm text-zinc-400">Generated {new Date().toLocaleDateString()} · Range {from} to {to} · Prepared by Gloss Boss ATX Admin</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/admin/reports/export?report=revenue&${qs}`} className="rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black">Download data</a>
+            <button type="button" className="rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-200">Print / Save PDF</button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Gross Collected', displayMoney(summary.grossRevenueCents), 'Total cash collected in range.'],
+            ['Net Profit', displayMoney(summary.netProfitCents), 'After refunds, fees, and expenses.'],
+            ['Credit Liability', displayMoney(outstandingTotalCents), 'Outstanding customer credit balance.'],
+            ['Prepared For', 'Banks / Taxes / Investors', 'Branded, printable business summary.'],
+          ].map(([label, value, hint]) => (
+            <div key={label} className="rounded-2xl border border-white/10 bg-zinc-950/65 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+              <p className="mt-2 text-xl font-black text-white">{value}</p>
+              <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* RECONCILIATION COMMAND CENTER HERO */}
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         
