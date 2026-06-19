@@ -730,16 +730,22 @@ export function WorkOrderConsoleClient({
                 </span>
               </button>
 
-              {/* Directions */}
-              <a
-                href={data.googleDirectionsHref || data.mapsHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-              >
-                <MapPin className="h-5 w-5 text-zinc-400" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Directions</span>
-              </a>
+              {data.fullAddress ? (
+                <a
+                  href={data.googleDirectionsHref || data.mapsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                >
+                  <MapPin className="h-5 w-5 text-zinc-400" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Google Maps</span>
+                </a>
+              ) : (
+                <button disabled className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/20 text-zinc-600">
+                  <MapPin className="h-5 w-5" />
+                  <span className="text-[10px] font-black uppercase tracking-wider">No address provided.</span>
+                </button>
+              )}
 
               {/* Advanced System Health Drawer */}
               <button
@@ -942,15 +948,21 @@ export function WorkOrderConsoleClient({
                     >
                       <MessageSquare className="h-3.5 w-3.5 text-gold-soft" /> Send SMS
                     </a>
-                    <a
-                      href={data.googleDirectionsHref || data.mapsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
-                    >
-                      <MapPin className="h-3.5 w-3.5 text-gold-soft" /> Google Directions
-                    </a>
-                    {data.appleMapsHref && (
+                    {data.fullAddress ? (
+                      <a
+                        href={data.googleDirectionsHref || data.mapsHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 p-3 bg-zinc-950/40 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:border-gold/30 hover:bg-gold/5 transition duration-200"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-gold-soft" /> Google Directions
+                      </a>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2 p-3 bg-zinc-950/20 border border-white/10 rounded-xl text-xs font-black uppercase tracking-wider text-zinc-600">
+                        No address provided.
+                      </span>
+                    )}
+                    {data.fullAddress && data.appleMapsHref && (
                       <a
                         href={data.appleMapsHref}
                         target="_blank"

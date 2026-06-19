@@ -5,6 +5,12 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { tryCreateServerSupabase } from '@/lib/supabase/safeClient.server';
 import { resendConfigured, twilioConfigured, businessNotifyDestination } from '@/lib/email-send';
 import { twilioMessagingServiceSid, twilioFromNumber } from '@/lib/twilio-config';
+import {
+  appleAdvancedApiStatus,
+  businessHomeBaseConfigured,
+  googleMapsConfigured,
+  openWeatherConfigured,
+} from '@/lib/weather-config';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +35,7 @@ export async function GET() {
   const resendReady = resendConfigured();
   const twilioReady = twilioConfigured();
   const businessInboxReady = Boolean(businessNotifyDestination());
+  const appleAdvanced = appleAdvancedApiStatus();
 
   const envChecklist: Array<{ key: string; ok: boolean; tier: 'required' | 'recommended' | 'optional'; detail: string }> = [
     { key: 'NEXT_PUBLIC_SUPABASE_URL', ok: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()), tier: 'required', detail: 'Public Supabase project URL' },
@@ -163,6 +170,26 @@ export async function GET() {
       twilio: twilioReady,
       supabaseServiceRole: serviceRole,
       businessNotifyEmail: businessInboxReady,
+    },
+    weatherMaps: {
+      openWeatherConfigured: openWeatherConfigured(),
+      businessHomeBaseConfigured: businessHomeBaseConfigured(),
+      businessCoordinatesConfigured: Boolean(process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim()),
+      googleMapsKeyConfigured: googleMapsConfigured(),
+      appleWeatherKit: {
+        configured: Boolean(
+          process.env.APPLE_TEAM_ID?.trim() &&
+            process.env.APPLE_KEY_ID?.trim() &&
+            process.env.APPLE_SERVICE_ID?.trim() &&
+            process.env.APPLE_PRIVATE_KEY?.trim()
+        ),
+        status: 'future/advanced',
+      },
+      appleMapsServerApi: {
+        configured: Boolean(process.env.APPLE_MAPS_KEY_ID?.trim() && process.env.APPLE_MAPS_PRIVATE_KEY?.trim()),
+        status: 'future/advanced',
+      },
+      appleAdvanced,
     },
     envChecklist,
     authNotes: {

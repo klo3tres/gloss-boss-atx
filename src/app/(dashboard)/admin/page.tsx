@@ -45,6 +45,7 @@ export default async function AdminDashboardPage() {
     upcomingAppts: [],
     jobsTomorrowCount: 0,
     scheduleMonth: [],
+    calendarEvents: [],
     liveFeed: [],
     techActivity: [],
     leadPipeline: {

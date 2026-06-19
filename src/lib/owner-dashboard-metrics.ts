@@ -85,6 +85,13 @@ export type OwnerDashboardSnapshot = {
     price: string;
     href: string;
   }>;
+  calendarEvents: Array<{
+    id: string;
+    dayKey: string;
+    title: string;
+    note: string;
+    createdAt: string;
+  }>;
   liveFeed: Array<{
     id: string;
     title: string;
@@ -199,6 +206,24 @@ function startOfRolling30Iso() {
   return d.toISOString();
 }
 
+function parseCalendarEvents(raw: unknown): OwnerDashboardSnapshot['calendarEvents'] {
+  try {
+    const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const rows = Array.isArray(value) ? value : Array.isArray((value as { events?: unknown[] })?.events) ? (value as { events: unknown[] }).events : [];
+    return rows
+      .map((event: any) => ({
+        id: String(event.id ?? ''),
+        dayKey: String(event.dayKey ?? ''),
+        title: String(event.title ?? ''),
+        note: String(event.note ?? ''),
+        createdAt: String(event.createdAt ?? ''),
+      }))
+      .filter((event) => event.id && event.dayKey && event.title);
+  } catch {
+    return [];
+  }
+}
+
 export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise<OwnerDashboardSnapshot> {
   const now = new Date().toISOString();
   const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
@@ -210,7 +235,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   );
   const sumOpts = { excludeTest: true as const, apptById };
 
-  const [todayPay, weekPay, monthPay, rolling30Pay, leadRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes] = await Promise.all([
+  const [todayPay, weekPay, monthPay, rolling30Pay, leadRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes, calendarEventsRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
@@ -220,6 +245,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     admin.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
     admin.from('loyalty_stamps').select('customer_id'),
     admin.from('business_expenses').select('id, category, notes').or('category.ilike.%supply%,notes.ilike.%Supply Request by tech%'),
+    admin.from('site_settings').select('value').eq('key', 'calendar_events').maybeSingle(),
   ]);
   
   const today = summarizePayments(todayPay, sumOpts);
@@ -591,6 +617,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       href: appointmentId ? workOrderPath(appointmentId, { source: 'appointment', shell: 'admin' }) : '/admin/notifications',
     };
   });
+  const calendarEvents = parseCalendarEvents(calendarEventsRes.data?.value);
 
   return {
     revenueToday: displayMoney(today.grossCents),
@@ -627,6 +654,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     upcomingAppts,
     jobsTomorrowCount,
     scheduleMonth,
+    calendarEvents,
     liveFeed,
     techActivity,
     leadPipeline,

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useTransition } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -36,6 +36,8 @@ import {
 import type { OwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
 import { PremiumBadge, SectionEyebrow, GlassCard } from '@/components/ui/premium';
 import { displayMoney } from '@/lib/display-format';
+import { addCalendarEventAction } from '@/lib/admin/calendar-events-actions';
+import type { WeatherSnapshot } from '@/lib/weather-forecast';
 
 // Helper component for TODAY metric cards
 function TodayMetricCard({
@@ -406,8 +408,11 @@ function chicagoDateKey(input: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['scheduleMonth'] }) {
+function ExecutiveCalendarWidget({ jobs, events }: { jobs: OwnerDashboardSnapshot['scheduleMonth']; events: OwnerDashboardSnapshot['calendarEvents'] }) {
   const now = new Date();
+  const [selectedDay, setSelectedDay] = useState<string | null>(todayKeySafe(now));
+  const [result, setResult] = useState<{ ok: boolean; error?: string; message?: string } | null>(null);
+  const [pending, startTransition] = useTransition();
   const monthName = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'America/Chicago' }).format(now);
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -419,6 +424,12 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
     bucket.push(job);
     jobsByDay.set(job.dayKey, bucket);
   }
+  const eventsByDay = new Map<string, OwnerDashboardSnapshot['calendarEvents']>();
+  for (const event of events ?? []) {
+    const bucket = eventsByDay.get(event.dayKey) ?? [];
+    bucket.push(event);
+    eventsByDay.set(event.dayKey, bucket);
+  }
 
   const cells = [
     ...Array.from({ length: blanks }, (_, i) => ({ type: 'blank' as const, key: `blank-${i}` })),
@@ -428,6 +439,11 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
       return { type: 'day' as const, key, day: i + 1, jobs: jobsByDay.get(key) ?? [] };
     }),
   ];
+  const selectedJobs = selectedDay ? jobsByDay.get(selectedDay) ?? [] : [];
+  const selectedEvents = selectedDay ? eventsByDay.get(selectedDay) ?? [] : [];
+  const selectedLabel = selectedDay
+    ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' })
+    : 'Select a day';
 
   return (
     <GlassCard className="border-gold/15 bg-black/45">
@@ -436,9 +452,9 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
           <SectionEyebrow>Executive Calendar</SectionEyebrow>
           <p className="mt-1 font-mono text-lg font-black text-white">{monthName}</p>
         </div>
-        <Link href="/admin/dispatch" className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/10">
-          Open dispatch
-        </Link>
+        <button type="button" onClick={() => setSelectedDay(todayKey)} className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/10">
+          Open calendar
+        </button>
       </div>
       <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-[9px] font-black uppercase tracking-wider text-zinc-500">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
@@ -448,9 +464,11 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
           cell.type === 'blank' ? (
             <div key={cell.key} className="min-h-20 rounded-2xl border border-transparent" />
           ) : (
-            <div
+            <button
+              type="button"
+              onClick={() => setSelectedDay(cell.key)}
               key={cell.key}
-              className={`min-h-20 rounded-2xl border p-2 transition-all hover:-translate-y-0.5 ${
+              className={`min-h-16 rounded-2xl border p-2 text-left transition-all hover:-translate-y-0.5 sm:min-h-20 ${
                 cell.key === todayKey
                   ? 'border-gold/50 bg-gold/10 shadow-[0_0_22px_rgba(212,175,55,0.14)]'
                   : 'border-white/10 bg-zinc-950/55 hover:border-gold/25'
@@ -458,9 +476,9 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-black text-white">{cell.day}</span>
-                {cell.jobs.length > 0 ? <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-black text-gold-soft">{cell.jobs.length}</span> : null}
+                {cell.jobs.length + (eventsByDay.get(cell.key)?.length ?? 0) > 0 ? <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-black text-gold-soft">{cell.jobs.length + (eventsByDay.get(cell.key)?.length ?? 0)}</span> : null}
               </div>
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 hidden space-y-1 sm:block">
                 {cell.jobs.slice(0, 2).map((job) => (
                   <Link key={job.id} href={job.href} className="block truncate rounded-lg bg-black/45 px-1.5 py-1 text-left text-[9px] font-bold text-zinc-300 hover:text-gold-soft">
                     {job.time} {job.guestName}
@@ -468,29 +486,141 @@ function ExecutiveCalendarWidget({ jobs }: { jobs: OwnerDashboardSnapshot['sched
                 ))}
                 {cell.jobs.length > 2 ? <p className="text-left text-[9px] text-zinc-500">+{cell.jobs.length - 2} more</p> : null}
               </div>
-            </div>
+            </button>
           ),
         )}
       </div>
+      {selectedDay ? (
+        <div className="fixed inset-x-0 bottom-0 z-[120] max-h-[82vh] overflow-y-auto rounded-t-3xl border border-gold/20 bg-zinc-950 p-5 shadow-[0_-20px_60px_rgba(0,0,0,0.65)] sm:absolute sm:inset-auto sm:bottom-5 sm:right-5 sm:max-h-[70vh] sm:w-[420px] sm:rounded-3xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft">Calendar day</p>
+              <h3 className="mt-1 text-lg font-black uppercase text-white">{selectedLabel}</h3>
+              <p className="mt-1 text-xs text-zinc-500">Weather appears when OpenWeather is configured.</p>
+            </div>
+            <button type="button" onClick={() => setSelectedDay(null)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black uppercase text-zinc-300">Close</button>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl border border-white/10 bg-black/45 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Scheduled jobs</p>
+              {selectedJobs.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No scheduled jobs for this day.</p> : null}
+              <div className="mt-2 space-y-2">
+                {selectedJobs.map((job) => (
+                  <Link key={job.id} href={job.href} className="block rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 hover:border-gold/30">
+                    <span className="font-black text-white">{job.time}</span> - {job.guestName} - {job.service}
+                  </Link>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/45 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Internal notes / events</p>
+              {selectedEvents.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No internal events yet.</p> : null}
+              <div className="mt-2 space-y-2">
+                {selectedEvents.map((event) => (
+                  <div key={event.id} className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs">
+                    <p className="font-black text-white">{event.title}</p>
+                    {event.note ? <p className="mt-1 text-zinc-500">{event.note}</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <form
+              action={(formData) => {
+                setResult(null);
+                startTransition(async () => {
+                  const res = await addCalendarEventAction(formData);
+                  setResult(res);
+                });
+              }}
+              className="rounded-2xl border border-gold/15 bg-gold/5 p-3"
+            >
+              <input type="hidden" name="dayKey" value={selectedDay} />
+              <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Add event / note</p>
+              <input name="title" required placeholder="Event title" className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+              <textarea name="note" rows={3} placeholder="Optional note" className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+              {result ? <p className={`mt-2 text-xs ${result.ok ? 'text-emerald-300' : 'text-rose-300'}`}>{result.message || result.error}</p> : null}
+              <button disabled={pending} className="mt-3 rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-60">{pending ? 'Saving...' : 'Add event'}</button>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </GlassCard>
   );
 }
 
+function todayKeySafe(input: Date) {
+  return chicagoDateKey(input);
+}
+
 function WeatherReadinessWidget() {
+  const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch('/api/weather', { signal: ctrl.signal })
+      .then((res) => res.json())
+      .then((data: WeatherSnapshot) => setWeather(data))
+      .catch((error) => setWeather({ ok: false, blocker: error instanceof Error ? error.message : 'Weather lookup failed.' }))
+      .finally(() => setLoading(false));
+    return () => ctrl.abort();
+  }, []);
+
+  const rain = weather?.rainChancePct ?? 0;
+  const highRain = rain >= 45;
+
   return (
     <GlassCard className="border-cyan-400/15 bg-black/45">
       <SectionEyebrow>Weather Readiness</SectionEyebrow>
-      <p className="mt-4 text-3xl font-black text-white">Austin field check</p>
-      <div className="mt-4 grid gap-2 text-xs text-zinc-300">
-        <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
-          <p className="font-black uppercase tracking-wider text-cyan-200">Provider setup needed</p>
-          <p className="mt-1 text-zinc-500">Connect a weather provider before auto heat, rain, and wind risk appears here.</p>
+      <p className="mt-4 text-3xl font-black text-white">Austin / Round Rock</p>
+      {loading ? <p className="mt-4 text-xs text-zinc-500">Checking service-area weather...</p> : null}
+      {weather?.ok ? (
+        <div className="mt-4 grid gap-2 text-xs text-zinc-300">
+          <div className={`rounded-xl border p-3 ${highRain || weather.severe ? 'border-rose-500/30 bg-rose-500/10' : 'border-cyan-400/20 bg-cyan-400/5'}`}>
+            <p className="font-black uppercase tracking-wider text-cyan-200">Current condition - OpenWeather</p>
+            <p className="mt-2 text-2xl font-black text-white">{weather.temperatureF ?? '--'}F</p>
+            <p className="mt-1 capitalize text-zinc-400">{weather.description || weather.condition || 'Forecast available'} - rain {rain}%</p>
+          </div>
+          {highRain || weather.severe ? (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-rose-100">
+              Weather may affect mobile detailing. Confirm exterior work, shade, wind, and rain before dispatch.
+            </div>
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
+              <p className="font-black uppercase tracking-wider text-white">Dispatch rule</p>
+              <p className="mt-1 text-zinc-500">Verify heat, rain, and wind before exterior correction or wash work.</p>
+            </div>
+          )}
+          {weather.appleAdvancedApi?.configured ? null : (
+            <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3 text-zinc-400">
+              <p className="font-black uppercase tracking-wider text-zinc-200">Apple advanced APIs</p>
+              <p className="mt-1">{weather.appleAdvancedApi?.message || 'Apple advanced weather/maps API not configured. Basic Apple Maps links still work.'}</p>
+            </div>
+          )}
         </div>
-        <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
-          <p className="font-black uppercase tracking-wider text-white">Dispatch rule</p>
-          <p className="mt-1 text-zinc-500">Verify heat, rain, and wind before exterior correction or wash work.</p>
+      ) : !loading ? (
+        <div className="mt-4 grid gap-2 text-xs text-zinc-300">
+          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3">
+            <p className="font-black uppercase tracking-wider text-amber-200">Weather setup blocker</p>
+            <p className="mt-1 text-zinc-300">{weather?.blocker || 'missing OPENWEATHER_API_KEY'}</p>
+            <ul className="mt-2 space-y-1 text-amber-100">
+              <li>missing OPENWEATHER_API_KEY</li>
+              <li>Add it in Vercel Project Settings - Environment Variables.</li>
+              <li>Optional: BUSINESS_HOME_BASE_ADDRESS, BUSINESS_LAT, BUSINESS_LNG.</li>
+              <li>OpenWeather is the active weather provider for this widget.</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
+            <p className="font-black uppercase tracking-wider text-zinc-200">Apple advanced APIs</p>
+            <p className="mt-1 text-zinc-400">{weather?.appleAdvancedApi?.message || 'Apple advanced weather/maps API not configured. Basic Apple Maps links still work.'}</p>
+            {weather?.appleAdvancedApi?.missing?.length ? (
+              <p className="mt-2 break-words font-mono text-[10px] text-zinc-500">
+                Missing later: {weather.appleAdvancedApi.missing.join(', ')}
+              </p>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
       <Link href="/admin/integrations#weather" className="mt-5 inline-flex rounded-xl border border-cyan-400/30 px-4 py-2 text-xs font-black uppercase text-cyan-200 hover:bg-cyan-400/10">
         Configure weather
       </Link>
@@ -1432,7 +1562,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} />
+        <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} events={metrics.calendarEvents ?? []} />
         <WeatherReadinessWidget />
       </section>
 

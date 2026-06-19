@@ -151,6 +151,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
   let googleReviewUrl = '';
   let googleApiConfigured = Boolean(process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_BUSINESS_PROFILE_API_KEY || process.env.GOOGLE_API_KEY);
+  const googlePlaceConfigured = Boolean(process.env.GOOGLE_PLACE_ID);
   try {
     const admReview = tryCreateAdminSupabase();
     if (admReview) {
@@ -193,13 +194,20 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   let reviewLoadErr = '';
   try {
     const reviewDb = tryCreateAdminSupabase();
-    const res = reviewDb
+    let res: { data: unknown[] | null; error: { message: string } | null } = reviewDb
       ? await reviewDb
           .from('customer_reviews')
           .select('id, customer_name, rating, testimonial, review_text, service_label, vehicle_label, source, published, featured, created_at')
           .order('created_at', { ascending: false })
           .limit(100)
       : { data: [], error: { message: 'Admin database client unavailable.' } };
+    if (res.error && /column .* does not exist|schema cache|Could not find|review_text|vehicle_label|source|featured/i.test(res.error.message) && reviewDb) {
+      res = await reviewDb
+        .from('customer_reviews')
+        .select('id, customer_name, rating, testimonial, service_label, published, approved_at, created_at')
+        .order('created_at', { ascending: false })
+        .limit(100);
+    }
     if (res.error) reviewLoadErr = res.error.message;
     reviewRows = ((res.data ?? []) as Record<string, unknown>[]).map((r) => ({
       id: String(r.id ?? ''),
@@ -537,6 +545,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
             googleConfigured={Boolean(googleReviewUrl)}
             googleReviewUrl={googleReviewUrl}
             googleApiConfigured={googleApiConfigured}
+            googlePlaceConfigured={googlePlaceConfigured}
           />
         </section>
       )}

@@ -17,6 +17,7 @@
 
 html,
 body {
+  max-width: 100%;
   background: var(--gb-bg, #000000);
   color: var(--gb-fg, #ffffff);
   scroll-behavior: smooth;
@@ -25,12 +26,83 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+#__next,
+main,
+section,
+article,
+aside,
+header,
+footer,
+.gb-dashboard-content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+table {
+  max-width: 100%;
+}
+
+.gb-dashboard-content table,
+.gb-table-scroll {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.gb-premium-card,
+.gb-glass-card,
+.gb-card,
+.gb-luxury-page,
+.gb-page {
+  max-width: 100%;
+}
+
+.gb-dashboard-content > *,
+.gb-dashboard-content [class*='grid'],
+.gb-dashboard-content [class*='flex'] {
+  min-width: 0;
+}
+
+.fixed,
+[role='dialog'] {
+  max-width: 100vw;
+}
+
 /* Prevent mobile browser zoom on form focus */
 @media (max-width: 767px) {
   input,
   select,
   textarea {
     font-size: 16px !important;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  [class*='translate-x-'],
+  [class*='-translate-x-'] {
+    will-change: transform;
+  }
+
+  .gb-dashboard-content {
+    overflow-x: hidden;
+  }
+
+  .gb-dashboard-content [class*='rounded-3xl'],
+  .gb-dashboard-content [class*='rounded-2xl'] {
+    min-width: 0;
   }
 }
 

@@ -29,6 +29,7 @@ import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/app/(dashboard)/tech/tech-actions';
 import { techClearStaleJobsFormAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
+import { appleMapsDirectionsUrl, googleMapsDirectionsUrl } from '@/lib/map-links';
 import { 
   techArchiveOwnLeadAction, 
   techClaimLeadAction, 
@@ -87,10 +88,6 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
       priceCents: job.base_price_cents,
     },
   ];
-}
-
-function directionsHref(address?: string | null) {
-  return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
 }
 
 import { workOrderPath } from '@/lib/work-order-links';
@@ -600,7 +597,7 @@ export function TechPremiumShell({
                     Directions:{' '}
                     {activeJob.service_address ? (
                       <a
-                        href={directionsHref(activeJob.service_address)}
+                        href={googleMapsDirectionsUrl(activeJob.service_address)}
                         target='_blank'
                         rel='noreferrer'
                         className='text-gold-soft underline underline-offset-4'
@@ -792,14 +789,24 @@ export function TechPremiumShell({
                           </div>
                         </div>
                         {j.service_address && (
-                          <a
-                            href={directionsHref(j.service_address)}
-                            target='_blank'
-                            rel='noreferrer'
-                            className='rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3.5 py-2 text-[10px] font-black uppercase text-zinc-200 flex items-center gap-1.5'
-                          >
-                            <Navigation className='h-3 w-3 text-gold-soft' /> Nav
-                          </a>
+                          <div className='flex items-center gap-1.5'>
+                            <a
+                              href={appleMapsDirectionsUrl(j.service_address)}
+                              target='_blank'
+                              rel='noreferrer'
+                              className='rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-[10px] font-black uppercase text-zinc-200 flex items-center gap-1.5'
+                            >
+                              <Navigation className='h-3 w-3 text-gold-soft' /> Apple
+                            </a>
+                            <a
+                              href={googleMapsDirectionsUrl(j.service_address)}
+                              target='_blank'
+                              rel='noreferrer'
+                              className='rounded-lg border border-white/10 bg-zinc-950/60 hover:bg-zinc-800 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 flex items-center gap-1.5'
+                            >
+                              Google
+                            </a>
+                          </div>
                         )}
                       </div>
                     ))}

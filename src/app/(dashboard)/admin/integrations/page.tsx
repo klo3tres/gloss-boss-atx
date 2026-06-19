@@ -5,6 +5,13 @@ import { resendDomainVerified, resendDomainWarning, resendFromEmail } from '@/li
 import { twilioMessagingServiceSid, twilioFromNumber, twilioSenderReady } from '@/lib/twilio-config';
 import { RESEND_WEBHOOK_EVENTS, RESEND_WEBHOOK_PATH } from '@/lib/resend-webhook';
 import { inboundForwardTo, inboundMailboxAddress } from '@/lib/email/inbound-email';
+import {
+  APPLE_ADVANCED_API_MESSAGE,
+  appleAdvancedApiStatus,
+  businessHomeBaseConfigured,
+  googleMapsConfigured,
+  openWeatherConfigured,
+} from '@/lib/weather-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +97,7 @@ export default async function AdminIntegrationsPage() {
   const fromEmail = resendFromEmail();
   const domainOk = resendDomainVerified();
   const resendWarn = resendDomainWarning();
+  const appleAdvanced = appleAdvancedApiStatus();
 
   return (
     <DashboardShell 
@@ -199,6 +207,45 @@ export default async function AdminIntegrationsPage() {
             ['NEXT_PUBLIC_VERCEL_ANALYTICS_ID', Boolean(process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID)]
           ]} 
         />
+
+        <Card
+          name='OpenWeather Forecasts'
+          ok={openWeatherConfigured()}
+          vars={[
+            ['OPENWEATHER_API_KEY', Boolean(process.env.OPENWEATHER_API_KEY)],
+            ['BUSINESS_HOME_BASE_ADDRESS', businessHomeBaseConfigured()],
+            ['BUSINESS_LAT', Boolean(process.env.BUSINESS_LAT)],
+            ['BUSINESS_LNG', Boolean(process.env.BUSINESS_LNG)],
+            ['GOOGLE_MAPS_API_KEY / MAPS_API_KEY', googleMapsConfigured()],
+          ]}
+          alert={
+            openWeatherConfigured()
+              ? 'Weather widgets use OpenWeather first. BUSINESS_HOME_BASE_ADDRESS is the fallback service-area lookup; BUSINESS_LAT and BUSINESS_LNG bypass geocoding when set.'
+              : 'missing OPENWEATHER_API_KEY'
+          }
+        >
+          <p className='text-xs leading-relaxed text-zinc-400'>
+            Apple WeatherKit is future/advanced and is not required for current weather widgets.
+          </p>
+        </Card>
+
+        <Card
+          name='Apple Maps/Weather Advanced APIs'
+          ok={appleAdvanced.configured}
+          vars={[
+            ['APPLE_TEAM_ID', Boolean(process.env.APPLE_TEAM_ID)],
+            ['APPLE_KEY_ID', Boolean(process.env.APPLE_KEY_ID)],
+            ['APPLE_SERVICE_ID', Boolean(process.env.APPLE_SERVICE_ID)],
+            ['APPLE_PRIVATE_KEY', Boolean(process.env.APPLE_PRIVATE_KEY)],
+            ['APPLE_MAPS_KEY_ID', Boolean(process.env.APPLE_MAPS_KEY_ID)],
+            ['APPLE_MAPS_PRIVATE_KEY', Boolean(process.env.APPLE_MAPS_PRIVATE_KEY)],
+          ]}
+          alert={appleAdvanced.configured ? null : APPLE_ADVANCED_API_MESSAGE}
+        >
+          <p className='text-xs leading-relaxed text-zinc-400'>
+            Navigation uses basic Apple Maps and Google Maps direction links now, so no Apple Developer token is required yet.
+          </p>
+        </Card>
 
         <Card
           name='Resend Inbound Webhook'

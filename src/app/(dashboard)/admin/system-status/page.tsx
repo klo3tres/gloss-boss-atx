@@ -35,6 +35,15 @@ type StatusPayload = {
     supabaseServiceRole: boolean;
     businessNotifyEmail?: boolean;
   };
+  weatherMaps?: {
+    openWeatherConfigured: boolean;
+    businessHomeBaseConfigured: boolean;
+    businessCoordinatesConfigured: boolean;
+    googleMapsKeyConfigured: boolean;
+    appleWeatherKit: { configured: boolean; status: string };
+    appleMapsServerApi: { configured: boolean; status: string };
+    appleAdvanced: { configured: boolean; message: string; missing: string[] };
+  };
   envChecklist?: Array<{ key: string; ok: boolean; tier: string; detail: string }>;
   authNotes?: { passwordReset?: string };
   webhooks: { primaryUrlHint: string | null; legacyUrlHint?: string | null };
@@ -130,6 +139,53 @@ export default function SystemStatusPage() {
                   detail='Alert mail recipient active'
                 />
               </div>
+            </section>
+          ) : null}
+
+          {data.weatherMaps ? (
+            <section className='gb-premium-card rounded-3xl p-6'>
+              <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft mb-4'>Weather & Maps Setup</h2>
+              <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+                <Row
+                  label='OpenWeather configured'
+                  ok={data.weatherMaps.openWeatherConfigured}
+                  detail={data.weatherMaps.openWeatherConfigured ? 'Active weather provider for widgets.' : 'missing OPENWEATHER_API_KEY'}
+                />
+                <Row
+                  label='Business home base configured'
+                  ok={data.weatherMaps.businessHomeBaseConfigured}
+                  detail={
+                    data.weatherMaps.businessHomeBaseConfigured
+                      ? 'BUSINESS_HOME_BASE_ADDRESS is set.'
+                      : 'Optional fallback: BUSINESS_HOME_BASE_ADDRESS'
+                  }
+                />
+                <Row
+                  label='Business coordinates configured'
+                  ok={data.weatherMaps.businessCoordinatesConfigured}
+                  detail={data.weatherMaps.businessCoordinatesConfigured ? 'BUSINESS_LAT and BUSINESS_LNG bypass weather geocoding.' : 'Optional: BUSINESS_LAT and BUSINESS_LNG'}
+                />
+                <Row
+                  label='Google Maps key configured'
+                  ok={data.weatherMaps.googleMapsKeyConfigured}
+                  detail='Google direction links work without this key; API-backed distance tools use a key when configured.'
+                />
+                <Row
+                  label='Apple WeatherKit configured'
+                  ok={data.weatherMaps.appleWeatherKit.configured}
+                  detail={`Status: ${data.weatherMaps.appleWeatherKit.status}. ${data.weatherMaps.appleAdvanced.message}`}
+                />
+                <Row
+                  label='Apple Maps Server API configured'
+                  ok={data.weatherMaps.appleMapsServerApi.configured}
+                  detail={`Status: ${data.weatherMaps.appleMapsServerApi.status}. Basic Apple Maps links still work.`}
+                />
+              </div>
+              {data.weatherMaps.appleAdvanced.missing.length ? (
+                <p className='mt-4 rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[10px] text-zinc-500'>
+                  Missing future Apple advanced keys: {data.weatherMaps.appleAdvanced.missing.join(', ')}
+                </p>
+              ) : null}
             </section>
           ) : null}
 

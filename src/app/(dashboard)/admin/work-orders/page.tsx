@@ -445,7 +445,7 @@ export default async function AdminWorkOrdersPage({
                             <a href={appleMapsDirectionsUrl(fullAddress)} target='_blank' rel='noreferrer' className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Apple Maps</a>
                           </>
                         ) : (
-                          <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No Directions</button>
+                          <button disabled className='rounded border border-white/10 px-3 py-1 text-[10px] font-bold uppercase text-zinc-600'>No address provided.</button>
                         )}
                         {(str(r.stripe_checkout_session_id) || payment) ? <Link href={paymentHref} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Payment</Link> : null}
                         <Link href={workOrderPath(str(r.id), { source: isFallback ? 'fallback' : 'appointment', shell: 'admin' })} className='rounded border border-gold/40 bg-gold/10 px-3 py-1 text-[10px] font-bold uppercase text-gold-soft'>Open Work Order</Link>
