@@ -113,6 +113,16 @@ const customerLinks = [
   { href: '/dashboard/settings', label: 'Settings' },
 ];
 
+function getPayloadPreview(evt: any) {
+  if (!evt.payload) return null;
+  try {
+    const p = typeof evt.payload === 'string' ? JSON.parse(evt.payload) : evt.payload;
+    return p.message || p.body || p.text || null;
+  } catch {
+    return null;
+  }
+}
+
 export function DashboardShell({
   title,
   subtitle,
@@ -136,6 +146,7 @@ export function DashboardShell({
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [outboxEvents, setOutboxEvents] = useState<any[]>([]);
   const [systemAlerts, setSystemAlerts] = useState<string[]>([]);
+  const [outboxTab, setOutboxTab] = useState<'all' | 'failed' | 'queued' | 'sent' | 'skipped'>('all');
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -444,7 +455,7 @@ export function DashboardShell({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-              className="fixed inset-y-0 right-0 z-[110] w-full max-w-sm border-l border-gold/20 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+              className="fixed inset-y-0 right-0 z-[110] w-full md:max-w-[480px] border-l border-gold/20 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3.5 mb-5">
                 <div className="flex items-center gap-2">
@@ -490,45 +501,109 @@ export function DashboardShell({
                 {/* Owner outbox / actionable notifications */}
                 <div className="space-y-3">
                   <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Owner Notifications</p>
+                  
+                  {/* Status Tabs Rail */}
+                  <div className="flex gap-1 overflow-x-auto pb-1 mb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {(['all', 'failed', 'queued', 'sent', 'skipped'] as const).map((tab) => {
+                      const count = outboxEvents.filter((evt) => {
+                        const s = String(evt.status ?? '').toLowerCase();
+                        if (tab === 'all') return true;
+                        if (tab === 'failed') return ['failed', 'error'].includes(s);
+                        if (tab === 'queued') return ['queued', 'pending'].includes(s);
+                        if (tab === 'sent') return ['sent', 'delivered', 'succeeded'].includes(s);
+                        if (tab === 'skipped') return ['skipped', 'cancelled', 'ignored'].includes(s);
+                        return false;
+                      }).length;
+
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setOutboxTab(tab)}
+                          className={`rounded-lg px-2.5 py-1 text-[9px] font-black uppercase tracking-wider border shrink-0 transition ${
+                            outboxTab === tab
+                              ? 'border-gold bg-gold/15 text-gold-soft'
+                              : 'border-white/5 bg-black/40 text-zinc-500 hover:text-zinc-300'
+                          }`}
+                        >
+                          {tab} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   {outboxEvents.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-center text-xs text-zinc-500">
                       No notification outbox rows visible yet.
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {outboxEvents.map((evt) => {
-                        const status = String(evt.status ?? 'queued');
-                        const kind = String(evt.kind ?? evt.template_key ?? 'notification');
-                        const failed = ['failed', 'error'].includes(status.toLowerCase());
-                        const href = evt.appointment_id ? `/admin/work-orders/${evt.appointment_id}` : '/admin/notifications';
-                        return (
-                          <Link
-                            key={String(evt.id ?? evt.created_at)}
-                            href={href}
-                            onClick={() => setShowNotifications(false)}
-                            className={`block rounded-xl border px-3.5 py-3 text-xs ${failed ? 'border-rose-500/30 bg-rose-500/10' : 'border-white/10 bg-zinc-900/40 hover:border-gold/25'}`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-bold capitalize text-white">{kind.replace(/_/g, ' ')}</p>
-                                <p className="mt-1 text-[10px] text-zinc-500">{String(evt.error_message ?? evt.channel ?? 'system')}</p>
-                                {evt.created_at ? (
-                                  <p className="mt-1 text-[10px] font-mono text-zinc-400">
-                                    {new Date(String(evt.created_at)).toLocaleString('en-US', {
-                                      timeZone: 'America/Chicago',
-                                      dateStyle: 'short',
-                                      timeStyle: 'short',
-                                    })}
+                      {outboxEvents
+                        .filter((evt) => {
+                          const s = String(evt.status ?? '').toLowerCase();
+                          if (outboxTab === 'all') return true;
+                          if (outboxTab === 'failed') return ['failed', 'error'].includes(s);
+                          if (outboxTab === 'queued') return ['queued', 'pending'].includes(s);
+                          if (outboxTab === 'sent') return ['sent', 'delivered', 'succeeded'].includes(s);
+                          if (outboxTab === 'skipped') return ['skipped', 'cancelled', 'ignored'].includes(s);
+                          return true;
+                        })
+                        .map((evt) => {
+                          const status = String(evt.status ?? 'queued');
+                          const kind = String(evt.kind ?? evt.template_key ?? 'notification');
+                          const failed = ['failed', 'error'].includes(status.toLowerCase());
+                          const previewText = getPayloadPreview(evt);
+                          return (
+                            <div
+                              key={String(evt.id ?? evt.created_at)}
+                              className={`rounded-xl border p-3.5 text-xs flex flex-col justify-between gap-2.5 ${
+                                failed ? 'border-rose-500/30 bg-rose-500/10' : 'border-white/10 bg-zinc-900/40 hover:border-gold/25'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-bold capitalize text-white flex items-center gap-1.5">
+                                    <span className="text-[10px] text-gold-soft uppercase tracking-wider bg-gold/10 px-1.5 py-0.5 rounded border border-gold/15">
+                                      {evt.channel ?? 'SMS'}
+                                    </span>
+                                    <span>{kind.replace(/_/g, ' ')}</span>
                                   </p>
-                                ) : null}
+                                  {previewText && (
+                                    <p className="mt-2 text-[11px] text-zinc-300 italic line-clamp-2 bg-black/35 rounded-lg p-2 border border-white/5 leading-relaxed">
+                                      &ldquo;{previewText}&rdquo;
+                                    </p>
+                                  )}
+                                  {evt.error_message && (
+                                    <p className="mt-2 text-[10px] text-rose-400 bg-rose-950/20 rounded-lg p-2 border border-rose-500/20">
+                                      Error: {evt.error_message}
+                                    </p>
+                                  )}
+                                  {evt.created_at ? (
+                                    <p className="mt-1.5 text-[9px] font-mono text-zinc-500">
+                                      {new Date(String(evt.created_at)).toLocaleString('en-US', {
+                                        timeZone: 'America/Chicago',
+                                        dateStyle: 'short',
+                                        timeStyle: 'short',
+                                      })}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase shrink-0 ${failed ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/5 text-zinc-400'}`}>
+                                  {status}
+                                </span>
                               </div>
-                              <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${failed ? 'bg-rose-500/20 text-rose-100' : 'bg-white/5 text-zinc-400'}`}>
-                                {status}
-                              </span>
+                              {evt.appointment_id && (
+                                <Link
+                                  href={`/admin/work-orders/${evt.appointment_id}`}
+                                  onClick={() => setShowNotifications(false)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 hover:bg-gold/15 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft border border-white/10 hover:border-gold/30 transition w-fit"
+                                >
+                                  View Related Job →
+                                </Link>
+                              )}
                             </div>
-                          </Link>
-                        );
-                      })}
+                          );
+                        })}
                     </div>
                   )}
                 </div>

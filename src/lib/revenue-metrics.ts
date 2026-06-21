@@ -25,6 +25,8 @@ export type PayRow = {
   refunded_amount_cents?: number | null;
   source_table?: 'payments' | 'receipts';
   payment_id?: string | null;
+  appointment_status?: string | null;
+  appointment_is_test?: boolean | null;
 };
 
 function str(v: unknown) {
@@ -104,15 +106,18 @@ export type RevenueDiagnostics = {
 
 export function isTestPaymentRow(
   p: PayRow,
-  apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }>,
+  apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null; is_test?: boolean | null }>,
 ): boolean {
   const meta = p.metadata;
-  if (p.is_test === true) return true;
+  if (p.is_test === true || p.appointment_is_test === true) return true;
   if (meta && (meta.is_test === true || meta.test === true)) return true;
   const aid = str(p.appointment_id);
   if (aid && apptById) {
     const appt = apptById.get(aid);
-    if (appt && isTestLikeJob(appt)) return true;
+    if (appt) {
+      if (appt.is_test === true) return true;
+      if (isTestLikeJob(appt)) return true;
+    }
   }
   return false;
 }
@@ -148,7 +153,7 @@ export function summarizePayments(
   rows: PayRow[],
   opts?: {
     excludeTest?: boolean;
-    apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }>;
+    apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null; status?: string | null; is_test?: boolean | null }>;
     fromIso?: string;
     toIso?: string;
   },
@@ -181,6 +186,12 @@ export function summarizePayments(
     if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id) continue;
     if (meta?.duplicate_of_payment === true) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
+
+    // Filter by completed appointment status
+    const aid = str(p.appointment_id);
+    const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
+    if (aid && apptStatus !== 'completed') continue;
+
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
 
@@ -203,7 +214,7 @@ export function buildRevenueDiagnostics(
   rows: PayRow[],
   opts?: {
     excludeTest?: boolean;
-    apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null }>;
+    apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null; status?: string | null; is_test?: boolean | null }>;
     fromIso?: string;
     toIso?: string;
   },
@@ -280,6 +291,16 @@ export function buildRevenueDiagnostics(
       pushAudit(p, false, 'Test booking or test payment metadata');
       continue;
     }
+
+    // Filter by completed appointment status in diagnostics
+    const aid = str(p.appointment_id);
+    const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
+    if (aid && apptStatus !== 'completed') {
+      exclusions.push({ id, amountCents: amt, method, reason: `Linked job is not completed (status: ${apptStatus || 'none'})` });
+      pushAudit(p, false, `Linked job is not completed (status: ${apptStatus || 'none'})`);
+      continue;
+    }
+
     if (amt <= 0) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Zero or missing amount' });
       pushAudit(p, false, 'Zero or missing amount');
@@ -359,16 +380,72 @@ export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string,
     const ts = payTimestamp(p);
     if (ts >= fromIso && (!toIso || ts <= toIso)) out.push(p);
   }
-  const paymentIds = new Set(out.map((p) => str(p.id)).filter(Boolean));
-  for (const receipt of receiptRows) {
+
+  // 1. Audit voided receipt leakage by checking linked payments status
+  const linkedPaymentIds = [...new Set(receiptRows.map((r) => str(r.payment_id)).filter(Boolean))];
+  const linkedPaymentMap = new Map<string, any>();
+  if (linkedPaymentIds.length > 0) {
+    const { data: linkedPayments } = await admin
+      .from('payments')
+      .select('id, status, voided_at, voided, exclude_from_revenue, is_test')
+      .in('id', linkedPaymentIds);
+    if (linkedPayments) {
+      for (const p of linkedPayments) {
+        linkedPaymentMap.set(str(p.id), p);
+      }
+    }
+  }
+
+  // Filter receipt rows
+  const cleanReceiptRows = receiptRows.map((r) => {
+    const pid = str(r.payment_id);
+    if (pid && linkedPaymentMap.has(pid)) {
+      const p = linkedPaymentMap.get(pid);
+      if (isPaymentVoided(p) || p.exclude_from_revenue === true || p.is_test === true) {
+        return { ...r, exclude_from_revenue: true };
+      }
+    }
+    return r;
+  });
+
+  // 2. Identify active succeeded payments to prevent double-counting receipt duplicates
+  const activePaymentIds = new Set(
+    out
+      .filter((p) => !p.exclude_from_revenue && !isPaymentVoided(p) && !p.is_test)
+      .map((p) => str(p.id))
+      .filter(Boolean)
+  );
+
+  for (const receipt of cleanReceiptRows) {
     const linkedPaymentId = str(receipt.payment_id);
-    if (linkedPaymentId && paymentIds.has(linkedPaymentId)) continue;
+    if (linkedPaymentId && activePaymentIds.has(linkedPaymentId)) continue;
     const id = str(receipt.id);
     const syntheticId = id ? `receipt:${id}` : '';
     if (syntheticId && seen.has(syntheticId)) continue;
     if (syntheticId) seen.add(syntheticId);
     out.push({ ...receipt, id: syntheticId || id, source_table: 'receipts' });
   }
+
+  // 3. Resolve and attach appointment status for job filtering
+  const appointmentIds = [...new Set(out.map((p) => str(p.appointment_id)).filter(Boolean))];
+  if (appointmentIds.length > 0) {
+    const { data: appts } = await admin
+      .from('appointments')
+      .select('id, status, is_test')
+      .in('id', appointmentIds);
+    if (appts) {
+      const apptById = new Map(appts.map((a) => [str(a.id), a]));
+      for (const p of out) {
+        const aid = str(p.appointment_id);
+        if (aid && apptById.has(aid)) {
+          const appt = apptById.get(aid)!;
+          p.appointment_status = appt.status;
+          p.appointment_is_test = appt.is_test;
+        }
+      }
+    }
+  }
+
   return out;
 }
 
@@ -427,8 +504,8 @@ export function startOfTodayIso(): string {
 export function startOfWeekIso(): string {
   const d = new Date();
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
+  const flex = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(flex);
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
 }

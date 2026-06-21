@@ -67,6 +67,13 @@ export type TechJob = {
   timerId?: string | null;
   timerStartedAt?: string | null;
   isFallback?: boolean;
+  weather?: {
+    tempF: number;
+    rainChance: number;
+    condition: string;
+    description: string;
+    severe: boolean;
+  } | null;
 };
 
 function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_description' | 'service_slug' | 'vehicle_class' | 'base_price_cents'>) {
@@ -92,6 +99,7 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
 
 import { workOrderPath } from '@/lib/work-order-links';
 import { isRealTimerId, isStaleTimerStart } from '@/lib/tech-job-filters';
+import type { WeatherSnapshot } from '@/lib/weather-forecast';
 
 function workOrderHref(job: TechJob) {
   const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
@@ -188,6 +196,7 @@ export function TechPremiumShell({
   activeDebug,
   completedTodayCount = 0,
   isSuperAdmin = false,
+  weatherForecast = null,
 }: {
   techName: string;
   roleLabel: string | null;
@@ -204,6 +213,7 @@ export function TechPremiumShell({
   activeDebug?: { userId: string | null; checked: string[]; adminRead: boolean } | null;
   completedTodayCount?: number;
   isSuperAdmin?: boolean;
+  weatherForecast?: WeatherSnapshot | null;
 }) {
   const todayJobs = jobs.filter((j) => isToday(j.scheduled_start));
   const assignedJobs = jobs.filter((j) => ['assigned', 'confirmed'].includes(j.status));
@@ -487,6 +497,63 @@ export function TechPremiumShell({
               </p>
             </section>
           </div>
+
+          {weatherForecast && weatherForecast.ok && weatherForecast.dailyForecasts && (
+            <section className={cardGlow}>
+              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Daily Weather Readiness</p>
+              <p className='mt-1 text-xs text-zinc-400'>
+                Detailing readiness & 5-day weather conditions for Austin, TX
+              </p>
+              <div className='mt-4 grid gap-3 sm:grid-cols-5'>
+                {weatherForecast.dailyForecasts.map((day) => {
+                  const isToday = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long' }) === day.dayName;
+                  return (
+                    <div
+                      key={day.date}
+                      className={`rounded-xl p-3 border transition duration-300 ${
+                        isToday
+                          ? 'border-gold bg-gold/5 shadow-[0_0_15px_rgba(212,175,55,0.1)]'
+                          : 'border-white/5 bg-black/45 hover:border-white/15'
+                      }`}
+                    >
+                      <div className='flex items-center justify-between'>
+                        <p className={`text-[10px] font-black uppercase tracking-wider ${isToday ? 'text-gold' : 'text-zinc-400'}`}>
+                          {day.dayName.slice(0, 3)} {isToday ? '(Today)' : ''}
+                        </p>
+                        <span className='text-xs'>
+                          {day.rainChancePct >= 55 ? '🌧️' : day.tempMaxF >= 80 ? '☀️' : day.rainChancePct >= 20 ? '⛅' : '☀️'}
+                        </span>
+                      </div>
+                      <div className='mt-2'>
+                        <p className='text-lg font-black text-white'>
+                          {day.tempMaxF}°<span className='text-xs font-normal text-zinc-500'> / {day.tempMinF}°F</span>
+                        </p>
+                        <p className='text-[10px] text-zinc-400 capitalize mt-0.5 truncate'>{day.description}</p>
+                        <p className={`text-[10px] font-bold mt-1 ${day.rainChancePct >= 50 ? 'text-red-400' : 'text-zinc-500'}`}>
+                          ☔ {day.rainChancePct}% rain
+                        </p>
+                      </div>
+                      <div className='mt-2.5 pt-2 border-t border-white/5'>
+                        {day.isBest ? (
+                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'>
+                            ✓ Great Day
+                          </span>
+                        ) : day.isRainy ? (
+                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/20'>
+                            ⚠ Rain Risk
+                          </span>
+                        ) : (
+                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-white/5 text-zinc-500 border border-white/5'>
+                            Moderate
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section className='mt-4'>
             <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick actions</p>
@@ -786,6 +853,24 @@ export function TechPremiumShell({
                           <div>
                             <p className='text-xs font-bold text-white'>{j.guest_name ?? 'Customer'} · <span className='text-gold-soft font-mono'>{new Date(j.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></p>
                             <p className='text-[10px] text-zinc-400 mt-0.5'>{j.service_address ?? 'No address provided'}</p>
+                            {j.weather && (
+                              <div className='mt-1 flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-zinc-400'>
+                                <span className='rounded bg-white/5 border border-white/10 px-1 py-0.5 text-white flex items-center gap-1'>
+                                  <span>{j.weather.tempF}°F</span>
+                                  <span>{j.weather.rainChance >= 55 ? '🌧️' : j.weather.tempF >= 80 ? '☀️' : '⛅'}</span>
+                                </span>
+                                <span>{j.weather.description}</span>
+                                <span className='text-zinc-600'>|</span>
+                                <span className={j.weather.rainChance >= 50 ? 'text-red-400' : 'text-zinc-500'}>
+                                  ☔ {j.weather.rainChance}% rain
+                                </span>
+                                {j.weather.severe && (
+                                  <span className='rounded bg-red-950/50 border border-red-500/30 px-1 py-0.5 text-red-400 animate-pulse'>
+                                    ⚠️ Severe Alert
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                         {j.service_address && (

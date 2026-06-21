@@ -33,6 +33,7 @@ function Card({
   children,
   last,
   alert,
+  id,
 }: {
   name: string;
   ok: boolean;
@@ -40,9 +41,10 @@ function Card({
   children?: React.ReactNode;
   last?: Row;
   alert?: string | null;
+  id?: string;
 }) {
   return (
-    <section className='rounded-3xl border border-white/5 bg-zinc-950/45 p-6 shadow-xl relative overflow-hidden group hover:border-gold/20 transition-all duration-300'>
+    <section id={id} className='rounded-3xl border border-white/5 bg-zinc-950/45 p-6 shadow-xl relative overflow-hidden group hover:border-gold/20 transition-all duration-300'>
       <div className='flex items-start justify-between gap-4'>
         <div>
           <p className='text-xs font-black uppercase tracking-[0.22em] text-zinc-400 group-hover:text-gold-soft transition'>{name}</p>
@@ -149,6 +151,7 @@ export default async function AdminIntegrationsPage() {
             ['TWILIO_AUTH_TOKEN', Boolean(process.env.TWILIO_AUTH_TOKEN)],
             ['TWILIO_MESSAGING_SERVICE_SID (preferred)', Boolean(twilioMessagingServiceSid())],
             ['TWILIO_FROM_NUMBER (fallback)', Boolean(twilioFromNumber())],
+            ['TWILIO_TOLLFREE_VERIFIED (environment)', process.env.TWILIO_TOLLFREE_VERIFIED === 'true'],
           ]}
           last={last('twilio_test')}
           alert={
@@ -160,6 +163,17 @@ export default async function AdminIntegrationsPage() {
           }
         >
           <div className='space-y-4'>
+            {process.env.TWILIO_TOLLFREE_VERIFIED === 'true' ? (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-100 flex items-center gap-2">
+                <span className="text-emerald-400">✓</span>
+                <span>Toll-Free Verification Active: SMS carrier error code 30032 is suppressed.</span>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3.5 text-xs text-amber-100 flex items-center gap-2">
+                <span className="text-amber-400">⚠</span>
+                <span>Toll-Free Verification Pending: SMS deliveries may block with carrier code 30032.</span>
+              </div>
+            )}
             {twilioMessagingServiceSid() ? (
               <p className='font-mono text-xs text-zinc-400 break-all'>Messaging Service SID: {twilioMessagingServiceSid()}</p>
             ) : twilioFromNumber() ? (
@@ -209,6 +223,7 @@ export default async function AdminIntegrationsPage() {
         />
 
         <Card
+          id="weather"
           name='OpenWeather Forecasts'
           ok={openWeatherConfigured()}
           vars={[

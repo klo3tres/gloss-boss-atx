@@ -413,6 +413,23 @@ function ExecutiveCalendarWidget({ jobs, events }: { jobs: OwnerDashboardSnapsho
   const [selectedDay, setSelectedDay] = useState<string | null>(todayKeySafe(now));
   const [result, setResult] = useState<{ ok: boolean; error?: string; message?: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [selectedDayWeather, setSelectedDayWeather] = useState<WeatherSnapshot | null>(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+
+  useEffect(() => {
+    if (!selectedDay) {
+      setSelectedDayWeather(null);
+      return;
+    }
+    setLoadingWeather(true);
+    const ctrl = new AbortController();
+    fetch(`/api/weather?when=${selectedDay}`, { signal: ctrl.signal })
+      .then((res) => res.json())
+      .then((data: WeatherSnapshot) => setSelectedDayWeather(data))
+      .catch(() => setSelectedDayWeather(null))
+      .finally(() => setLoadingWeather(false));
+    return () => ctrl.abort();
+  }, [selectedDay]);
   const monthName = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'America/Chicago' }).format(now);
   const first = new Date(now.getFullYear(), now.getMonth(), 1);
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -452,9 +469,9 @@ function ExecutiveCalendarWidget({ jobs, events }: { jobs: OwnerDashboardSnapsho
           <SectionEyebrow>Executive Calendar</SectionEyebrow>
           <p className="mt-1 font-mono text-lg font-black text-white">{monthName}</p>
         </div>
-        <button type="button" onClick={() => setSelectedDay(todayKey)} className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/10">
+        <Link href="/admin/calendar" className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/10">
           Open calendar
-        </button>
+        </Link>
       </div>
       <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-[9px] font-black uppercase tracking-wider text-zinc-500">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
@@ -496,13 +513,44 @@ function ExecutiveCalendarWidget({ jobs, events }: { jobs: OwnerDashboardSnapsho
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft">Calendar day</p>
               <h3 className="mt-1 text-lg font-black uppercase text-white">{selectedLabel}</h3>
-              <p className="mt-1 text-xs text-zinc-500">Weather appears when OpenWeather is configured.</p>
             </div>
             <button type="button" onClick={() => setSelectedDay(null)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black uppercase text-zinc-300">Close</button>
           </div>
           <div className="mt-4 space-y-3">
+            {/* Weather Snapshot for selected day */}
+            <div className="rounded-2xl border border-white/10 bg-black/45 p-3 text-xs">
+              <div className="flex items-center justify-between">
+                <p className="font-black uppercase tracking-wider text-zinc-500">Weather Forecast</p>
+                {loadingWeather && <span className="text-[9px] text-zinc-500 animate-pulse">Loading...</span>}
+              </div>
+              {selectedDayWeather?.ok ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-white text-base font-mono">{selectedDayWeather.temperatureF}°F</p>
+                    <p className="text-[10px] text-zinc-400 capitalize">{selectedDayWeather.description || selectedDayWeather.condition} · rain {selectedDayWeather.rainChancePct ?? 0}%</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${
+                    (selectedDayWeather.rainChancePct ?? 0) >= 50 || selectedDayWeather.severe
+                      ? 'bg-rose-500/15 text-rose-200'
+                      : (selectedDayWeather.rainChancePct ?? 0) < 30
+                        ? 'bg-emerald-500/15 text-emerald-200'
+                        : 'bg-zinc-500/15 text-zinc-200'
+                  }`}>
+                    {(selectedDayWeather.rainChancePct ?? 0) >= 50 || selectedDayWeather.severe ? 'Rain Risk' : (selectedDayWeather.rainChancePct ?? 0) < 30 ? 'Good' : 'Moderate'}
+                  </span>
+                </div>
+              ) : !loadingWeather ? (
+                <p className="mt-2 text-zinc-500">{selectedDayWeather?.blocker || 'Weather forecast unavailable.'}</p>
+              ) : null}
+            </div>
+
             <div className="rounded-2xl border border-white/10 bg-black/45 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Scheduled jobs</p>
+              <div className="flex items-center justify-between border-b border-white/5 pb-1">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Scheduled jobs</p>
+                <Link href={`/admin/dispatch?date=${selectedDay}`} className="text-[9px] font-black uppercase text-gold hover:underline">
+                  Go to dispatch board →
+                </Link>
+              </div>
               {selectedJobs.length === 0 ? <p className="mt-2 text-xs text-zinc-500">No scheduled jobs for this day.</p> : null}
               <div className="mt-2 space-y-2">
                 {selectedJobs.map((job) => (
@@ -556,13 +604,22 @@ function WeatherReadinessWidget() {
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    fetch('/api/weather', { signal: ctrl.signal })
+  const fetchWeather = (signal?: AbortSignal) => {
+    setLoading(true);
+    fetch('/api/weather', { signal })
       .then((res) => res.json())
       .then((data: WeatherSnapshot) => setWeather(data))
-      .catch((error) => setWeather({ ok: false, blocker: error instanceof Error ? error.message : 'Weather lookup failed.' }))
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setWeather({ ok: false, blocker: error instanceof Error ? error.message : 'Weather lookup failed.' });
+        }
+      })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchWeather(ctrl.signal);
     return () => ctrl.abort();
   }, []);
 
@@ -571,16 +628,67 @@ function WeatherReadinessWidget() {
 
   return (
     <GlassCard className="border-cyan-400/15 bg-black/45">
-      <SectionEyebrow>Weather Readiness</SectionEyebrow>
-      <p className="mt-4 text-3xl font-black text-white">Austin / Round Rock</p>
-      {loading ? <p className="mt-4 text-xs text-zinc-500">Checking service-area weather...</p> : null}
+      <div className="flex items-center justify-between border-b border-white/15 pb-2 mb-3">
+        <SectionEyebrow>Weather Readiness</SectionEyebrow>
+        <button 
+          type="button" 
+          onClick={() => fetchWeather()} 
+          disabled={loading}
+          className="text-[10px] font-black uppercase text-gold hover:text-white hover:underline transition disabled:opacity-50"
+        >
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+      <p className="text-3xl font-black text-white">Austin / Round Rock</p>
+      {loading && !weather ? <p className="mt-4 text-xs text-zinc-500">Checking service-area weather...</p> : null}
       {weather?.ok ? (
-        <div className="mt-4 grid gap-2 text-xs text-zinc-300">
+        <div className="mt-4 grid gap-3 text-xs text-zinc-300">
           <div className={`rounded-xl border p-3 ${highRain || weather.severe ? 'border-rose-500/30 bg-rose-500/10' : 'border-cyan-400/20 bg-cyan-400/5'}`}>
             <p className="font-black uppercase tracking-wider text-cyan-200">Current condition - OpenWeather</p>
             <p className="mt-2 text-2xl font-black text-white">{weather.temperatureF ?? '--'}F</p>
             <p className="mt-1 capitalize text-zinc-400">{weather.description || weather.condition || 'Forecast available'} - rain {rain}%</p>
           </div>
+
+          {/* Daily Forecast Grid */}
+          {weather.dailyForecasts && weather.dailyForecasts.length > 0 && (
+            <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
+              <p className="font-black uppercase tracking-wider text-zinc-400">5-Day Outlook</p>
+              <div className="grid grid-cols-5 gap-1.5 text-center">
+                {weather.dailyForecasts.map((d) => (
+                  <div 
+                    key={d.date} 
+                    className={`rounded-lg p-1.5 border ${
+                      d.isBest 
+                        ? 'border-gold/35 bg-gold/5 shadow-[0_0_10px_rgba(212,175,55,0.08)]' 
+                        : d.isRainy 
+                          ? 'border-rose-500/30 bg-rose-500/5' 
+                          : 'border-white/5 bg-black/45'
+                    }`}
+                  >
+                    <p className="text-[8px] font-bold text-zinc-500 truncate">{d.dayName.slice(0, 3)}</p>
+                    <p className="text-[10px] font-bold text-zinc-300 mt-1 font-mono">{d.tempMaxF}°</p>
+                    <p className="text-[9px] font-medium text-zinc-500 font-mono mt-0.5">{d.rainChancePct}%</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommendations and Warnings */}
+          {weather.bestDetailingDays && weather.bestDetailingDays.length > 0 && (
+            <div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-xs">
+              <p className="font-black uppercase tracking-wider text-gold-soft">Best Detailing Days</p>
+              <p className="mt-1 text-zinc-300">Perfect conditions forecasted for: <strong>{weather.bestDetailingDays.join(', ')}</strong></p>
+            </div>
+          )}
+
+          {weather.rainWarningDays && weather.rainWarningDays.length > 0 && (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
+              <p className="font-black uppercase tracking-wider text-rose-300">Rain Alerts</p>
+              <p className="mt-1">High rain probability expected on: <strong>{weather.rainWarningDays.join(', ')}</strong>. Monitor bookings closely.</p>
+            </div>
+          )}
+
           {highRain || weather.severe ? (
             <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-rose-100">
               Weather may affect mobile detailing. Confirm exterior work, shade, wind, and rain before dispatch.
@@ -601,8 +709,18 @@ function WeatherReadinessWidget() {
       ) : !loading ? (
         <div className="mt-4 grid gap-2 text-xs text-zinc-300">
           <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3">
-            <p className="font-black uppercase tracking-wider text-amber-200">Weather setup blocker</p>
-            <p className="mt-1 text-zinc-300">{weather?.blocker || 'missing OPENWEATHER_API_KEY'}</p>
+            <div className="flex justify-between items-center">
+              <p className="font-black uppercase tracking-wider text-amber-200">Weather setup blocker</p>
+              <button 
+                type="button" 
+                onClick={() => fetchWeather()} 
+                disabled={loading}
+                className="text-[10px] font-black uppercase text-gold hover:text-white hover:underline transition disabled:opacity-50"
+              >
+                Retry
+              </button>
+            </div>
+            <p className="mt-2 text-zinc-300">{weather?.blocker || 'missing OPENWEATHER_API_KEY'}</p>
             <ul className="mt-2 space-y-1 text-amber-100">
               <li>missing OPENWEATHER_API_KEY</li>
               <li>Add it in Vercel Project Settings - Environment Variables.</li>
@@ -628,48 +746,54 @@ function WeatherReadinessWidget() {
   );
 }
 
-function ExecutiveRecommendations({ metrics }: { metrics: OwnerDashboardSnapshot }) {
+function ExecutiveRecommendations({ 
+  metrics, 
+  onCardClick 
+}: { 
+  metrics: OwnerDashboardSnapshot; 
+  onCardClick: (drawer: any) => void;
+}) {
   const recommendations = [
     {
       title: 'Close receivables',
       metric: metrics.balanceDue,
       action: 'Open balance calls and payment links should happen before new dispatch planning.',
-      href: '/admin/payments',
+      drawer: 'open-balances',
       tone: 'text-rose-300',
     },
     {
       title: 'Lock tomorrow',
       metric: `${metrics.jobsTomorrowCount} jobs`,
       action: metrics.jobsTomorrowCount > 0 ? 'Confirm assignments, addresses, and first-stop arrival windows.' : 'Use the quiet window to fill the route from leads.',
-      href: '/admin/dispatch',
+      drawer: 'lock-tomorrow',
       tone: 'text-cyan-300',
     },
     {
       title: 'Raise ticket quality',
       metric: metrics.averageTicketSize,
       action: 'Audit add-ons and memberships on upcoming bookings before the customer arrives.',
-      href: '/admin/services',
+      drawer: 'ticket-quality',
       tone: 'text-gold-soft',
     },
     {
       title: 'Recover deposits',
       metric: metrics.pendingDeposits,
       action: 'Send deposit reminders for unconfirmed bookings before the route gets crowded.',
-      href: '/admin/booking-health',
+      drawer: 'pending-deposits',
       tone: 'text-amber-300',
     },
     {
       title: 'Repeat engine',
       metric: `${metrics.customerRetentionRate}%`,
       action: 'Target recent premium customers with membership and maintenance follow-up.',
-      href: '/admin/customers',
+      drawer: 'repeat-engine',
       tone: 'text-emerald-300',
     },
     {
       title: 'Notification health',
       metric: `${metrics.notificationRows.filter((n) => ['failed', 'error'].includes(n.status.toLowerCase())).length} blockers`,
       action: 'Clear failed booking, payment, and work-order notifications before they age.',
-      href: '/admin/notifications',
+      drawer: 'notifications',
       tone: 'text-indigo-300',
     },
   ];
@@ -682,14 +806,19 @@ function ExecutiveRecommendations({ metrics }: { metrics: OwnerDashboardSnapshot
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {recommendations.map((item) => (
-          <Link key={item.title} href={item.href} className="group rounded-2xl border border-white/10 bg-black/45 p-4 transition-all hover:-translate-y-0.5 hover:border-gold/30 hover:bg-black/60">
+          <button 
+            key={item.title} 
+            type="button"
+            onClick={() => onCardClick(item.drawer)}
+            className="group text-left w-full rounded-2xl border border-white/10 bg-black/45 p-4 transition-all hover:-translate-y-0.5 hover:border-gold/30 hover:bg-black/60 focus:outline-none"
+          >
             <div className="flex items-center justify-between gap-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">{item.title}</p>
               <ArrowUpRight className="h-4 w-4 text-zinc-600 transition group-hover:text-gold-soft" />
             </div>
             <p className={`mt-3 font-mono text-2xl font-black ${item.tone}`}>{item.metric}</p>
             <p className="mt-2 text-xs leading-5 text-zinc-400">{item.action}</p>
-          </Link>
+          </button>
         ))}
       </div>
     </section>
@@ -708,8 +837,20 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
     | 'credits'
     | 'bookings'
     | 'notifications'
+    | 'lock-tomorrow'
+    | 'ticket-quality'
+    | 'repeat-engine'
     | null
   >(null);
+
+  const tomorrowKey = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return chicagoDateKey(d);
+  }, []);
+  const tomorrowJobs = useMemo(() => {
+    return metrics.scheduleMonth?.filter(j => j.dayKey === tomorrowKey) ?? [];
+  }, [metrics.scheduleMonth, tomorrowKey]);
 
   const quickActions = [
     { href: '/admin/dispatch', label: 'New Booking', desc: 'Create manual field job', icon: Calendar, color: 'text-gold-soft', drawer: 'bookings' },
@@ -1243,6 +1384,124 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
           </div>
         );
 
+      case 'lock-tomorrow':
+        return (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Lock Tomorrow's Route</p>
+              <h2 className="text-2xl font-black text-cyan-300 mt-1">{metrics.jobsTomorrowCount} Jobs Scheduled</h2>
+            </div>
+            
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Tomorrow's Schedule ({tomorrowKey})</p>
+              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-4">
+                {tomorrowJobs.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-500">
+                    No jobs scheduled for tomorrow.
+                  </p>
+                ) : (
+                  tomorrowJobs.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href ?? '/admin/dispatch'}
+                      onClick={() => setActiveDrawer(null)}
+                      className="block rounded-xl border border-white/15 bg-black/45 p-3 hover:border-gold/30 text-xs"
+                    >
+                      <div className="flex justify-between items-center font-bold">
+                        <span className="text-white">{item.guestName}</span>
+                        <span className="text-gold-soft">{item.time}</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1">{item.service}</p>
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-cyan-950/20 border border-cyan-500/20 p-4 text-xs text-cyan-200 space-y-2">
+              <p className="font-semibold">Dispatch Checklist for Tomorrow</p>
+              <ul className="list-disc pl-4 space-y-1 text-zinc-400">
+                <li>Check weather readiness index.</li>
+                <li>Confirm vehicle assignments & water/power setup.</li>
+                <li>Verify customer phone numbers and gate codes.</li>
+              </ul>
+              <Link href="/admin/dispatch" onClick={() => setActiveDrawer(null)} className="mt-2 inline-flex text-xs font-black uppercase text-gold hover:underline">
+                Go to Dispatch Board →
+              </Link>
+            </div>
+          </div>
+        );
+
+      case 'ticket-quality':
+        return (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Average Ticket Size (MTD)</p>
+              <h2 className="text-4xl font-black text-gold mt-1 font-mono">{metrics.averageTicketSize}</h2>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Month-to-Date Volume</p>
+              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-zinc-400">Total payments collected</span>
+                  <span className="font-bold text-white font-mono">{metrics.paymentMixMonth.paymentCount} payments</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-zinc-400">Gross month-to-date</span>
+                  <span className="font-bold text-emerald-400 font-mono">{displayMoney(metrics.paymentMixMonth.grossCents)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gold/20 bg-gold/5 p-4 text-xs text-zinc-300 space-y-2">
+              <p className="font-semibold text-gold-soft flex items-center gap-1.5"><Sparkles className="h-4 w-4" /> Top Upsell Recommendations</p>
+              <ul className="list-disc pl-4 space-y-1.5 text-zinc-400">
+                <li><strong>Ceramic Coatings</strong>: Promote long-term paint protection for recurring clients.</li>
+                <li><strong>Engine Bay Detailing</strong>: Suggest a deep clean upgrade for an extra $50.</li>
+                <li><strong>Clay Bar & Polish</strong>: Add paint enhancement for swirl mark removal on older vehicles.</li>
+              </ul>
+              <Link href="/admin/services" onClick={() => setActiveDrawer(null)} className="mt-2 inline-flex text-xs font-black uppercase text-gold hover:underline">
+                Manage Services & Pricing →
+              </Link>
+            </div>
+          </div>
+        );
+
+      case 'repeat-engine':
+        return (
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Repeat Customer Engine</p>
+              <h2 className="text-4xl font-black text-emerald-400 mt-1 font-mono">{metrics.customerRetentionRate}% <span className="text-xs text-zinc-500 font-medium">retention</span></h2>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Loyalty Participation</p>
+              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-white/5">
+                  <span className="text-zinc-400">Loyalty program signups</span>
+                  <span className="font-bold text-white font-mono">{metrics.loyaltyParticipation}% participation</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-zinc-400">Fleet converted leads</span>
+                  <span className="font-bold text-indigo-300 font-mono">{metrics.leadPipeline.convertedCount} converted</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-4 text-xs text-zinc-400 space-y-2">
+              <p className="font-semibold text-white">Repeat Customer Strategy</p>
+              <p className="text-zinc-400 leading-relaxed">
+                Retaining customers is 5x cheaper than acquiring new ones. Focus on promoting the Gloss Boss loyalty portal stamps and auto-scheduling maintenance washes every 4 to 6 weeks.
+              </p>
+              <Link href="/admin/customers" onClick={() => setActiveDrawer(null)} className="mt-2 inline-flex text-xs font-black uppercase text-gold hover:underline">
+                View Customers Directory →
+              </Link>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -1566,7 +1825,7 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         <WeatherReadinessWidget />
       </section>
 
-      <ExecutiveRecommendations metrics={metrics} />
+      <ExecutiveRecommendations metrics={metrics} onCardClick={(drawer) => setActiveDrawer(drawer)} />
 
       {/* Interactive Mission Revenue Console */}
       <InteractiveRevenueDashboard metrics={metrics} />

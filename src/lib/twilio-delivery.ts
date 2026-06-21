@@ -17,12 +17,13 @@ export function describeTwilioDelivery(
   const raw = String(status ?? 'unknown').toLowerCase();
   const err = opts?.errorMessage?.trim();
   const code = opts?.errorCode != null && opts.errorCode !== '' ? String(opts.errorCode) : null;
-  const is30032 = code === '30032' || /30032|toll.?free|unverified/i.test(err ?? '');
+  const isVerified = process.env.TWILIO_TOLLFREE_VERIFIED === 'true';
+  const is30032 = (code === '30032' || /30032|toll.?free|unverified/i.test(err ?? '')) && !isVerified;
 
   let label: string;
   let needsTollFreeWarning = false;
 
-  if (is30032 || (raw === 'undelivered' && /toll|30032|unverified/i.test(err ?? ''))) {
+  if (is30032 || (raw === 'undelivered' && /toll|30032|unverified/i.test(err ?? '') && !isVerified)) {
     return {
       rawStatus: raw,
       label: TOLL_FREE_VERIFY_MSG,
@@ -57,6 +58,10 @@ export function describeTwilioDelivery(
     default:
       label = raw === 'unknown' ? 'Status unknown' : raw.replace(/_/g, ' ');
       if (raw === 'accepted' || raw === 'queued') needsTollFreeWarning = true;
+  }
+
+  if (isVerified) {
+    needsTollFreeWarning = false;
   }
 
   const isDelivered = raw === 'delivered' || raw === 'sent';

@@ -8,6 +8,7 @@ import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from 
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
+import type { WeatherSnapshot } from '@/lib/weather-forecast';
 
 export type CustomerAppt = {
   id: string;
@@ -52,6 +53,7 @@ export type CustomerDashboardProps = {
   membership?: CustomerMembershipView | null;
   accountCreditBalanceCents?: number;
   activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
+  weatherForecast?: WeatherSnapshot | null;
 };
 
 export type CustomerMembershipView = {
@@ -158,6 +160,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [memberTab, setMemberTab] = useState<'benefits' | 'credits' | 'deals'>('benefits');
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const handleCopyDeal = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const card = e.currentTarget;
@@ -295,6 +304,20 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               <p className="mt-1 text-xs text-zinc-500">
                 {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
               </p>
+              {props.weatherForecast?.ok && props.weatherForecast?.bestDetailingDays && (
+                <div className="mt-4 rounded-2xl border border-gold/25 bg-gold/5 p-3.5 text-xs animate-pulse hover:animate-none transition">
+                  <p className="font-black text-gold-soft uppercase tracking-wider flex items-center gap-1.5">
+                    <span>☀️ Optimal Wash Forecast</span>
+                  </p>
+                  <p className="text-[11px] text-zinc-400 mt-1 leading-normal">
+                    {props.weatherForecast.bestDetailingDays.length > 0 ? (
+                      <>Best days to book detailing in Austin: <strong className="text-white">{props.weatherForecast.bestDetailingDays.join(', ')}</strong>. Zero rain risk!</>
+                    ) : (
+                      <>High rain probability detected this week. Consider booking under our covered detail bays.</>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
             <div className="mt-5 grid gap-2">
               <Link href="/book" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110">
@@ -365,13 +388,37 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 {(props.activeDeals ?? []).length === 0 ? (
                   <p className="text-sm text-zinc-500">No active promos are published right now. Member pricing still applies when eligible.</p>
                 ) : (
-                  (props.activeDeals ?? []).slice(0, 4).map((deal) => (
-                    <div key={deal.id} className="rounded-2xl border border-gold/20 bg-gold/5 p-4">
-                      <p className="text-sm font-black uppercase text-white">{deal.title}</p>
-                      <p className="mt-1 text-xs text-zinc-400">{deal.description}</p>
-                      <p className="mt-2 text-xs font-black uppercase text-gold-soft">{deal.discount}</p>
-                    </div>
-                  ))
+                  (props.activeDeals ?? []).slice(0, 4).map((deal) => {
+                    const isCopied = copiedCode === deal.title;
+                    return (
+                      <div
+                        key={deal.id}
+                        onClick={() => handleCopyDeal(deal.title)}
+                        className="group relative rounded-2xl border border-gold/20 bg-gold/5 p-4 hover:border-gold/40 hover:bg-gold/10 transition cursor-pointer flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-black uppercase text-white tracking-wider">{deal.title}</p>
+                            <span className="text-[10px] font-bold text-gold-soft uppercase">
+                              {isCopied ? '✓ Copied' : 'Click to copy code'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-400">{deal.description}</p>
+                          <p className="mt-2 text-xs font-black uppercase text-gold-soft">{deal.discount}</p>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between">
+                          <span className="text-[10px] text-zinc-500">Code: <code className="text-white font-mono bg-black/40 px-1.5 py-0.5 rounded border border-white/10">{deal.title}</code></span>
+                          <Link
+                            href={`/book?promo=${encodeURIComponent(deal.title)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 rounded-xl bg-gold hover:bg-gold-soft px-3 py-1.5 text-[10px] font-black uppercase text-black transition"
+                          >
+                            Use code <ArrowUpRight className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             )}

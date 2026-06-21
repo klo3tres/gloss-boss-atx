@@ -10,6 +10,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { isActiveFieldStatus, isArchivedOrDeletedRow, isRealTimerId, isStaleTimerStart, isTestLikeJob } from '@/lib/tech-job-filters';
+import { fetchWeatherForAddress } from '@/lib/weather-forecast';
 
 export const dynamic = 'force-dynamic';
 
@@ -717,6 +718,47 @@ export default async function TechnicianDashboardPage({
     });
   }
 
+  let weatherForecast = null;
+  const isToday = (iso: string) => {
+    const d = new Date(iso);
+    const n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  };
+
+  if (db && session.user) {
+    const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
+    try {
+      weatherForecast = await fetchWeatherForAddress(baseAddress);
+    } catch (e) {
+      console.error('[tech dashboard] weather forecast fetch error', e);
+    }
+
+    try {
+      jobs = await Promise.all(
+        jobs.map(async (job) => {
+          if (isToday(job.scheduled_start) && job.service_address) {
+            const w = await fetchWeatherForAddress(job.service_address, job.scheduled_start);
+            if (w.ok) {
+              return {
+                ...job,
+                weather: {
+                  tempF: w.temperatureF ?? 0,
+                  rainChance: w.rainChancePct ?? 0,
+                  condition: w.condition ?? '',
+                  description: w.description ?? '',
+                  severe: w.severe ?? false,
+                },
+              };
+            }
+          }
+          return job;
+        })
+      );
+    } catch (err) {
+      console.error('[tech dashboard] job weather fetch error', err);
+    }
+  }
+
   let completedTodayCount = 0;
   if (db && session.user) {
     const sod = new Date();
@@ -748,6 +790,7 @@ export default async function TechnicianDashboardPage({
         justStarted={justStarted}
         activeDebug={activeDebug}
         isSuperAdmin={session.profile?.role === 'super_admin'}
+        weatherForecast={weatherForecast}
       />
     </DashboardShell>
   );

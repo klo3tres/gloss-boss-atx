@@ -155,34 +155,45 @@ export default function HomePage() {
           role='dialog'
           aria-modal='true'
           aria-labelledby='promo-dialog-title'
-          className='fixed inset-x-4 top-24 z-[60] mx-auto max-w-md rounded-2xl border border-gold/40 bg-black/95 p-4 shadow-[0_0_35px_rgba(212,166,77,0.3)]'
+          className='fixed inset-x-4 top-24 z-[60] mx-auto w-[calc(100%-2rem)] md:max-w-3xl lg:max-w-5xl rounded-3xl border border-gold/30 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 p-6 md:p-8 shadow-[0_0_50px_rgba(212,166,77,0.25)] backdrop-blur-md transition-all duration-300'
         >
           <button
             type='button'
             onClick={() => setShowPromoPopup(false)}
-            className='absolute right-2 top-2 rounded-md border border-white/20 p-1 text-zinc-300 hover:bg-white/10'
-            aria-label='Close offer popup'
+            className='absolute right-4 top-4 rounded-xl border border-white/10 p-2 text-zinc-400 hover:bg-white/10 hover:text-white transition duration-200'
+            aria-label='Close offer banner'
           >
-            <X size={14} />
+            <X size={16} />
           </button>
-          <p id='promo-dialog-title' className='pr-8 text-xs uppercase tracking-[0.2em] text-gold-soft'>
-            {displayDeals.websitePromoLabel || 'Website booking offer'}
-          </p>
-          <p className='mt-2 text-2xl font-black text-white'>{displayDeals.websitePromoPercent}% OFF Website Bookings</p>
-          <p className='mt-1 text-sm text-zinc-300'>
-            Limited slots. Promo applies to eligible booking subtotals as shown at checkout. Combine with CMS offer links only when stacking is enabled for that offer.
-          </p>
-          <div className='mt-3 flex flex-wrap gap-2'>
-            <Link href='/book' className='rounded-lg bg-gold px-4 py-2 text-xs font-bold uppercase tracking-widest text-black'>
-              Claim Offer
-            </Link>
-            <button
-              type='button'
-              onClick={() => setShowPromoPopup(false)}
-              className='rounded-lg border border-white/20 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white hover:bg-white/10'
-            >
-              Dismiss
-            </button>
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pr-8">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-gold animate-pulse" />
+                <p id='promo-dialog-title' className='text-xs uppercase tracking-[0.25em] font-black text-gold-soft'>
+                  {displayDeals.websitePromoLabel || 'Limited Time Booking Special'}
+                </p>
+              </div>
+              <h2 className='text-2xl md:text-3xl lg:text-4xl font-black text-white uppercase tracking-tight'>
+                Save <span className='text-gold'>{displayDeals.websitePromoPercent}% OFF</span> Your Next Mobile Detail
+              </h2>
+              <p className='text-xs md:text-sm text-zinc-300 max-w-2xl leading-relaxed'>
+                Limited slots available. Discount applies automatically to eligible detailing packages at checkout. Lock in your slot with a secure deposit today.
+              </p>
+            </div>
+            
+            <div className='flex flex-row md:flex-col lg:flex-row gap-3 shrink-0 self-start md:self-center'>
+              <Link href='/book' className='inline-flex items-center justify-center gap-2 rounded-xl bg-gold px-6 py-3.5 text-xs font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:brightness-110 transition duration-300'>
+                Claim Offer <ArrowRight size={14} />
+              </Link>
+              <button
+                type='button'
+                onClick={() => setShowPromoPopup(false)}
+                className='rounded-xl border border-white/20 px-6 py-3.5 text-xs font-black uppercase tracking-widest text-white hover:bg-white/10 transition duration-200'
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

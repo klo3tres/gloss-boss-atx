@@ -504,6 +504,17 @@ export default async function CustomerDashboardRootPage() {
     }
   }
 
+  let weatherForecast = null;
+  if (supabase && session.user && userEmail) {
+    try {
+      const { fetchWeatherForAddress } = await import('@/lib/weather-forecast');
+      const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
+      weatherForecast = await fetchWeatherForAddress(baseAddress);
+    } catch (e) {
+      console.error('[customer dashboard] weather forecast fetch error', e);
+    }
+  }
+
   return (
     <DashboardShell title='Your dashboard' subtitle='Garage, appointments, receipts, agreements, and live updates.' role='customer'>
       <CustomerDashboardClient
@@ -531,6 +542,7 @@ export default async function CustomerDashboardRootPage() {
         membership={customerMembership}
         accountCreditBalanceCents={accountCreditBalanceCents}
         activeDeals={activeDeals}
+        weatherForecast={weatherForecast}
       />
     </DashboardShell>
   );

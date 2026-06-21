@@ -28,7 +28,7 @@ export async function managePaymentAction(
     updateObj =
       tableName === 'receipts'
         ? { exclude_from_revenue: false, is_test: false, voided_at: null, status: 'issued' }
-        : { exclude_from_revenue: false, is_test: false, voided: false, voided_at: null };
+        : { exclude_from_revenue: false, is_test: false, status: 'succeeded', voided_at: null };
   } else if (action === 'exclude') {
     updateObj = { exclude_from_revenue: true };
     if (tableName === 'payments' && winnerId) {
@@ -62,7 +62,7 @@ export async function managePaymentAction(
     updateObj =
       tableName === 'receipts'
         ? { status: 'voided', voided_at: new Date().toISOString(), exclude_from_revenue: true }
-        : { voided: true, voided_at: new Date().toISOString() };
+        : { status: 'voided', voided_at: new Date().toISOString() };
   }
 
   let { error } = await admin.from(tableName).update(updateObj).eq('id', cleanId);
