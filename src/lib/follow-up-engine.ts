@@ -485,6 +485,16 @@ export async function runFollowUpEngine(admin: SupabaseClient) {
         .eq('id', runRow.id);
     }
 
+    if (delivery.sent > 0) {
+      const { logTitanActivity } = await import('@/lib/titan/activity-feed');
+      await logTitanActivity(admin, {
+        kind: 'follow_up_sent',
+        title: 'Follow-up messages sent',
+        detail: `${delivery.sent} customer win-back message${delivery.sent === 1 ? '' : 's'}`,
+        href: '/admin/follow-ups',
+      });
+    }
+
     return {
       enqueued,
       ...delivery,

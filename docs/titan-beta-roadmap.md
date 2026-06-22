@@ -32,7 +32,41 @@ Shipped inside Gloss Boss super admin (`/admin/super`):
 9. **Reputation Engine** — VIP vs Risk customer tiers
 10. **Titan Forecast** — projected month-end with confidence % and factor breakdown
 
-Nightly cron: `/api/cron/titan-nightly` (6:00 UTC) scans leaks and queues opportunities.
+Nightly cron: `/api/cron/titan-nightly` (6:00 UTC) scans leaks, queues opportunities, and syncs Lead Radar prospects from fleet inquiries.
+
+### Titan Growth OS (Phases 11–15)
+
+Shipped on `/admin/super` below intelligence panels:
+
+11. **Lead Radar** — B2B prospect discovery, scoring, pipeline promotion. **Google Places API** scans apartments, dealerships, fleets, landscapers, HOAs, and more within 15 miles every morning.
+12. **Outreach OS** — Type-specific call scripts, email, SMS; one-click contact execution
+13. **Ad OS** — Channel spend vs attributed revenue (Facebook, Google, referral, etc.)
+14. **Content Engine** — Top-performing content tracking + hook/caption/shot-list recommendations
+15. **Command Layer** — Natural-language growth plans (`Get me 5 new customers`) → Approve → Execute
+
+Migration: `000088_titan_growth_os.sql`, `000089_titan_places_discovery.sql`
+
+### Titan Product Layer (identity + proof)
+
+Shipped on `/admin/super`:
+
+- **Titan Business DNA** — workspace settings (industry, radius, goals, hours) drive Lead Radar and briefing
+- **Titan Branding** — Command Center™, Powered by Titan™ footer, Titan color system
+- **Titan Timeline** — live activity feed (discoveries, follow-ups, outreach, plans)
+- **Titan ROI** — attributable impact MTD (leads, rebooks, follow-ups, generated revenue)
+
+Migration: `000090_titan_product_layer.sql`
+
+---
+
+| Week | Module | Outcome |
+|------|--------|---------|
+| 1 | **Places API Discovery** ✅ | Morning prospect radar |
+| 2 | Territory Intelligence™ | Geo spend/convert insights |
+| 3 | Market Map™ | Visual opportunity map |
+| 4 | Acquisition Cost™ | CAC by channel |
+
+**Titan Revenue Graph™** — every feature must answer: get customer, retain customer, or increase customer value.
 
 ---
 
@@ -104,11 +138,11 @@ Build the dataset by running Gloss Boss on Gloss Boss.
 ## What NOT to build yet
 
 - Full autonomous AI dispatcher
-- AI growth engine / ad creation
+- AI voice agents calling prospects autonomously
 - Generic dashboard cards
 - "AI business advisor" chat with no data behind it
 
-Finish workflows first. Titan gets smarter as Gloss Boss gets more complete.
+Finish workflows first. Titan executes through real outreach, follow-ups, and command plans — not fake autonomy.
 
 ---
 

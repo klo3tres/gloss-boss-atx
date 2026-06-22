@@ -6,6 +6,13 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Brain, CloudRain, Search, Sparkles, Target, Zap } from 'lucide-react';
 import type { TitanBriefing } from '@/lib/titan-briefing';
 import { TitanIntelligencePanels } from '@/components/admin/titan-intelligence-panels';
+import { TitanGrowthPanels } from '@/components/admin/titan-growth-panels';
+import { TitanLogo } from '@/components/titan/titan-brand';
+import { TitanActivityTimeline } from '@/components/titan/titan-activity-timeline';
+import { TitanRoiPanel } from '@/components/titan/titan-roi-panel';
+import { TitanWorkspaceForm } from '@/components/admin/titan-workspace-form';
+import { TitanWidgetStatsPanel, TitanTerritoryPanel } from '@/components/titan/titan-public-panels';
+import { titanCommandCenterTitle } from '@/lib/titan/branding';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
 
@@ -65,21 +72,16 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
   const name = briefing.ownerName?.split(' ')[0] ?? 'Owner';
 
   return (
-    <div className="space-y-6">
+    <div className="titan-command-center space-y-6">
       {/* Titan header */}
       <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900 p-6 md:p-8">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(212,175,55,0.12),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(201,162,39,0.14),transparent_55%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/40 bg-black font-black text-xl text-gold">
-                T
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">{briefing.betaLabel}</p>
-                <h2 className="text-xl font-black uppercase tracking-wide text-white md:text-2xl">Titan Command Center</h2>
-              </div>
-            </div>
+            <TitanLogo size="md" />
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">{briefing.betaLabel}</p>
+            <h2 className="mt-1 text-xl font-black uppercase tracking-wide text-white md:text-2xl">{titanCommandCenterTitle()}</h2>
+            <p className="mt-1 text-xs text-zinc-500">{briefing.workspace.businessName} · {briefing.workspace.industry.replace(/_/g, ' ')}</p>
             <p className="mt-4 text-sm leading-relaxed text-zinc-300 md:text-base">
               {briefing.greeting}, {name}. You are projected to finish this month at{' '}
               <span className="font-mono font-bold text-white">{money(forecast.projectedMonthCents)}</span>
@@ -104,6 +106,18 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
           </div>
         </div>
       </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <TitanRoiPanel roi={briefing.roi} />
+        <TitanActivityTimeline events={briefing.activity} />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <TitanWidgetStatsPanel stats={briefing.widgetStats} />
+        <TitanTerritoryPanel territory={briefing.territory} />
+      </div>
+
+      <TitanWorkspaceForm workspace={briefing.workspace} compact />
 
       {/* Insights grid */}
       <section>
@@ -318,6 +332,8 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
           </button>
         </div>
       </section>
+
+      <TitanGrowthPanels briefing={briefing} />
 
       <TitanIntelligencePanels briefing={briefing} />
     </div>

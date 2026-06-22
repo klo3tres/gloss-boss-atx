@@ -7,6 +7,7 @@ import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
+import { PoweredByTitan } from '@/components/titan/titan-brand';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
@@ -22,7 +23,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Overview',
     links: [
       { href: '/admin', label: 'Dashboard' },
-      { href: '/admin/super', label: 'Titan command center' },
+      { href: '/admin/super', label: 'Titan Command Center™' },
       { href: '/admin/exceptions', label: 'Exception inbox' },
       { href: '/admin/daily-operations', label: 'Daily operations' },
       { href: '/admin/calendar', label: 'Calendar' },
@@ -145,11 +146,13 @@ export function DashboardShell({
   subtitle,
   role,
   children,
+  titanMode = false,
 }: {
   title: string;
   subtitle: string;
   role: DashboardShellRole;
   children: React.ReactNode;
+  titanMode?: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -270,6 +273,8 @@ export function DashboardShell({
     customer: 'Customer',
   };
 
+  const isTitanSurface = titanMode || pathname.startsWith('/admin/super');
+
   const panelTitle =
     role === 'super_admin' && simNav && simNav !== 'super_admin'
       ? `${panelLabel[simNav]} view (simulated)`
@@ -333,7 +338,7 @@ export function DashboardShell({
             <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>Command</p>
             <div className='mt-2 space-y-1'>
               <Link href='/admin/super' className={linkClass('/admin/super')}>
-                Command center
+                Titan Command Center™
               </Link>
             </div>
           </div>
@@ -355,7 +360,7 @@ export function DashboardShell({
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
   return (
-    <main className='gb-luxury-page min-h-screen bg-background text-foreground'>
+    <main className={`gb-luxury-page min-h-screen bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-no-print flex items-center justify-between lg:hidden w-full bg-zinc-950/85 border border-gold/15 rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-[0_0_15px_rgba(212,175,55,0.08)]'>
@@ -447,7 +452,12 @@ export function DashboardShell({
           <SafeRenderBoundary label='Dashboard content'>
             <div className='gb-dashboard-content space-y-6'>{children}</div>
           </SafeRenderBoundary>
-          <div className='gb-no-print'>
+          <div className='gb-no-print space-y-2'>
+            {(role === 'admin' || role === 'super_admin' || role === 'technician') && !pathname.startsWith('/dashboard') ? (
+              <div className="flex justify-center border-t border-white/5 pt-4">
+                <PoweredByTitan />
+              </div>
+            ) : null}
             <DashboardAuthDebugFooter />
           </div>
         </section>

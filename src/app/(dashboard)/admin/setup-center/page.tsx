@@ -25,7 +25,7 @@ export default async function OwnerSetupCenterPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
-  const [stripe, mediaRes, serviceRes, reviewRes, lifecycleProbe, exceptionProbe, syncRunsProbe, closeoutProbe, estimatesProbe, followUpsProbe, titanProbe] = await Promise.all([
+  const [stripe, mediaRes, serviceRes, reviewRes, lifecycleProbe, exceptionProbe, syncRunsProbe, closeoutProbe, estimatesProbe, followUpsProbe, titanProbe, growthProbe, discoveryProbe, productProbe, widgetProbe] = await Promise.all([
     getStripeSecrets(admin),
     admin.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
     admin.from('services').select('id', { count: 'exact', head: true }).eq('active', true),
@@ -37,6 +37,10 @@ export default async function OwnerSetupCenterPage() {
     admin.from('service_estimates').select('id', { count: 'exact', head: true }),
     admin.from('customer_follow_ups').select('id', { count: 'exact', head: true }),
     admin.from('titan_nightly_runs').select('id', { count: 'exact', head: true }),
+    admin.from('titan_prospects').select('id', { count: 'exact', head: true }),
+    admin.from('titan_discovery_runs').select('id', { count: 'exact', head: true }),
+    admin.from('titan_workspace_settings').select('workspace_key', { count: 'exact', head: true }),
+    admin.from('titan_widget_events').select('id', { count: 'exact', head: true }),
   ]);
 
   const registry = normalizeMediaRegistry(mediaRes.data?.value ?? null);
@@ -48,7 +52,7 @@ export default async function OwnerSetupCenterPage() {
   const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
   const weatherConfigured = Boolean(process.env.OPENWEATHER_API_KEY?.trim() && (process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || (process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim())));
   const reviewConfigured = Boolean(String(reviewRes.data?.value ?? '').trim());
-  const financialMigrationsReady = !exceptionProbe.error && !lifecycleProbe.error && !syncRunsProbe.error && !closeoutProbe.error && !estimatesProbe.error && !followUpsProbe.error && !titanProbe.error;
+  const financialMigrationsReady = !exceptionProbe.error && !lifecycleProbe.error && !syncRunsProbe.error && !closeoutProbe.error && !estimatesProbe.error && !followUpsProbe.error && !titanProbe.error && !growthProbe.error && !discoveryProbe.error && !productProbe.error && !widgetProbe.error;
 
   const checks: Readiness[] = [
     {
@@ -65,7 +69,7 @@ export default async function OwnerSetupCenterPage() {
       title: 'Financial truth and lifecycle migrations',
       ok: financialMigrationsReady,
       important: true,
-      detail: financialMigrationsReady ? 'Audit, lifecycle, and exception tables are available.' : 'Apply Supabase migrations 000079 through 000087 before production deployment.',
+      detail: financialMigrationsReady ? 'Titan workspace, widget, territory, Growth OS, and ops tables are available.' : 'Apply Supabase migrations 000079 through 000091 before production deployment.',
       action: 'Open system diagnostics',
       href: '/admin/system-diagnostics',
     },

@@ -263,6 +263,23 @@ export default async function AdminIntegrationsPage() {
         </Card>
 
         <Card
+          name='Titan Lead Radar (Google Places)'
+          ok={googleMapsConfigured() && businessHomeBaseConfigured()}
+          vars={[
+            ['GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY', googleMapsConfigured()],
+            ['BUSINESS_HOME_BASE_ADDRESS', businessHomeBaseConfigured()],
+            ['BUSINESS_LAT', Boolean(process.env.BUSINESS_LAT)],
+            ['BUSINESS_LNG', Boolean(process.env.BUSINESS_LNG)],
+            ['TITAN_DISCOVERY_RADIUS_MILES', Boolean(process.env.TITAN_DISCOVERY_RADIUS_MILES)],
+          ]}
+          alert={
+            googleMapsConfigured()
+              ? 'Enable Places API (New) on your Google Cloud project. Nightly cron discovers B2B prospects within your service radius.'
+              : 'missing GOOGLE_PLACES_API_KEY or GOOGLE_MAPS_API_KEY'
+          }
+        />
+
+        <Card
           name='Resend Inbound Webhook'
           ok={Boolean(process.env.RESEND_API_KEY && process.env.RESEND_WEBHOOK_SECRET && webhookUrl)}
           vars={[

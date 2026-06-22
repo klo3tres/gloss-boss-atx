@@ -5,6 +5,13 @@ import { loadFollowUpDashboard } from '@/lib/follow-up-engine';
 import { monthKeyChicago, startOfTodayChicagoIso } from '@/lib/chicago-time';
 import { fetchPaymentsSince, startOfMonthIso, summarizePayments } from '@/lib/revenue-metrics';
 import { loadTitanIntelligence, type TitanIntelligence } from '@/lib/titan';
+import { loadTitanGrowth } from '@/lib/titan/command-layer';
+import type { CommandPlan } from '@/lib/titan/command-layer';
+import { loadTitanWorkspace, type TitanWorkspace } from '@/lib/titan/workspace';
+import { hydrateActivityFeedIfEmpty, loadTitanActivityFeed, type TitanActivityEvent } from '@/lib/titan/activity-feed';
+import { loadTitanRoiDashboard, type TitanRoiMetrics } from '@/lib/titan/roi-dashboard';
+import { loadWidgetStats, type WidgetStats } from '@/lib/titan/site-guide';
+import { loadTerritoryIntelligence, type TerritoryIntelligence } from '@/lib/titan/territory-intelligence';
 import { fetchWeatherForAddress } from '@/lib/weather-forecast';
 
 export type TitanAction = {
@@ -61,6 +68,18 @@ export type TitanBriefing = {
   recommendations: TitanAction[];
   memoryRecent: TitanMemoryItem[];
   intelligence: TitanIntelligence;
+  growth: {
+    tablesReady: boolean;
+    radar: Awaited<ReturnType<typeof loadTitanGrowth>>['radar'];
+    attribution: Awaited<ReturnType<typeof loadTitanGrowth>>['attribution'];
+    content: Awaited<ReturnType<typeof loadTitanGrowth>>['content'];
+    lastPlan: CommandPlan | null;
+  };
+  workspace: TitanWorkspace & { tablesReady: boolean };
+  activity: TitanActivityEvent[];
+  roi: TitanRoiMetrics;
+  widgetStats: WidgetStats;
+  territory: TerritoryIntelligence;
 };
 
 function str(v: unknown) {
@@ -318,7 +337,7 @@ export async function loadTitanBriefing(
   const todayStart = startOfTodayChicagoIso();
   const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
 
-  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes, intelligence] =
+  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes, intelligence, growthData, lastPlanRes, workspace, roi, widgetStats, territory] =
     await Promise.all([
       loadMoneyPulse(admin),
       loadAdminGoalsMetrics(admin),
@@ -342,7 +361,22 @@ export async function loadTitanBriefing(
         .gte('scheduled_start', todayStart)
         .not('status', 'eq', 'cancelled'),
       loadTitanIntelligence(admin),
+      loadTitanGrowth(admin),
+      admin
+        .from('titan_command_plans')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      loadTitanWorkspace(admin),
+      loadTitanRoiDashboard(admin),
+      loadWidgetStats(admin),
+      loadTerritoryIntelligence(admin),
     ]);
+
+  await hydrateActivityFeedIfEmpty(admin);
+  const activityFeed = await loadTitanActivityFeed(admin, 20);
 
   const revenueMonthCents = pulse.monthGrossCents;
   const revenueGapCents =
@@ -412,5 +446,27 @@ export async function loadTitanBriefing(
     recommendations,
     memoryRecent: memory.recent,
     intelligence,
+    growth: {
+      tablesReady: growthData.radar.tablesReady && growthData.attribution.tablesReady && growthData.content.tablesReady,
+      radar: growthData.radar,
+      attribution: growthData.attribution,
+      content: growthData.content,
+      lastPlan: lastPlanRes.error
+        ? null
+        : lastPlanRes.data
+          ? {
+              id: str((lastPlanRes.data as Record<string, unknown>).id),
+              prompt: str((lastPlanRes.data as Record<string, unknown>).prompt),
+              status: str((lastPlanRes.data as Record<string, unknown>).status) as CommandPlan['status'],
+              potentialRevenueCents: cents((lastPlanRes.data as Record<string, unknown>).potential_revenue_cents),
+              actions: ((lastPlanRes.data as Record<string, unknown>).actions as CommandPlan['actions']) ?? [],
+            }
+          : null,
+    },
+    workspace,
+    activity: activityFeed.events,
+    roi,
+    widgetStats,
+    territory,
   };
 }

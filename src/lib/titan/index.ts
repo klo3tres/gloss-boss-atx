@@ -52,6 +52,7 @@ export async function runTitanNightlyEngine(admin: SupabaseClient) {
   const { runOpportunityEngine } = await import('@/lib/titan/opportunity-engine');
   const { loadAdminGoalsMetrics } = await import('@/lib/admin-goals-metrics');
   const { scanRevenueLeaks } = await import('@/lib/titan/revenue-engine');
+  const { logTitanActivity } = await import('@/lib/titan/activity-feed');
 
   const probe = await admin.from('titan_nightly_runs').select('id').limit(1);
   if (probe.error) return { skipped: true as const };
@@ -63,6 +64,20 @@ export async function runTitanNightlyEngine(admin: SupabaseClient) {
     const avgJob = metrics.avgTicketCents || 20000;
     const leaks = await scanRevenueLeaks(admin, avgJob);
     const opp = await runOpportunityEngine(admin);
+    const { syncFleetInquiriesToProspects } = await import('@/lib/titan/lead-radar');
+    const { discoverPlacesProspects } = await import('@/lib/titan/places-discovery');
+    const { computeTerritoryIntelligence } = await import('@/lib/titan/territory-intelligence');
+    const prospectsSynced = await syncFleetInquiriesToProspects(admin);
+    const placesDiscovery = await discoverPlacesProspects(admin);
+    await computeTerritoryIntelligence(admin);
+
+    await logTitanActivity(admin, {
+      kind: 'forecast_updated',
+      title: 'Revenue forecast updated',
+      detail: `Leak scan: $${(leaks.totalPotentialCents / 100).toFixed(0)} at risk · ${opp.queued} rebooks queued`,
+      impactCents: leaks.totalPotentialCents,
+      href: '/admin/super',
+    });
 
     if (runRow?.id) {
       await admin
@@ -81,6 +96,9 @@ export async function runTitanNightlyEngine(admin: SupabaseClient) {
       revenueLeakCents: leaks.totalPotentialCents,
       opportunitiesFound: opp.opportunities.length,
       opportunitiesQueued: opp.queued,
+      prospectsSynced,
+      placesDiscovered: placesDiscovery.discovered,
+      placesNew: placesDiscovery.newCount,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Nightly engine failed';

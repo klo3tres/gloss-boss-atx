@@ -18,9 +18,10 @@ export default async function SuperAdminDashboardPage() {
 
   return (
     <DashboardShell
-      title="Super admin command center"
-      subtitle="Titan Beta — the operating system running Gloss Boss ATX."
+      title="Titan Command Center™"
+      subtitle={`${briefing.workspace.businessName} — the operating system for your service business.`}
       role="super_admin"
+      titanMode
     >
       <TitanCommandCenter briefing={briefing} />
       <div className="my-10 border-t border-white/5 pt-10">

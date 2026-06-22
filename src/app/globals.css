@@ -13,6 +13,22 @@
   --gb-carbon-2: #111113;
   --gb-glass-line: rgba(212, 175, 55, 0.18);
   --gb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --titan-void: #050508;
+  --titan-carbon: #0a0a0f;
+  --titan-gold: #c9a227;
+  --titan-gold-soft: #e8c547;
+  --titan-glow: rgba(201, 162, 39, 0.35);
+}
+
+.titan-surface {
+  --gb-gold: var(--titan-gold);
+  --gb-gold-soft: var(--titan-gold-soft);
+  --gb-glass-line: rgba(201, 162, 39, 0.22);
+}
+
+.titan-command-center {
+  --gb-gold: var(--titan-gold);
+  --gb-gold-soft: var(--titan-gold-soft);
 }
 
 html,

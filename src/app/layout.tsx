@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { getAppOrigin } from '@/lib/env/app-origin';
+import { TitanSiteGuideRoot } from '@/components/titan/titan-site-guide-widget';
 
 /** Root layout uses `node:fs` — must stay on Node (never Edge) or SSR can hard-fail → blank page. */
 export const runtime = 'nodejs';
@@ -141,6 +142,7 @@ export default function RootLayout({
           </div>
         </noscript>
         {children}
+        <TitanSiteGuideRoot />
       </body>
     </html>
   );

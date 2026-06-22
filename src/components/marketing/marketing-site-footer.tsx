@@ -35,6 +35,13 @@ export function MarketingSiteFooter({ compact = false }: { compact?: boolean }) 
       </div>
       <p className='mx-auto mt-6 max-w-7xl text-center text-[10px] text-zinc-600 sm:text-left'>
         © {new Date().getFullYear()} Gloss Boss ATX. All rights reserved.
+        <span className="mx-2 hidden sm:inline">·</span>
+        <span className="mt-2 block sm:mt-0 sm:inline">
+          <span className="inline-flex items-center gap-1.5 font-bold uppercase tracking-[0.18em] text-zinc-700">
+            <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded border border-zinc-600 text-[7px] font-black text-zinc-500">T</span>
+            Powered by Titan™
+          </span>
+        </span>
       </p>
     </footer>
   );
