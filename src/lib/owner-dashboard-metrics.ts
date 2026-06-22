@@ -5,6 +5,7 @@ import {
   startOfTodayIso,
   startOfWeekIso,
   summarizePayments,
+  selectCanonicalRevenueRows,
 } from '@/lib/revenue-metrics';
 import { displayMoney } from '@/lib/display-format';
 import { getFinancialSnapshot, type FinancialDetailRow } from '@/lib/financial-ledger';
@@ -406,11 +407,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   const loyaltyParticipation = uniqueCustomers > 0 ? Math.round((stampCustomers.size / uniqueCustomers) * 100) : 0;
 
   // Recent Payments
-  const recentPayments = dashboardMonthRows
-    .filter((p) => {
-      const one = summarizePayments([p], sumOpts);
-      return one.grossCents > 0;
-    })
+  const recentPayments = selectCanonicalRevenueRows(dashboardMonthRows, sumOpts)
     .sort((a, b) => String(b.paid_at ?? b.created_at ?? '').localeCompare(String(a.paid_at ?? a.created_at ?? '')))
     .slice(0, 6)
     .map((p) => {

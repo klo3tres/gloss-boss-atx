@@ -6,6 +6,8 @@ import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
+import { findDuplicatePaymentGroups, repairDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
+import type { PayRow } from '@/lib/revenue-metrics';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -71,7 +73,30 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   const paymentMethod =
     method === 'zelle' ? 'zelle' : method === 'venmo' ? 'venmo' : method === 'check' ? 'check' : 'cash';
 
-  const { data: inserted, error } = await gate.admin
+  const recentCutoff = new Date(Date.now() - 30_000).toISOString();
+  let recentQuery = gate.admin
+    .from('payments')
+    .select('id')
+    .eq('amount_cents', amountCents)
+    .eq('payment_method', paymentMethod)
+    .in('status', ['succeeded', 'paid'])
+    .gte('created_at', recentCutoff)
+    .limit(1);
+  recentQuery = appointmentId
+    ? recentQuery.eq('appointment_id', appointmentId)
+    : recentQuery.eq('fallback_booking_id', fallbackBookingId);
+  const { data: recentDuplicate } = await recentQuery;
+  if ((recentDuplicate ?? []).length > 0) {
+    return actionOk('That payment was already recorded. No duplicate row was created.');
+  }
+
+  const now = new Date().toISOString();
+  const balanceBefore = Math.max(0, Number(jobRow.balance_due_cents ?? 0));
+  const appliedAmountCents = balanceBefore > 0 ? Math.min(amountCents, balanceBefore) : amountCents;
+  const tipAmountCents = Math.max(0, amountCents - appliedAmountCents);
+  const idempotencyKey = `manual:${gate.userId}:${jobId}:${paymentMethod}:${amountCents}:${now}`;
+
+  let { data: inserted, error } = await gate.admin
     .from('payments')
     .insert({
       appointment_id: appointmentId || null,
@@ -82,11 +107,35 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
       payment_method: paymentMethod,
       payment_kind: 'manual',
       payment_choice: 'balance',
-      paid_at: new Date().toISOString(),
-      metadata: { source: 'admin_manual', recorded_by: gate.userId },
+      paid_at: now,
+      tender_type: paymentMethod,
+      applied_amount_cents: appliedAmountCents,
+      tip_amount_cents: tipAmountCents,
+      idempotency_key: idempotencyKey,
+      recorded_by: gate.userId,
+      metadata: { source: 'admin_manual', recorded_by: gate.userId, applied_amount_cents: appliedAmountCents, tip_amount_cents: tipAmountCents },
     })
     .select('id')
     .maybeSingle();
+
+  if (error && /tender_type|applied_amount_cents|tip_amount_cents|idempotency_key|recorded_by|schema cache|column/i.test(error.message)) {
+    ({ data: inserted, error } = await gate.admin
+      .from('payments')
+      .insert({
+        appointment_id: appointmentId || null,
+        fallback_booking_id: fallbackBookingId || null,
+        customer_id: str(jobRow.customer_id) || null,
+        amount_cents: amountCents,
+        status: 'succeeded',
+        payment_method: paymentMethod,
+        payment_kind: 'manual',
+        payment_choice: 'balance',
+        paid_at: now,
+        metadata: { source: 'admin_manual', recorded_by: gate.userId, applied_amount_cents: appliedAmountCents, tip_amount_cents: tipAmountCents },
+      })
+      .select('id')
+      .maybeSingle());
+  }
 
   if (error) return actionErr(error.message);
 
@@ -116,11 +165,29 @@ export async function voidExtrasAndRebuildActionState(_prev: ActionResult | null
   const fallbackBookingId = str(formData.get('fallbackBookingId'));
   if (!appointmentId && !fallbackBookingId) return actionErr('Missing work order.');
 
-  let payQ = gate.admin.from('payments').select('id, amount_cents, status, paid_at, created_at').order('paid_at', { ascending: true });
+  let payQ = gate.admin.from('payments').select('*').order('paid_at', { ascending: true });
   payQ = appointmentId ? payQ.eq('appointment_id', appointmentId) : payQ.eq('fallback_booking_id', fallbackBookingId);
   const { data: payments, error: payErr } = await payQ;
   if (payErr) return actionErr(payErr.message);
 
+  const duplicateGroups = findDuplicatePaymentGroups(
+    ((payments ?? []) as PayRow[]).map((row) => ({ ...row, source_table: 'payments' as const })),
+  );
+  if (duplicateGroups.length === 0) {
+    return actionOk('No duplicate payment identities found. Split tenders and overpayments were left intact.');
+  }
+  const duplicateRepair = await repairDuplicatePaymentGroups(gate.admin, duplicateGroups);
+  if (duplicateRepair.errors.length > 0) return actionErr(duplicateRepair.errors.join(' '));
+
+  const safeRebuild = await generateWorkOrderReceiptActionState(null, formData);
+  if (!safeRebuild.ok) return safeRebuild;
+  const safeJobId = fallbackBookingId || appointmentId;
+  revalidatePath('/admin/receipts');
+  revalidatePath(`/tech/work-orders/${safeJobId}`);
+  return actionOk(`Excluded ${duplicateRepair.paymentsExcluded} duplicate payment row(s). Split tenders and tips were preserved.`);
+
+  /* Legacy amount-capping repair intentionally disabled. It destroyed valid tips and split tenders.
+  if (!gate) return actionErr('Not authorized.');
   const table = fallbackBookingId ? 'booking_fallbacks' : 'appointments';
   const jobId = fallbackBookingId || appointmentId;
   const { data: job } = await gate.admin.from(table).select('final_total_cents, total_cents').eq('id', jobId).maybeSingle();
@@ -176,6 +243,7 @@ export async function voidExtrasAndRebuildActionState(_prev: ActionResult | null
   if (workOrderPath) revalidatePath(workOrderPath);
   revalidatePath(`/tech/work-orders/${jobId}`);
   return actionOk(`Voided ${toVoid.length} extra payment(s) and rebuilt receipt.`);
+  */
 }
 
 /** Detach suspicious payment rows from a work order without deleting payment history. */

@@ -6,6 +6,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { recordAssignmentEvent } from '@/lib/assignment-events';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { stageFromLegacyStatus, transitionWorkOrder } from '@/lib/work-order-lifecycle';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -120,25 +121,14 @@ export async function updateAppointmentDispatchStatusAction(formData: FormData) 
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const nowIso = new Date().toISOString();
-  const patch: Record<string, unknown> = { status, updated_at: nowIso };
-
-  const { data: timeRow } = await gate.supabase
-    .from('appointments')
-    .select('job_started_at, job_completed_at')
-    .eq('id', appointmentId)
-    .maybeSingle();
-  const times = timeRow as { job_started_at?: string | null; job_completed_at?: string | null } | null;
-
-  if (status === 'in_progress' && !times?.job_started_at) {
-    patch.job_started_at = nowIso;
-  }
-  if (status === 'completed' && !times?.job_completed_at) {
-    patch.job_completed_at = nowIso;
-  }
-
-  const { error } = await gate.supabase.from('appointments').update(patch).eq('id', appointmentId);
-  if (error) return { ok: false as const, error: error.message };
+  const transition = await transitionWorkOrder(gate.supabase, {
+    appointmentId,
+    to: stageFromLegacyStatus(status),
+    legacyStatus: status,
+    actorId: gate.userId,
+    reason: 'Dispatch status change',
+  });
+  if (!transition.ok) return { ok: false as const, error: transition.error ?? 'Invalid transition' };
 
   revalidatePath('/admin/dispatch');
   revalidatePath('/tech');

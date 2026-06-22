@@ -29,6 +29,14 @@ export async function GET() {
     webhookSecretPresent: Boolean(secrets.webhookSecret),
     serviceRolePresent: Boolean(admin),
     canonicalUrl: 'https://glossbossatx.com/api/stripe/webhook',
+    environment: {
+      STRIPE_SECRET_KEY: Boolean(secrets.secretKey),
+      STRIPE_WEBHOOK_SECRET: Boolean(secrets.webhookSecret),
+      SUPABASE_SERVICE_ROLE_KEY: Boolean(admin),
+    },
+    aliasUrl: 'https://glossbossatx.com/api/webhooks/stripe',
+    emergencyTlsSafeUrl: 'https://www.glossbossatx.com/api/stripe/webhook',
+    tlsNote: 'TLS is terminated by the hosting/domain provider before this route runs.',
   });
 }
 

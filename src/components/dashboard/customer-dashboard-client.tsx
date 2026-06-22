@@ -162,10 +162,11 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const [memberTab, setMemberTab] = useState<'benefits' | 'credits' | 'deals'>('benefits');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const handleCopyDeal = (code: string) => {
-    navigator.clipboard.writeText(code);
+  const handleCopyDeal = (code: string, navigate = false) => {
+    void navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2500);
+    if (navigate) window.location.assign(`/book?promo=${encodeURIComponent(code)}`);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -304,18 +305,23 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               <p className="mt-1 text-xs text-zinc-500">
                 {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
               </p>
-              {props.weatherForecast?.ok && props.weatherForecast?.bestDetailingDays && (
-                <div className="mt-4 rounded-2xl border border-gold/25 bg-gold/5 p-3.5 text-xs animate-pulse hover:animate-none transition">
+              {props.weatherForecast?.ok && props.weatherForecast?.bestDetailingDays ? (
+                <div className="mt-4 rounded-2xl border border-gold/25 bg-gold/5 p-3.5 text-xs transition">
                   <p className="font-black text-gold-soft uppercase tracking-wider flex items-center gap-1.5">
                     <span>☀️ Optimal Wash Forecast</span>
                   </p>
                   <p className="text-[11px] text-zinc-400 mt-1 leading-normal">
                     {props.weatherForecast.bestDetailingDays.length > 0 ? (
-                      <>Best days to book detailing in Austin: <strong className="text-white">{props.weatherForecast.bestDetailingDays.join(', ')}</strong>. Zero rain risk!</>
+                      <>Best days in the current OpenWeather forecast: <strong className="text-white">{props.weatherForecast.bestDetailingDays.join(', ')}</strong>.</>
                     ) : (
                       <>High rain probability detected this week. Consider booking under our covered detail bays.</>
                     )}
                   </p>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-3.5 text-xs">
+                  <p className="font-black uppercase tracking-wider text-zinc-300">Booking weather unavailable</p>
+                  <p className="mt-1 font-mono text-[11px] text-zinc-500">{props.weatherForecast?.blocker || 'Weather forecast has not loaded.'}</p>
                 </div>
               )}
             </div>
@@ -393,7 +399,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                     return (
                       <div
                         key={deal.id}
-                        onClick={() => handleCopyDeal(deal.title)}
+                        onClick={() => handleCopyDeal(deal.title, true)}
                         className="group relative rounded-2xl border border-gold/20 bg-gold/5 p-4 hover:border-gold/40 hover:bg-gold/10 transition cursor-pointer flex flex-col justify-between"
                       >
                         <div>

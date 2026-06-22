@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { MEDIA_REGISTRY_ITEMS, normalizeMediaRegistry } from '@/lib/media-registry';
 
 export const runtime = 'nodejs';
 
@@ -47,6 +48,10 @@ export async function POST(request: Request) {
   }
 
   const slot = String(form.get('slot') ?? 'homepage').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 60) || 'homepage';
+  const registryKey = String(form.get('registryKey') ?? '').trim();
+  if (registryKey && !MEDIA_REGISTRY_ITEMS.some((item) => item.key === registryKey)) {
+    return NextResponse.json({ ok: false, error: 'Unknown media registry slot.' }, { status: 400 });
+  }
   const buf = Buffer.from(await file.arrayBuffer());
   const path = `homepage/${gate.userId}/${slot}/${randomUUID()}-${safeFileName(file.name)}`;
 
@@ -64,9 +69,23 @@ export async function POST(request: Request) {
   }
 
   const { data: pub } = admin.storage.from('gallery').getPublicUrl(path);
+  if (registryKey) {
+    const current = await admin.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle();
+    const registry = normalizeMediaRegistry(current.data?.value ?? null);
+    registry[registryKey] = pub.publicUrl;
+    const saved = await admin.from('site_settings').upsert(
+      { key: 'media_registry', value: JSON.stringify(registry), updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    );
+    if (saved.error) {
+      return NextResponse.json({ ok: false, error: `Image uploaded but publishing failed: ${saved.error.message}` }, { status: 500 });
+    }
+  }
   revalidatePath('/admin/cms');
   revalidatePath('/');
   revalidatePath('/services');
   revalidatePath('/fleet');
+  revalidatePath('/book');
+  revalidatePath('/admin/media');
   return NextResponse.json({ ok: true, url: pub.publicUrl });
 }

@@ -60,6 +60,18 @@ export const metadata: Metadata = {
     'luxury car detailing Austin',
     'Gloss Boss ATX',
   ],
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.svg',
+    apple: '/brand/glossboss-clean-logo.png',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'Gloss Boss ATX',
+    title: 'Gloss Boss ATX | Luxury Automotive Detailing',
+    description: 'Premium mobile detailing in Austin, Texas. Ride Clean. Ride Like A Boss.',
+    images: [{ url: '/brand/glossboss-official-atx.png', width: 1200, height: 630, alt: 'Gloss Boss ATX' }],
+  },
 };
 
 /**
@@ -92,6 +104,18 @@ export default function RootLayout({
         Optional Tailwind bundle fallback lives in <body> (valid HTML5 for stylesheet links).
       */}
       <body className='min-h-full bg-background font-sans text-foreground antialiased'>
+        <script
+          type='application/ld+json'
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Organization',
+              name: 'Gloss Boss ATX',
+              url: 'https://glossbossatx.com',
+              logo: 'https://glossbossatx.com/brand/glossboss-clean-logo.png',
+            }),
+          }}
+        />
         <style dangerouslySetInnerHTML={{ __html: LAYOUT_BASELINE_CSS }} />
         {hasCssFallback ? (
           <link rel='stylesheet' href='/assets/app-layout.css' data-gb='tailwind-fallback' />

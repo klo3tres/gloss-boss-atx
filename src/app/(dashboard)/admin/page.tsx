@@ -3,6 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { loadOwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
+import { loadOperationsSnapshot, type OperationsSnapshot } from '@/lib/operations-snapshot';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,7 @@ export default async function AdminDashboardPage() {
   };
 
   let goals: any[] = [];
+  let operations: OperationsSnapshot | null = null;
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {
     const admin = tryCreateAdminSupabase();
@@ -98,7 +100,8 @@ export default async function AdminDashboardPage() {
     } else {
       try {
         metrics = await loadOwnerDashboardSnapshot(admin);
-        
+        operations = await loadOperationsSnapshot(admin);
+
         // Fetch live goals for the dashboard summary
         const { data } = await admin
           .from('admin_goals')
@@ -129,13 +132,18 @@ export default async function AdminDashboardPage() {
   }
 
   return (
-    <DashboardShell title='Command center' subtitle='Revenue, pipeline, and today’s jobs.' role='admin'>
+    <DashboardShell title='Command center' subtitle='What needs attention, today’s jobs, and revenue at a glance.' role='admin'>
       {loadErr ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
           {loadErr}
         </p>
       ) : null}
-      <OwnerCommandCenter metrics={metrics} isSuperAdmin={session.profile?.role === 'super_admin'} goals={goals} />
+      <OwnerCommandCenter
+        metrics={metrics}
+        operations={operations}
+        isSuperAdmin={session.profile?.role === 'super_admin'}
+        goals={goals}
+      />
     </DashboardShell>
   );
 }

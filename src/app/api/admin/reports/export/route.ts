@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { fetchPaymentsSince, selectCanonicalRevenueRows } from '@/lib/revenue-metrics';
 
 export const runtime = 'nodejs';
 
@@ -45,9 +46,18 @@ export async function GET(request: Request) {
     const { data } = await admin.from('customer_memberships').select('*, membership_plans(name,tier), customers(full_name,email)').order('created_at', { ascending: false });
     rows = (data ?? []) as unknown as Record<string, unknown>[];
   } else {
-    const q = admin.from('financial_ledger').select('*').gte('occurred_at', from).lte('occurred_at', to).order('occurred_at', { ascending: false });
-    const { data } = includeTest ? await q : await q.eq('is_test', false).eq('exclude_from_reports', false);
-    rows = (data ?? []) as Record<string, unknown>[];
+    const payments = await fetchPaymentsSince(admin, from, to);
+    rows = selectCanonicalRevenueRows(payments, { excludeTest: !includeTest, fromIso: from, toIso: to }).map((payment) => ({
+      payment_id: payment.id,
+      work_order_id: payment.appointment_id,
+      paid_at: payment.paid_at || payment.created_at,
+      amount_cents: payment.amount_cents,
+      amount_dollars: ((payment.amount_cents ?? 0) / 100).toFixed(2),
+      method: payment.payment_method || payment.payment_kind,
+      status: payment.status,
+      stripe_payment_intent_id: payment.stripe_payment_intent_id,
+      stripe_checkout_session_id: payment.stripe_checkout_session_id,
+    }));
   }
 
   return new NextResponse(csv(rows), {

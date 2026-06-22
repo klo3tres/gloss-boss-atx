@@ -3,6 +3,7 @@ import type Stripe from 'stripe';
 import {
   buildRevenueDiagnostics,
   fetchPaymentsSince,
+  selectCanonicalRevenueRows,
   summarizePayments,
   type PayRow,
   type RevenueDiagnostics,
@@ -176,10 +177,16 @@ export async function getFinancialSnapshot(
 
   const summary = summarizePayments(payments, { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
   const diagnostics = buildRevenueDiagnostics(payments, { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
+  const canonicalPayments = selectCanonicalRevenueRows(payments, {
+    excludeTest: !includeTest,
+    apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null; status?: string | null; is_test?: boolean | null }>,
+    fromIso,
+    toIso,
+  });
 
   const cashByAppt = new Map<string, number>();
   const stripeByAppt = new Set<string>();
-  for (const p of payments) {
+  for (const p of canonicalPayments) {
     const aid = str(p.appointment_id);
     if (!aid) continue;
     if (isPaymentVoided(p) || !isPaymentSucceededGuard(p)) continue;
@@ -220,7 +227,7 @@ export async function getFinancialSnapshot(
   };
   const recentPayments: FinancialDetailRow[] = [];
   const countedPayments: PayRow[] = [];
-  for (const p of payments) {
+  for (const p of canonicalPayments) {
     const paySummary = summarizePayments([p], { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
     if (paySummary.grossCents <= 0) continue;
     countedPayments.push(p);

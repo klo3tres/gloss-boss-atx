@@ -123,6 +123,23 @@ export default async function StripeSyncPage({ searchParams }: { searchParams?: 
         </section>
       ) : null}
 
+      <section className='mb-6 rounded-2xl border border-gold/25 bg-black/60 p-5 text-sm text-zinc-300'>
+        <div className='flex flex-wrap items-start justify-between gap-4'>
+          <div>
+            <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Stripe webhook health</p>
+            <p className='mt-2 font-mono text-xs text-white'>https://glossbossatx.com/api/stripe/webhook</p>
+            <p className='mt-1 font-mono text-xs text-emerald-200'>TLS-safe emergency URL: https://www.glossbossatx.com/api/stripe/webhook</p>
+            <p className='mt-2 text-xs text-zinc-400'>Open that URL in a browser. It must return JSON showing all three required server keys as true. Stripe POST deliveries use the same route; <span className='font-mono'>/api/webhooks/stripe</span> is an alias.</p>
+          </div>
+          <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase ${secrets.secretKey && secrets.webhookSecret && admin ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-red-500/35 bg-red-500/10 text-red-100'}`}>
+            {secrets.secretKey && secrets.webhookSecret && admin ? 'Webhook configured' : 'Webhook configuration incomplete'}
+          </span>
+        </div>
+        <p className='mt-4 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-100'>
+          If Stripe reports a TLS error, check the SSL certificate, Vercel domain assignment, DNS/Cloudflare proxy settings, and confirm the URL does not redirect. After TLS is fixed, re-enable the endpoint in Stripe Dashboard and resend a test event.
+        </p>
+      </section>
+
       {/* Hero Financial KPI Cards */}
       <section className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8'>
         <div className='gb-premium-card rounded-2xl p-5'>

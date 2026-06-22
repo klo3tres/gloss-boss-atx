@@ -161,7 +161,7 @@ export default async function AdminRevenuePage({
   }, 0);
   const cfoMetrics = [
     ['Gross Service Value', money(allAppts.reduce((sum, a) => sum + Number(a.base_price_cents ?? 0), 0)), 'Booked service value before payment timing.', '/admin/work-orders'],
-    ['Cash Collected', money(financial.grossRevenueCents), 'Cleared payment and receipt-backed cash.', '/admin/payments'],
+    ['Cash Collected', money(financial.grossRevenueCents), 'Cleared canonical payment rows only.', '/admin/payments'],
     ['Credits Issued', money(0), 'Customer credit liability is summarized in Reports.', '/admin/reports'],
     ['Credits Redeemed', money(0), 'Customer credits applied to jobs are summarized in Reports.', '/admin/reports'],
     ['Discounts Given', money(discountsGivenCents), 'Promos, offers, and multi-car reductions.', '/admin/promotions'],
@@ -520,7 +520,7 @@ export default async function AdminRevenuePage({
       <section className='mb-8 space-y-3'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Financial Ledger Profitability</p>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment + receipt-backed 30 days' />
+          <StatBlock label='Gross Collected' value={money(financial.grossRevenueCents)} hint='Canonical payment ledger · 30 days' />
           <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
           <StatBlock label='Fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
           <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
@@ -538,7 +538,7 @@ export default async function AdminRevenuePage({
       <section className='mb-8 grid gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]'>
         <div className='rounded-3xl border border-gold/20 bg-black/45 p-5'>
           <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Revenue source breakdown</p>
-          <p className='mt-1 text-xs text-zinc-500'>Canonical last-30-day sources from payments and receipt-backed records.</p>
+          <p className='mt-1 text-xs text-zinc-500'>Canonical last-30-day sources from collected payment rows. Receipts never create revenue.</p>
           <div className='mt-4 space-y-2'>
             {sourceBreakdown.map((row) => (
               <div key={row.label} className='rounded-2xl border border-white/10 bg-zinc-950/70 px-4 py-3'>

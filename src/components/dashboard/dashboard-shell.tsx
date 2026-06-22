@@ -22,8 +22,12 @@ const adminNavGroups: NavGroup[] = [
     title: 'Overview',
     links: [
       { href: '/admin', label: 'Dashboard' },
+      { href: '/admin/exceptions', label: 'Exception inbox' },
+      { href: '/admin/daily-operations', label: 'Daily operations' },
+      { href: '/admin/calendar', label: 'Calendar' },
       { href: '/admin/assistant', label: 'AI assistant' },
       { href: '/admin/booking-health', label: 'Booking health' },
+      { href: '/admin/setup-center', label: 'Owner setup center' },
       { href: '/admin/qa-checklist', label: 'QA checklist' },
     ],
   },
@@ -59,6 +63,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Marketing',
     links: [
       { href: '/admin/cms', label: 'Website & gallery' },
+      { href: '/admin/media', label: 'Vehicle & service images' },
       { href: '/admin/promotions', label: 'Promotions' },
       { href: '/admin/pricing', label: 'Deals & promos' },
     ],
@@ -120,6 +125,15 @@ function getPayloadPreview(evt: any) {
     return p.message || p.body || p.text || null;
   } catch {
     return null;
+  }
+}
+
+function getRelatedPaymentId(evt: any) {
+  try {
+    const payload = typeof evt?.payload === 'string' ? JSON.parse(evt.payload) : evt?.payload;
+    return String(evt?.payment_id ?? payload?.payment_id ?? '').trim();
+  } catch {
+    return '';
   }
 }
 
@@ -553,6 +567,7 @@ export function DashboardShell({
                           const kind = String(evt.kind ?? evt.template_key ?? 'notification');
                           const failed = ['failed', 'error'].includes(status.toLowerCase());
                           const previewText = getPayloadPreview(evt);
+                          const relatedPaymentId = getRelatedPaymentId(evt);
                           return (
                             <div
                               key={String(evt.id ?? evt.created_at)}
@@ -601,6 +616,15 @@ export function DashboardShell({
                                   View Related Job →
                                 </Link>
                               )}
+                              {relatedPaymentId ? (
+                                <Link
+                                  href={`/admin/payments/${relatedPaymentId}`}
+                                  onClick={() => setShowNotifications(false)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 hover:bg-gold/15 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft border border-white/10 hover:border-gold/30 transition w-fit"
+                                >
+                                  View Related Payment â†’
+                                </Link>
+                              ) : null}
                             </div>
                           );
                         })}

@@ -56,6 +56,7 @@ export function pickCanonicalPaymentWinner(rows: PayRow[]): PayRow | null {
 
 function scoreWinner(p: PayRow): number {
   let score = 0;
+  if (p.source_table !== 'receipts' && !str(p.id).startsWith('receipt:')) score += 120;
   if (isRealStripePayment(p as Parameters<typeof isRealStripePayment>[0])) score += 100;
   if (p.exclude_from_revenue !== true && !shouldExcludeFromCashRevenue(p)) score += 50;
   const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;

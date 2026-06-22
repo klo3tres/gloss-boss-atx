@@ -554,6 +554,13 @@ export function TechPremiumShell({
               </div>
             </section>
           )}
+          {weatherForecast && !weatherForecast.ok ? (
+            <section className={cardGlow}>
+              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Weather readiness</p>
+              <p className='mt-2 text-xs text-zinc-400'>OpenWeather could not load for dispatch.</p>
+              <p className='mt-2 font-mono text-[11px] text-red-200'>{weatherForecast.blocker || 'Weather provider unavailable.'}</p>
+            </section>
+          ) : null}
 
           <section className='mt-4'>
             <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick actions</p>

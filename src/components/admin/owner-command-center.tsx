@@ -34,6 +34,8 @@ import {
   Lock as LockIcon
 } from 'lucide-react';
 import type { OwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
+import type { OperationsSnapshot } from '@/lib/operations-snapshot';
+import { OperationsFoundation } from '@/components/admin/operations-foundation';
 import { PremiumBadge, SectionEyebrow, GlassCard } from '@/components/ui/premium';
 import { displayMoney } from '@/lib/display-format';
 import { addCalendarEventAction } from '@/lib/admin/calendar-events-actions';
@@ -825,7 +827,17 @@ function ExecutiveRecommendations({
   );
 }
 
-export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }: { metrics: OwnerDashboardSnapshot; isSuperAdmin?: boolean; goals?: any[] }) {
+export function OwnerCommandCenter({
+  metrics,
+  operations = null,
+  isSuperAdmin = false,
+  goals = [],
+}: {
+  metrics: OwnerDashboardSnapshot;
+  operations?: OperationsSnapshot | null;
+  isSuperAdmin?: boolean;
+  goals?: any[];
+}) {
   const [activeDrawer, setActiveDrawer] = useState<
     | 'open-balances'
     | 'pending-deposits'
@@ -1583,6 +1595,22 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         </ul>
       ) : null}
 
+      {operations ? (
+        <OperationsFoundation snapshot={operations} mode="dashboard" />
+      ) : null}
+
+      <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+        <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} events={metrics.calendarEvents ?? []} />
+        <WeatherReadinessWidget />
+      </section>
+
+      <details className="group rounded-3xl border border-white/5 bg-zinc-950/45">
+        <summary className="flex cursor-pointer items-center justify-between px-6 py-4 text-xs font-black uppercase tracking-widest text-zinc-400 hover:text-white select-none">
+          <span>Advanced analytics, goals & revenue metrics</span>
+          <ChevronRight className="h-4 w-4 transform transition-transform duration-200 group-open:rotate-90" />
+        </summary>
+        <div className="space-y-8 border-t border-white/5 px-6 pb-6 pt-4">
+
       {/* Operational Goals (Large, Glowing, Interactive) */}
       <section className="gb-premium-card rounded-3xl border border-gold/30 bg-black/55 p-6 shadow-[0_0_50px_rgba(212,175,55,0.15)] relative overflow-hidden">
         <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/10 rounded-full blur-[80px] pointer-events-none" />
@@ -1820,17 +1848,15 @@ export function OwnerCommandCenter({ metrics, isSuperAdmin = false, goals = [] }
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} events={metrics.calendarEvents ?? []} />
-        <WeatherReadinessWidget />
-      </section>
-
       <ExecutiveRecommendations metrics={metrics} onCardClick={(drawer) => setActiveDrawer(drawer)} />
 
       {/* Interactive Mission Revenue Console */}
       <InteractiveRevenueDashboard metrics={metrics} />
 
-      {/* SECTION 2: ACTIONABLE ALERTS (Middle Section) */}
+        </div>
+      </details>
+
+      {/* SECTION 2: ACTIONABLE ALERTS (Middle Section) — legacy cards demoted below ops foundation */}
       <section className="space-y-3">
         <SectionEyebrow>Actionable Alerts & Tasks</SectionEyebrow>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

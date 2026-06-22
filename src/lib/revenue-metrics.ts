@@ -43,7 +43,9 @@ function revenueIdentityKey(p: PayRow): string {
   const session = str(p.stripe_checkout_session_id);
   if (session) return `stripe_session:${session}`;
   const receiptPaymentId = str(p.source_table) === 'receipts' ? str(p.payment_id) : '';
-  if (receiptPaymentId) return `receipt_payment:${receiptPaymentId}`;
+  if (receiptPaymentId) return `payment_id:${receiptPaymentId}`;
+  const paymentId = str(p.source_table) !== 'receipts' ? str(p.id) : '';
+  if (paymentId) return `payment_id:${paymentId}`;
   return '';
 }
 
@@ -208,6 +210,44 @@ export function summarizePayments(
     addChannel(summary, channel, amt);
   }
   return summary;
+}
+
+/**
+ * Return the exact cash rows used by the canonical summary. Consumers that render
+ * payment lists or derive channel subtotals must use this instead of summarizing
+ * each row independently (which bypasses cross-row duplicate detection).
+ */
+export function selectCanonicalRevenueRows(
+  rows: PayRow[],
+  opts?: {
+    excludeTest?: boolean;
+    apptById?: Map<string, { guest_email?: string | null; guest_name?: string | null; status?: string | null; is_test?: boolean | null }>;
+    fromIso?: string;
+    toIso?: string;
+  },
+): PayRow[] {
+  const selected: PayRow[] = [];
+  const seenRevenueKeys = new Set<string>();
+
+  for (const p of rows) {
+    const ts = payTimestamp(p);
+    if (opts?.fromIso && ts && ts < opts.fromIso) continue;
+    if (opts?.toIso && ts && ts > opts.toIso) continue;
+    if (!isPaymentSucceeded(p) || isPaymentVoided(p) || p.exclude_from_revenue === true || p.refunded_at) continue;
+    const meta = p.metadata && typeof p.metadata === 'object' ? p.metadata : null;
+    if (meta?.duplicate_of_stripe === true || meta?.duplicate_of_payment === true || meta?.merged_into_payment_id) continue;
+    if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
+    const aid = str(p.appointment_id);
+    const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
+    if (aid && apptStatus !== 'completed') continue;
+    const amount = Math.max(0, (p.amount_cents ?? 0) - (p.refunded_amount_cents ?? 0));
+    if (amount <= 0 || shouldExcludeFromCashRevenue(p)) continue;
+    const key = revenueIdentityKey(p);
+    if (key && seenRevenueKeys.has(key)) continue;
+    if (key) seenRevenueKeys.add(key);
+    selected.push(p);
+  }
+  return selected;
 }
 
 export function buildRevenueDiagnostics(
@@ -408,17 +448,43 @@ export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string,
     return r;
   });
 
-  // 2. Identify active succeeded payments to prevent double-counting receipt duplicates
+  // 2. A completed job may have several legitimate tenders (deposit + cash/Zelle).
+  // Payment rows are the source of truth; receipts are display artifacts and become
+  // a revenue fallback only when the job has no valid payment rows at all.
   const activePaymentIds = new Set(
     out
       .filter((p) => !p.exclude_from_revenue && !isPaymentVoided(p) && !p.is_test)
       .map((p) => str(p.id))
       .filter(Boolean)
   );
-
-  for (const receipt of cleanReceiptRows) {
+  const activePaymentAppointmentIds = new Set(
+    out
+      .filter((p) => !p.exclude_from_revenue && !isPaymentVoided(p) && !p.is_test && isPaymentSucceeded(p) && !shouldExcludeFromCashRevenue(p))
+      .map((p) => str(p.appointment_id))
+      .filter(Boolean),
+  );
+  const receiptCandidates = cleanReceiptRows.filter((receipt) => {
     const linkedPaymentId = str(receipt.payment_id);
-    if (linkedPaymentId && activePaymentIds.has(linkedPaymentId)) continue;
+    const appointmentId = str(receipt.appointment_id);
+    if (linkedPaymentId && activePaymentIds.has(linkedPaymentId)) return false;
+    if (appointmentId && activePaymentAppointmentIds.has(appointmentId)) return false;
+    return !receipt.exclude_from_revenue && !receipt.voided_at && !receipt.is_test;
+  });
+
+  // Historical jobs without payment rows may still rely on a receipt. Retain one
+  // canonical fallback for that job; never collapse distinct payment rows/tenders.
+  const bestReceiptByJob = new Map<string, PayRow>();
+  for (const receipt of receiptCandidates) {
+    const groupKey = str(receipt.appointment_id) || str(receipt.payment_id) || `receipt:${str(receipt.id)}`;
+    const previous = bestReceiptByJob.get(groupKey);
+    const amount = Number(receipt.amount_cents ?? 0);
+    const previousAmount = Number(previous?.amount_cents ?? 0);
+    if (!previous || amount > previousAmount || (amount === previousAmount && payTimestamp(receipt) > payTimestamp(previous))) {
+      bestReceiptByJob.set(groupKey, receipt);
+    }
+  }
+
+  for (const receipt of bestReceiptByJob.values()) {
     const id = str(receipt.id);
     const syntheticId = id ? `receipt:${id}` : '';
     if (syntheticId && seen.has(syntheticId)) continue;

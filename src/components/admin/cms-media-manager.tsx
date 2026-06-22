@@ -9,7 +9,11 @@ import { MEDIA_REGISTRY_ITEMS, type MediaRegistry, mediaUrl } from '@/lib/media-
 type UploadState = Record<string, { busy?: boolean; error?: string; url?: string }>;
 
 export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
-  const groups = useMemo(() => Array.from(new Set(MEDIA_REGISTRY_ITEMS.map((item) => item.group))), []);
+  const groups = useMemo(() => {
+    const all = Array.from(new Set(MEDIA_REGISTRY_ITEMS.map((item) => item.group)));
+    const priority = ['Booking Wizard', 'Services'];
+    return [...priority.filter((group) => all.includes(group)), ...all.filter((group) => !priority.includes(group))];
+  }, []);
   const [values, setValues] = useState<MediaRegistry>(registry);
   const [uploadState, setUploadState] = useState<UploadState>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -20,6 +24,7 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
     const form = new FormData();
     form.set('file', file);
     form.set('slot', key.replace(/\./g, '-'));
+    form.set('registryKey', key);
     try {
       const res = await fetch('/api/admin/homepage-visual-upload', {
         method: 'POST',
@@ -44,12 +49,16 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
         <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Central Media Manager</p>
         <h2 className="mt-2 text-2xl font-black uppercase text-white">Every public image has an owner</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-          Upload from your device, preview, replace, or reset every public visual. Empty slots use production fallbacks. URL entry is available under Advanced.
+          Upload from your device, preview, replace, or reset every public visual. Uploads publish immediately. Empty slots use production fallbacks. URL entry is available under Advanced.
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a href="#media-booking-wizard" className="rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">Booking vehicle cards</a>
+          <a href="#media-services" className="rounded-xl border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft">Service page images</a>
+        </div>
       </div>
 
       {groups.map((group) => (
-        <section key={group} className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5">
+        <section id={`media-${group.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} key={group} className="scroll-mt-6 rounded-3xl border border-white/10 bg-zinc-950/70 p-5">
           <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">{group}</h3>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {MEDIA_REGISTRY_ITEMS.filter((item) => item.group === group).map((item) => {
@@ -99,7 +108,7 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
                     </div>
                     <p className="mt-2 text-[10px] text-zinc-600">Fallback: {item.fallbackUrl}</p>
                     {state.error ? <p className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{state.error}</p> : null}
-                    {state.url ? <p className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Uploaded. Press Save media registry to publish.</p> : null}
+                    {state.url ? <p className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Uploaded and published. Refresh the booking or services page to verify it.</p> : null}
                     <details className="mt-3">
                       <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Advanced URL</summary>
                       <input
@@ -118,7 +127,7 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
       ))}
 
       <button className="rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_0_24px_rgba(212,175,55,0.25)]">
-        Save media registry
+        Save URL edits and resets
       </button>
     </form>
   );

@@ -8,6 +8,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 const STATUSES = ['awaiting_payment', 'deposit_paid', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled'] as const;
 
 import { recordAssignmentEvent } from '@/lib/assignment-events';
+import { stageFromLegacyStatus, transitionWorkOrder } from '@/lib/work-order-lifecycle';
 
 async function requireAdminSupabase() {
   const session = await getSessionWithProfile();
@@ -39,17 +40,15 @@ export async function updateAppointmentStatusAction(formData: FormData) {
     }
   }
 
-  const patch: Record<string, string> = {
-    status,
-    updated_at: new Date().toISOString(),
-  };
-  if (status === 'completed') {
-    patch.job_completed_at = new Date().toISOString();
-  }
-
-  const { error } = await gate.supabase.from('appointments').update(patch).eq('id', appointmentId);
-  if (error) {
-    console.error('[crm] updateAppointmentStatusAction', error.message);
+  const transition = await transitionWorkOrder(gate.supabase, {
+    appointmentId,
+    to: stageFromLegacyStatus(status),
+    legacyStatus: status,
+    actorId: gate.userId,
+    reason: 'Admin CRM status change',
+  });
+  if (!transition.ok) {
+    console.error('[crm] updateAppointmentStatusAction', transition.error);
     return;
   }
   revalidatePath('/admin');
