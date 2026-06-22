@@ -51,6 +51,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Finance',
     links: [
       { href: '/admin/revenue', label: 'Revenue' },
+      { href: '/admin/financial-closeout', label: 'Financial closeout' },
       { href: '/admin/reports', label: 'Reports' },
       { href: '/admin/payments', label: 'Payments / receipts' },
       { href: '/admin/card-activity', label: 'Card activity' },

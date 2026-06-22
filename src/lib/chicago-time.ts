@@ -35,6 +35,45 @@ export function endOfTodayChicagoIso() {
   return new Date(`${key}T23:59:59-05:00`).toISOString();
 }
 
+/** YYYY-MM in America/Chicago */
+export function monthKeyChicago(input: string | Date = new Date()): string {
+  const key = dateKeyChicago(input);
+  return key.slice(0, 7);
+}
+
+export function periodBoundsChicago(periodType: 'daily' | 'monthly', periodKey: string): { start: string; end: string } {
+  if (periodType === 'daily') {
+    return {
+      start: new Date(`${periodKey}T00:00:00-05:00`).toISOString(),
+      end: new Date(`${periodKey}T23:59:59-05:00`).toISOString(),
+    };
+  }
+  const [year, month] = periodKey.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, '0');
+  return {
+    start: new Date(`${year}-${mm}-01T00:00:00-05:00`).toISOString(),
+    end: new Date(`${year}-${mm}-${String(lastDay).padStart(2, '0')}T23:59:59-05:00`).toISOString(),
+  };
+}
+
+export function startOfWeekChicagoIso(): string {
+  const now = new Date();
+  const key = dateKeyChicago(now);
+  const d = new Date(`${key}T12:00:00-05:00`);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return new Date(`${dateKeyChicago(d)}T00:00:00-05:00`).toISOString();
+}
+
+export function formatChicagoDate(iso: string | null | undefined) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, dateStyle: 'medium' }).format(d);
+}
+
 export function formatChicagoDateTime(iso: string | null | undefined) {
   if (!iso) return '—';
   const d = new Date(iso);
