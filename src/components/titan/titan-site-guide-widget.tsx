@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { MessageCircle, X, Send, ChevronRight } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { MessageCircle, X, Send, ChevronRight, Sparkles } from 'lucide-react';
 import { PoweredByTitan } from '@/components/titan/titan-brand';
 
 type GuideLink = { label: string; href: string };
@@ -29,22 +29,20 @@ const QUICK_ACTIONS = [
   { label: 'Get a quote', action: 'quote' as const },
   { label: 'View services', href: '/services' },
   { label: 'Book a detail', href: '/book' },
-  { label: 'See memberships', href: '/memberships' },
-  { label: 'Fleet / business', href: '/fleet' },
-  { label: 'Contact Gloss Boss', href: '/#contact' },
-  { label: 'Before & after gallery', href: '/gallery' },
-  { label: 'First-time discount', action: 'discount' as const },
+  { label: 'Memberships', href: '/memberships' },
+  { label: 'Fleet services', href: '/fleet' },
+  { label: 'Contact Kyle', action: 'kyle' as const },
 ];
 
-const HIDDEN_PREFIXES = ['/admin', '/tech', '/dashboard', '/login', '/signup', '/customer'];
+const FALLBACK_MESSAGE =
+  'Titan is having trouble right now. Leave your name and phone and Kyle will follow up.';
 
 function emptyLead(): LeadForm {
   return { name: '', email: '', phone: '', vehicle: '', serviceNeeded: '', city: '', preferredDate: '' };
 }
 
 export function TitanSiteGuideWidget() {
-  const pathname = usePathname();
-  const hidden = useMemo(() => HIDDEN_PREFIXES.some((p) => pathname.startsWith(p)), [pathname]);
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -54,6 +52,10 @@ export function TitanSiteGuideWidget() {
   const [lead, setLead] = useState<LeadForm>(emptyLead());
   const [err, setErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const track = useCallback(
     async (eventType: string, extra?: { questionKey?: string; metadata?: Record<string, unknown> }) => {
@@ -67,25 +69,38 @@ export function TitanSiteGuideWidget() {
     [sessionId],
   );
 
-  const pushTitan = (text: string, links?: GuideLink[]) => {
+  const pushTitan = useCallback((text: string, links?: GuideLink[]) => {
     setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'titan', text, links }]);
-  };
+  }, []);
+
+  const showApiFallback = useCallback(() => {
+    pushTitan(FALLBACK_MESSAGE);
+    setLeadMode('handoff');
+    setErr(null);
+  }, [pushTitan]);
 
   const init = useCallback(async () => {
     setBusy(true);
+    setErr(null);
     try {
       const res = await fetch('/api/public/titan-guide', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'welcome' }),
       });
+      if (!res.ok) {
+        showApiFallback();
+        return;
+      }
       const j = (await res.json()) as { sessionId: string; reply: { message: string; links: GuideLink[] } };
       setSessionId(j.sessionId);
       pushTitan(j.reply.message, j.reply.links);
+    } catch {
+      showApiFallback();
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [pushTitan, showApiFallback]);
 
   useEffect(() => {
     if (open && messages.length === 0) void init();
@@ -112,16 +127,18 @@ export function TitanSiteGuideWidget() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'ask', question: q, sessionId }),
       });
+      if (!res.ok) {
+        showApiFallback();
+        return;
+      }
       const j = (await res.json()) as {
         reply: { message: string; links: GuideLink[]; suggestLeadCapture?: 'quote' | 'handoff' | null };
         error?: string;
       };
-      if (!res.ok) {
-        setErr(j.error ?? 'Something went wrong');
-        return;
-      }
       pushTitan(j.reply.message, j.reply.links);
       if (j.reply.suggestLeadCapture) setLeadMode(j.reply.suggestLeadCapture);
+    } catch {
+      showApiFallback();
     } finally {
       setBusy(false);
     }
@@ -142,12 +159,14 @@ export function TitanSiteGuideWidget() {
       });
       const j = (await res.json()) as { ok?: boolean; message?: string; error?: string };
       if (!res.ok) {
-        setErr(j.error ?? 'Could not save');
+        setErr(j.error ?? 'Could not save — email glossbossatx1@gmail.com or call Kyle directly.');
         return;
       }
       pushTitan(j.message ?? 'Thanks — we will be in touch.');
       setLeadMode(null);
       setLead(emptyLead());
+    } catch {
+      setErr('Network error — try again or contact Kyle directly.');
     } finally {
       setBusy(false);
     }
@@ -162,45 +181,56 @@ export function TitanSiteGuideWidget() {
     }
     if (item.action === 'quote') {
       setLeadMode('quote');
-      pushTitan('Want me to help you get a quote? Share a few details below.');
+      pushTitan('Share a few details and the Gloss Boss team will send an accurate quote.');
       return;
     }
-    if (item.action === 'discount') {
-      void ask('What first-time customer discounts do you offer?');
+    if (item.action === 'kyle') {
+      setLeadMode('handoff');
+      pushTitan('Kyle handles fleet, complex jobs, and VIP requests personally. Drop your info below.');
     }
   };
 
-  if (hidden) return null;
+  if (!mounted) return null;
 
-  return (
-    <>
+  const ui = (
+    <div className="titan-site-guide-root pointer-events-none fixed inset-0 z-[9998]">
       {!open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-[90] flex items-center gap-2 rounded-full border border-emerald-400/40 bg-zinc-950 px-4 py-3 text-sm font-bold text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)] transition hover:border-emerald-300/60 hover:bg-zinc-900"
+          className="titan-site-guide-fab pointer-events-auto fixed bottom-5 right-4 flex items-center gap-2.5 rounded-full border border-emerald-400/50 bg-zinc-950/95 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_40px_rgba(0,0,0,0.55),0_0_24px_rgba(52,211,153,0.15)] backdrop-blur-md transition hover:scale-[1.02] hover:border-emerald-300/70 sm:bottom-6 sm:right-6"
           aria-label="Ask Titan"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/25 to-emerald-600/10 text-emerald-300 ring-1 ring-emerald-400/30">
             <MessageCircle className="h-4 w-4" />
           </span>
-          <span className="hidden sm:inline">Ask Titan</span>
+          <span>Ask Titan</span>
         </button>
-      ) : null}
-
-      {open ? (
-        <div className="fixed bottom-5 right-5 z-[95] flex h-[min(560px,calc(100vh-2rem))] w-[min(400px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-emerald-500/25 bg-zinc-950 shadow-2xl">
-          <header className="flex items-center justify-between border-b border-white/10 bg-black/80 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-400/40 bg-emerald-500/10 font-black text-emerald-300">
+      ) : (
+        <div
+          className="titan-site-guide-panel pointer-events-auto fixed bottom-4 right-4 flex max-h-[min(640px,calc(100dvh-1.5rem))] w-[min(420px,calc(100vw-1.25rem))] flex-col overflow-hidden rounded-2xl border border-emerald-500/30 bg-zinc-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200 sm:bottom-6 sm:right-6"
+          role="dialog"
+          aria-label="Ask Titan"
+        >
+          <header className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black via-zinc-950 to-emerald-950/30 px-4 py-3.5">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/40 bg-emerald-500/10 font-black text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.12)]">
                 T
               </span>
               <div>
-                <p className="text-sm font-black uppercase tracking-wide text-white">Titan Site Guide</p>
-                <p className="text-[10px] text-zinc-500">Premium help · Gloss Boss ATX</p>
+                <p className="flex items-center gap-1.5 text-sm font-black uppercase tracking-wide text-white">
+                  Ask Titan
+                  <Sparkles className="h-3.5 w-3.5 text-emerald-300" />
+                </p>
+                <p className="text-[10px] text-zinc-500">Gloss Boss ATX · instant answers</p>
               </div>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-white" aria-label="Close">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/5 hover:text-white"
+              aria-label="Close"
+            >
               <X className="h-5 w-5" />
             </button>
           </header>
@@ -210,7 +240,9 @@ export function TitanSiteGuideWidget() {
               <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    m.role === 'user' ? 'bg-emerald-600/90 text-white' : 'border border-white/10 bg-black/50 text-zinc-200'
+                    m.role === 'user'
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
+                      : 'border border-white/10 bg-black/55 text-zinc-100'
                   }`}
                 >
                   {m.text}
@@ -236,10 +268,14 @@ export function TitanSiteGuideWidget() {
               </div>
             ))}
 
+            {busy && messages.length > 0 ? (
+              <p className="text-center text-[10px] font-bold uppercase tracking-wide text-zinc-600">Titan is thinking…</p>
+            ) : null}
+
             {leadMode ? (
-              <div className="rounded-2xl border border-emerald-500/20 bg-black/60 p-3 space-y-2">
+              <div className="space-y-2 rounded-2xl border border-emerald-500/25 bg-black/60 p-3">
                 <p className="text-xs font-bold text-emerald-200">
-                  {leadMode === 'handoff' ? 'Request a call from Kyle' : 'Get a quote'}
+                  {leadMode === 'handoff' ? 'Contact Kyle' : 'Get a quote'}
                 </p>
                 {(['name', 'email', 'phone', 'vehicle', 'serviceNeeded', 'city', 'preferredDate'] as const).map((field) => (
                   <input
@@ -250,7 +286,7 @@ export function TitanSiteGuideWidget() {
                         : field === 'email'
                           ? 'Email'
                           : field === 'phone'
-                            ? 'Phone'
+                            ? 'Phone *'
                             : field === 'vehicle'
                               ? 'Vehicle type'
                               : field === 'serviceNeeded'
@@ -261,16 +297,16 @@ export function TitanSiteGuideWidget() {
                     }
                     value={lead[field]}
                     onChange={(e) => setLead({ ...lead, [field]: e.target.value })}
-                    className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600"
+                    className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600 focus:border-emerald-400/40 focus:outline-none"
                   />
                 ))}
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => submitLead(leadMode === 'handoff')}
-                  className="w-full rounded-lg bg-emerald-500 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+                  className="w-full rounded-lg bg-emerald-500 py-2.5 text-[10px] font-black uppercase text-black transition hover:bg-emerald-400 disabled:opacity-50"
                 >
-                  {leadMode === 'handoff' ? 'Have Kyle contact me' : 'Send quote request'}
+                  {leadMode === 'handoff' ? 'Request Kyle callback' : 'Send quote request'}
                 </button>
               </div>
             ) : null}
@@ -278,14 +314,14 @@ export function TitanSiteGuideWidget() {
             {err ? <p className="text-xs text-red-300">{err}</p> : null}
           </div>
 
-          <div className="border-t border-white/10 bg-black/70 px-3 py-2">
-            <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+          <div className="border-t border-white/10 bg-black/80 px-3 py-3">
+            <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {QUICK_ACTIONS.map((a) => (
                 <button
                   key={a.label}
                   type="button"
                   onClick={() => onQuickAction(a)}
-                  className="shrink-0 rounded-full border border-white/10 bg-zinc-900 px-2.5 py-1 text-[9px] font-bold uppercase text-zinc-300 hover:border-emerald-400/30 hover:text-emerald-200"
+                  className="rounded-lg border border-white/10 bg-zinc-900/80 px-2 py-2 text-[9px] font-bold uppercase leading-tight text-zinc-300 transition hover:border-emerald-400/35 hover:text-emerald-200"
                 >
                   {a.label}
                 </button>
@@ -301,38 +337,26 @@ export function TitanSiteGuideWidget() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about services, pricing, area..."
+                placeholder="Ask about services, pricing, area…"
                 className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:border-emerald-400/40 focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-xl bg-emerald-500 px-3 py-2.5 text-black disabled:opacity-50"
+                className="rounded-xl bg-emerald-500 px-3 py-2.5 text-black transition hover:bg-emerald-400 disabled:opacity-50"
                 aria-label="Send"
               >
                 <Send className="h-4 w-4" />
               </button>
             </form>
-            <div className="mt-2 flex justify-center">
+            <div className="mt-3 flex justify-center border-t border-white/5 pt-2">
               <PoweredByTitan compact />
             </div>
-            <button
-              type="button"
-              className="mt-2 w-full rounded-lg border border-emerald-500/30 py-2 text-[10px] font-black uppercase text-emerald-200 hover:bg-emerald-500/10"
-              onClick={() => {
-                setLeadMode('handoff');
-                pushTitan('Share your contact info and Kyle will reach out personally.');
-              }}
-            >
-              Have Kyle contact me
-            </button>
           </div>
         </div>
-      ) : null}
-    </>
+      )}
+    </div>
   );
-}
 
-export function TitanSiteGuideRoot() {
-  return <TitanSiteGuideWidget />;
+  return createPortal(ui, document.body);
 }

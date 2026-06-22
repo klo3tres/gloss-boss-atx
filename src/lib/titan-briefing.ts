@@ -8,6 +8,7 @@ import { loadTitanIntelligence, type TitanIntelligence } from '@/lib/titan';
 import { loadTitanGrowth } from '@/lib/titan/command-layer';
 import type { CommandPlan } from '@/lib/titan/command-layer';
 import { loadTitanWorkspace, type TitanWorkspace } from '@/lib/titan/workspace';
+import type { TitanSetupWarning } from '@/components/titan/titan-ui';
 import { hydrateActivityFeedIfEmpty, loadTitanActivityFeed, type TitanActivityEvent } from '@/lib/titan/activity-feed';
 import { loadTitanRoiDashboard, type TitanRoiMetrics } from '@/lib/titan/roi-dashboard';
 import { loadWidgetStats, type WidgetStats } from '@/lib/titan/site-guide';
@@ -95,6 +96,7 @@ export type TitanBriefing = {
     firstResponder: FirstResponderAlert | null;
     learning: OpportunityLearning;
   };
+  setupWarnings: TitanSetupWarning[];
 };
 
 function str(v: unknown) {
@@ -356,6 +358,42 @@ function buildRecommendations(input: {
   return actions.sort((a, b) => order[a.priority] - order[b.priority]).slice(0, 7);
 }
 
+function buildSetupWarnings(
+  workspace: TitanWorkspace & { tablesReady: boolean },
+  revenueTargetCents: number | null,
+): TitanSetupWarning[] {
+  const warnings: TitanSetupWarning[] = [];
+
+  if (!process.env.GOOGLE_PLACES_API_KEY?.trim()) {
+    warnings.push({
+      id: 'places',
+      severity: 'warning',
+      message: 'GOOGLE_PLACES_API_KEY missing — Lead Radar is in manual discovery mode.',
+      href: '/admin/integrations',
+    });
+  }
+
+  if (workspace.tablesReady && !workspace.updatedAt) {
+    warnings.push({
+      id: 'dna',
+      severity: 'info',
+      message: 'Configure Titan Business DNA — industry, service radius, and operating hours.',
+      href: '/admin/super',
+    });
+  }
+
+  if (!revenueTargetCents) {
+    warnings.push({
+      id: 'goal',
+      severity: 'info',
+      message: 'Set a monthly revenue goal to unlock gap tracking and hunt targets.',
+      href: '/admin/goals',
+    });
+  }
+
+  return warnings;
+}
+
 export async function loadTitanBriefing(
   admin: SupabaseClient,
   ownerName?: string | null,
@@ -502,5 +540,6 @@ export async function loadTitanBriefing(
       ...opportunityScannerData,
       learning: opportunityLearning,
     },
+    setupWarnings: buildSetupWarnings(workspace, revenueTarget),
   };
 }

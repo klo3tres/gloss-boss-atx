@@ -13,6 +13,7 @@ import {
   type OpportunityPlatform,
 } from '@/lib/titan/opportunity-scanner';
 import { displayMoney } from '@/lib/display-format';
+import { TitanEmptyState } from '@/components/titan/titan-ui';
 import {
   addOpportunityAction,
   addOpportunityToPipelineAction,
@@ -285,8 +286,11 @@ export function TitanOpportunityScannerPanel({ briefing }: { briefing: TitanBrie
       <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Opportunity feed</p>
       <ul className="mt-3 space-y-3">
         {scanner.feed.length === 0 ? (
-          <li className="rounded-xl border border-white/5 bg-black/30 px-4 py-6 text-center text-xs text-zinc-600">
-            No opportunities yet. When you spot a public post, log it here — Titan scores urgency, competition, and value.
+          <li>
+            <TitanEmptyState
+              title="No opportunities found yet"
+              detail="Log one manually when you spot a public buying signal, or run Places discovery for B2B prospects."
+            />
           </li>
         ) : (
           scanner.feed.map((o) => (

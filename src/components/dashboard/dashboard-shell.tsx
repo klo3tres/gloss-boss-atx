@@ -397,6 +397,7 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
+          {!isTitanSurface ? (
           <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-center justify-between gap-4'>
             <div className="min-w-0 flex-1 flex items-center gap-4">
               <img src="/brand/glossboss-clean-logo.png" alt="Logo" className="h-12 w-auto object-contain filter brightness-110 hidden md:block" />
@@ -449,6 +450,37 @@ export function DashboardShell({
               </button>
             </div>
           </header>
+          ) : (
+            <div className="gb-no-print flex items-center justify-end gap-2">
+              {role === 'super_admin' ? (
+                <label className="hidden rounded-2xl border border-gold/25 bg-black/55 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft sm:flex sm:items-center sm:gap-2">
+                  View as
+                  <select
+                    value={simNav ?? 'super_admin'}
+                    onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
+                    className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
+                  >
+                    <option value="super_admin">Super admin</option>
+                    <option value="admin">Admin</option>
+                    <option value="technician">Technician</option>
+                    <option value="customer">Customer</option>
+                  </select>
+                </label>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setShowNotifications(true)}
+                className={`relative rounded-2xl border bg-black/55 p-3.5 text-gold-soft transition-all hover:border-gold/50 hover:bg-gold/10 shrink-0 ${
+                  hasAlertActivity
+                    ? 'border-gold/60 shadow-[0_0_32px_rgba(212,175,55,0.45)] animate-pulse'
+                    : 'border-gold/25 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
+                }`}
+                title="Open System Notifications"
+              >
+                <Bell className="h-5 w-5" />
+              </button>
+            </div>
+          )}
           <SafeRenderBoundary label='Dashboard content'>
             <div className='gb-dashboard-content space-y-6'>{children}</div>
           </SafeRenderBoundary>

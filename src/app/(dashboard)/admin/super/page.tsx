@@ -19,7 +19,7 @@ export default async function SuperAdminDashboardPage() {
   return (
     <DashboardShell
       title="Titan Command Center™"
-      subtitle={`${briefing.workspace.businessName} — the operating system for your service business.`}
+      subtitle="Super admin"
       role="super_admin"
       titanMode
     >

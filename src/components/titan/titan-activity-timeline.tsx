@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { TitanActivityEvent } from '@/lib/titan/activity-feed';
+import { TitanEmptyState } from '@/components/titan/titan-ui';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 
 const KIND_COLORS: Record<string, string> = {
@@ -26,14 +27,19 @@ function timeLabel(iso: string) {
 
 export function TitanActivityTimeline({ events }: { events: TitanActivityEvent[] }) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-zinc-950/80 p-6">
+    <section className="rounded-3xl border border-white/8 bg-zinc-950/50 p-6">
       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Titan Timeline</p>
-      <p className="mt-1 text-sm text-zinc-500">Titan at work — live activity across your business.</p>
-      <ul className="mt-4 max-h-72 space-y-0 overflow-y-auto">
-        {events.length === 0 ? (
-          <li className="text-xs text-zinc-600">Activity will appear as Titan discovers leads, sends follow-ups, and executes plans.</li>
-        ) : (
-          events.map((evt, i) => (
+      <p className="mt-1 text-sm text-zinc-500">Live activity across discovery, outreach, and execution.</p>
+      {events.length === 0 ? (
+        <div className="mt-4">
+          <TitanEmptyState
+            title="No activity yet"
+            detail="Runs, discoveries, and follow-ups will appear here as Titan works your business."
+          />
+        </div>
+      ) : (
+        <ul className="mt-4 max-h-72 space-y-0 overflow-y-auto">
+          {events.map((evt, i) => (
             <li key={evt.id} className="relative flex gap-4 pb-4">
               {i < events.length - 1 ? (
                 <span className="absolute left-[5px] top-3 h-full w-px bg-white/10" aria-hidden />
@@ -58,9 +64,9 @@ export function TitanActivityTimeline({ events }: { events: TitanActivityEvent[]
                 {evt.detail ? <p className="mt-0.5 text-xs text-zinc-500">{evt.detail}</p> : null}
               </div>
             </li>
-          ))
-        )}
-      </ul>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

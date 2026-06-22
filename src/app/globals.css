@@ -31,6 +31,15 @@
   --gb-gold-soft: var(--titan-gold-soft);
 }
 
+.titan-site-guide-root {
+  pointer-events: none;
+}
+
+.titan-site-guide-fab,
+.titan-site-guide-panel {
+  pointer-events: auto;
+}
+
 html,
 body {
   max-width: 100%;
