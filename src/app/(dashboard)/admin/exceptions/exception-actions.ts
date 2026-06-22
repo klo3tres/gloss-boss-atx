@@ -266,37 +266,12 @@ export async function sendFollowUpInboxAction(input: {
   if (!gate) return { error: 'Unauthorized' };
 
   const name = String(input.customerName ?? 'there').trim() || 'there';
-  const smsBody = `Hi ${name}, it's Gloss Boss ATX. It's been a while since your last detail — reply to book your next appointment or visit glossbossatx.com/book.`;
-  const emailSubject = 'Time for your next Gloss Boss detail?';
-  const emailBody = `Hi ${name},\n\nWe noticed it's been a while since your last Gloss Boss ATX service. We'd love to get you back on the schedule.\n\nBook online: https://glossbossatx.com/book\n\n— Gloss Boss ATX`;
-
   const phone = String(input.phone ?? '').trim();
   const email = String(input.email ?? '').trim();
 
-  if (phone) {
-    const { sendCustomerSms } = await import('@/lib/sms-send');
-    const res = await sendCustomerSms({
-      db: gate.admin,
-      kind: 'follow_up',
-      template_key: 'follow_up',
-      to: phone,
-      body: smsBody,
-    });
-    if (!res.ok) return { error: res.error ?? 'SMS follow-up failed' };
-  } else if (email) {
-    const { sendResendHtml } = await import('@/lib/email-send');
-    const { glossBossEmailLayout } = await import('@/lib/email/templates/layout');
-    const html = glossBossEmailLayout({
-      title: emailSubject,
-      preview: emailSubject,
-      headline: emailSubject,
-      bodyHtml: `<p style="color:#fafafa;font-size:15px;">${emailBody.replace(/\n/g, '<br/>')}</p>`,
-    });
-    const sent = await sendResendHtml({ to: email, subject: emailSubject, html });
-    if (!sent.ok) return { error: sent.error ?? 'Email follow-up failed' };
-  } else {
-    return { error: 'No email or phone available for follow-up.' };
-  }
+  const { sendAdHocFollowUp } = await import('@/lib/follow-up-engine');
+  const res = await sendAdHocFollowUp(gate.admin, { customerName: name, phone: phone || undefined, email: email || undefined });
+  if (!res.ok) return { error: res.error ?? 'Follow-up failed' };
 
   await logExceptionAction(gate.admin, gate.session.user!.id, input.fingerprint, 'send_followup', input);
   revalidateOpsPaths();

@@ -163,7 +163,7 @@ export async function loadCustomerTimeline(
     return [...map.values()];
   }
 
-  const [messageRows, notificationRows, notesRes, paymentsRes, receiptsRes, reviewsRes, agreementsRes, intakeRes, leadsRes, timelineRes, mediaRes, stampsRes, creditsRes, estimatesRes] =
+  const [messageRows, notificationRows, notesRes, paymentsRes, receiptsRes, reviewsRes, agreementsRes, intakeRes, leadsRes, timelineRes, mediaRes, stampsRes, creditsRes, estimatesRes, followUpsRes] =
     await Promise.all([
     loadMessages(),
     loadNotifications(),
@@ -225,6 +225,12 @@ export async function loadCustomerTimeline(
       .from('service_estimates')
       .select('id, status, total_cents, deposit_cents, sent_at, approved_at, deposit_paid_at, created_at, access_token, appointment_id')
       .or(`customer_id.eq.${customerId}${custEmail ? `,customer_email.eq.${custEmail}` : ''}`)
+      .limit(40),
+    admin
+      .from('customer_follow_ups')
+      .select('id, tier, status, due_at, sent_at, channel, appointment_id, vehicle_description')
+      .or(`customer_id.eq.${customerId}${custEmail ? `,customer_email.eq.${custEmail}` : ''}`)
+      .in('status', ['sent', 'pending', 'failed'])
       .limit(40),
   ]);
 
@@ -474,6 +480,26 @@ export async function loadCustomerTimeline(
       title: titles[status] ?? 'Estimate updated',
       detail: displayMoney(cents(e.total_cents)),
       href: e.access_token ? `/estimate/${e.access_token}` : e.appointment_id ? woHref(String(e.appointment_id)) : undefined,
+    });
+  }
+
+  for (const row of followUpsRes.data ?? []) {
+    const f = row as Record<string, unknown>;
+    const status = str(f.status);
+    const tier = Number(f.tier);
+    const title =
+      status === 'sent'
+        ? `${tier}-day follow-up sent`
+        : status === 'pending'
+          ? `${tier}-day follow-up scheduled`
+          : `${tier}-day follow-up failed`;
+    pushEvent(events, {
+      id: `followup:${f.id}:${status}`,
+      kind: 'follow_up',
+      occurredAt: str(f.sent_at) || str(f.due_at),
+      title,
+      detail: [str(f.channel), str(f.vehicle_description)].filter(Boolean).join(' · ') || undefined,
+      href: f.appointment_id ? woHref(String(f.appointment_id)) : '/admin/follow-ups',
     });
   }
 

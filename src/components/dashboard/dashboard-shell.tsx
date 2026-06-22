@@ -44,6 +44,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Customers',
     links: [
       { href: '/admin/customers', label: 'Customers' },
+      { href: '/admin/follow-ups', label: 'Follow-up engine' },
       { href: '/admin/messages', label: 'Message center' },
     ],
   },
