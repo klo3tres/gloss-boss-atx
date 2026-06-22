@@ -1,3 +1,5 @@
+create extension if not exists pgcrypto with schema extensions;
+
 -- Service estimate pipeline: lead → estimate → approval → deposit → work order.
 
 create table if not exists public.service_estimates (
@@ -5,7 +7,7 @@ create table if not exists public.service_estimates (
   lead_id uuid references public.leads (id) on delete set null,
   customer_id uuid references public.customers (id) on delete set null,
   appointment_id uuid references public.appointments (id) on delete set null,
-  access_token text not null unique default encode(gen_random_bytes(24), 'hex'),
+  access_token text not null unique default encode(extensions.gen_random_bytes(24), 'hex'),
   status text not null default 'draft' check (
     status in ('draft', 'sent', 'approved', 'declined', 'deposit_paid', 'converted', 'expired')
   ),
@@ -48,3 +50,4 @@ create policy service_estimates_staff_all on public.service_estimates for all us
 );
 
 alter table public.leads add column if not exists latest_estimate_id uuid references public.service_estimates (id) on delete set null;
+

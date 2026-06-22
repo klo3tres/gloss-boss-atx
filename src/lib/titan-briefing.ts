@@ -12,6 +12,14 @@ import { hydrateActivityFeedIfEmpty, loadTitanActivityFeed, type TitanActivityEv
 import { loadTitanRoiDashboard, type TitanRoiMetrics } from '@/lib/titan/roi-dashboard';
 import { loadWidgetStats, type WidgetStats } from '@/lib/titan/site-guide';
 import { loadTerritoryIntelligence, type TerritoryIntelligence } from '@/lib/titan/territory-intelligence';
+import {
+  loadOpportunityLearning,
+  loadOpportunityScanner,
+  type DailyHunt,
+  type FirstResponderAlert,
+  type OpportunityLearning,
+  type TitanOpportunity,
+} from '@/lib/titan/opportunity-scanner';
 import { fetchWeatherForAddress } from '@/lib/weather-forecast';
 
 export type TitanAction = {
@@ -80,6 +88,13 @@ export type TitanBriefing = {
   roi: TitanRoiMetrics;
   widgetStats: WidgetStats;
   territory: TerritoryIntelligence;
+  opportunityScanner: {
+    tablesReady: boolean;
+    feed: TitanOpportunity[];
+    dailyHunt: DailyHunt;
+    firstResponder: FirstResponderAlert | null;
+    learning: OpportunityLearning;
+  };
 };
 
 function str(v: unknown) {
@@ -241,8 +256,20 @@ function buildRecommendations(input: {
   topService: { label: string; revenueCents: number } | null;
   rainWarning: string | null;
   jobsAtRisk: number;
+  firstResponder: FirstResponderAlert | null;
 }): TitanAction[] {
   const actions: TitanAction[] = [];
+
+  if (input.firstResponder) {
+    actions.push({
+      id: 'first-responder',
+      priority: 'high',
+      title: 'First Responder — reply before competitors',
+      detail: `${input.firstResponder.opportunity.title.slice(0, 100)} · score ${input.firstResponder.opportunity.score}`,
+      href: '/admin/super',
+      impactCents: input.firstResponder.opportunity.valueCents,
+    });
+  }
 
   if (input.followUpsDue > 0) {
     actions.push({
@@ -337,7 +364,7 @@ export async function loadTitanBriefing(
   const todayStart = startOfTodayChicagoIso();
   const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
 
-  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes, intelligence, growthData, lastPlanRes, workspace, roi, widgetStats, territory] =
+  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes, intelligence, growthData, lastPlanRes, workspace, roi, widgetStats, territory, opportunityScannerData, opportunityLearning] =
     await Promise.all([
       loadMoneyPulse(admin),
       loadAdminGoalsMetrics(admin),
@@ -373,6 +400,8 @@ export async function loadTitanBriefing(
       loadTitanRoiDashboard(admin),
       loadWidgetStats(admin),
       loadTerritoryIntelligence(admin),
+      loadOpportunityScanner(admin),
+      loadOpportunityLearning(admin),
     ]);
 
   await hydrateActivityFeedIfEmpty(admin);
@@ -405,6 +434,7 @@ export async function loadTitanBriefing(
     topService,
     rainWarning,
     jobsAtRisk,
+    firstResponder: opportunityScannerData.firstResponder,
   });
 
   const name = ownerName?.trim() || null;
@@ -468,5 +498,9 @@ export async function loadTitanBriefing(
     roi,
     widgetStats,
     territory,
+    opportunityScanner: {
+      ...opportunityScannerData,
+      learning: opportunityLearning,
+    },
   };
 }

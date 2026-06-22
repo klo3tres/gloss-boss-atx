@@ -57,14 +57,35 @@ Shipped on `/admin/super`:
 
 Migration: `000090_titan_product_layer.sql`
 
+### Titan Site Guide + Territory (customer + geo)
+
+- **Titan Site Guide** — public “Ask Titan” widget on homepage; lead capture + analytics
+- **Territory Intelligence™** — job geography insights, expansion suggestions
+
+Migration: `000091_titan_widget_territory.sql`
+
+### Titan Opportunity Scanner™ (Revenue Radar)
+
+Compliant buying-signal system on `/admin/super` — **no private scraping, no impersonation, no spam**.
+
+- **Opportunity Feed** — log public posts you find (Facebook groups, Nextdoor, boards, reviews)
+- **Opportunity Score™** — urgency, competition, estimated value, close likelihood → Easy / Medium / High Impact / Whale
+- **Titan First Responder™** — high-score alerts with suggested reply when you’re first to respond
+- **Today’s Hunt** — morning summary: count, potential revenue, breakdown by type
+- **Suggested outreach** — reply + DM templates per opportunity type
+- **Contact tracking** — Reply, Message, Add Lead, Mark Contacted, Won/Lost learning
+
+Migration: `000092_titan_opportunity_scanner.sql`
+
 ---
 
 | Week | Module | Outcome |
 |------|--------|---------|
 | 1 | **Places API Discovery** ✅ | Morning prospect radar |
-| 2 | Territory Intelligence™ | Geo spend/convert insights |
-| 3 | Market Map™ | Visual opportunity map |
-| 4 | Acquisition Cost™ | CAC by channel |
+| 2 | Territory Intelligence™ ✅ | Geo spend/convert insights |
+| 3 | **Opportunity Scanner™** ✅ | Revenue Radar from public buying signals |
+| 4 | Market Map™ | Visual opportunity map |
+| 5 | Acquisition Cost™ | CAC by channel |
 
 **Titan Revenue Graph™** — every feature must answer: get customer, retain customer, or increase customer value.
 

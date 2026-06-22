@@ -70,11 +70,13 @@ export async function runTitanNightlyEngine(admin: SupabaseClient) {
     const prospectsSynced = await syncFleetInquiriesToProspects(admin);
     const placesDiscovery = await discoverPlacesProspects(admin);
     await computeTerritoryIntelligence(admin);
+    const { loadOpportunityScanner } = await import('@/lib/titan/opportunity-scanner');
+    const hunt = await loadOpportunityScanner(admin);
 
     await logTitanActivity(admin, {
       kind: 'forecast_updated',
       title: 'Revenue forecast updated',
-      detail: `Leak scan: $${(leaks.totalPotentialCents / 100).toFixed(0)} at risk · ${opp.queued} rebooks queued`,
+      detail: `Leak scan: $${(leaks.totalPotentialCents / 100).toFixed(0)} at risk · ${opp.queued} rebooks queued · hunt ${hunt.dailyHunt.count} opps`,
       impactCents: leaks.totalPotentialCents,
       href: '/admin/super',
     });

@@ -12,6 +12,7 @@ import { TitanActivityTimeline } from '@/components/titan/titan-activity-timelin
 import { TitanRoiPanel } from '@/components/titan/titan-roi-panel';
 import { TitanWorkspaceForm } from '@/components/admin/titan-workspace-form';
 import { TitanWidgetStatsPanel, TitanTerritoryPanel } from '@/components/titan/titan-public-panels';
+import { TitanOpportunityScannerPanel } from '@/components/titan/titan-opportunity-scanner-panel';
 import { titanCommandCenterTitle } from '@/lib/titan/branding';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
@@ -118,6 +119,8 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
       </div>
 
       <TitanWorkspaceForm workspace={briefing.workspace} compact />
+
+      <TitanOpportunityScannerPanel briefing={briefing} />
 
       {/* Insights grid */}
       <section>
