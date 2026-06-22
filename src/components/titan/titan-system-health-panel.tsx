@@ -28,6 +28,22 @@ export function TitanSystemHealthPanel({ health }: { health: TitanSystemHealth }
         </span>
       </div>
 
+      {health.hobbyMode ? (
+        <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <p className="text-xs font-bold text-amber-100">{health.hobbyModeWarning}</p>
+          <p className="mt-1 text-[10px] text-amber-200/80">
+            Vercel crons run once daily. Use Run Now actions in admin for Lead Radar, exceptions, follow-ups, and Titan nightly.
+          </p>
+          <ul className="mt-3 space-y-1.5">
+            {health.cronSchedules.map((c) => (
+              <li key={c.id} className="text-[10px] text-amber-100/90">
+                <span className="font-mono text-amber-200">{c.schedule}</span> · {c.label} · {c.manualHint}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <div>
           <p className="text-[10px] font-black uppercase text-zinc-600">Database tables</p>

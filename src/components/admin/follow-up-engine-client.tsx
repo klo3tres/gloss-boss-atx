@@ -106,6 +106,7 @@ export function FollowUpEngineClient({ dashboard }: { dashboard: FollowUpDashboa
             <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Campaign tiers</p>
             <p className="mt-2 text-sm text-zinc-400">
               After a completed job with no future booking, customers enter the 30 → 60 → 90 day sequence automatically.
+              Daily cron at 14:00 UTC (Hobby) — use Sync &amp; send now between runs.
             </p>
           </div>
           <button

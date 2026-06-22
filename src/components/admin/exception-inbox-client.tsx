@@ -133,9 +133,9 @@ export function ExceptionInboxClient({
         <div className="space-y-1">
           <p>Live scan {formatChicagoDateTime(snapshot.refreshedAt)} · {snapshot.scanCount} items</p>
           {snapshot.lastSyncAt ? (
-            <p>Last background sync {formatChicagoDateTime(snapshot.lastSyncAt)}</p>
+            <p>Last background sync {formatChicagoDateTime(snapshot.lastSyncAt)} · daily cron 07:00 UTC (Hobby)</p>
           ) : (
-            <p>No background sync recorded yet</p>
+            <p>No background sync yet — runs daily at 07:00 UTC or use Sync now</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">

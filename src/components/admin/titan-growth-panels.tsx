@@ -11,6 +11,7 @@ import {
   previewProspectOutreachAction,
   saveMarketingSpendAction,
   runPlacesDiscoveryAction,
+  runTitanNightlyNowAction,
 } from '@/app/(dashboard)/admin/super/titan-growth-actions';
 import type { TitanBriefing } from '@/lib/titan-briefing';
 import { prospectTypeLabel, type ProspectType } from '@/lib/titan/lead-radar';
@@ -53,6 +54,24 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
         <p className="mt-2 max-w-2xl text-sm text-zinc-400">
           Phases 11–15 — discover prospects, execute outreach, attribute revenue, amplify content, and approve growth plans.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              run(async () => {
+                const res = await runTitanNightlyNowAction();
+                return res;
+              })
+            }
+            className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+          >
+            Run Titan nightly
+          </button>
+          <p className="text-[10px] text-zinc-600">
+            Scheduled daily at 06:00 UTC (Hobby). Manual runs cover Lead Radar, leak scan, and hunt between crons.
+          </p>
+        </div>
         {!growth.tablesReady ? (
           <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
             Apply Supabase migration <span className="font-mono">000088</span> to unlock Lead Radar, Outreach, Ad OS, Content Engine, and Command Layer.
@@ -147,9 +166,14 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || !growth.radar.discovery.configured}
+              title={
+                growth.radar.discovery.configured
+                  ? 'Run Google Places discovery now'
+                  : 'Google Places API key required — use manual prospect entry'
+              }
               onClick={() => run(() => runPlacesDiscoveryAction())}
-              className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-blue-200 disabled:opacity-50"
+              className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-blue-200 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Run discovery now
             </button>
@@ -194,13 +218,12 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
             </div>
           ) : (
             <p className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-100">
-              Places API configured. Click <span className="font-bold">Run discovery now</span> — or wait for the nightly cron at 6:00 UTC.
+              Places API configured. Click <span className="font-bold">Run discovery now</span> — or wait for the daily Titan nightly cron at 06:00 UTC.
             </p>
           )
         ) : (
           <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-            Add <span className="font-mono">GOOGLE_PLACES_API_KEY</span> (or <span className="font-mono">GOOGLE_MAPS_API_KEY</span> with Places API enabled) plus{' '}
-            <span className="font-mono">BUSINESS_HOME_BASE_ADDRESS</span> or <span className="font-mono">BUSINESS_LAT/LNG</span> in env.
+            Lead Radar manual mode active — Google Places not connected. Add prospects manually or paste opportunities in Opportunity Scanner.
           </p>
         )}
 

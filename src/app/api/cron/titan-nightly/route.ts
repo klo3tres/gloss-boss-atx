@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { runTitanNightlyEngine } from '@/lib/titan';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
+/** Vercel Hobby: once daily at 06:00 UTC (see vercel.json). Use Command Center → Run Titan nightly between runs. */
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 

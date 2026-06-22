@@ -274,7 +274,7 @@ export default async function AdminIntegrationsPage() {
           ]}
           alert={
             googleMapsConfigured()
-              ? 'Enable Places API (New) on your Google Cloud project. Nightly cron discovers B2B prospects within your service radius.'
+              ? 'Enable Places API (New) on your Google Cloud project. Daily Titan nightly cron (06:00 UTC) discovers B2B prospects — or use Run discovery now in Command Center.'
               : 'missing GOOGLE_PLACES_API_KEY or GOOGLE_MAPS_API_KEY'
           }
         />

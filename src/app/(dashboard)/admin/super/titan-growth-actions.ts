@@ -170,3 +170,33 @@ export async function runPlacesDiscoveryAction(): Promise<{
     error: result.error,
   };
 }
+
+export async function runTitanNightlyNowAction(): Promise<{
+  ok?: boolean;
+  error?: string;
+  skipped?: boolean;
+  revenueLeakCents?: number;
+  opportunitiesQueued?: number;
+  placesDiscovered?: number;
+}> {
+  const gate = await requireSuperAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+
+  try {
+    const { runTitanNightlyEngine } = await import('@/lib/titan');
+    const result = await runTitanNightlyEngine(gate.admin);
+    revalidateTitan();
+    revalidatePath('/admin/titan');
+    if ('skipped' in result && result.skipped) {
+      return { error: 'Apply Titan migrations before running nightly engine.', skipped: true };
+    }
+    return {
+      ok: true,
+      revenueLeakCents: result.revenueLeakCents,
+      opportunitiesQueued: result.opportunitiesQueued,
+      placesDiscovered: result.placesDiscovered,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Nightly engine failed' };
+  }
+}

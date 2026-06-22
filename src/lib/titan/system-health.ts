@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { CRON_SCHEDULES, HOBBY_MODE_AUTOMATION_WARNING } from '@/lib/cron-schedules';
 
 export type HealthStatus = 'ok' | 'missing' | 'manual' | 'error';
 
@@ -9,6 +10,14 @@ export type TitanHealthItem = {
   detail: string;
 };
 
+export type TitanCronSchedule = {
+  id: string;
+  label: string;
+  path: string;
+  schedule: string;
+  manualHint: string;
+};
+
 export type TitanSystemHealth = {
   overall: 'healthy' | 'degraded' | 'critical';
   latestMigration: string;
@@ -16,6 +25,9 @@ export type TitanSystemHealth = {
   tables: TitanHealthItem[];
   integrations: TitanHealthItem[];
   leadCaptureReady: boolean;
+  hobbyMode: boolean;
+  hobbyModeWarning: string;
+  cronSchedules: TitanCronSchedule[];
 };
 
 const TABLE_CHECKS: { id: string; table: string; label: string }[] = [
@@ -43,8 +55,34 @@ function envOk(key: string) {
   return Boolean(process.env[key]?.trim());
 }
 
+const CRON_SCHEDULE_ITEMS: TitanCronSchedule[] = [
+  {
+    id: 'titan_nightly',
+    label: 'Titan nightly engine',
+    path: '/api/cron/titan-nightly',
+    schedule: CRON_SCHEDULES.titanNightly,
+    manualHint: 'Command Center → Run Titan nightly',
+  },
+  {
+    id: 'sync_exceptions',
+    label: 'Exception inbox sync',
+    path: '/api/cron/sync-exceptions',
+    schedule: CRON_SCHEDULES.syncExceptions,
+    manualHint: 'Exception inbox → Sync now',
+  },
+  {
+    id: 'process_follow_ups',
+    label: 'Follow-up engine',
+    path: '/api/cron/process-follow-ups',
+    schedule: CRON_SCHEDULES.processFollowUps,
+    manualHint: 'Follow-ups → Run engine now',
+  },
+];
+
 export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promise<TitanSystemHealth> {
   const latestMigration = '000093';
+  const hobbyMode = true;
+  const hobbyModeWarning = HOBBY_MODE_AUTOMATION_WARNING;
   const integrations: TitanHealthItem[] = [
     {
       id: 'supabase_url',
@@ -109,6 +147,9 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
       })),
       integrations,
       leadCaptureReady: false,
+      hobbyMode,
+      hobbyModeWarning,
+      cronSchedules: CRON_SCHEDULE_ITEMS,
     };
   }
 
@@ -150,5 +191,8 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
     tables: tableResults,
     integrations,
     leadCaptureReady: Boolean(leadCaptureReady),
+    hobbyMode,
+    hobbyModeWarning,
+    cronSchedules: CRON_SCHEDULE_ITEMS,
   };
 }

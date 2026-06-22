@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { runFollowUpEngine } from '@/lib/follow-up-engine';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
+/** Vercel Hobby: once daily at 14:00 UTC (see vercel.json). Use Follow-ups → Run engine now between runs. */
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 

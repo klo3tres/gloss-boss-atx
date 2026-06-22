@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { syncOperationsExceptions } from '@/lib/operations-snapshot';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
+/** Vercel Hobby: once daily at 07:00 UTC (see vercel.json). Use Exception inbox → Sync now between runs. */
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
