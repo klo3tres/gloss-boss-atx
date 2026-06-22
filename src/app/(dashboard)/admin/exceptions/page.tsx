@@ -11,14 +11,15 @@ export const dynamic = 'force-dynamic';
 export default async function AdminExceptionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ category?: string }>;
+  searchParams?: Promise<{ category?: string; dismissed?: string }>;
 }) {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
   const params = searchParams ? await searchParams : {};
-  const snapshot = await loadOperationsSnapshot(admin);
+  const includeDismissed = params.dismissed === '1' || params.dismissed === 'true';
+  const snapshot = await loadOperationsSnapshot(admin, { includeDismissed });
 
   return (
     <DashboardShell
@@ -26,7 +27,11 @@ export default async function AdminExceptionsPage({
       subtitle="Every broken, unmatched, unpaid, or undelivered business event in one queue."
       role="admin"
     >
-      <ExceptionInboxClient snapshot={snapshot} initialCategory={params.category ?? null} />
+      <ExceptionInboxClient
+        snapshot={snapshot}
+        initialCategory={params.category ?? null}
+        showDismissed={includeDismissed}
+      />
     </DashboardShell>
   );
 }

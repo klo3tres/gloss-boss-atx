@@ -25,7 +25,8 @@ import {
 } from '@/lib/revenue-metrics';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
-import { loadDismissedFingerprints, syncBusinessExceptions } from '@/lib/business-exception-sync';
+import { loadInboxFromDatabase, type InboxException } from '@/lib/business-exception-inbox';
+import { syncBusinessExceptions } from '@/lib/business-exception-sync';
 import { assessBeforePhotoSlots } from '@/lib/pre-inspection';
 import { fetchWeatherForAddress, type WeatherSnapshot } from '@/lib/weather-forecast';
 import { workOrderPath } from '@/lib/work-order-links';
@@ -52,18 +53,26 @@ export type ExceptionSeverity = 'critical' | 'warning' | 'info';
 
 export type ExceptionInlineActionType =
   | 'repair_duplicates'
+  | 'repair_duplicate_group'
   | 'exclude_payment'
+  | 'exclude_receipt'
   | 'retry_notification'
   | 'dismiss'
+  | 'dismiss_snooze'
   | 'send_followup'
-  | 'create_offer';
+  | 'create_offer'
+  | 'reschedule_weather';
 
 export type ExceptionInlineAction = {
   type: ExceptionInlineActionType;
   label: string;
   paymentId?: string;
+  receiptId?: string;
   outboxId?: string;
   winnerId?: string;
+  groupKey?: string;
+  workOrderId?: string;
+  snoozeDays?: number;
   customerEmail?: string;
   customerPhone?: string;
   customerId?: string;
@@ -160,7 +169,11 @@ export type DailyOperationsBoard = {
 
 export type OperationsSnapshot = {
   refreshedAt: string;
-  exceptions: OperationException[];
+  lastSyncAt: string | null;
+  scanCount: number;
+  syncSynced: number;
+  syncResolved: number;
+  exceptions: InboxException[];
   summary: ExceptionSummary;
   dailyOps: DailyOperationsBoard;
 };
@@ -286,9 +299,15 @@ async function fetchFleetInquiriesSafe(admin: SupabaseClient) {
 
 export async function loadOperationsSnapshot(
   admin: SupabaseClient,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; includeDismissed?: boolean; includeResolved?: boolean },
 ): Promise<OperationsSnapshot> {
-  if (!opts?.force && snapshotCache && Date.now() - snapshotCache.at < SNAPSHOT_CACHE_MS) {
+  if (
+    !opts?.force &&
+    !opts?.includeDismissed &&
+    !opts?.includeResolved &&
+    snapshotCache &&
+    Date.now() - snapshotCache.at < SNAPSHOT_CACHE_MS
+  ) {
     return snapshotCache.data;
   }
 
@@ -583,8 +602,8 @@ export async function loadOperationsSnapshot(
       secondaryActionLabel: apptId ? 'Open work order' : undefined,
       suggestedNext: 'Use Repair all safely on Revenue page to exclude duplicate rows.',
       inlineActions: [
-        { type: 'repair_duplicates', label: 'Repair all safely' },
-        ...(apptId ? [] : []),
+        { type: 'repair_duplicate_group', label: 'Repair this group', groupKey: group.key, winnerId: winner ?? undefined },
+        { type: 'repair_duplicates', label: 'Repair all groups' },
       ],
     });
   }
@@ -592,6 +611,7 @@ export async function loadOperationsSnapshot(
   // --- Duplicate receipt groups ---
   for (const [pid, group] of receiptByPayment.entries()) {
     if (group.length <= 1) continue;
+    const winnerReceipt = group[0];
     items.push({
       id: `receipt:dup:${pid}`,
       category: 'payments',
@@ -603,6 +623,12 @@ export async function loadOperationsSnapshot(
       href: '/admin/receipts',
       actionLabel: 'Review receipts',
       suggestedNext: 'Exclude duplicate receipt rows from revenue.',
+      inlineActions: group.slice(1).map((r) => ({
+        type: 'exclude_receipt' as const,
+        label: `Exclude receipt ${str(r.id).slice(0, 8)}`,
+        receiptId: str(r.id),
+        winnerId: str(winnerReceipt?.id) || pid,
+      })),
     });
   }
 
@@ -841,6 +867,9 @@ export async function loadOperationsSnapshot(
           actionLabel: 'Open work order',
           secondaryHref: '/admin/calendar',
           secondaryActionLabel: 'Open calendar',
+          inlineActions: [
+            { type: 'reschedule_weather', label: 'Bump to tomorrow', workOrderId: id },
+          ],
         });
       }
     }
@@ -878,6 +907,7 @@ export async function loadOperationsSnapshot(
           actionLabel: 'Review job',
           secondaryHref: '/admin/calendar',
           secondaryActionLabel: 'Open calendar',
+          inlineActions: [{ type: 'reschedule_weather', label: 'Bump to tomorrow', workOrderId: id }],
         });
       }
       if (!hasServiceAddress(row as ApptRow) && weather.ok) {
@@ -1312,16 +1342,13 @@ export async function loadOperationsSnapshot(
   }
 
   items.sort((a, b) => {
-    const sev = { critical:  0, warning: 1, info: 2 };
+    const sev = { critical: 0, warning: 1, info: 2 };
     const d = sev[a.severity] - sev[b.severity];
     if (d !== 0) return d;
     return str(b.occurredAt).localeCompare(str(a.occurredAt));
   });
 
-  const dismissed = await loadDismissedFingerprints(admin);
-  const visibleItems = items.filter((item) => !dismissed.has(item.id));
-  await syncBusinessExceptions(admin, visibleItems);
-  const summary = summarizeExceptions(visibleItems);
+  const syncResult = await syncBusinessExceptions(admin, items);
 
   const unpaidCompletedToday = todayJobs.filter((j) => j.status === 'completed' && j.balanceDueCents > 0);
   const dailyOps: DailyOperationsBoard = {
@@ -1370,7 +1397,48 @@ export async function loadOperationsSnapshot(
     revenueWeekCents: weekSummary.grossCents,
   };
 
-  const snapshot: OperationsSnapshot = { refreshedAt, exceptions: visibleItems, summary, dailyOps };
+  const { items: inboxItems, lastSyncAt } = await loadInboxFromDatabase(admin, {
+    includeDismissed: opts?.includeDismissed,
+    includeResolved: opts?.includeResolved,
+  });
+  const summary = summarizeExceptions(inboxItems);
+
+  const snapshot: OperationsSnapshot = {
+    refreshedAt,
+    lastSyncAt,
+    scanCount: items.length,
+    syncSynced: syncResult.synced,
+    syncResolved: syncResult.resolved,
+    exceptions: inboxItems,
+    summary,
+    dailyOps,
+  };
   snapshotCache = { at: Date.now(), data: snapshot };
   return snapshot;
+}
+
+/** Force a live scan → DB sync. Used by cron and manual refresh. */
+export async function syncOperationsExceptions(admin: SupabaseClient) {
+  snapshotCache = null;
+  const snap = await loadOperationsSnapshot(admin, { force: true });
+  await recordSyncRunFromSnapshot(admin, snap);
+  return {
+    ok: true,
+    synced: snap.syncSynced,
+    resolved: snap.syncResolved,
+    scanCount: snap.scanCount,
+    startedAt: snap.refreshedAt,
+    finishedAt: new Date().toISOString(),
+  };
+}
+
+async function recordSyncRunFromSnapshot(admin: SupabaseClient, snap: OperationsSnapshot) {
+  const { recordSyncRun } = await import('@/lib/business-exception-sync');
+  await recordSyncRun(admin, {
+    startedAt: snap.refreshedAt,
+    finishedAt: new Date().toISOString(),
+    synced: snap.syncSynced,
+    resolved: snap.syncResolved,
+    scanCount: snap.scanCount,
+  });
 }

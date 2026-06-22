@@ -4,22 +4,37 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import type { ExceptionInlineAction, OperationException } from '@/lib/operations-snapshot';
 import {
+  bumpAppointmentTomorrowAction,
   createOfferFromInboxAction,
   dismissExceptionAction,
   excludePaymentInboxAction,
+  excludeReceiptInboxAction,
+  repairDuplicateGroupInboxAction,
   repairDuplicatePaymentsInboxAction,
   retryNotificationInboxAction,
   sendFollowUpInboxAction,
 } from '@/app/(dashboard)/admin/exceptions/exception-actions';
+import { ExceptionDismissMenu } from '@/components/admin/exception-dismiss-menu';
 
 async function runAction(
   item: OperationException,
   action: ExceptionInlineAction,
 ): Promise<{ ok?: boolean; error?: string; message?: string; href?: string }> {
-  if (action.type === 'dismiss') return dismissExceptionAction(item.id);
+  if (action.type === 'dismiss' || action.type === 'dismiss_snooze') {
+    return dismissExceptionAction(item.id, undefined, action.snoozeDays);
+  }
   if (action.type === 'repair_duplicates') return repairDuplicatePaymentsInboxAction();
+  if (action.type === 'repair_duplicate_group' && action.groupKey) {
+    return repairDuplicateGroupInboxAction(action.groupKey);
+  }
   if (action.type === 'exclude_payment' && action.paymentId) return excludePaymentInboxAction(action.paymentId);
+  if (action.type === 'exclude_receipt' && action.receiptId) {
+    return excludeReceiptInboxAction(action.receiptId, action.winnerId);
+  }
   if (action.type === 'retry_notification' && action.outboxId) return retryNotificationInboxAction(action.outboxId);
+  if (action.type === 'reschedule_weather' && (action.workOrderId || item.workOrderId)) {
+    return bumpAppointmentTomorrowAction(action.workOrderId || item.workOrderId!);
+  }
   if (action.type === 'send_followup') {
     return sendFollowUpInboxAction({
       fingerprint: item.id,
@@ -44,7 +59,6 @@ export function ExceptionActionButtons({ item, compact }: { item: OperationExcep
   const [err, setErr] = useState<string | null>(null);
 
   const inline = item.inlineActions ?? [];
-  const showDismiss = !inline.some((a) => a.type === 'dismiss');
 
   const execute = (action: ExceptionInlineAction) => {
     setMsg(null);
@@ -81,16 +95,14 @@ export function ExceptionActionButtons({ item, compact }: { item: OperationExcep
           {action.label}
         </button>
       ))}
-      {showDismiss ? (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => execute({ type: 'dismiss', label: 'Dismiss' })}
-          className="text-[10px] font-black uppercase text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
-        >
-          Dismiss
-        </button>
-      ) : null}
+      <ExceptionDismissMenu
+        fingerprint={item.id}
+        disabled={pending}
+        onDone={(message, error) => {
+          if (error) setErr(error);
+          else setMsg(message);
+        }}
+      />
       {!compact && msg ? <p className="text-[10px] text-emerald-400">{msg}</p> : null}
       {!compact && err ? <p className="text-[10px] text-red-300">{err}</p> : null}
     </div>

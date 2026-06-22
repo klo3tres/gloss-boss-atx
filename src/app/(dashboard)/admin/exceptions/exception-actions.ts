@@ -3,8 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
-import { logExceptionAction } from '@/lib/business-exception-sync';
-import { findAndRepairAllDuplicatePayments } from '@/lib/payment-duplicate-repair';
+import { logExceptionAction, markExceptionResolvedByUser } from '@/lib/business-exception-sync';
+import {
+  findDuplicatePaymentGroups,
+  findAndRepairAllDuplicatePayments,
+  repairDuplicatePaymentGroups,
+} from '@/lib/payment-duplicate-repair';
+import { rescheduleAppointmentLifecycle } from '@/lib/appointment-lifecycle';
+import { syncOperationsExceptions } from '@/lib/operations-snapshot';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { managePaymentAction } from '@/app/(dashboard)/admin/revenue/actions';
 
@@ -20,7 +26,23 @@ function revalidateOpsPaths() {
   revalidatePath('/admin/exceptions');
   revalidatePath('/admin/daily-operations');
   revalidatePath('/admin/revenue');
+  revalidatePath('/admin/receipts');
   revalidatePath('/admin/notifications');
+  revalidatePath('/admin/dispatch');
+  revalidatePath('/admin/calendar');
+}
+
+export async function syncExceptionsNowAction(): Promise<{ ok?: boolean; error?: string; scanCount?: number }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  try {
+    const result = await syncOperationsExceptions(gate.admin);
+    await logExceptionAction(gate.admin, gate.session.user!.id, null, 'sync_now', result);
+    revalidateOpsPaths();
+    return { ok: true, scanCount: result.scanCount };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Sync failed' };
+  }
 }
 
 export async function dismissExceptionAction(
@@ -72,6 +94,31 @@ export async function repairDuplicatePaymentsInboxAction(): Promise<{
   return { ok: true, repaired: result.groupsRepaired };
 }
 
+export async function repairDuplicateGroupInboxAction(groupKey: string): Promise<{
+  ok?: boolean;
+  error?: string;
+  repaired?: number;
+}> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  const key = String(groupKey ?? '').trim();
+  if (!key) return { error: 'Missing duplicate group key' };
+
+  const select =
+    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, fallback_booking_id, customer_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
+  const { data: payments } = await gate.admin.from('payments').select(select).order('created_at', { ascending: false }).limit(2500);
+  const paymentRows = (payments ?? []).map((p) => ({ ...p, source_table: 'payments' as const }));
+  const groups = findDuplicatePaymentGroups(paymentRows);
+  const group = groups.find((g) => g.key === key);
+  if (!group) return { error: 'Duplicate group not found — run sync and try again.' };
+
+  const result = await repairDuplicatePaymentGroups(gate.admin, [group]);
+  await logExceptionAction(gate.admin, gate.session.user!.id, `payment:dup:${key}`, 'repair_duplicate_group', result);
+  revalidateOpsPaths();
+  if (result.errors.length > 0) return { error: result.errors.slice(0, 2).join('; '), repaired: result.groupsRepaired };
+  return { ok: true, repaired: result.groupsRepaired };
+}
+
 export async function excludePaymentInboxAction(paymentId: string): Promise<{ ok?: boolean; error?: string }> {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
@@ -84,6 +131,55 @@ export async function excludePaymentInboxAction(paymentId: string): Promise<{ ok
   await logExceptionAction(gate.admin, gate.session.user!.id, `payment:excluded:${id}`, 'exclude_payment', { paymentId: id });
   revalidateOpsPaths();
   return { ok: true };
+}
+
+export async function excludeReceiptInboxAction(
+  receiptId: string,
+  winnerId?: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  const id = String(receiptId ?? '').trim();
+  if (!id) return { error: 'Missing receipt id' };
+
+  const res = await managePaymentAction(id, 'exclude', 'receipts', winnerId);
+  if (res.error) return { error: res.error };
+
+  await logExceptionAction(gate.admin, gate.session.user!.id, `receipt:exclude:${id}`, 'exclude_receipt', { receiptId: id, winnerId });
+  revalidateOpsPaths();
+  return { ok: true };
+}
+
+export async function bumpAppointmentTomorrowAction(workOrderId: string): Promise<{ ok?: boolean; error?: string; message?: string }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  const id = String(workOrderId ?? '').trim();
+  if (!id) return { error: 'Missing work order id' };
+
+  const { data: appt, error } = await gate.admin
+    .from('appointments')
+    .select('id, scheduled_start, guest_name')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !appt?.scheduled_start) return { error: error?.message ?? 'Work order not found' };
+
+  const current = new Date(String(appt.scheduled_start));
+  if (Number.isNaN(current.getTime())) return { error: 'Invalid scheduled time' };
+  const bumped = new Date(current.getTime() + 86400000);
+
+  const r = await rescheduleAppointmentLifecycle(gate.admin, {
+    appointmentId: id,
+    newScheduledStart: bumped.toISOString(),
+    reason: 'Rescheduled from exception inbox — weather conflict',
+  });
+  if (!r.ok) return { error: r.error ?? 'Reschedule failed' };
+
+  await logExceptionAction(gate.admin, gate.session.user!.id, `weather:${id}`, 'reschedule_weather', {
+    workOrderId: id,
+    newScheduledStart: bumped.toISOString(),
+  });
+  revalidateOpsPaths();
+  return { ok: true, message: `${appt.guest_name ?? 'Job'} bumped to tomorrow.` };
 }
 
 export async function retryNotificationInboxAction(outboxId: string): Promise<{ ok?: boolean; error?: string; message?: string }> {

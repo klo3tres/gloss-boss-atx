@@ -2,23 +2,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OperationException } from '@/lib/operations-snapshot';
 
 function isMissingTable(message: string) {
-  return /exception_dismissals|exception_actions|business_exceptions|schema cache|does not exist|Could not find/i.test(message);
+  return /exception_|business_exceptions|schema cache|does not exist|Could not find/i.test(message);
 }
 
+/** @deprecated use loadDismissalRecords from business-exception-inbox */
 export async function loadDismissedFingerprints(admin: SupabaseClient): Promise<Set<string>> {
-  const { data, error } = await admin.from('exception_dismissals').select('fingerprint, snooze_until').limit(5000);
-  if (error) {
-    if (isMissingTable(error.message)) return new Set();
-    return new Set();
+  const { loadDismissalRecords, isDismissalActive } = await import('@/lib/business-exception-inbox');
+  const records = await loadDismissalRecords(admin);
+  const active = new Set<string>();
+  for (const [fp, rec] of records.entries()) {
+    if (isDismissalActive(rec)) active.add(fp);
   }
-  const now = Date.now();
-  const dismissed = new Set<string>();
-  for (const row of data ?? []) {
-    const until = row.snooze_until ? new Date(String(row.snooze_until)).getTime() : null;
-    if (until != null && until <= now) continue;
-    dismissed.add(String(row.fingerprint));
-  }
-  return dismissed;
+  return active;
 }
 
 export async function syncBusinessExceptions(
@@ -35,24 +30,40 @@ export async function syncBusinessExceptions(
   let synced = 0;
 
   for (const item of items) {
-    const { error } = await admin.from('business_exceptions').upsert(
-      {
-        fingerprint: item.id,
-        kind: item.category,
-        severity: item.severity,
-        status: 'open',
-        title: item.title,
-        detail: item.detail,
-        appointment_id: item.workOrderId || null,
-        payment_id: item.paymentId || null,
-        last_seen_at: now,
-        resolved_at: null,
-        metadata: item,
-        updated_at: now,
-      },
-      { onConflict: 'fingerprint' },
-    );
-    if (!error) synced += 1;
+    const { data: existing } = await admin
+      .from('business_exceptions')
+      .select('id, first_seen_at, status')
+      .eq('fingerprint', item.id)
+      .maybeSingle();
+
+    const payload = {
+      fingerprint: item.id,
+      kind: item.category,
+      severity: item.severity,
+      status: 'open' as const,
+      title: item.title,
+      detail: item.detail,
+      appointment_id: item.workOrderId || null,
+      payment_id: item.paymentId || null,
+      receipt_id: item.receiptId || null,
+      last_seen_at: now,
+      resolved_at: null,
+      resolved_by: null,
+      auto_resolved: false,
+      metadata: item,
+      updated_at: now,
+    };
+
+    if (existing?.id) {
+      const { error } = await admin.from('business_exceptions').update(payload).eq('id', existing.id);
+      if (!error) synced += 1;
+    } else {
+      const { error } = await admin.from('business_exceptions').insert({
+        ...payload,
+        first_seen_at: now,
+      });
+      if (!error) synced += 1;
+    }
   }
 
   const { data: openRows } = await admin
@@ -66,7 +77,13 @@ export async function syncBusinessExceptions(
     if (fingerprints.has(String(row.fingerprint))) continue;
     const { error } = await admin
       .from('business_exceptions')
-      .update({ status: 'resolved', resolved_at: now, updated_at: now })
+      .update({
+        status: 'resolved',
+        resolved_at: now,
+        resolved_by: null,
+        auto_resolved: true,
+        updated_at: now,
+      })
       .eq('id', row.id);
     if (!error) resolved += 1;
   }
@@ -90,5 +107,108 @@ export async function logExceptionAction(
   });
   if (error && !isMissingTable(error.message)) {
     console.warn('[exception_actions]', error.message);
+  }
+}
+
+export async function markExceptionResolvedByUser(
+  admin: SupabaseClient,
+  fingerprint: string,
+  actorId: string,
+  note?: string,
+) {
+  const now = new Date().toISOString();
+  await admin
+    .from('business_exceptions')
+    .update({
+      status: 'resolved',
+      resolved_at: now,
+      resolved_by: actorId,
+      auto_resolved: false,
+      resolution_note: note ?? null,
+      updated_at: now,
+    })
+    .eq('fingerprint', fingerprint);
+}
+
+export type SyncRunResult = {
+  ok: boolean;
+  synced: number;
+  resolved: number;
+  scanCount: number;
+  error?: string;
+  startedAt: string;
+  finishedAt: string;
+};
+
+export async function recordSyncRun(
+  admin: SupabaseClient,
+  input: {
+    startedAt: string;
+    finishedAt: string;
+    synced: number;
+    resolved: number;
+    scanCount: number;
+    error?: string;
+  },
+) {
+  const { error } = await admin.from('exception_sync_runs').insert({
+    started_at: input.startedAt,
+    finished_at: input.finishedAt,
+    synced_count: input.synced,
+    resolved_count: input.resolved,
+    scan_count: input.scanCount,
+    error_message: input.error ?? null,
+  });
+  if (error && !isMissingTable(error.message)) {
+    console.warn('[exception_sync_runs]', error.message);
+  }
+}
+
+export async function runExceptionSyncPipeline(
+  admin: SupabaseClient,
+  scanFn: (admin: SupabaseClient) => Promise<{ exceptions: OperationException[]; refreshedAt: string }>,
+): Promise<SyncRunResult> {
+  const startedAt = new Date().toISOString();
+  try {
+    const scan = await scanFn(admin);
+    const { synced, resolved, skipped } = await syncBusinessExceptions(admin, scan.exceptions);
+    const finishedAt = new Date().toISOString();
+    if (!skipped) {
+      await recordSyncRun(admin, {
+        startedAt,
+        finishedAt,
+        synced,
+        resolved,
+        scanCount: scan.exceptions.length,
+      });
+    }
+    return {
+      ok: true,
+      synced,
+      resolved,
+      scanCount: scan.exceptions.length,
+      startedAt,
+      finishedAt,
+    };
+  } catch (e) {
+    const finishedAt = new Date().toISOString();
+    const message = e instanceof Error ? e.message : String(e);
+    await recordSyncRun(admin, {
+      startedAt,
+      finishedAt,
+      synced: 0,
+      resolved: 0,
+      scanCount: 0,
+      error: message,
+    });
+    return {
+      ok: false,
+      synced: 0,
+      resolved: 0,
+      scanCount: 0,
+      error: message,
+      startedAt,
+      finishedAt,
+    };
   }
 }
