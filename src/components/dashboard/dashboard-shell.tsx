@@ -22,6 +22,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'Overview',
     links: [
       { href: '/admin', label: 'Dashboard' },
+      { href: '/admin/super', label: 'Titan command center' },
       { href: '/admin/exceptions', label: 'Exception inbox' },
       { href: '/admin/daily-operations', label: 'Daily operations' },
       { href: '/admin/calendar', label: 'Calendar' },
