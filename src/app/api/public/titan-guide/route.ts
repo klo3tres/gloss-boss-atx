@@ -6,6 +6,7 @@ import {
   siteGuideWelcome,
   trackWidgetEvent,
 } from '@/lib/titan/site-guide';
+import { loadTitanWorkspace } from '@/lib/titan/workspace';
 
 export const runtime = 'nodejs';
 
@@ -116,5 +117,14 @@ export async function POST(req: Request) {
 export async function GET() {
   const admin = tryCreateAdminSupabase();
   if (!admin) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
-  return NextResponse.json({ sessionId: crypto.randomUUID(), reply: siteGuideWelcome() });
+  const workspace = await loadTitanWorkspace(admin);
+  return NextResponse.json({
+    sessionId: crypto.randomUUID(),
+    reply: siteGuideWelcome(),
+    settings: {
+      publicWidgetEnabled: workspace.publicWidgetEnabled,
+      operatorAssistantEnabled: workspace.operatorAssistantEnabled,
+      poweredByBrandingEnabled: workspace.poweredByBrandingEnabled,
+    },
+  });
 }

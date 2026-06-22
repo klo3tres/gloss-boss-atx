@@ -18,6 +18,9 @@ export type TitanWorkspace = {
   operatingHours: Record<string, string>;
   monthlyRevenueGoalCents: number;
   updatedAt: string | null;
+  publicWidgetEnabled: boolean;
+  operatorAssistantEnabled: boolean;
+  poweredByBrandingEnabled: boolean;
 };
 
 const DEFAULT_HOURS: Record<string, string> = {
@@ -54,6 +57,9 @@ function defaults(): TitanWorkspace {
     operatingHours: { ...DEFAULT_HOURS },
     monthlyRevenueGoalCents: 0,
     updatedAt: null,
+    publicWidgetEnabled: true,
+    operatorAssistantEnabled: true,
+    poweredByBrandingEnabled: true,
   };
 }
 
@@ -72,6 +78,9 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
         : { ...DEFAULT_HOURS },
     monthlyRevenueGoalCents: Number(row.monthly_revenue_goal_cents ?? 0),
     updatedAt: str(row.updated_at) || null,
+    publicWidgetEnabled: row.public_widget_enabled !== false,
+    operatorAssistantEnabled: row.operator_assistant_enabled !== false,
+    poweredByBrandingEnabled: row.powered_by_branding_enabled !== false,
   };
 }
 
@@ -97,6 +106,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     operatingHours: input.operatingHours ?? current.operatingHours,
     monthlyRevenueGoalCents: input.monthlyRevenueGoalCents ?? current.monthlyRevenueGoalCents,
     updatedAt: now,
+    publicWidgetEnabled: input.publicWidgetEnabled ?? current.publicWidgetEnabled,
+    operatorAssistantEnabled: input.operatorAssistantEnabled ?? current.operatorAssistantEnabled,
+    poweredByBrandingEnabled: input.poweredByBrandingEnabled ?? current.poweredByBrandingEnabled,
   };
 
   const { error } = await admin.from('titan_workspace_settings').upsert(
@@ -110,6 +122,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
       employee_count: merged.employeeCount,
       operating_hours: merged.operatingHours,
       monthly_revenue_goal_cents: merged.monthlyRevenueGoalCents,
+      public_widget_enabled: merged.publicWidgetEnabled,
+      operator_assistant_enabled: merged.operatorAssistantEnabled,
+      powered_by_branding_enabled: merged.poweredByBrandingEnabled,
       updated_at: now,
     },
     { onConflict: 'workspace_key' },

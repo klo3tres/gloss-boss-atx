@@ -777,6 +777,9 @@ export default function HomePage() {
                 Terms &amp; Conditions
               </Link>
             </nav>
+            <p className="mt-6 text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-600">
+              Powered by Titan™
+            </p>
           </div>
           <SectionErrorBoundary label='Contact form'>
             <ContactForm />

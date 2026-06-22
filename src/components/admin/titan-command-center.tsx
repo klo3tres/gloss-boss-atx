@@ -27,7 +27,8 @@ import { TitanRoiPanel } from '@/components/titan/titan-roi-panel';
 import { TitanWorkspaceForm } from '@/components/admin/titan-workspace-form';
 import { TitanWidgetStatsPanel, TitanTerritoryPanel } from '@/components/titan/titan-public-panels';
 import { TitanOpportunityScannerPanel } from '@/components/titan/titan-opportunity-scanner-panel';
-import { TitanEmptyState, TitanMetricTile, TitanSection, TitanSetupBanner } from '@/components/titan/titan-ui';
+import { TitanSetupBanner, TitanMetricTile, TitanSection, TitanEmptyState } from '@/components/titan/titan-ui';
+import { TitanActionStrip } from '@/components/titan/titan-action-strip';
 import { titanCommandCenterTitle } from '@/lib/titan/branding';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
@@ -85,7 +86,7 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
 
   return (
     <div className="titan-command-center space-y-10 pb-4">
-      <TitanSetupBanner warnings={briefing.setupWarnings} />
+      <TitanActionStrip briefing={briefing} />
 
       {/* Hero */}
       <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#050508] via-black to-zinc-950 p-6 md:p-10">

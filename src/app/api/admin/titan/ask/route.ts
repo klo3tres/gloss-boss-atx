@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const supabase = await tryCreateServerSupabase();
   if (!supabase) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
 
-  const gate = await requireProfileRoles(supabase, ['super_admin']);
+  const gate = await requireProfileRoles(supabase, ['super_admin', 'admin', 'technician']);
   if (!gate.ok) return gate.response;
 
   const admin = tryCreateAdminSupabase();

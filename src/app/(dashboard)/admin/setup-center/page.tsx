@@ -70,7 +70,7 @@ export default async function OwnerSetupCenterPage() {
       title: 'Financial truth and lifecycle migrations',
       ok: financialMigrationsReady,
       important: true,
-      detail: financialMigrationsReady ? 'Titan workspace, widget, territory, Opportunity Scanner, Growth OS, and ops tables are available.' : 'Apply Supabase migrations 000079 through 000092 before production deployment.',
+      detail: financialMigrationsReady ? 'Titan workspace, widget, territory, Opportunity Scanner, Growth OS, and ops tables are available.' : 'Apply Supabase migrations 000079 through 000093 before production deployment.',
       action: 'Open system diagnostics',
       href: '/admin/system-diagnostics',
     },

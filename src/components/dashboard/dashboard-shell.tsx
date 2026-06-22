@@ -7,7 +7,6 @@ import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
-import { PoweredByTitan } from '@/components/titan/titan-brand';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
@@ -22,6 +21,7 @@ const adminNavGroups: NavGroup[] = [
   {
     title: 'Overview',
     links: [
+      { href: '/admin/titan', label: 'Titan' },
       { href: '/admin', label: 'Dashboard' },
       { href: '/admin/super', label: 'Titan Command Center™' },
       { href: '/admin/exceptions', label: 'Exception inbox' },
@@ -273,7 +273,7 @@ export function DashboardShell({
     customer: 'Customer',
   };
 
-  const isTitanSurface = titanMode || pathname.startsWith('/admin/super');
+  const isTitanSurface = titanMode || pathname.startsWith('/admin/super') || pathname.startsWith('/admin/titan');
 
   const panelTitle =
     role === 'super_admin' && simNav && simNav !== 'super_admin'
@@ -337,8 +337,14 @@ export function DashboardShell({
           <div>
             <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>Command</p>
             <div className='mt-2 space-y-1'>
+              <Link href='/admin/titan' className={linkClass('/admin/titan')}>
+                Titan Home
+              </Link>
               <Link href='/admin/super' className={linkClass('/admin/super')}>
                 Titan Command Center™
+              </Link>
+              <Link href='/admin/titan/settings' className={linkClass('/admin/titan/settings')}>
+                Titan Settings
               </Link>
             </div>
           </div>
@@ -487,7 +493,9 @@ export function DashboardShell({
           <div className='gb-no-print space-y-2'>
             {(role === 'admin' || role === 'super_admin' || role === 'technician') && !pathname.startsWith('/dashboard') ? (
               <div className="flex justify-center border-t border-white/5 pt-4">
-                <PoweredByTitan />
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-600">
+                  Operating intelligence powered by Titan™
+                </p>
               </div>
             ) : null}
             <DashboardAuthDebugFooter />

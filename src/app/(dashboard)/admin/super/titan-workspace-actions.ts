@@ -28,5 +28,7 @@ export async function saveTitanWorkspaceAction(input: Partial<TitanWorkspace> & 
   });
 
   revalidatePath('/admin/super');
+  revalidatePath('/admin/titan');
+  revalidatePath('/admin/titan/settings');
   return { ok: true as const };
 }

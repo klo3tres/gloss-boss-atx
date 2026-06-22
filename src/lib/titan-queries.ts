@@ -3,7 +3,16 @@ import { runOwnerAssistantQuery, type AssistantAnswer } from '@/lib/owner-assist
 import { searchBusinessMemory, searchMemoryForCustomerName } from '@/lib/titan/business-memory';
 import { loadTitanIntelligence } from '@/lib/titan';
 
-export type TitanAnswer = AssistantAnswer & { href?: string };
+export type TitanAnswerAction = {
+  label: string;
+  href?: string;
+  copyText?: string;
+};
+
+export type TitanAnswer = AssistantAnswer & {
+  href?: string;
+  actions?: TitanAnswerAction[];
+};
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -49,6 +58,79 @@ export async function runTitanQuery(admin: SupabaseClient, question: string): Pr
       summary: 'High-probability rebooks and revenue leaks ranked first.',
       bullets: bullets.length ? bullets : ['Run follow-up sync from Admin → Follow-ups'],
       href: '/admin/follow-ups',
+      actions: [
+        { label: 'Open follow-ups', href: '/admin/follow-ups' },
+        { label: 'Open leads', href: '/admin/leads' },
+        { label: 'Titan Home', href: '/admin/titan' },
+      ],
+    };
+  }
+
+  if (/leak|leaking|at risk|revenue.*risk|money leak/.test(q)) {
+    const intel = await loadTitanIntelligence(admin);
+    return {
+      title: 'Revenue at risk',
+      summary: `~$${(intel.totalLeakCents / 100).toFixed(0)} in potential leak across ${intel.revenueLeaks.length} signal(s).`,
+      bullets: intel.revenueLeaks.slice(0, 8).map((l) => `${l.title} · ~$${(l.potentialCents / 100).toFixed(0)}`),
+      href: '/admin/super',
+      actions: [
+        { label: 'Open Revenue Engine', href: '/admin/super' },
+        { label: 'Open follow-ups', href: '/admin/follow-ups' },
+      ],
+    };
+  }
+
+  if (/opportunit|titan find|hunt|scanner/.test(q)) {
+    const { loadOpportunityScanner } = await import('@/lib/titan/opportunity-scanner');
+    const scanner = await loadOpportunityScanner(admin);
+    const hunt = scanner.dailyHunt;
+    return {
+      title: 'Opportunities found',
+      summary: scanner.tablesReady
+        ? `${hunt.count} in today's hunt · ~$${(hunt.potentialCents / 100).toFixed(0)} potential`
+        : 'Apply migration 000092 to enable Opportunity Scanner.',
+      bullets: scanner.feed.slice(0, 6).map((o) => `${o.title.slice(0, 60)} · score ${o.score}`),
+      href: '/admin/super',
+      actions: [
+        { label: 'Opportunity Scanner', href: '/admin/super' },
+        { label: 'Titan Home', href: '/admin/titan' },
+      ],
+    };
+  }
+
+  if (/setup|broken|missing|migration|health/.test(q)) {
+    const { loadTitanSystemHealth } = await import('@/lib/titan/system-health');
+    const health = await loadTitanSystemHealth(admin);
+    const issues = [
+      ...health.tables.filter((t) => t.status !== 'ok').map((t) => t.detail),
+      ...health.integrations.filter((i) => i.status !== 'ok').map((i) => i.detail),
+    ];
+    return {
+      title: 'Titan system health',
+      summary: `Overall: ${health.overall} · latest migration ${health.latestMigration}`,
+      bullets: issues.length ? issues.slice(0, 10) : ['All core tables and integrations look healthy.'],
+      href: '/admin/titan/settings',
+      actions: [
+        { label: 'Titan Settings', href: '/admin/titan/settings' },
+        { label: 'Setup center', href: '/admin/setup-center' },
+      ],
+    };
+  }
+
+  if (/revenue target|monthly goal|goal today/.test(q)) {
+    const briefing = await import('@/lib/titan-briefing').then((m) => m.loadTitanBriefing(admin));
+    const gap = briefing.insights.revenueGapCents;
+    return {
+      title: "Today's revenue target",
+      summary: briefing.insights.revenueTargetCents
+        ? `MTD $${(briefing.insights.revenueMonthCents / 100).toFixed(0)} / goal $${(briefing.insights.revenueTargetCents / 100).toFixed(0)}`
+        : 'No monthly goal set yet.',
+      bullets: [
+        `Today: $${(briefing.insights.revenueTodayCents / 100).toFixed(0)}`,
+        gap != null && gap > 0 ? `Gap to goal: $${(gap / 100).toFixed(0)}` : 'On track or goal not set',
+      ],
+      href: '/admin/goals',
+      actions: [{ label: 'Set revenue goal', href: '/admin/goals' }],
     };
   }
 
@@ -241,7 +323,8 @@ export async function runTitanQuery(admin: SupabaseClient, question: string): Pr
       title: 'Top priorities this week',
       summary: briefing.recommendations[0]?.detail ?? 'Run the business from Exception inbox and Follow-ups.',
       bullets: briefing.recommendations.slice(0, 5).map((r) => r.title),
-      href: briefing.recommendations[0]?.href ?? '/admin',
+      href: briefing.recommendations[0]?.href ?? '/admin/titan',
+      actions: briefing.recommendations.slice(0, 3).map((r) => ({ label: r.title.slice(0, 40), href: r.href })),
     };
   }
 

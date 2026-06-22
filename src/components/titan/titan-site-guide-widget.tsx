@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { createPortal } from 'react-dom';
-import { MessageCircle, X, Send, ChevronRight, Sparkles } from 'lucide-react';
+import { X, Send, ChevronRight, Sparkles } from 'lucide-react';
 import { PoweredByTitan } from '@/components/titan/titan-brand';
 
 type GuideLink = { label: string; href: string };
@@ -41,9 +40,7 @@ function emptyLead(): LeadForm {
   return { name: '', email: '', phone: '', vehicle: '', serviceNeeded: '', city: '', preferredDate: '' };
 }
 
-export function TitanSiteGuideWidget() {
-  const [mounted, setMounted] = useState(false);
-  const [open, setOpen] = useState(false);
+export function TitanPublicAssistant({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [sessionId, setSessionId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -52,10 +49,6 @@ export function TitanSiteGuideWidget() {
   const [lead, setLead] = useState<LeadForm>(emptyLead());
   const [err, setErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const track = useCallback(
     async (eventType: string, extra?: { questionKey?: string; metadata?: Record<string, unknown> }) => {
@@ -190,28 +183,14 @@ export function TitanSiteGuideWidget() {
     }
   };
 
-  if (!mounted) return null;
+  if (!open) return null;
 
-  const ui = (
-    <div className="titan-site-guide-root pointer-events-none fixed inset-0 z-[9998]">
-      {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="titan-site-guide-fab pointer-events-auto fixed bottom-5 right-4 flex items-center gap-2.5 rounded-full border border-emerald-400/50 bg-zinc-950/95 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_40px_rgba(0,0,0,0.55),0_0_24px_rgba(52,211,153,0.15)] backdrop-blur-md transition hover:scale-[1.02] hover:border-emerald-300/70 sm:bottom-6 sm:right-6"
-          aria-label="Ask Titan"
-        >
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/25 to-emerald-600/10 text-emerald-300 ring-1 ring-emerald-400/30">
-            <MessageCircle className="h-4 w-4" />
-          </span>
-          <span>Ask Titan</span>
-        </button>
-      ) : (
-        <div
-          className="titan-site-guide-panel pointer-events-auto fixed bottom-4 right-4 flex max-h-[min(640px,calc(100dvh-1.5rem))] w-[min(420px,calc(100vw-1.25rem))] flex-col overflow-hidden rounded-2xl border border-emerald-500/30 bg-zinc-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200 sm:bottom-6 sm:right-6"
-          role="dialog"
-          aria-label="Ask Titan"
-        >
+  return (
+    <div
+      className="titan-site-guide-panel flex max-h-[min(640px,calc(100dvh-1.5rem))] w-[min(420px,calc(100vw-1.25rem))] flex-col overflow-hidden rounded-2xl border border-emerald-500/30 bg-zinc-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.65)] backdrop-blur-xl"
+      role="dialog"
+      aria-label="Ask Titan"
+    >
           <header className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black via-zinc-950 to-emerald-950/30 px-4 py-3.5">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/40 bg-emerald-500/10 font-black text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.12)]">
@@ -227,7 +206,7 @@ export function TitanSiteGuideWidget() {
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={onClose}
               className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/5 hover:text-white"
               aria-label="Close"
             >
@@ -353,10 +332,6 @@ export function TitanSiteGuideWidget() {
               <PoweredByTitan compact />
             </div>
           </div>
-        </div>
-      )}
     </div>
   );
-
-  return createPortal(ui, document.body);
 }

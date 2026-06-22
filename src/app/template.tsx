@@ -3,6 +3,7 @@
 import { GlobalRuntimeGuard } from '@/components/layout/global-runtime-guard';
 import { RootClientBoundary } from '@/components/layout/root-client-boundary';
 import { SiteChrome } from '@/components/layout/site-chrome';
+import { TitanGlobalAssistant } from '@/components/titan/titan-global-assistant';
 import { StabilityDiagnosticsClient } from '@/components/layout/stability-diagnostics-client';
 
 /**
@@ -23,6 +24,7 @@ export default function AppTemplate({ children }: { children: React.ReactNode })
       <StabilityDiagnosticsClient />
       <RootClientBoundary>
         <SiteChrome>{children}</SiteChrome>
+        <TitanGlobalAssistant />
       </RootClientBoundary>
     </div>
   );
