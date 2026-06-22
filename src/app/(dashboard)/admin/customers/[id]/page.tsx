@@ -8,32 +8,23 @@ import { CustomerVehiclesManager } from '@/components/admin/customer-vehicles-ma
 import { SyncCapturedVehiclesButton } from '@/components/admin/sync-captured-vehicles-button';
 import { addCustomerNoteAction } from '@/app/(dashboard)/admin/customer-note-actions';
 import { unarchiveCustomerAction, addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
-import { workOrderPath } from '@/lib/work-order-links';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { CustomerProfileTabs } from '@/components/admin/customer-profile-tabs';
+import { CustomerTimelineFeed } from '@/components/admin/customer-timeline-feed';
+import { loadCustomerTimeline } from '@/lib/customer-timeline';
 import { 
   Mail, 
   Phone, 
   MapPin, 
   User, 
   Award, 
-  DollarSign, 
-  Calendar, 
-  Clock, 
   Car, 
   CreditCard, 
-  Activity, 
-  FileText, 
-  ClipboardList, 
   ShieldAlert,
-  Sparkles,
   PhoneCall,
-  UserPlus,
   ArrowLeft,
-  Compass,
-  FileSignature
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +51,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const custEmailRaw = String(c.email ?? '').trim().toLowerCase();
   const custPhoneRaw = String(c.phone ?? '').replace(/\D/g, '');
 
-  const [apptsRes, notesRes, apptsByEmailRes, apptsByPhoneRes] = await Promise.all([
+  const [apptsRes, apptsByEmailRes, apptsByPhoneRes] = await Promise.all([
     admin
       .from('appointments')
       .select(
@@ -69,7 +60,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       .eq('customer_id', id)
       .order('scheduled_start', { ascending: false })
       .limit(80),
-    admin.from('customer_notes').select('id, body, created_at').eq('customer_id', id).order('created_at', { ascending: false }).limit(40),
     custEmailRaw
       ? admin
           .from('appointments')
@@ -132,26 +122,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const upcoming = apptRows.filter((a) => new Date(a.scheduled_start) >= now);
   const past = apptRows.filter((a) => new Date(a.scheduled_start) < now);
 
-  const signedQ =
-    apptIds.length > 0
-      ? await admin.from('signed_agreements').select('id, signed_at, appointment_id').in('appointment_id', apptIds)
-      : { data: [] as { id: string; signed_at: string | null; appointment_id: string }[] };
-
-  const [intakeByCustomer, intakeByAppt] = await Promise.all([
-    admin.from('intake_submissions').select('id, created_at, appointment_id').eq('customer_id', id).order('created_at', { ascending: false }).limit(40),
-    apptIds.length
-      ? admin.from('intake_submissions').select('id, created_at, appointment_id').in('appointment_id', apptIds).order('created_at', { ascending: false }).limit(40)
-      : Promise.resolve({ data: [] as { id: string; created_at: string; appointment_id: string | null }[] }),
-  ]);
-
-  const intakeMap = new Map<string, { id: string; created_at: string; appointment_id: string | null }>();
-  for (const row of [...(intakeByCustomer.data ?? []), ...(intakeByAppt.data ?? [])]) {
-    intakeMap.set(String(row.id), row as { id: string; created_at: string; appointment_id: string | null });
-  }
-  const intakeRows = [...intakeMap.values()].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
   const completedPast = past.filter((a) => a.status === 'completed');
   const headlineSpendCents = paymentsTotalCents;
   const pendingBookings = apptRows.filter((a) => !['completed', 'cancelled'].includes(a.status));
@@ -163,7 +133,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   } catch {
     vehicles = [];
   }
-  const notes = (notesRes.data ?? []) as { id: string; body: string; created_at: string }[];
   const apptVehicles = apptRows
     .flatMap((a) => {
       if (Array.isArray(a.booking_vehicles)) {
@@ -175,33 +144,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     })
     .filter(Boolean);
 
-  const custEmail = String(c.email ?? '')
-    .trim()
-    .toLowerCase();
-
-  const [fieldNotesRes, fallbackRes] = await Promise.all([
-    apptIds.length
-      ? admin
-          .from('tech_job_notes')
-          .select(
-            'id, appointment_id, before_notes, after_notes, damage_notes, internal_notes, upsell_suggestions, customer_visible, created_at',
-          )
-          .in('appointment_id', apptIds)
-          .order('created_at', { ascending: false })
-          .limit(40)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    custEmail
-      ? admin
-          .from('booking_fallbacks')
-          .select('id, status, guest_email, created_at, promotion_error, converted_appointment_id')
-          .eq('guest_email', custEmail)
-          .order('created_at', { ascending: false })
-          .limit(25)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-  ]);
-
-  const fieldNoteRows = (fieldNotesRes.data ?? []) as Record<string, unknown>[];
-  const fallbackRows = (fallbackRes.data ?? []) as Record<string, unknown>[];
   const addr1 = typeof c.address_line1 === 'string' ? c.address_line1 : '';
   const addr2 = typeof c.address_line2 === 'string' ? c.address_line2 : '';
   const city = typeof c.city === 'string' ? c.city : '';
@@ -289,6 +231,36 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   }));
 
   const isArchived = Boolean(c.archived);
+
+  const timelineBundle = await loadCustomerTimeline(admin, id, {
+    email: String(c.email ?? ''),
+    phone: String(c.phone ?? ''),
+    full_name: String(c.full_name ?? ''),
+  });
+
+  const noteForm = (
+    <form action={addCustomerNoteAction} className="space-y-3 rounded-2xl border border-white/5 bg-black/40 p-4">
+      <input type="hidden" name="customerId" value={id} />
+      <label className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
+        Add staff note to timeline
+        <textarea
+          name="body"
+          rows={2}
+          required
+          placeholder="Special requests, VIP notes, follow-up context…"
+          className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-gold/40"
+        />
+      </label>
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          className="rounded-xl border border-gold/45 bg-gold/5 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/15 transition"
+        >
+          Save note
+        </button>
+      </div>
+    </form>
+  );
 
   return (
     <DashboardShell title={String(c.full_name ?? c.email ?? 'Customer')} subtitle="Customer CRM detail console" role="admin">
@@ -397,227 +369,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
         </section>
 
-        {/* TABS CONTAINER FOR CLEAN FOLDER LAYOUT */}
+        <CustomerTimelineFeed events={timelineBundle.events} noteForm={noteForm} />
+
+        {/* Management tabs — timeline above is the primary customer story */}
         <CustomerProfileTabs
           tabs={[
-            {
-              id: 'activity',
-              label: 'Activity Log',
-              icon: <Activity className="h-3.5 w-3.5" />,
-              content: (
-                <div className="space-y-6">
-                  {/* Internal Notes Feed */}
-                  <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 backdrop-blur-md">
-                    <h2 className="text-xs font-black uppercase text-gold-soft tracking-wider mb-3">Internal CRM Notes</h2>
-                    <form action={addCustomerNoteAction} className="space-y-3 rounded-2xl border border-white/5 bg-black/40 p-4">
-                      <input type="hidden" name="customerId" value={id} />
-                      <label className="block text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                        Add staff-only note
-                        <textarea
-                          name="body"
-                          rows={3}
-                          required
-                          placeholder="Type customer notes, instructions, special requests..."
-                          className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-gold/40"
-                        />
-                      </label>
-                      <div className="flex justify-end">
-                        <button
-                          type="submit"
-                          className="rounded-xl border border-gold/45 bg-gold/5 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/15 transition"
-                        >
-                          Save internal note
-                        </button>
-                      </div>
-                    </form>
-
-                    <ul className="mt-4 space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                      {notes.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic py-6 text-center">No notes written for this client.</p>
-                      ) : null}
-                      {notes.map((n) => (
-                        <li key={n.id} className="rounded-2xl border border-white/5 bg-zinc-900/30 p-3.5 whitespace-pre-wrap text-zinc-300">
-                          <div className="flex items-center justify-between text-[10px] text-zinc-500 border-b border-white/5 pb-1 mb-2 font-mono">
-                            <span>Saved by Staff</span>
-                            <span>{chicago(n.created_at)}</span>
-                          </div>
-                          <p className="text-xs font-medium leading-relaxed">{n.body}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Work Orders */}
-                  <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 backdrop-blur-md">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xs font-black uppercase text-gold-soft tracking-wider">Work Orders Directory</h2>
-                      <Link href="/admin/work-orders" className="text-[10px] font-black uppercase text-zinc-400 hover:text-white underline">
-                        Open Dispatch Board
-                      </Link>
-                    </div>
-                    <ul className="space-y-2.5">
-                      {apptRows.length === 0 ? (
-                        <li className="text-xs text-zinc-500 italic py-6 text-center">No jobs scheduled or finished yet.</li>
-                      ) : null}
-                      {apptRows.map((a) => (
-                        <li key={`wo-${a.id}`} className="rounded-2xl border border-white/5 bg-zinc-900/30 p-4 hover:border-gold/20 transition duration-200">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Link href={workOrderPath(a.id, { shell: 'admin' })} className="font-bold text-gold-soft hover:underline text-sm uppercase">
-                              {a.service_slug.replace(/-/g, ' ')}
-                            </Link>
-                            <div className="flex items-center gap-2">
-                              <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                                a.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
-                                a.status === 'cancelled' ? 'bg-zinc-800 text-zinc-500' :
-                                'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                              }`}>
-                                {a.status}
-                              </span>
-                              {a.payment_status && (
-                                <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                                  a.payment_status === 'paid' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
-                                  'bg-rose-500/15 text-rose-400 border border-rose-500/20'
-                                }`}>
-                                  {a.payment_status.replace(/_/g, ' ')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <p className="mt-1 text-xs text-zinc-300 font-medium">
-                            {a.vehicle_description || 'Vehicle details not captured'}
-                          </p>
-                          <p className="mt-1.5 text-[10px] text-zinc-500 font-mono">
-                            Scheduled: {chicago(a.scheduled_start)}
-                            {a.service_address && ` · Location: ${a.service_address}`}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Technician Job Notes feed */}
-                  <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 backdrop-blur-md">
-                    <h2 className="text-xs font-black uppercase text-gold-soft tracking-wider mb-3">Field Job Reports</h2>
-                    <ul className="space-y-3">
-                      {fieldNoteRows.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic py-6 text-center">No field notes logged by technicians.</p>
-                      ) : null}
-                      {fieldNoteRows.map((r) => {
-                        const vis = Boolean(r.customer_visible);
-                        const bits: string[] = [];
-                        if (r.before_notes) bits.push(`Before: ${String(r.before_notes)}`);
-                        if (r.after_notes) bits.push(`After: ${String(r.after_notes)}`);
-                        if (r.damage_notes) bits.push(`Damage: ${String(r.damage_notes)}`);
-                        if (r.upsell_suggestions) bits.push(`Upsell Suggestion: ${String(r.upsell_suggestions)}`);
-                        if (r.internal_notes) bits.push(`Internal Staff Notes: ${String(r.internal_notes)}`);
-                        const body = (vis ? bits : bits.filter((b) => !b.startsWith('Internal Staff Notes:'))).join('\n');
-                        
-                        return (
-                          <li key={String(r.id)} className="rounded-2xl border border-white/5 bg-zinc-900/30 p-4 text-xs text-zinc-300 whitespace-pre-wrap">
-                            <div className="flex items-center justify-between text-[9px] text-zinc-500 border-b border-white/5 pb-1 mb-2 font-mono uppercase tracking-wider">
-                              <span>Work Order: #{String(r.appointment_id).slice(0, 8)}...</span>
-                              <span>{chicago(String(r.created_at ?? ''))}</span>
-                            </div>
-                            <p className="leading-relaxed font-sans">{body || 'Empty note content'}</p>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-
-                  {/* Fallback Booking attempts */}
-                  <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 backdrop-blur-md">
-                    <h2 className="text-xs font-black uppercase text-rose-400 tracking-wider mb-1">Failed Booking attempts</h2>
-                    <p className="text-[10px] text-zinc-500 mb-3">Logs of abandoned checkouts or promotion errors.</p>
-                    <ul className="space-y-2 text-xs">
-                      {fallbackRows.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic py-6 text-center">No failed attempts for this email address.</p>
-                      ) : null}
-                      {fallbackRows.map((r) => (
-                        <li key={String(r.id)} className="rounded-xl border border-white/5 bg-rose-500/5 p-3 text-zinc-300">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-[9px] uppercase font-bold text-zinc-400 bg-black/40 px-2 py-0.5 rounded border border-white/5">
-                              Status: {String(r.status)}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">{chicago(String(r.created_at ?? ''))}</span>
-                          </div>
-                          {!!r.promotion_error && (
-                            <p className="mt-1.5 text-xs text-rose-300 font-medium">Error: {String(r.promotion_error)}</p>
-                          )}
-                          {!!r.converted_appointment_id && (
-                            <p className="mt-1 text-[10px] text-emerald-400 font-semibold">
-                              Converted to Appt #{String(r.converted_appointment_id).slice(0, 8)}...
-                            </p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Payments list, signed agreement logs */}
-                  <div className="grid gap-6 md:grid-cols-2">
-                    {/* Payments */}
-                    <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5">
-                      <h3 className="text-xs font-black uppercase text-gold-soft tracking-wider mb-3">Payment Receipts</h3>
-                      <ul className="space-y-2 text-xs">
-                        {paymentRows.length === 0 ? (
-                          <p className="text-zinc-500 italic py-4 text-center">No payments processed.</p>
-                        ) : null}
-                        {paymentRows.map((p, i) => (
-                          <li key={`${p.appointment_id}-${p.created_at}-${i}`} className="flex justify-between items-center border-b border-white/5 pb-2 last:border-0 last:pb-0">
-                            <div>
-                              <p className="font-bold text-white">${(p.amount_cents / 100).toFixed(2)}</p>
-                              <p className="text-[9px] text-zinc-500 font-mono mt-0.5">Appt: {p.appointment_id.slice(0, 8)}...</p>
-                            </div>
-                            <div className="text-right">
-                              <span className={`inline-block px-1.5 py-0.2 text-[8px] uppercase tracking-wider font-black rounded ${
-                                p.status === 'succeeded' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-500'
-                              }`}>
-                                {p.status}
-                              </span>
-                              <p className="text-[9px] text-zinc-500 font-mono mt-0.5">{chicago(p.created_at)}</p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Signed Agreements & Intake */}
-                    <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 space-y-5">
-                      <div>
-                        <h3 className="text-xs font-black uppercase text-gold-soft tracking-wider mb-2.5">Signed Agreements</h3>
-                        <ul className="space-y-2 text-xs">
-                          {(signedQ.data ?? []).length === 0 ? (
-                            <p className="text-zinc-500 italic py-2">No signed legal agreements.</p>
-                          ) : null}
-                          {(signedQ.data ?? []).map((s) => (
-                            <li key={s.id} className="flex items-center gap-1.5 text-zinc-300">
-                              <FileSignature className="h-4 w-4 text-gold-soft" />
-                              <span>Appt {String(s.appointment_id).slice(0, 8)}… · Signed {chicago(s.signed_at)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <div className="border-t border-white/5 pt-4">
-                        <h3 className="text-xs font-black uppercase text-gold-soft tracking-wider mb-2.5">Vehicle Intake Submissions</h3>
-                        <ul className="space-y-2 text-xs">
-                          {intakeRows.length === 0 ? (
-                            <p className="text-zinc-500 italic py-2">No vehicle intake checklists.</p>
-                          ) : null}
-                          {intakeRows.map((r) => (
-                            <li key={r.id} className="flex items-center gap-1.5 text-zinc-300">
-                              <FileText className="h-4 w-4 text-gold-soft" />
-                              <span>Checklist Intake · {chicago(r.created_at)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ),
-            },
             {
               id: 'vehicles',
               label: 'Vehicles & Services',
