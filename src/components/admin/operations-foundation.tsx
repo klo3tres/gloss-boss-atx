@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import {
   AlertTriangle,
-  ArrowUpRight,
   Bell,
   Calendar,
   ChevronRight,
@@ -23,6 +22,7 @@ import type {
   OperationException,
   OperationsSnapshot,
 } from '@/lib/operations-snapshot';
+import { ExceptionActionButtons } from '@/components/admin/exception-action-buttons';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
 
@@ -130,21 +130,7 @@ function ExceptionRow({ item, compact }: { item: OperationException; compact?: b
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2">
-          <Link
-            href={item.href}
-            className="inline-flex items-center gap-1 rounded-lg border border-gold/30 bg-black/60 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft hover:border-gold/50"
-          >
-            {item.actionLabel}
-            <ArrowUpRight className="h-3 w-3" />
-          </Link>
-          {item.secondaryHref && item.secondaryActionLabel ? (
-            <Link
-              href={item.secondaryHref}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-400 hover:text-white"
-            >
-              {item.secondaryActionLabel}
-            </Link>
-          ) : null}
+          <ExceptionActionButtons item={item} compact={compact} />
         </div>
       </div>
     </div>
@@ -188,6 +174,7 @@ function DailyOpsSection({ dailyOps, expanded }: { dailyOps: DailyOperationsBoar
             <div><p className="text-zinc-500">Projected</p><p className="font-mono text-lg font-black text-white">{displayMoney(today.projectedRevenueCents)}</p></div>
             <div><p className="text-zinc-500">Unpaid done</p><p className="font-mono text-lg font-black text-red-300">{today.unpaidCompletedCount}</p></div>
             <div><p className="text-zinc-500">Missing tech</p><p className="font-mono text-lg font-black text-white">{today.missingTech}</p></div>
+            <div><p className="text-zinc-500">Techs assigned</p><p className="font-mono text-lg font-black text-white">{today.techniciansAssigned}</p></div>
             <div><p className="text-zinc-500">Missing address</p><p className="font-mono text-lg font-black text-white">{today.missingAddress}</p></div>
             <div><p className="text-zinc-500">Missing agreement</p><p className="font-mono text-lg font-black text-white">{today.missingAgreement}</p></div>
             <div><p className="text-zinc-500">Missing photos</p><p className="font-mono text-lg font-black text-white">{today.missingBeforePhotos + today.missingAfterPhotos}</p></div>

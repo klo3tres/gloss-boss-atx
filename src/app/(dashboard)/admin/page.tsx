@@ -1,5 +1,6 @@
 import { OwnerCommandCenter } from '@/components/admin/owner-command-center';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { loadOwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
@@ -8,7 +9,12 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ overview?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
   const session = await getSessionWithProfile();
   let loadErr: string | null = null;
   let metrics: import('@/lib/owner-dashboard-metrics').OwnerDashboardSnapshot = {
@@ -129,6 +135,17 @@ export default async function AdminDashboardPage() {
         loadErr = e instanceof Error ? e.message : 'Could not load owner dashboard';
       }
     }
+  }
+
+  if (
+    !loadErr &&
+    operations &&
+    operations.summary.critical > 0 &&
+    params.overview !== '1' &&
+    session.user &&
+    isAdminLevel(session.profile?.role ?? null)
+  ) {
+    redirect('/admin/exceptions');
   }
 
   return (

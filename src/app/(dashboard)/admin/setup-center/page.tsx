@@ -60,7 +60,7 @@ export default async function OwnerSetupCenterPage() {
       title: 'Financial truth and lifecycle migrations',
       ok: financialMigrationsReady,
       important: true,
-      detail: financialMigrationsReady ? 'Audit, lifecycle, and exception tables are available.' : 'Apply Supabase migrations 000079, 000080, and 000081 before production deployment.',
+      detail: financialMigrationsReady ? 'Audit, lifecycle, and exception tables are available.' : 'Apply Supabase migrations 000079 through 000082 before production deployment.',
       action: 'Open system diagnostics',
       href: '/admin/system-diagnostics',
     },

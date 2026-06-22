@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, ArrowUpRight } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { ExceptionActionButtons } from '@/components/admin/exception-action-buttons';
 import type { ExceptionCategory, ExceptionSeverity, OperationsSnapshot } from '@/lib/operations-snapshot';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
@@ -101,6 +102,9 @@ export function ExceptionInboxClient({
         <Link href="/admin/daily-operations" className="font-black uppercase text-gold hover:underline">
           Daily operations board →
         </Link>
+        <Link href="/admin?overview=1" className="font-black uppercase text-zinc-400 hover:text-white">
+          Full dashboard
+        </Link>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -172,15 +176,7 @@ export function ExceptionInboxClient({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col gap-2">
-                  <Link href={item.href} className="inline-flex items-center gap-1 rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft hover:border-gold/50">
-                    {item.actionLabel}
-                    <ArrowUpRight className="h-3 w-3" />
-                  </Link>
-                  {item.secondaryHref ? (
-                    <Link href={item.secondaryHref} className="text-[10px] font-black uppercase text-zinc-400 hover:text-white">
-                      {item.secondaryActionLabel}
-                    </Link>
-                  ) : null}
+                  <ExceptionActionButtons item={item} />
                 </div>
               </div>
             </div>

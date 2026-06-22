@@ -25,7 +25,9 @@ import {
 } from '@/lib/revenue-metrics';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
-import { fetchWeatherForAddress } from '@/lib/weather-forecast';
+import { loadDismissedFingerprints, syncBusinessExceptions } from '@/lib/business-exception-sync';
+import { assessBeforePhotoSlots } from '@/lib/pre-inspection';
+import { fetchWeatherForAddress, type WeatherSnapshot } from '@/lib/weather-forecast';
 import { workOrderPath } from '@/lib/work-order-links';
 import {
   dateKeyChicago,
@@ -48,6 +50,25 @@ export type ExceptionCategory =
 
 export type ExceptionSeverity = 'critical' | 'warning' | 'info';
 
+export type ExceptionInlineActionType =
+  | 'repair_duplicates'
+  | 'exclude_payment'
+  | 'retry_notification'
+  | 'dismiss'
+  | 'send_followup'
+  | 'create_offer';
+
+export type ExceptionInlineAction = {
+  type: ExceptionInlineActionType;
+  label: string;
+  paymentId?: string;
+  outboxId?: string;
+  winnerId?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerId?: string;
+};
+
 export type OperationException = {
   id: string;
   category: ExceptionCategory;
@@ -58,6 +79,7 @@ export type OperationException = {
   workOrderId?: string | null;
   paymentId?: string | null;
   receiptId?: string | null;
+  outboxId?: string | null;
   occurredAt: string | null;
   href: string;
   actionLabel: string;
@@ -67,6 +89,7 @@ export type OperationException = {
   recipient?: string | null;
   eventType?: string | null;
   suggestedNext?: string;
+  inlineActions?: ExceptionInlineAction[];
 };
 
 export type ExceptionSummary = {
@@ -108,6 +131,7 @@ export type DailyOperationsBoard = {
     missingAgreement: number;
     missingBeforePhotos: number;
     missingAfterPhotos: number;
+    techniciansAssigned: number;
     weatherRisk: boolean;
     weatherNote: string | null;
     projectedRevenueCents: number;
@@ -239,6 +263,17 @@ function buildDailyJobRow(
   };
 }
 
+let snapshotCache: { at: number; data: OperationsSnapshot } | null = null;
+const SNAPSHOT_CACHE_MS = 60_000;
+
+function formatServiceAddress(row: ApptRow) {
+  return [row.service_address, row.service_city, row.service_state, row.service_zip].filter(Boolean).map(String).join(', ').trim();
+}
+
+function hasServiceAddress(row: ApptRow) {
+  return Boolean(formatServiceAddress(row));
+}
+
 async function fetchFleetInquiriesSafe(admin: SupabaseClient) {
   const res = await admin
     .from('fleet_inquiries')
@@ -249,7 +284,14 @@ async function fetchFleetInquiriesSafe(admin: SupabaseClient) {
   return res;
 }
 
-export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<OperationsSnapshot> {
+export async function loadOperationsSnapshot(
+  admin: SupabaseClient,
+  opts?: { force?: boolean },
+): Promise<OperationsSnapshot> {
+  if (!opts?.force && snapshotCache && Date.now() - snapshotCache.at < SNAPSHOT_CACHE_MS) {
+    return snapshotCache.data;
+  }
+
   const refreshedAt = new Date().toISOString();
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
   const since7 = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -269,6 +311,7 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
     receiptsRes,
     apptsRes,
     agreementRes,
+    agreementDetailRes,
     mediaRes,
     messagesRes,
     leadsRes,
@@ -278,6 +321,7 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
     todayPayments,
     weekPayments,
     weather,
+    galleryRes,
   ] = await Promise.all([
     getStripeSecrets(admin),
     admin
@@ -324,6 +368,10 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       .order('scheduled_start', { ascending: true })
       .limit(800),
     admin.from('signed_agreements').select('appointment_id, pdf_url, signed_at').limit(8000),
+    admin
+      .from('signed_agreements')
+      .select('appointment_id, sms_consent, photo_consent, photos_consent, media_consent, marketing_photo_consent')
+      .limit(8000),
     admin.from('job_media').select('appointment_id, category, photo_category').limit(10000),
     admin.from('messages').select('id, from_name, subject, status, created_at').eq('status', 'new').order('created_at', { ascending: false }).limit(40),
     admin.from('leads').select('id, full_name, email, status, created_at, updated_at, last_contact_at').order('created_at', { ascending: false }).limit(200),
@@ -333,6 +381,11 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
     fetchPaymentsSince(admin, todayStart, todayEnd),
     fetchPaymentsSince(admin, weekStart, now),
     fetchWeatherForAddress(baseAddress),
+    admin
+      .from('gallery_images')
+      .select('id, title, appointment_id, before_photo_url, after_photo_url, destination, published, metadata')
+      .order('created_at', { ascending: false })
+      .limit(300),
   ]);
 
   const items: OperationException[] = [];
@@ -341,6 +394,10 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
   const agreementPdfMissing = new Set(
     (agreementRes.data ?? []).filter((r) => !str(r.pdf_url)).map((r) => str(r.appointment_id)),
   );
+  const agreementByAppt = new Map<string, Record<string, unknown>>();
+  for (const row of agreementDetailRes.data ?? []) {
+    agreementByAppt.set(str(row.appointment_id), row as Record<string, unknown>);
+  }
 
   const techNames = new Map<string, string>();
   for (const t of techsRes.data ?? []) {
@@ -370,6 +427,17 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
     const list = receiptByPayment.get(pid) ?? [];
     list.push(r);
     receiptByPayment.set(pid, list);
+  }
+
+  const paymentIdSet = new Set(paymentRows.map((p) => str(p.id)));
+  const receiptsByAppt = new Map<string, Record<string, unknown>[]>();
+  for (const r of receiptRows) {
+    const aid = str(r.appointment_id);
+    if (aid) {
+      const list = receiptsByAppt.get(aid) ?? [];
+      list.push(r);
+      receiptsByAppt.set(aid, list);
+    }
   }
 
   const cashByAppt = new Map<string, number>();
@@ -514,6 +582,10 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       secondaryHref: apptId ? woHref(apptId) : undefined,
       secondaryActionLabel: apptId ? 'Open work order' : undefined,
       suggestedNext: 'Use Repair all safely on Revenue page to exclude duplicate rows.',
+      inlineActions: [
+        { type: 'repair_duplicates', label: 'Repair all safely' },
+        ...(apptId ? [] : []),
+      ],
     });
   }
 
@@ -532,6 +604,42 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       actionLabel: 'Review receipts',
       suggestedNext: 'Exclude duplicate receipt rows from revenue.',
     });
+  }
+
+  for (const r of receiptRows) {
+    const rid = str(r.id);
+    const pid = str(r.payment_id);
+    if (pid && !paymentIdSet.has(pid)) {
+      items.push({
+        id: `receipt:orphan:${rid}`,
+        category: 'payments',
+        severity: 'critical',
+        title: 'Receipt references missing payment',
+        detail: `Receipt ${rid.slice(0, 8)} links to payment ${pid.slice(0, 8)} which no longer exists.`,
+        receiptId: rid,
+        paymentId: pid,
+        workOrderId: str(r.appointment_id) || null,
+        occurredAt: str(r.created_at) || null,
+        href: `/admin/receipts/${rid}`,
+        actionLabel: 'Open receipt',
+        secondaryHref: '/admin/revenue',
+        secondaryActionLabel: 'Revenue diagnostics',
+      });
+    }
+    if (!pid) {
+      items.push({
+        id: `receipt:no-payment:${rid}`,
+        category: 'payments',
+        severity: 'warning',
+        title: 'Receipt has no linked payment',
+        detail: `Receipt ${rid.slice(0, 8)} is not tied to a payment record.`,
+        receiptId: rid,
+        workOrderId: str(r.appointment_id) || null,
+        occurredAt: str(r.created_at) || null,
+        href: `/admin/receipts/${rid}`,
+        actionLabel: 'Review receipt',
+      });
+    }
   }
 
   // --- Orphan payments ---
@@ -569,8 +677,52 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       occurredAt: str(p.paid_at || p.created_at) || null,
       href: `/admin/payments/${p.id}`,
       actionLabel: 'Review payment',
+      inlineActions: [{ type: 'exclude_payment', label: 'Exclude row', paymentId: str(p.id) }],
     });
   }
+
+  for (const g of galleryRes.data ?? []) {
+    const gid = str(g.id);
+    const meta = g.metadata && typeof g.metadata === 'object' ? (g.metadata as Record<string, unknown>) : {};
+    const phase = str(meta.transformation_phase);
+    const hasBefore = Boolean(str(g.before_photo_url));
+    const hasAfter = Boolean(str(g.after_photo_url));
+    const needsClass =
+      Boolean(g.appointment_id) &&
+      (!hasBefore || !hasAfter) &&
+      phase !== 'before_after' &&
+      str(g.destination) !== 'featured';
+    if (needsClass) {
+      items.push({
+        id: `photos:gallery:${gid}`,
+        category: 'photos',
+        severity: 'info',
+        title: `Gallery item needs before/after classification`,
+        detail: str(g.title) || `Gallery row ${gid.slice(0, 8)} is missing paired before/after metadata.`,
+        workOrderId: str(g.appointment_id) || null,
+        occurredAt: null,
+        href: '/admin/cms',
+        actionLabel: 'Classify in gallery',
+        secondaryHref: str(g.appointment_id) ? woHref(str(g.appointment_id)) : undefined,
+        secondaryActionLabel: str(g.appointment_id) ? 'Open work order' : undefined,
+      });
+    }
+  }
+
+  const weatherByAppt = new Map<string, WeatherSnapshot>();
+  const weatherPrefetchTargets = apptRows
+    .filter((row) => {
+      const scheduled = str(row.scheduled_start);
+      return (isTodayChicago(scheduled) || isTomorrowChicago(scheduled)) && hasServiceAddress(row as ApptRow);
+    })
+    .slice(0, 12);
+  await Promise.all(
+    weatherPrefetchTargets.map(async (row) => {
+      const id = str(row.id);
+      const w = await fetchWeatherForAddress(formatServiceAddress(row as ApptRow), str(row.scheduled_start));
+      weatherByAppt.set(id, w);
+    }),
+  );
 
   const todaySummary = summarizePayments(todayPayments, { excludeTest: true, fromIso: todayStart, toIso: todayEnd });
   const weekSummary = summarizePayments(weekPayments, { excludeTest: true, fromIso: weekStart, toIso: now });
@@ -636,6 +788,22 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
           href: job.href,
           actionLabel: 'Fix address',
         });
+        if (weather.ok) {
+          items.push({
+            id: `weather:no-address:${id}`,
+            category: 'weather',
+            severity: 'warning',
+            title: `Weather cannot be checked — ${job.guestName}`,
+            detail: 'Service address is missing, so rain risk cannot be evaluated for this job.',
+            customerName: job.guestName,
+            workOrderId: id,
+            occurredAt: scheduled,
+            href: job.href,
+            actionLabel: 'Fix address',
+            secondaryHref: '/admin/dispatch',
+            secondaryActionLabel: 'Open dispatch',
+          });
+        }
       }
       if (!job.hasContact) {
         items.push({
@@ -651,22 +819,28 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
           actionLabel: 'Update contact',
         });
       }
-      if (todayWeatherRisk) {
+      const jobWeather = weatherByAppt.get(id);
+      const jobRainRisk = jobWeather?.ok
+        ? (jobWeather.rainChancePct ?? 0) >= 60 || Boolean(jobWeather.severe) || (jobWeather.rainWarningDays?.length ?? 0) > 0
+        : todayWeatherRisk;
+      if (jobRainRisk) {
         items.push({
           id: `weather:today:${id}`,
           category: 'weather',
           severity: 'warning',
           title: `Rain risk today — ${job.guestName}`,
-          detail: weather.rainWarningDays?.length
-            ? `High rain probability expected (${weather.rainWarningDays.join(', ')}).`
-            : `Rain chance ${weather.rainChancePct ?? 0}%. Consider reschedule or covered work.`,
+          detail: jobWeather?.ok
+            ? `${jobWeather.description ?? 'Elevated rain probability'} at service address.`
+            : weather.rainWarningDays?.length
+              ? `High rain probability expected (${weather.rainWarningDays.join(', ')}).`
+              : `Rain chance ${weather.rainChancePct ?? 0}%. Consider reschedule or covered work.`,
           customerName: job.guestName,
           workOrderId: id,
           occurredAt: scheduled,
           href: job.href,
           actionLabel: 'Open work order',
-          secondaryHref: '/admin/dispatch',
-          secondaryActionLabel: 'Dispatch',
+          secondaryHref: '/admin/calendar',
+          secondaryActionLabel: 'Open calendar',
         });
       }
     }
@@ -688,17 +862,36 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
         });
       }
       if (tomorrowWeatherRisk) {
+        const jobWeather = weatherByAppt.get(id);
         items.push({
           id: `weather:tomorrow:${id}`,
           category: 'weather',
           severity: 'warning',
           title: `Rain risk tomorrow — ${job.guestName}`,
-          detail: 'Tomorrow shows elevated rain probability in the service-area forecast.',
+          detail: jobWeather?.ok
+            ? `${jobWeather.description ?? 'Elevated rain probability'} at service address.`
+            : 'Tomorrow shows elevated rain probability in the service-area forecast.',
           customerName: job.guestName,
           workOrderId: id,
           occurredAt: scheduled,
           href: job.href,
           actionLabel: 'Review job',
+          secondaryHref: '/admin/calendar',
+          secondaryActionLabel: 'Open calendar',
+        });
+      }
+      if (!hasServiceAddress(row as ApptRow) && weather.ok) {
+        items.push({
+          id: `weather:no-address-tomorrow:${id}`,
+          category: 'weather',
+          severity: 'info',
+          title: `Tomorrow weather unavailable — ${job.guestName}`,
+          detail: 'Add a service address to evaluate rain risk for tomorrow’s job.',
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: scheduled,
+          href: job.href,
+          actionLabel: 'Fix address',
         });
       }
     }
@@ -810,6 +1003,98 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       });
     }
 
+    const agreementRow = agreementByAppt.get(id);
+    if (agreementIds.has(id) && agreementRow) {
+      const smsOk = Boolean(agreementRow.sms_consent);
+      const photoOk = Boolean(agreementRow.photo_consent || agreementRow.photos_consent || agreementRow.before_after_photo_consent);
+      const mediaOk = Boolean(agreementRow.media_consent || agreementRow.marketing_photo_consent || agreementRow.social_media_consent);
+      if (!smsOk) {
+        items.push({
+          id: `agreement:sms-consent:${id}`,
+          category: 'agreements',
+          severity: 'warning',
+          title: `Missing SMS consent — ${job.guestName}`,
+          detail: 'Signed agreement exists but SMS consent was not captured.',
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: scheduled,
+          href: job.href,
+          actionLabel: 'Recapture agreement',
+        });
+      }
+      if (!photoOk) {
+        items.push({
+          id: `agreement:photo-consent:${id}`,
+          category: 'agreements',
+          severity: 'warning',
+          title: `Missing photo consent — ${job.guestName}`,
+          detail: 'Before/after photo consent was not recorded on the agreement.',
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: scheduled,
+          href: job.href,
+          actionLabel: 'Open agreement',
+        });
+      }
+      if (!mediaOk) {
+        items.push({
+          id: `agreement:media-consent:${id}`,
+          category: 'agreements',
+          severity: 'info',
+          title: `Missing media/marketing consent — ${job.guestName}`,
+          detail: 'Social/marketing photo consent was not recorded.',
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: scheduled,
+          href: job.href,
+          actionLabel: 'Open agreement',
+        });
+      }
+    }
+
+    const serviceSlug = str(row.service_slug).toLowerCase();
+    if (serviceSlug.includes('fleet') && ['assigned', 'confirmed', 'in_progress'].includes(status)) {
+      const apptPhotos = (mediaRes.data ?? []).filter((m) => str((m as { appointment_id?: string }).appointment_id) === id);
+      const assessment = assessBeforePhotoSlots(apptPhotos, serviceSlug);
+      if (assessment.missing.length > 0) {
+        items.push({
+          id: `photos:fleet-inspection:${id}`,
+          category: 'photos',
+          severity: 'warning',
+          title: `Fleet job missing inspection photos — ${job.guestName}`,
+          detail: `Missing slots: ${assessment.missing.join(', ')}.`,
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: scheduled,
+          href: `${job.href}#photos`,
+          actionLabel: 'Upload inspection photos',
+        });
+      }
+    }
+
+    if (status === 'completed') {
+      const apptReceipts = receiptsByAppt.get(id) ?? [];
+      const hasReceipt = apptReceipts.some(
+        (r) => !str(r.voided_at) && !['voided', 'excluded'].includes(str(r.status).toLowerCase()),
+      );
+      if (!hasReceipt && (cashByAppt.get(id) ?? 0) > 0) {
+        items.push({
+          id: `receipt:missing-completed:${id}`,
+          category: 'payments',
+          severity: 'warning',
+          title: `Completed job missing receipt — ${job.guestName}`,
+          detail: 'Payment was collected but no valid receipt is on file.',
+          customerName: job.guestName,
+          workOrderId: id,
+          occurredAt: str(row.job_completed_at) || scheduled,
+          href: job.href,
+          actionLabel: 'Issue receipt',
+          secondaryHref: '/admin/receipts',
+          secondaryActionLabel: 'Open receipts',
+        });
+      }
+    }
+
     if (status === 'completed' && !job.hasAfterPhotos) {
       items.push({
         id: `photos:after-completed:${id}`,
@@ -880,6 +1165,15 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
           href: `/admin/customers?search=${encodeURIComponent(str(row.guest_email) || job.guestName)}`,
           actionLabel: 'Open customer',
           suggestedNext: tier >= 90 ? 'Send win-back offer' : 'Send maintenance reminder',
+          inlineActions: [
+            {
+              type: 'send_followup',
+              label: 'Send follow-up',
+              customerEmail: str(row.guest_email) || undefined,
+              customerPhone: str(row.guest_phone) || undefined,
+            },
+            { type: 'create_offer', label: 'Create offer', customerEmail: str(row.guest_email) || undefined },
+          ],
         });
         followUpsDue += 1;
       }
@@ -925,6 +1219,7 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       title: `${str(row.kind).replace(/_/g, ' ') || 'Notification'} — ${row.status}`,
       detail: str(row.error_message || row.skipped_reason) || 'Delivery did not complete.',
       workOrderId: str(row.appointment_id) || null,
+      outboxId: str(row.id),
       occurredAt: str(row.created_at) || null,
       href: str(row.appointment_id) ? woHref(str(row.appointment_id)) : '/admin/notifications',
       actionLabel: 'View notification log',
@@ -932,6 +1227,9 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       recipient: str(payload.to || payload.destination_e164),
       eventType: str(row.kind),
       suggestedNext: failed ? 'Fix provider config and retry send.' : 'Review skipped reason.',
+      inlineActions: failed
+        ? [{ type: 'retry_notification', label: 'Retry send', outboxId: str(row.id) }]
+        : undefined,
     });
   }
 
@@ -966,6 +1264,7 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
         href: '/admin/leads',
         actionLabel: 'Open leads',
         suggestedNext: 'Contact lead and update status.',
+        inlineActions: [{ type: 'send_followup', label: 'Send follow-up', customerEmail: str(lead.email) || undefined }],
       });
     }
   }
@@ -1013,13 +1312,16 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
   }
 
   items.sort((a, b) => {
-    const sev = { critical: 0, warning: 1, info: 2 };
+    const sev = { critical:  0, warning: 1, info: 2 };
     const d = sev[a.severity] - sev[b.severity];
     if (d !== 0) return d;
     return str(b.occurredAt).localeCompare(str(a.occurredAt));
   });
 
-  const summary = summarizeExceptions(items);
+  const dismissed = await loadDismissedFingerprints(admin);
+  const visibleItems = items.filter((item) => !dismissed.has(item.id));
+  await syncBusinessExceptions(admin, visibleItems);
+  const summary = summarizeExceptions(visibleItems);
 
   const unpaidCompletedToday = todayJobs.filter((j) => j.status === 'completed' && j.balanceDueCents > 0);
   const dailyOps: DailyOperationsBoard = {
@@ -1032,6 +1334,9 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
       missingAgreement: todayJobs.filter((j) => !j.hasAgreement).length,
       missingBeforePhotos: todayJobs.filter((j) => !j.hasBeforePhotos).length,
       missingAfterPhotos: todayJobs.filter((j) => j.status === 'completed' && !j.hasAfterPhotos).length,
+      techniciansAssigned: new Set(
+        todayJobs.map((j) => j.techName).filter((name) => name && name !== 'Unassigned'),
+      ).size,
       weatherRisk: todayWeatherRisk,
       weatherNote: todayWeatherRisk
         ? weather.rainWarningDays?.join(', ') || `Rain chance ${weather.rainChancePct ?? 0}%`
@@ -1065,5 +1370,7 @@ export async function loadOperationsSnapshot(admin: SupabaseClient): Promise<Ope
     revenueWeekCents: weekSummary.grossCents,
   };
 
-  return { refreshedAt, exceptions: items, summary, dailyOps };
+  const snapshot: OperationsSnapshot = { refreshedAt, exceptions: visibleItems, summary, dailyOps };
+  snapshotCache = { at: Date.now(), data: snapshot };
+  return snapshot;
 }

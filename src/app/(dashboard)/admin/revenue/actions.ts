@@ -121,6 +121,8 @@ export async function repairAllDuplicatePaymentsAction(): Promise<{
   revalidatePath('/admin/reports');
   revalidatePath('/admin/receipts');
   revalidatePath('/admin');
+  revalidatePath('/admin/exceptions');
+  revalidatePath('/admin/daily-operations');
   revalidatePath('/admin/system-diagnostics');
   return {
     ok: true,
