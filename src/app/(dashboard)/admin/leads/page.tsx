@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { LeadsAdminClient, type AssignmentEventRow } from '@/components/admin/leads-admin-client';
+import { loadEstimatesForLead, type ServiceEstimate } from '@/lib/service-estimates';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -15,10 +16,12 @@ export default async function AdminLeadsPage() {
     );
   }
 
-  const [leadsRes, techRes, evRes] = await Promise.all([
+  const [leadsRes, techRes, evRes, servicesRes, pricesRes] = await Promise.all([
     admin.from('leads').select('*').order('created_at', { ascending: false }).limit(200),
     admin.from('profiles').select('id, full_name, email, role, active').eq('role', 'technician').order('full_name', { ascending: true }),
     admin.from('assignment_events').select('id, action, technician_id, previous_technician_id, actor_id, created_at, note, entity_id').eq('entity_type', 'lead').order('created_at', { ascending: false }).limit(600),
+    admin.from('services').select('slug, title').eq('active', true).order('title'),
+    admin.from('service_prices').select('price_cents, vehicle_class, services(slug)').eq('vehicle_class', 'standard').limit(50),
   ]);
 
   const rows = ((leadsRes.data ?? []) as Record<string, unknown>[]).filter(
@@ -49,6 +52,27 @@ export default async function AdminLeadsPage() {
     }
   }
 
+  const priceBySlug = new Map<string, number>();
+  for (const row of pricesRes.data ?? []) {
+    const r = row as { price_cents?: number; services?: { slug?: string } | { slug?: string }[] | null };
+    const svc = r.services;
+    const slug = Array.isArray(svc) ? svc[0]?.slug : svc?.slug;
+    if (slug && typeof r.price_cents === 'number') priceBySlug.set(String(slug), r.price_cents);
+  }
+
+  const serviceOptions = (servicesRes.data ?? []).map((s) => {
+    const row = s as { slug: string; title: string };
+    return { slug: row.slug, title: row.title, priceCents: priceBySlug.get(row.slug) };
+  });
+
+  const estimatesByLead: Record<string, ServiceEstimate[]> = {};
+  await Promise.all(
+    rows.slice(0, 40).map(async (lead) => {
+      const id = String(lead.id);
+      estimatesByLead[id] = await loadEstimatesForLead(admin, id);
+    }),
+  );
+
   return (
     <DashboardShell title='Leads' subtitle='Dispatch assignments, pool, and conversion — wired assignment history.' role='admin'>
       <Link href='/admin/super' className='mb-4 inline-block text-xs font-bold uppercase text-gold-soft underline'>
@@ -58,7 +82,14 @@ export default async function AdminLeadsPage() {
         <p className='mb-4 text-sm text-amber-200'>Leads query: {leadsRes.error.message}. Run migration 000023 if columns are missing.</p>
       ) : null}
       {techRes.error ? <p className='mb-4 text-xs text-amber-200'>Technician list: {techRes.error.message}</p> : null}
-      <LeadsAdminClient leads={rows} technicians={technicians} eventsByLead={eventsByLead} techById={techById} />
+      <LeadsAdminClient
+        leads={rows}
+        technicians={technicians}
+        eventsByLead={eventsByLead}
+        techById={techById}
+        estimatesByLead={estimatesByLead}
+        serviceOptions={serviceOptions}
+      />
     </DashboardShell>
   );
 }

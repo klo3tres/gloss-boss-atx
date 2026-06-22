@@ -47,6 +47,8 @@ import {
   updateLeadNotesAction,
   updateLeadStatusAction,
 } from '@/app/(dashboard)/admin/dispatch-lead-actions';
+import { LeadEstimatePanel } from '@/components/admin/lead-estimate-panel';
+import type { ServiceEstimate } from '@/lib/service-estimates';
 
 export type LeadAdminRow = Record<string, any>;
 export type TechOption = { id: string; full_name: string | null; email: string | null };
@@ -89,11 +91,15 @@ export function LeadsAdminClient({
   technicians,
   eventsByLead,
   techById = {},
+  estimatesByLead = {},
+  serviceOptions = [],
 }: {
   leads: LeadAdminRow[];
   technicians: TechOption[];
   eventsByLead: Record<string, AssignmentEventRow[]>;
   techById?: Record<string, string>;
+  estimatesByLead?: Record<string, ServiceEstimate[]>;
+  serviceOptions?: { slug: string; title: string; priceCents?: number }[];
 }) {
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
@@ -968,6 +974,13 @@ export function LeadsAdminClient({
                     </div>
                   </div>
                 </div>
+
+                <LeadEstimatePanel
+                  leadId={String(activeLead.id)}
+                  leadEmail={activeLead.email ? String(activeLead.email) : null}
+                  estimates={estimatesByLead[String(activeLead.id)] ?? []}
+                  serviceOptions={serviceOptions}
+                />
 
                 {/* Operations & Notes */}
                 <div className="border-t border-white/5 pt-4 space-y-3">

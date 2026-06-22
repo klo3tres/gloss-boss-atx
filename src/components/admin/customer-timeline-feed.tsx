@@ -33,6 +33,7 @@ const KIND_LABELS: Record<CustomerTimelineKind, string> = {
   intake: 'Intake',
   lead: 'Lead',
   follow_up: 'Follow-up',
+  estimate: 'Estimate',
   loyalty: 'Loyalty',
   credit: 'Credit',
   system: 'System',

@@ -743,6 +743,15 @@ export async function processCheckoutSessionCompleted(params: {
       await updateAppointmentPaidSafe(admin, appointmentId, extras);
     }
 
+    if (paymentKind === 'deposit') {
+      try {
+        const { markEstimateDepositPaidForAppointment } = await import('@/lib/service-estimates');
+        await markEstimateDepositPaidForAppointment(admin, appointmentId);
+      } catch (estimateErr) {
+        console.warn('[checkout] estimate deposit mark failed', estimateErr);
+      }
+    }
+
     await recordJobTimelineEvent(admin, {
       appointmentId,
       eventType: 'payment_received',

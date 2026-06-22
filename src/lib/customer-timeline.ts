@@ -16,6 +16,7 @@ export type CustomerTimelineKind =
   | 'intake'
   | 'lead'
   | 'follow_up'
+  | 'estimate'
   | 'loyalty'
   | 'credit'
   | 'system';
@@ -162,7 +163,7 @@ export async function loadCustomerTimeline(
     return [...map.values()];
   }
 
-  const [messageRows, notificationRows, notesRes, paymentsRes, receiptsRes, reviewsRes, agreementsRes, intakeRes, leadsRes, timelineRes, mediaRes, stampsRes, creditsRes] =
+  const [messageRows, notificationRows, notesRes, paymentsRes, receiptsRes, reviewsRes, agreementsRes, intakeRes, leadsRes, timelineRes, mediaRes, stampsRes, creditsRes, estimatesRes] =
     await Promise.all([
     loadMessages(),
     loadNotifications(),
@@ -220,6 +221,11 @@ export async function loadCustomerTimeline(
       .limit(80),
     admin.from('loyalty_stamps').select('id, stamp_count, reason, created_at, appointment_id, voided').eq('customer_id', customerId).limit(60),
     admin.from('customer_credits').select('id, amount_cents, type, reason, issued_at, status').eq('customer_id', customerId).limit(40),
+    admin
+      .from('service_estimates')
+      .select('id, status, total_cents, deposit_cents, sent_at, approved_at, deposit_paid_at, created_at, access_token, appointment_id')
+      .or(`customer_id.eq.${customerId}${custEmail ? `,customer_email.eq.${custEmail}` : ''}`)
+      .limit(40),
   ]);
 
   const events: CustomerTimelineEvent[] = [];
@@ -447,6 +453,27 @@ export async function loadCustomerTimeline(
       occurredAt: str(c.issued_at),
       title: 'Store credit issued',
       detail: `${displayMoney(cents(c.amount_cents))}${str(c.reason) ? ` · ${str(c.reason)}` : ''}`,
+    });
+  }
+
+  for (const row of estimatesRes.data ?? []) {
+    const e = row as Record<string, unknown>;
+    const status = str(e.status);
+    const titles: Record<string, string> = {
+      draft: 'Estimate drafted',
+      sent: 'Estimate sent',
+      approved: 'Estimate approved',
+      declined: 'Estimate declined',
+      deposit_paid: 'Estimate deposit paid',
+      converted: 'Estimate converted to work order',
+    };
+    pushEvent(events, {
+      id: `estimate:${e.id}:${status}`,
+      kind: 'estimate',
+      occurredAt: str(e.deposit_paid_at) || str(e.approved_at) || str(e.sent_at) || str(e.created_at),
+      title: titles[status] ?? 'Estimate updated',
+      detail: displayMoney(cents(e.total_cents)),
+      href: e.access_token ? `/estimate/${e.access_token}` : e.appointment_id ? woHref(String(e.appointment_id)) : undefined,
     });
   }
 
