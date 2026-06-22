@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { runOwnerAssistantQuery, type AssistantAnswer } from '@/lib/owner-assistant-queries';
+import { searchBusinessMemory, searchMemoryForCustomerName } from '@/lib/titan/business-memory';
+import { loadTitanIntelligence } from '@/lib/titan';
 
 export type TitanAnswer = AssistantAnswer & { href?: string };
 
@@ -13,6 +15,42 @@ function cents(v: unknown) {
 
 export async function runTitanQuery(admin: SupabaseClient, question: string): Promise<TitanAnswer> {
   const q = question.toLowerCase();
+
+  if (/memory|complain|pet hair|streak|why did we lose|johnson|mentioned|every customer who/.test(q)) {
+    const nameMatch = q.match(/(?:lose|about|customer)\s+(?:the\s+)?([a-z]+)\s+account/i);
+    if (nameMatch?.[1]) {
+      const hits = await searchMemoryForCustomerName(admin, nameMatch[1]);
+      if (hits.length) {
+        return {
+          title: `Titan Memory — ${nameMatch[1]}`,
+          summary: `${hits.length} record(s) found for this account.`,
+          bullets: hits.map((h) => `${h.kind}: ${h.snippet}`),
+          href: hits[0].href,
+        };
+      }
+    }
+    const hits = await searchBusinessMemory(admin, question);
+    return {
+      title: 'Titan Business Memory',
+      summary: hits.length ? `${hits.length} matching interaction(s) in your business brain.` : 'No direct matches — try a customer name or keyword.',
+      bullets: hits.slice(0, 12).map((h) => `[${h.kind}] ${h.snippet}`),
+      href: hits[0]?.href ?? '/admin/customers',
+    };
+  }
+
+  if (/call today|should i call|who should i contact/.test(q)) {
+    const intel = await loadTitanIntelligence(admin);
+    const bullets = [
+      ...intel.opportunities.slice(0, 5).map((o) => `${o.customerName} · ${o.rebookProbability}% rebook probability`),
+      ...intel.revenueLeaks.slice(0, 3).map((l) => l.title),
+    ];
+    return {
+      title: 'Who to contact today',
+      summary: 'High-probability rebooks and revenue leaks ranked first.',
+      bullets: bullets.length ? bullets : ['Run follow-up sync from Admin → Follow-ups'],
+      href: '/admin/follow-ups',
+    };
+  }
 
   if (/90|haven.?t booked|not booked|lapsed|inactive|rebook/.test(q)) {
     const since = new Date(Date.now() - 400 * 86400000).toISOString();

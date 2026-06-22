@@ -4,6 +4,7 @@ import { loadMoneyPulse } from '@/lib/financial-closeout';
 import { loadFollowUpDashboard } from '@/lib/follow-up-engine';
 import { monthKeyChicago, startOfTodayChicagoIso } from '@/lib/chicago-time';
 import { fetchPaymentsSince, startOfMonthIso, summarizePayments } from '@/lib/revenue-metrics';
+import { loadTitanIntelligence, type TitanIntelligence } from '@/lib/titan';
 import { fetchWeatherForAddress } from '@/lib/weather-forecast';
 
 export type TitanAction = {
@@ -48,6 +49,8 @@ export type TitanBriefing = {
     projectedMonthCents: number;
     daysLeftInMonth: number;
     jobsNeededForGoal: number | null;
+    confidencePercent: number;
+    factors: string[];
   };
   weather: {
     configured: boolean;
@@ -57,6 +60,7 @@ export type TitanBriefing = {
   };
   recommendations: TitanAction[];
   memoryRecent: TitanMemoryItem[];
+  intelligence: TitanIntelligence;
 };
 
 function str(v: unknown) {
@@ -314,7 +318,7 @@ export async function loadTitanBriefing(
   const todayStart = startOfTodayChicagoIso();
   const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
 
-  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes] =
+  const [pulse, goalsMetrics, followUps, revenueTarget, topService, memory, weather, leadsRes, estimatesRes, exceptionsRes, jobsTodayRes, intelligence] =
     await Promise.all([
       loadMoneyPulse(admin),
       loadAdminGoalsMetrics(admin),
@@ -337,6 +341,7 @@ export async function loadTitanBriefing(
         .select('id', { count: 'exact', head: true })
         .gte('scheduled_start', todayStart)
         .not('status', 'eq', 'cancelled'),
+      loadTitanIntelligence(admin),
     ]);
 
   const revenueMonthCents = pulse.monthGrossCents;
@@ -345,7 +350,7 @@ export async function loadTitanBriefing(
   const avgJobCents = goalsMetrics.avgTicketCents || (goalsMetrics.monthJobs > 0 ? Math.round(revenueMonthCents / goalsMetrics.monthJobs) : 20000);
   const daysLeft = daysLeftInMonthChicago();
   const dayOfMonth = Math.max(1, 30 - daysLeft);
-  const projectedMonthCents = dayOfMonth > 0 ? Math.round((revenueMonthCents / dayOfMonth) * (dayOfMonth + daysLeft)) : revenueMonthCents;
+  const projectedMonthCents = intelligence.forecast.forecastedMonthCents;
   const jobsNeededForGoal =
     revenueGapCents != null && avgJobCents > 0 ? Math.ceil(revenueGapCents / avgJobCents) : null;
 
@@ -395,6 +400,8 @@ export async function loadTitanBriefing(
       projectedMonthCents,
       daysLeftInMonth: daysLeft,
       jobsNeededForGoal,
+      confidencePercent: intelligence.forecast.confidencePercent,
+      factors: intelligence.forecast.factors,
     },
     weather: {
       configured: weather.ok,
@@ -404,5 +411,6 @@ export async function loadTitanBriefing(
     },
     recommendations,
     memoryRecent: memory.recent,
+    intelligence,
   };
 }

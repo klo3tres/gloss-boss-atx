@@ -26,8 +26,13 @@ Shipped inside Gloss Boss super admin (`/admin/super`):
 3. **Ask Titan** — natural-language search over real business data
 4. **Titan Memory** — notes, messages, notifications, job events (institutional memory v0)
 5. **Weather intelligence** — rain risk tied to operations
+6. **Technician OS** — composite scorecards (revenue, upsell %, reviews, attendance, avg job time)
+7. **Revenue Engine** — nightly leak scan (lapsed customers, open estimates, memberships, balances)
+8. **Opportunity Engine** — booking rhythm prediction + auto-queue high-probability rebooks
+9. **Reputation Engine** — VIP vs Risk customer tiers
+10. **Titan Forecast** — projected month-end with confidence % and factor breakdown
 
-**Goal:** Prove usefulness on your own P&L. Every feature must answer: *Would another detailer pay for this?*
+Nightly cron: `/api/cron/titan-nightly` (6:00 UTC) scans leaks and queues opportunities.
 
 ---
 

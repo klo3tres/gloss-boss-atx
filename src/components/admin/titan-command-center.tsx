@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Brain, CloudRain, Search, Sparkles, Target, Zap } from 'lucide-react';
 import type { TitanBriefing } from '@/lib/titan-briefing';
+import { TitanIntelligencePanels } from '@/components/admin/titan-intelligence-panels';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
 
@@ -15,6 +16,8 @@ const ASK_SUGGESTIONS = [
   'What should I focus on this week?',
   'Who owes money?',
   'Show follow-ups due',
+  'Show customers who complained about pet hair',
+  'Which customers should I call today?',
 ];
 
 function money(cents: number) {
@@ -294,17 +297,17 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/5 bg-zinc-950 px-6 py-4">
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-emerald-400" />
-          <p className="text-xs font-black uppercase text-zinc-400">Revenue forecast</p>
+          <p className="text-xs font-black uppercase text-zinc-400">Titan forecast</p>
         </div>
         <div className="flex flex-wrap gap-6 text-sm">
           <span className="text-zinc-400">
-            Projected month: <span className="font-mono font-bold text-white">{money(forecast.projectedMonthCents)}</span>
+            Forecast: <span className="font-mono font-bold text-emerald-300">{money(briefing.forecast.projectedMonthCents)}</span>
           </span>
           <span className="text-zinc-400">
-            Days left: <span className="font-mono text-white">{forecast.daysLeftInMonth}</span>
+            Confidence: <span className="font-mono text-white">{briefing.forecast.confidencePercent}%</span>
           </span>
           <span className="text-zinc-400">
-            Avg ticket: <span className="font-mono text-white">{money(insights.avgJobCents)}</span>
+            Days left: <span className="font-mono text-white">{briefing.forecast.daysLeftInMonth}</span>
           </span>
           <button
             type="button"
@@ -315,6 +318,8 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
           </button>
         </div>
       </section>
+
+      <TitanIntelligencePanels briefing={briefing} />
     </div>
   );
 }
