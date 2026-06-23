@@ -76,10 +76,12 @@ export function Titan10HomeClient({
   snapshot,
   health,
   setupWarnings,
+  workspace,
 }: {
   snapshot: Titan10Snapshot;
   health: TitanSystemHealth;
   setupWarnings: Titan10Snapshot['setupWarnings'];
+  workspace: 'today' | 'growth' | 'outreach' | 'reports';
 }) {
   const [pending, startTransition] = useTransition();
   const [huntMsg, setHuntMsg] = useState<string | null>(null);
@@ -122,21 +124,37 @@ export function Titan10HomeClient({
 
   return (
     <div className="space-y-8">
-      <TitanSetupBanner warnings={setupWarnings} />
-
-      <header className="rounded-3xl border border-white/8 bg-zinc-950/60 p-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.35em] text-zinc-500">Titan 1.0</p>
-        <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">{snapshot.ownerGreeting}</h1>
-        <p className="mt-2 max-w-3xl text-sm text-zinc-400">{snapshot.mission}</p>
-        <p className="mt-3 text-xs text-zinc-600">
-          Not a CRM. Not a dashboard. Not a chatbot. Your business development manager — drives behavior, not just data.
-        </p>
+      <header className="overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_35%),linear-gradient(135deg,rgba(9,9,11,0.98),rgba(0,0,0,0.98))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Titan Business OS</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{snapshot.ownerGreeting}</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{snapshot.mission}</p>
+          </div>
+          <Link href="/admin/titan/settings" className="w-fit rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300 hover:border-emerald-500/30 hover:text-white">Settings & health</Link>
+        </div>
+        <nav className="mt-7 grid grid-cols-2 gap-2 border-t border-white/8 pt-5 sm:grid-cols-5" aria-label="Titan workspace">
+          {[
+            { key: 'today', label: 'Today' },
+            { key: 'growth', label: 'Growth' },
+            { key: 'outreach', label: 'Outreach' },
+            { key: 'reports', label: 'Reports' },
+          ].map((item) => (
+            <Link key={item.key} href={`/admin/titan?workspace=${item.key}`} className={`rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition ${workspace === item.key ? 'bg-emerald-400 text-black shadow-[0_0_28px_rgba(52,211,153,0.2)]' : 'border border-white/8 bg-black/30 text-zinc-500 hover:text-white'}`}>
+              {item.label}
+            </Link>
+          ))}
+          <Link href="/admin/titan/settings" className="rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">Settings</Link>
+        </nav>
       </header>
 
-      <TitanAutonomyPanels snapshot={snapshot} />
+      <TitanSetupBanner warnings={setupWarnings} />
 
-      <TitanProofPanels snapshot={snapshot} />
+      {workspace === 'today' ? <TitanAutonomyPanels snapshot={snapshot} /> : null}
 
+      {workspace === 'outreach' ? <TitanProofPanels snapshot={snapshot} /> : null}
+
+      {workspace === 'reports' ? (
       <Section
         title="Titan Scoreboard"
         subtitle="If Titan cannot prove revenue impact, the feature is lower priority."
@@ -161,7 +179,10 @@ export function Titan10HomeClient({
           ))}
         </div>
       </Section>
+      ) : null}
 
+      {workspace === 'today' ? (
+      <>
       <Section
         title={TITAN_ENGINES.weeklyMission}
         subtitle={
@@ -233,7 +254,11 @@ export function Titan10HomeClient({
           )}
         </ul>
       </Section>
+      </>
+      ) : null}
 
+      {workspace === 'growth' ? (
+      <>
       <Section
         title={TITAN_ENGINES.acquisition}
         subtitle={`${snapshot.acquisition.opportunities.length} opportunities · ${money(snapshot.acquisition.totalPotentialCents)} potential`}
@@ -426,7 +451,10 @@ export function Titan10HomeClient({
           ))}
         </ul>
       </Section>
+      </>
+      ) : null}
 
+      {workspace === 'reports' ? (
       <details className="rounded-2xl border border-white/6 bg-zinc-950/30">
         <summary className="cursor-pointer px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           System health
@@ -435,6 +463,7 @@ export function Titan10HomeClient({
           <TitanSystemHealthPanel health={health} />
         </div>
       </details>
+      ) : null}
     </div>
   );
 }

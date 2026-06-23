@@ -278,31 +278,17 @@ export function TechPremiumShell({
       <div className='mb-6 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-white/5'>
         {[
           { id: 'overview', label: 'Overview', icon: <Gauge className='h-4 w-4' /> },
-          { id: 'jobs', label: 'Jobs List', icon: <CalendarDays className='h-4 w-4' /> },
-          { 
-            id: 'active', 
-            label: 'Active Work Order', 
-            icon: (
-              <div className='relative'>
-                <Timer className='h-4 w-4' />
-                {activeJob && (
-                  <span className='absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-emerald-500' />
-                )}
-              </div>
-            ) 
-          },
-          { id: 'routes', label: 'Route Dispatch', icon: <Navigation className='h-4 w-4' /> },
-          { id: 'leads', label: 'Leads CRM', icon: <UserPlus className='h-4 w-4' /> },
-          { id: 'mileage', label: 'Gas & Mileage', icon: <Fuel className='h-4 w-4' /> },
-          { id: 'supplies', label: 'Supplies Request', icon: <PackageOpen className='h-4 w-4' /> },
-          { id: 'tools', label: 'Field Invoicing', icon: <Zap className='h-4 w-4' /> },
+          { id: 'jobs', label: 'My Jobs', icon: <ClipboardCheck className='h-4 w-4' /> },
+          { id: 'calendar', label: 'Calendar', icon: <CalendarDays className='h-4 w-4' /> },
+          { id: 'leads', label: 'Leads', icon: <UserPlus className='h-4 w-4' /> },
+          { id: 'resources', label: 'Resources', icon: <FileText className='h-4 w-4' /> },
         ].map((t) => {
           const isActive = activeTab === t.id;
           return (
             <button
               key={t.id}
               type='button'
-              onClick={() => handleTabChange(t.id)}
+              onClick={() => t.id === 'resources' ? router.push('/tech/resources') : handleTabChange(t.id)}
               className={`flex items-center gap-1.5 shrink-0 rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-wider transition duration-200 ${
                 isActive
                   ? 'border-gold bg-gold/15 text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.25)]'
@@ -646,6 +632,30 @@ export function TechPremiumShell({
             )}
           </section>
         </div>
+      )}
+
+      {activeTab === 'calendar' && (
+        <section className="space-y-4 animate-in fade-in duration-200">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft">Field calendar</p>
+            <h2 className="mt-1 text-2xl font-black text-white">Your upcoming schedule</h2>
+          </div>
+          {jobs.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-sm text-zinc-500">No assigned jobs are scheduled.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[...jobs].sort((a, b) => new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime()).map((job) => (
+                <article key={job.id} className="rounded-2xl border border-white/10 bg-black/45 p-4 hover:border-gold/30">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">{new Date(job.scheduled_start).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                  <p className="mt-1 text-lg font-black text-white">{new Date(job.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                  <p className="mt-2 font-bold text-zinc-200">{job.guest_name ?? 'Customer'}</p>
+                  <p className="text-xs text-zinc-500">{job.service_slug.replace(/-/g, ' ')} · {job.vehicle_description ?? 'Vehicle TBD'}</p>
+                  <Link href={workOrderHref(job)} className="mt-4 inline-flex rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">Open work order</Link>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* 3. ACTIVE TAB */}

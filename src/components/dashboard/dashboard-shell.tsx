@@ -21,16 +21,9 @@ const adminNavGroups: NavGroup[] = [
   {
     title: 'Overview',
     links: [
-      { href: '/admin/titan', label: 'Titan' },
-      { href: '/admin', label: 'Dashboard' },
-      { href: '/admin/super', label: 'Titan Command Center™' },
-      { href: '/admin/exceptions', label: 'Exception inbox' },
-      { href: '/admin/daily-operations', label: 'Daily operations' },
+      { href: '/admin/titan', label: 'Titan workspace' },
+      { href: '/admin', label: 'Owner dashboard' },
       { href: '/admin/calendar', label: 'Calendar' },
-      { href: '/admin/assistant', label: 'AI assistant' },
-      { href: '/admin/booking-health', label: 'Booking health' },
-      { href: '/admin/setup-center', label: 'Owner setup center' },
-      { href: '/admin/qa-checklist', label: 'QA checklist' },
     ],
   },
   {
@@ -39,14 +32,12 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/work-orders', label: 'Work orders' },
       { href: '/admin/dispatch', label: 'Dispatch' },
       { href: '/admin/leads', label: 'Leads' },
-      { href: '/admin/agreements', label: 'Agreements & intake' },
     ],
   },
   {
     title: 'Customers',
     links: [
       { href: '/admin/customers', label: 'Customers' },
-      { href: '/admin/follow-ups', label: 'Follow-up engine' },
       { href: '/admin/messages', label: 'Message center' },
     ],
   },
@@ -54,13 +45,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'Finance',
     links: [
       { href: '/admin/revenue', label: 'Revenue' },
-      { href: '/admin/financial-closeout', label: 'Financial closeout' },
       { href: '/admin/reports', label: 'Reports' },
       { href: '/admin/payments', label: 'Payments / receipts' },
-      { href: '/admin/card-activity', label: 'Card activity' },
-      { href: '/admin/receipts', label: 'Receipts' },
-      { href: '/admin/gift-cards', label: 'Gift cards' },
-      { href: '/admin/goals', label: 'Goals' },
     ],
   },
   {
@@ -69,29 +55,23 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/cms', label: 'Website & gallery' },
       { href: '/admin/media', label: 'Vehicle & service images' },
       { href: '/admin/promotions', label: 'Promotions' },
-      { href: '/admin/pricing', label: 'Deals & promos' },
+      { href: '/admin/fleet', label: 'Fleet growth' },
     ],
   },
   {
     title: 'Operations',
     links: [
       { href: '/admin/operations', label: 'Operations & mileage' },
-      { href: '/admin/supply-requests', label: 'Supply requests' },
-      { href: '/admin/fleet', label: 'Fleet accounts' },
       { href: '/admin/team', label: 'Team' },
       { href: '/admin/services', label: 'Services & pricing' },
-      { href: '/admin/addons', label: 'Booking add-ons' },
-      { href: '/admin/memberships', label: 'Memberships & loyalty' },
     ],
   },
   {
     title: 'System',
     links: [
+      { href: '/admin/setup-center', label: 'Setup center' },
       { href: '/admin/notifications', label: 'Notifications' },
       { href: '/admin/integrations', label: 'Integrations' },
-      { href: '/admin/settings/stripe', label: 'Stripe' },
-      { href: '/admin/stripe-sync', label: 'Stripe sync' },
-      { href: '/admin/system-diagnostics', label: 'System diagnostics' },
       { href: '/admin/system-status', label: 'System status' },
     ],
   },
@@ -103,14 +83,10 @@ const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
   { href: '/tech?tab=overview', label: 'Overview' },
-  { href: '/tech?tab=jobs', label: 'Assigned Jobs' },
-  { href: '/tech?tab=active', label: 'Active Job' },
-  { href: '/tech?tab=routes', label: 'Routes & Directions' },
-  { href: '/tech?tab=leads', label: 'Leads & CRM' },
-  { href: '/tech?tab=mileage', label: 'Gas & Mileage Log' },
-  { href: '/tech?tab=supplies', label: 'Supply Requests' },
-  { href: '/tech?tab=tools', label: 'Field Invoicing' },
-  { href: '/tech/resources', label: 'SOPs' },
+  { href: '/tech?tab=jobs', label: 'My Jobs' },
+  { href: '/tech?tab=calendar', label: 'Calendar' },
+  { href: '/tech?tab=leads', label: 'Leads' },
+  { href: '/tech/resources', label: 'Resources' },
 ];
 
 const customerLinks = [
@@ -333,22 +309,6 @@ export function DashboardShell({
             </div>
           </div>
         ))}
-        {navRole === 'super_admin' ? (
-          <div>
-            <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>Command</p>
-            <div className='mt-2 space-y-1'>
-              <Link href='/admin/titan' className={linkClass('/admin/titan')}>
-                Titan Home
-              </Link>
-              <Link href='/admin/super' className={linkClass('/admin/super')}>
-                Titan Command Center™
-              </Link>
-              <Link href='/admin/titan/settings' className={linkClass('/admin/titan/settings')}>
-                Titan Settings
-              </Link>
-            </div>
-          </div>
-        ) : null}
       </nav>
     ) : (
       <nav className='mt-6 space-y-2'>
@@ -367,6 +327,21 @@ export function DashboardShell({
 
   return (
     <main className={`gb-luxury-page min-h-screen bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
+      {role === 'super_admin' ? (
+        <label className="gb-no-print fixed right-4 top-4 z-[70] flex items-center gap-2 rounded-2xl border border-gold/30 bg-black/90 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-2xl backdrop-blur-xl">
+          View as
+          <select
+            value={simNav ?? 'super_admin'}
+            onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
+            className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1.5 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
+          >
+            <option value="super_admin">Owner</option>
+            <option value="admin">Admin</option>
+            <option value="technician">Technician</option>
+            <option value="customer">Customer</option>
+          </select>
+        </label>
+      ) : null}
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-no-print flex items-center justify-between lg:hidden w-full bg-zinc-950/85 border border-gold/15 rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-[0_0_15px_rgba(212,175,55,0.08)]'>
@@ -414,21 +389,6 @@ export function DashboardShell({
             </div>
             
             <div className="flex shrink-0 items-center gap-2">
-              {role === 'super_admin' ? (
-                <label className="hidden rounded-2xl border border-gold/25 bg-black/55 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-[0_0_24px_rgba(212,175,55,0.10)] sm:flex sm:items-center sm:gap-2">
-                  View as
-                  <select
-                    value={simNav ?? 'super_admin'}
-                    onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
-                    className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
-                  >
-                    <option value="super_admin">Super admin</option>
-                    <option value="admin">Admin</option>
-                    <option value="technician">Technician</option>
-                    <option value="customer">Customer</option>
-                  </select>
-                </label>
-              ) : null}
               <button
                 type="button"
                 onClick={() => setShowNotifications(true)}
@@ -458,21 +418,6 @@ export function DashboardShell({
           </header>
           ) : (
             <div className="gb-no-print flex items-center justify-end gap-2">
-              {role === 'super_admin' ? (
-                <label className="hidden rounded-2xl border border-gold/25 bg-black/55 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft sm:flex sm:items-center sm:gap-2">
-                  View as
-                  <select
-                    value={simNav ?? 'super_admin'}
-                    onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
-                    className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
-                  >
-                    <option value="super_admin">Super admin</option>
-                    <option value="admin">Admin</option>
-                    <option value="technician">Technician</option>
-                    <option value="customer">Customer</option>
-                  </select>
-                </label>
-              ) : null}
               <button
                 type="button"
                 onClick={() => setShowNotifications(true)}
