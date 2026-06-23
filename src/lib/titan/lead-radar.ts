@@ -20,8 +20,10 @@ export type TitanProspect = {
   prospectType: ProspectType;
   contactName: string | null;
   contactRole: string | null;
+  decisionMakerTitle: string | null;
   email: string | null;
   phone: string | null;
+  website: string | null;
   address: string | null;
   distanceMiles: number | null;
   estimatedMonthlyCents: number;
@@ -30,6 +32,8 @@ export type TitanProspect = {
   scoreReason: string | null;
   status: string;
   source: string;
+  acquisitionSource: string | null;
+  notes: string | null;
   leadId: string | null;
 };
 
@@ -119,15 +123,17 @@ export function computeScore(type: ProspectType, monthlyCents: number, distance:
   return Math.min(99, Math.max(1, score));
 }
 
-function mapProspect(row: Record<string, unknown>): TitanProspect {
+export function mapProspect(row: Record<string, unknown>): TitanProspect {
   return {
     id: str(row.id),
     companyName: str(row.company_name),
     prospectType: str(row.prospect_type) as ProspectType,
     contactName: str(row.contact_name) || null,
     contactRole: str(row.contact_role) || null,
+    decisionMakerTitle: str(row.decision_maker_title) || str(row.contact_role) || null,
     email: str(row.email) || null,
     phone: str(row.phone) || null,
+    website: str(row.website) || null,
     address: str(row.address) || null,
     distanceMiles: row.distance_miles != null ? Number(row.distance_miles) : null,
     estimatedMonthlyCents: cents(row.estimated_monthly_cents),
@@ -136,6 +142,8 @@ function mapProspect(row: Record<string, unknown>): TitanProspect {
     scoreReason: str(row.score_reason) || null,
     status: str(row.status) || 'new',
     source: str(row.source) || 'manual',
+    acquisitionSource: str(row.acquisition_source) || null,
+    notes: str(row.notes) || str(row.enrichment_notes) || null,
     leadId: str(row.lead_id) || null,
   };
 }

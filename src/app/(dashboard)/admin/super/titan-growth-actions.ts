@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { addProspect, promoteProspectToPipeline, type ProspectType } from '@/lib/titan/lead-radar';
+import { addProspect, mapProspect, promoteProspectToPipeline, type ProspectType } from '@/lib/titan/lead-radar';
 import { executeProspectOutreach, generateOutreach } from '@/lib/titan/outreach-os';
 import { upsertMarketingSpend } from '@/lib/titan/ad-os';
 import { recordContentPost } from '@/lib/titan/content-engine';
@@ -30,24 +30,7 @@ export async function previewProspectOutreachAction(prospectId: string) {
   if (!data) return { error: 'Prospect not found' };
 
   const r = data as Record<string, unknown>;
-  const pkg = generateOutreach({
-    id: String(r.id),
-    companyName: String(r.company_name),
-    prospectType: String(r.prospect_type) as ProspectType,
-    contactName: r.contact_name ? String(r.contact_name) : null,
-    contactRole: r.contact_role ? String(r.contact_role) : null,
-    email: r.email ? String(r.email) : null,
-    phone: r.phone ? String(r.phone) : null,
-    address: r.address ? String(r.address) : null,
-    distanceMiles: r.distance_miles != null ? Number(r.distance_miles) : null,
-    estimatedMonthlyCents: Number(r.estimated_monthly_cents ?? 0),
-    vehicleCount: r.vehicle_count != null ? Number(r.vehicle_count) : null,
-    score: Number(r.score ?? 0),
-    scoreReason: r.score_reason ? String(r.score_reason) : null,
-    status: String(r.status),
-    source: String(r.source),
-    leadId: r.lead_id ? String(r.lead_id) : null,
-  });
+  const pkg = generateOutreach(mapProspect(r));
 
   return { ok: true as const, outreach: pkg };
 }

@@ -1,0 +1,191 @@
+import type { Titan10Snapshot } from '@/lib/titan/engines/types';
+
+/** Realistic demo data for sales presentations — never touches production tables. */
+export function buildDemoSnapshot(base: Titan10Snapshot): Titan10Snapshot {
+  return {
+    ...base,
+    ownerGreeting: 'Demo workspace — Titan Business Development',
+    dailyAutonomy: {
+      missionDate: new Date().toISOString().slice(0, 10),
+      morningPotentialCents: 234000,
+      topActions: [
+        {
+          id: 'demo-1',
+          title: 'Call Georgetown Apartments',
+          potentialCents: 90000,
+          status: 'pending',
+          href: '/admin/titan',
+          outreach: base.outreach.kits[0],
+        },
+        {
+          id: 'demo-2',
+          title: 'Follow up Sarah M. (referral)',
+          potentialCents: 25000,
+          status: 'pending',
+          href: '/admin/titan',
+          outreach: base.outreach.kits[1],
+        },
+        {
+          id: 'demo-3',
+          title: 'Send Fleet Proposal — ABC Construction',
+          potentialCents: 120000,
+          status: 'pending',
+          href: '/admin/titan',
+          outreach: base.outreach.kits[2],
+        },
+      ],
+      evening: { completed: 2, total: 3, revenueGeneratedCents: 35000, revenueMissedCents: 120000 },
+    },
+    scoreboard: {
+      ...base.scoreboard,
+      revenueGeneratedCents: 428000,
+      customersAcquired: 12,
+      partnershipsAcquired: 2,
+    },
+    attribution: {
+      proofs: [
+        {
+          id: 'demo-attr-1',
+          actionType: 'mission_action',
+          actionLabel: 'Fleet SMS — ABC Construction',
+          attributedRevenueCents: 25000,
+          matchMethod: 'auto_timing',
+          leadId: null,
+          appointmentId: null,
+          paymentId: null,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'demo-attr-2',
+          actionType: 'mission_action',
+          actionLabel: 'Georgetown Apartments pitch',
+          attributedRevenueCents: 90000,
+          matchMethod: 'auto_phone',
+          leadId: null,
+          appointmentId: null,
+          paymentId: null,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      totalAttributedCents: 115000,
+      tablesReady: true,
+    },
+    acquisitionSources: {
+      headline: 'Apartments / HOA produced $1,240 this month',
+      tablesReady: true,
+      rows: [
+        { id: 'apartments', label: 'Apartments / HOA', leadsCount: 8, bookingsCount: 3, revenueCents: 124000, verdict: 'scale' },
+        { id: 'fleet', label: 'Fleet', leadsCount: 4, bookingsCount: 2, revenueCents: 89000, verdict: 'scale' },
+        { id: 'facebook', label: 'Facebook Groups', leadsCount: 12, bookingsCount: 4, revenueCents: 62000, verdict: 'maintain' },
+        { id: 'referral', label: 'Referrals', leadsCount: 6, bookingsCount: 5, revenueCents: 98000, verdict: 'scale' },
+        { id: 'nextdoor', label: 'Nextdoor', leadsCount: 9, bookingsCount: 1, revenueCents: 18000, verdict: 'reduce' },
+      ],
+    },
+    learning: {
+      insights: [
+        { id: 'd1', category: 'conversion', insight: 'Fleet SMS converts 2.3× better than cold email.', confidencePercent: 82 },
+        { id: 'd2', category: 'cadence', insight: 'Day-2 follow-ups recover 34% of no-replies.', confidencePercent: 76 },
+        { id: 'd3', category: 'territory', insight: 'Georgetown close rate is 2× Pflugerville.', confidencePercent: 88 },
+      ],
+    },
+    touchSchedule: {
+      dueToday: [
+        {
+          id: 'demo-touch-1',
+          channel: 'sms',
+          message: 'Following up on Georgetown Apartments — still interested?',
+          dueAt: new Date().toISOString(),
+          status: 'pending',
+          label: 'Mission follow-up',
+          isOverdue: false,
+        },
+      ],
+      upcoming: [
+        {
+          id: 'demo-touch-2',
+          channel: 'sms',
+          message: 'Last check-in on ABC Construction fleet proposal.',
+          dueAt: new Date(Date.now() + 2 * 86400000).toISOString(),
+          status: 'pending',
+          label: 'Prospect touch',
+          isOverdue: false,
+        },
+      ],
+      tablesReady: true,
+    },
+    jobCloseouts: {
+      pendingCount: 3,
+      tablesReady: true,
+      items: [
+        {
+          id: 'demo-co-1',
+          appointmentId: 'demo-appt',
+          customerName: 'Mike R.',
+          completedAt: new Date(Date.now() - 86400000).toISOString(),
+          status: 'pending',
+          reviewRequested: false,
+          reviewCompleted: false,
+          referralRequested: false,
+          referralCompleted: false,
+          discountOffered: false,
+          followUpSent: false,
+          isComplete: false,
+          nextStep: 'Required: Send review request',
+          outreachSms: 'Hi Mike! Thanks for choosing Gloss Boss. Mind leaving a quick Google review?',
+          href: '/admin/titan',
+        },
+      ],
+    },
+    offers: {
+      tablesReady: true,
+      offers: [
+        {
+          id: 'demo-offer-1',
+          name: 'Georgetown SUV Interior Week',
+          territory: 'Georgetown',
+          serviceFocus: 'SUV interior',
+          discountLabel: '$25 off',
+          promoCode: 'GTOWN25',
+          status: 'active',
+          leadsCount: 14,
+          bookingsCount: 6,
+          revenueCents: 210000,
+          outreachSms: 'Georgetown SUV owners — Interior Detail Week! $25 off.',
+          worked: true,
+        },
+      ],
+    },
+    partners: {
+      ...base.partners,
+      partners: base.partners.partners.length
+        ? base.partners.partners
+        : [
+            {
+              id: 'demo-partner-1',
+              companyName: 'Lakeside Apartments',
+              partnerType: 'Apartment complex',
+              estimatedAnnualRevenueCents: 1440000,
+              contactName: 'Jennifer Walsh',
+              contactEmail: 'jwalsh@lakeside.com',
+              contactPhone: '(512) 555-0142',
+              website: 'lakeside-apts.com',
+              decisionMakerTitle: 'Community Manager',
+              notes: 'Met at Georgetown B2B mixer',
+              acquisitionSource: 'Networking event',
+              outreachScript: 'Hi Jennifer — resident detailing program for Lakeside...',
+              partnershipReason: '200+ units · high vehicle density',
+              nextAction: 'Send partnership proposal',
+              confidencePercent: 78,
+              href: '/admin/titan',
+            },
+          ],
+    },
+    workspaceMeta: {
+      demoMode: true,
+      onboardingStep: 6,
+      onboardingComplete: true,
+      subscriptionTier: 'growth',
+      subscriptionStatus: 'active',
+    },
+  };
+}

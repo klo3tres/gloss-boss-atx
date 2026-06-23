@@ -21,6 +21,11 @@ export type TitanWorkspace = {
   publicWidgetEnabled: boolean;
   operatorAssistantEnabled: boolean;
   poweredByBrandingEnabled: boolean;
+  demoMode: boolean;
+  onboardingStep: number;
+  onboardingCompletedAt: string | null;
+  subscriptionTier: string;
+  subscriptionStatus: string | null;
 };
 
 const DEFAULT_HOURS: Record<string, string> = {
@@ -60,6 +65,11 @@ function defaults(): TitanWorkspace {
     publicWidgetEnabled: true,
     operatorAssistantEnabled: true,
     poweredByBrandingEnabled: true,
+    demoMode: false,
+    onboardingStep: 0,
+    onboardingCompletedAt: null,
+    subscriptionTier: 'none',
+    subscriptionStatus: null,
   };
 }
 
@@ -81,6 +91,11 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
     publicWidgetEnabled: row.public_widget_enabled !== false,
     operatorAssistantEnabled: row.operator_assistant_enabled !== false,
     poweredByBrandingEnabled: row.powered_by_branding_enabled !== false,
+    demoMode: row.demo_mode === true,
+    onboardingStep: Number(row.onboarding_step ?? 0),
+    onboardingCompletedAt: str(row.onboarding_completed_at) || null,
+    subscriptionTier: str(row.subscription_tier) || 'none',
+    subscriptionStatus: str(row.subscription_status) || null,
   };
 }
 
@@ -109,6 +124,11 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     publicWidgetEnabled: input.publicWidgetEnabled ?? current.publicWidgetEnabled,
     operatorAssistantEnabled: input.operatorAssistantEnabled ?? current.operatorAssistantEnabled,
     poweredByBrandingEnabled: input.poweredByBrandingEnabled ?? current.poweredByBrandingEnabled,
+    demoMode: input.demoMode ?? current.demoMode,
+    onboardingStep: input.onboardingStep ?? current.onboardingStep,
+    onboardingCompletedAt: input.onboardingCompletedAt ?? current.onboardingCompletedAt,
+    subscriptionTier: input.subscriptionTier ?? current.subscriptionTier,
+    subscriptionStatus: input.subscriptionStatus ?? current.subscriptionStatus,
   };
 
   const { error } = await admin.from('titan_workspace_settings').upsert(
@@ -125,6 +145,11 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
       public_widget_enabled: merged.publicWidgetEnabled,
       operator_assistant_enabled: merged.operatorAssistantEnabled,
       powered_by_branding_enabled: merged.poweredByBrandingEnabled,
+      demo_mode: merged.demoMode,
+      onboarding_step: merged.onboardingStep,
+      onboarding_completed_at: merged.onboardingCompletedAt,
+      subscription_tier: merged.subscriptionTier,
+      subscription_status: merged.subscriptionStatus,
       updated_at: now,
     },
     { onConflict: 'workspace_key' },

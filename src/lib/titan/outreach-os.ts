@@ -3,6 +3,7 @@ import { glossBossEmailLayout, emailCtaButton } from '@/lib/email/templates/layo
 import { sendResendHtml } from '@/lib/email-send';
 import { sendCustomerSms } from '@/lib/sms-send';
 import type { ProspectType, TitanProspect } from '@/lib/titan/lead-radar';
+import { mapProspect } from '@/lib/titan/lead-radar';
 import { prospectTypeLabel } from '@/lib/titan/lead-radar';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
 
@@ -77,24 +78,7 @@ export async function executeProspectOutreach(
   const { data } = await admin.from('titan_prospects').select('*').eq('id', prospectId).maybeSingle();
   if (!data) return { ok: false, error: 'Prospect not found' };
 
-  const prospect: TitanProspect = {
-    id: str(data.id),
-    companyName: str(data.company_name),
-    prospectType: str(data.prospect_type) as ProspectType,
-    contactName: str(data.contact_name) || null,
-    contactRole: str(data.contact_role) || null,
-    email: str(data.email) || null,
-    phone: str(data.phone) || null,
-    address: str(data.address) || null,
-    distanceMiles: null,
-    estimatedMonthlyCents: Number(data.estimated_monthly_cents ?? 0),
-    vehicleCount: null,
-    score: Number(data.score ?? 0),
-    scoreReason: str(data.score_reason) || null,
-    status: str(data.status),
-    source: str(data.source),
-    leadId: str(data.lead_id) || null,
-  };
+  const prospect = mapProspect(data as Record<string, unknown>);
 
   const pkg = generateOutreach(prospect);
   const now = new Date().toISOString();

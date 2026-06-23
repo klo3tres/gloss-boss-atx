@@ -32,6 +32,14 @@ export type TitanSystemHealth = {
 
 const TABLE_CHECKS: { id: string; table: string; label: string }[] = [
   { id: 'titan_opportunities', table: 'titan_opportunities', label: 'Opportunity Scanner' },
+  { id: 'titan_experiments', table: 'titan_experiments', label: 'Experiment Engine' },
+  { id: 'titan_mission_actions', table: 'titan_mission_actions', label: 'Daily Manager' },
+  { id: 'titan_deals', table: 'titan_deals', label: 'Deal Room' },
+  { id: 'titan_kpi_events', table: 'titan_kpi_events', label: 'KPI events' },
+  { id: 'titan_attributions', table: 'titan_attributions', label: 'Attribution' },
+  { id: 'titan_touch_schedule', table: 'titan_touch_schedule', label: 'Follow-up cadence' },
+  { id: 'titan_offers', table: 'titan_offers', label: 'Offer builder' },
+  { id: 'titan_job_closeouts', table: 'titan_job_closeouts', label: 'Job closeouts' },
   { id: 'titan_opportunity_hunts', table: 'titan_opportunity_hunts', label: 'Daily Hunt' },
   { id: 'titan_activity_events', table: 'titan_activity_events', label: 'Activity timeline' },
   { id: 'titan_workspace_settings', table: 'titan_workspace_settings', label: 'Business DNA' },
@@ -80,7 +88,7 @@ const CRON_SCHEDULE_ITEMS: TitanCronSchedule[] = [
 ];
 
 export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promise<TitanSystemHealth> {
-  const latestMigration = '000093';
+  const latestMigration = '000096';
   const hobbyMode = true;
   const hobbyModeWarning = HOBBY_MODE_AUTOMATION_WARNING;
   const integrations: TitanHealthItem[] = [
