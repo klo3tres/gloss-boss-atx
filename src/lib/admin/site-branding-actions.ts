@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { upsertSiteSetting, upsertSiteSettingsBatch } from '@/lib/site-settings-upsert';
 
 export async function saveNavbarLogoUrlAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const session = await getSessionWithProfile();
@@ -22,13 +23,10 @@ export async function saveNavbarLogoUrlAction(formData: FormData): Promise<{ ok:
   }
 
   const now = new Date().toISOString();
-  const { error } = await admin.from('site_settings').upsert(
-    { key: 'navbar_logo', value: url, updated_at: now },
-    { onConflict: 'key' },
-  );
-  if (error) {
-    console.warn('[site_settings]', error.message);
-    return { ok: false, error: error.message };
+  const result = await upsertSiteSetting(admin, { key: 'navbar_logo', value: url });
+  if (!result.ok) {
+    console.warn('[site_settings]', result.error);
+    return { ok: false, error: result.error };
   }
 
   revalidatePath('/admin/cms');
@@ -58,12 +56,8 @@ export async function saveHomepageLogoUrlAction(formData: FormData): Promise<{ o
   const admin = tryCreateAdminSupabase();
   if (!admin) return { ok: false, error: 'Server admin client unavailable.' };
 
-  const now = new Date().toISOString();
-  const { error } = await admin.from('site_settings').upsert(
-    { key: 'homepage_logo', value: url, updated_at: now },
-    { onConflict: 'key' },
-  );
-  if (error) return { ok: false, error: error.message };
+  const result = await upsertSiteSetting(admin, { key: 'homepage_logo', value: url });
+  if (!result.ok) return { ok: false, error: result.error };
 
   revalidatePath('/admin/cms');
   revalidatePath('/');
@@ -87,19 +81,18 @@ export async function submitSocialLinksForm(formData: FormData): Promise<void> {
   const admin = tryCreateAdminSupabase();
   if (!admin) redirect('/admin/cms?socialErr=Server%20admin%20client%20unavailable');
 
-  const now = new Date().toISOString();
   const clean = (key: string) => {
     const value = String(formData.get(key) ?? '').trim();
     return value && !value.startsWith('http') ? '' : value;
   };
   const rows = [
-    { key: 'social_instagram_url', value: clean('instagram_url'), updated_at: now },
-    { key: 'social_tiktok_url', value: clean('tiktok_url'), updated_at: now },
-    { key: 'social_youtube_url', value: clean('youtube_url'), updated_at: now },
-    { key: 'social_facebook_url', value: clean('facebook_url'), updated_at: now },
+    { key: 'social_instagram_url', value: clean('instagram_url') },
+    { key: 'social_tiktok_url', value: clean('tiktok_url') },
+    { key: 'social_youtube_url', value: clean('youtube_url') },
+    { key: 'social_facebook_url', value: clean('facebook_url') },
   ];
-  const { error } = await admin.from('site_settings').upsert(rows, { onConflict: 'key' });
-  if (error) redirect(`/admin/cms?socialErr=${encodeURIComponent(error.message)}`);
+  const result = await upsertSiteSettingsBatch(admin, rows);
+  if (!result.ok) redirect(`/admin/cms?socialErr=${encodeURIComponent(result.error ?? 'Save failed')}`);
 
   revalidatePath('/admin/cms');
   revalidatePath('/');

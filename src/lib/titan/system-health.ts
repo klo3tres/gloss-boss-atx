@@ -88,7 +88,7 @@ const CRON_SCHEDULE_ITEMS: TitanCronSchedule[] = [
 ];
 
 export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promise<TitanSystemHealth> {
-  const latestMigration = '000096';
+  const latestMigration = '000097';
   const hobbyMode = true;
   const hobbyModeWarning = HOBBY_MODE_AUTOMATION_WARNING;
   const integrations: TitanHealthItem[] = [

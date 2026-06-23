@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { ImagePlus, RotateCcw, Trash2, UploadCloud } from 'lucide-react';
 import { saveMediaRegistryAction } from '@/lib/admin/cms-media-actions';
 import { MEDIA_REGISTRY_ITEMS, type MediaRegistry, mediaUrl } from '@/lib/media-registry';
@@ -43,8 +43,27 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
     }
   }
 
+  const [publishErr, setPublishErr] = useState<string | null>(null);
+  const [publishOk, setPublishOk] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const publish = () => {
+    setPublishErr(null);
+    setPublishOk(false);
+    const form = new FormData();
+    for (const item of MEDIA_REGISTRY_ITEMS) {
+      const value = values[item.key] ?? '';
+      if (value) form.set(item.key, value);
+    }
+    startTransition(async () => {
+      const res = await saveMediaRegistryAction(form);
+      if (res.error) setPublishErr(res.error);
+      else setPublishOk(true);
+    });
+  };
+
   return (
-    <form action={saveMediaRegistryAction} className="space-y-6">
+    <div className="space-y-6">
       <div className="rounded-3xl border border-gold/20 bg-black/45 p-5">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Central Media Manager</p>
         <h2 className="mt-2 text-2xl font-black uppercase text-white">Every public image has an owner</h2>
@@ -126,9 +145,25 @@ export function CmsMediaManager({ registry }: { registry: MediaRegistry }) {
         </section>
       ))}
 
-      <button className="rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_0_24px_rgba(212,175,55,0.25)]">
-        Save URL edits and resets
+      <button
+        type="button"
+        disabled={pending}
+        onClick={publish}
+        className="rounded-xl bg-gold px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_0_24px_rgba(212,175,55,0.25)] disabled:opacity-50"
+      >
+        {pending ? 'Publishing…' : 'Publish all images'}
       </button>
-    </form>
+      {publishOk ? (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          Published successfully. Check /book and homepage to verify.
+        </p>
+      ) : null}
+      {publishErr ? (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          Publish failed: {publishErr}
+          {/updated_at|schema cache/i.test(publishErr) ? ' — Run migration 000097 in Supabase.' : ''}
+        </p>
+      ) : null}
+    </div>
   );
 }

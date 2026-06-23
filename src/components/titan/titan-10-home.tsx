@@ -26,6 +26,7 @@ import {
 } from '@/app/(dashboard)/admin/titan/titan-1-actions';
 import { TitanAutonomyPanels } from '@/components/titan/titan-autonomy-panels';
 import { TitanProofPanels } from '@/components/titan/titan-proof-panels';
+import { TitanStartHere } from '@/components/titan/titan-start-here';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -150,9 +151,11 @@ export function Titan10HomeClient({
 
       <TitanSetupBanner warnings={setupWarnings} />
 
+      {workspace === 'today' ? <TitanStartHere /> : null}
+
       {workspace === 'today' ? <TitanAutonomyPanels snapshot={snapshot} /> : null}
 
-      {workspace === 'outreach' ? <TitanProofPanels snapshot={snapshot} /> : null}
+      {workspace === 'outreach' ? <div id="proof"><TitanProofPanels snapshot={snapshot} /></div> : null}
 
       {workspace === 'reports' ? (
       <Section

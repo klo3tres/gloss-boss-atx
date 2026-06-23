@@ -25,7 +25,7 @@ import { loadJobCloseouts } from '@/lib/titan/engines/job-closeout';
 import { loadOffers } from '@/lib/titan/engines/offer-builder';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { buildDemoSnapshot } from '@/lib/titan/demo-snapshot';
-import type { OutreachKit } from '@/lib/titan/engines/outreach';
+import { buildRealDailyActions } from '@/lib/titan/engines/real-daily-actions';
 import type { Titan10Snapshot } from '@/lib/titan/engines/types';
 
 export type { Titan10Snapshot } from '@/lib/titan/engines/types';
@@ -51,18 +51,19 @@ export async function loadTitan10Snapshot(
     })),
   });
 
-  const outreachByTitle = new Map<string, OutreachKit>();
+  const outreachByTitle = new Map<string, import('@/lib/titan/engines/outreach').OutreachKit>();
   weeklyMission.topActions.forEach((action, i) => {
     const kit = outreach.kits[i];
     if (kit) outreachByTitle.set(action.title, kit);
   });
 
+  const realDailyActions = buildRealDailyActions(briefing, outreach.kits);
+
   const [dailyAutonomy, deals, attribution, acquisitionSources, learning, touchSchedule, jobCloseouts, offers, workspace] =
     await Promise.all([
     ensureDailyMission(admin, {
-      potentialCents: weeklyMission.potentialRevenueCents,
-      actions: weeklyMission.topActions,
-      outreachByTitle,
+      potentialCents: realDailyActions.reduce((s, a) => s + a.potentialCents, 0),
+      actions: realDailyActions,
     }),
     (async () => {
       await syncDealsFromProspects(admin);

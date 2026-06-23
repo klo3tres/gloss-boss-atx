@@ -35,7 +35,7 @@ export type WeatherSnapshot = {
 /** Lightweight forecast via OpenWeather. Does not block booking or dispatch. */
 export async function fetchWeatherForAddress(address: string, whenIso?: string): Promise<WeatherSnapshot> {
   const appleAdvancedApi = appleAdvancedApiStatus();
-  const key = process.env.OPENWEATHER_API_KEY?.trim();
+  const key = process.env.OPENWEATHER_API_KEY?.trim() || process.env.OPENWEATHER_API_KE?.trim();
 
   if (!key) {
     return {

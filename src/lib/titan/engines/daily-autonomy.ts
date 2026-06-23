@@ -1,14 +1,19 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OutreachKit } from '@/lib/titan/engines/outreach';
-import type { WeeklyMissionAction } from '@/lib/titan/engines/types';
+import type { RealDailyAction } from '@/lib/titan/engines/real-daily-actions';
 
 export type DailyMissionAction = {
   id: string;
   title: string;
+  reason: string;
   potentialCents: number;
   status: 'pending' | 'completed' | 'skipped';
   outreach?: OutreachKit;
   href: string;
+  recipient: string;
+  recipientPhone: string | null;
+  recipientEmail: string | null;
+  messagePreview: string;
 };
 
 export type DailyAutonomy = {
@@ -35,8 +40,7 @@ export async function ensureDailyMission(
   admin: SupabaseClient,
   input: {
     potentialCents: number;
-    actions: WeeklyMissionAction[];
-    outreachByTitle: Map<string, OutreachKit>;
+    actions: RealDailyAction[];
   },
 ): Promise<DailyAutonomy> {
   const missionDate = todayChicago();
@@ -51,18 +55,16 @@ export async function ensureDailyMission(
     .eq('mission_date', missionDate)
     .order('created_at', { ascending: true });
 
-  if (!existing?.length) {
+  if (!existing?.length && input.actions.length > 0) {
     const rows = input.actions.slice(0, 3).map((a) => ({
       mission_date: missionDate,
       title: a.title,
-      potential_cents: a.expectedRevenueCents,
-      source_id: `action:${a.rank}`,
-      outreach_json: input.outreachByTitle.get(a.title) ?? null,
+      potential_cents: a.potentialCents,
+      source_id: a.id,
+      outreach_json: a.outreach ?? { sms: a.messagePreview },
       status: 'pending',
     }));
-    if (rows.length > 0) {
-      await admin.from('titan_mission_actions').insert(rows);
-    }
+    await admin.from('titan_mission_actions').insert(rows);
   }
 
   const { data: actions } = await admin
@@ -71,15 +73,25 @@ export async function ensureDailyMission(
     .eq('mission_date', missionDate)
     .order('created_at', { ascending: true });
 
+  const actionByTitle = new Map(input.actions.map((a) => [a.title, a]));
+
   const topActions: DailyMissionAction[] = (actions ?? []).map((row) => {
     const r = row as Record<string, unknown>;
+    const title = str(r.title);
+    const src = actionByTitle.get(title);
+    const outreach = (r.outreach_json as OutreachKit) ?? src?.outreach;
     return {
       id: str(r.id),
-      title: str(r.title),
+      title,
+      reason: src?.reason ?? 'Revenue action from today\'s briefing',
       potentialCents: Number(r.potential_cents ?? 0),
       status: str(r.status) as DailyMissionAction['status'],
-      outreach: (r.outreach_json as OutreachKit) ?? undefined,
-      href: '/admin/super',
+      outreach,
+      href: src?.href ?? '/admin',
+      recipient: src?.recipient ?? 'Customer',
+      recipientPhone: src?.recipientPhone ?? null,
+      recipientEmail: src?.recipientEmail ?? null,
+      messagePreview: outreach?.sms ?? src?.messagePreview ?? '',
     };
   });
 
@@ -102,15 +114,20 @@ export async function ensureDailyMission(
 
 function fallbackMission(
   missionDate: string,
-  input: { potentialCents: number; actions: WeeklyMissionAction[]; outreachByTitle: Map<string, OutreachKit> },
+  input: { potentialCents: number; actions: RealDailyAction[] },
 ): DailyAutonomy {
   const topActions = input.actions.slice(0, 3).map((a, i) => ({
     id: `local-${i}`,
     title: a.title,
-    potentialCents: a.expectedRevenueCents,
+    reason: a.reason,
+    potentialCents: a.potentialCents,
     status: 'pending' as const,
-    outreach: input.outreachByTitle.get(a.title),
+    outreach: a.outreach,
     href: a.href,
+    recipient: a.recipient,
+    recipientPhone: a.recipientPhone,
+    recipientEmail: a.recipientEmail,
+    messagePreview: a.messagePreview,
   }));
   return {
     missionDate,

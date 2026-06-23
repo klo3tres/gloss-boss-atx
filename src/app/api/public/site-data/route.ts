@@ -79,9 +79,8 @@ export async function GET() {
       client.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
       client
         .from('customer_reviews')
-        .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, source, service_label, vehicle_label, featured, published')
+        .select('id, customer_name, rating, testimonial, created_at, approved_at, published')
         .eq('published', true)
-        .order('featured', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(12),
       client.from('site_settings').select('key, value').in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']),

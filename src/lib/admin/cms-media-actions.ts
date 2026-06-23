@@ -4,10 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { MEDIA_REGISTRY_ITEMS } from '@/lib/media-registry';
+import { upsertSiteSetting } from '@/lib/site-settings-upsert';
 
-export async function saveMediaRegistryAction(formData: FormData) {
+export async function saveMediaRegistryAction(formData: FormData): Promise<{ ok?: boolean; error?: string }> {
   const admin = tryCreateAdminSupabase();
-  if (!admin) redirect('/admin/cms?tab=media&mediaErr=missing-service-role');
+  if (!admin) return { error: 'Server admin client unavailable. Check SUPABASE_SERVICE_ROLE_KEY.' };
 
   const registry: Record<string, string> = {};
   for (const item of MEDIA_REGISTRY_ITEMS) {
@@ -15,16 +16,22 @@ export async function saveMediaRegistryAction(formData: FormData) {
     if (value) registry[item.key] = value;
   }
 
-  const { error } = await admin
-    .from('site_settings')
-    .upsert({ key: 'media_registry', value: JSON.stringify(registry), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  const result = await upsertSiteSetting(admin, { key: 'media_registry', value: JSON.stringify(registry) });
+  if (!result.ok) return { error: result.error ?? 'Publish failed' };
 
-  if (error) redirect(`/admin/cms?tab=media&mediaErr=${encodeURIComponent(error.message)}`);
   revalidatePath('/');
   revalidatePath('/services');
   revalidatePath('/fleet');
   revalidatePath('/book');
   revalidatePath('/gift-cards');
   revalidatePath('/admin/cms');
-  redirect('/admin/cms?tab=media&mediaOk=1');
+  revalidatePath('/admin/media');
+  return { ok: true };
+}
+
+/** Legacy form redirect wrapper */
+export async function saveMediaRegistryFormAction(formData: FormData) {
+  const r = await saveMediaRegistryAction(formData);
+  if (!r.ok) redirect(`/admin/media?mediaErr=${encodeURIComponent(r.error ?? 'Publish failed')}`);
+  redirect('/admin/media?mediaOk=1');
 }

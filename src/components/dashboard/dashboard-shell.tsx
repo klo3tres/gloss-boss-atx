@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { GlobalAppNav } from '@/components/dashboard/global-app-nav';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 
@@ -70,6 +71,7 @@ const adminNavGroups: NavGroup[] = [
     title: 'System',
     links: [
       { href: '/admin/setup-center', label: 'Setup center' },
+      { href: '/admin/launch-readiness', label: 'Launch readiness' },
       { href: '/admin/notifications', label: 'Notifications' },
       { href: '/admin/integrations', label: 'Integrations' },
       { href: '/admin/system-status', label: 'System status' },
@@ -326,9 +328,9 @@ export function DashboardShell({
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
   return (
-    <main className={`gb-luxury-page min-h-screen bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
+    <main className={`gb-luxury-page min-h-screen overflow-x-hidden bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
       {role === 'super_admin' ? (
-        <label className="gb-no-print fixed right-4 top-4 z-[70] flex items-center gap-2 rounded-2xl border border-gold/30 bg-black/90 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-2xl backdrop-blur-xl">
+        <label className="gb-no-print fixed right-4 top-4 z-[80] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-gold/30 bg-black/95 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-2xl backdrop-blur-xl">
           View as
           <select
             value={simNav ?? 'super_admin'}
@@ -377,7 +379,8 @@ export function DashboardShell({
           {NavLinks}
         </aside>
 
-        <section className='order-1 min-w-0 flex-1 space-y-8 lg:order-2'>
+        <section className='order-1 min-w-0 flex-1 space-y-6 overflow-x-hidden lg:order-2'>
+          <GlobalAppNav role={navRole} />
           {!isTitanSurface ? (
           <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-center justify-between gap-4'>
             <div className="min-w-0 flex-1 flex items-center gap-4">
