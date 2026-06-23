@@ -1,17 +1,27 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { IntegrationResendTestForm, IntegrationTwilioTestForm } from '@/components/admin/integration-test-forms';
+import { IntegrationProbeButtons } from '@/components/admin/integration-probe-buttons';
+import { MapsDiscoverySettings } from '@/components/admin/maps-discovery-settings';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendDomainVerified, resendDomainWarning, resendFromEmail } from '@/lib/resend-config';
 import { twilioMessagingServiceSid, twilioFromNumber, twilioSenderReady } from '@/lib/twilio-config';
 import { RESEND_WEBHOOK_EVENTS, RESEND_WEBHOOK_PATH } from '@/lib/resend-webhook';
 import { inboundForwardTo, inboundMailboxAddress } from '@/lib/email/inbound-email';
 import {
-  APPLE_ADVANCED_API_MESSAGE,
-  appleAdvancedApiStatus,
   businessHomeBaseConfigured,
-  googleMapsConfigured,
   openWeatherConfigured,
 } from '@/lib/weather-config';
+import {
+  buildMapsDiscoveryProbes,
+  getGooglePlacesApiKey,
+  getGoogleMapsPublicKey,
+  getAppleMapKitJsToken,
+  placesDiscoveryConfigured,
+  googleMapsRenderConfigured,
+  appleMapKitCredentialsPresent,
+  resolveMapProvider,
+} from '@/lib/integrations/maps-discovery-status';
+import { loadTitanWorkspace } from '@/lib/titan/workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +95,11 @@ function Card({
 export default async function AdminIntegrationsPage() {
   const admin = tryCreateAdminSupabase();
   const tests = admin ? (((await admin.from('integration_test_events').select('*').order('created_at', { ascending: false }).limit(20)).data ?? []) as Row[]) : [];
+  const workspace = admin ? await loadTitanWorkspace(admin) : null;
+  const mapProbes = buildMapsDiscoveryProbes();
+  const placesProbe = mapProbes.find((p) => p.id === 'google_places')!;
+  const mapsProbe = mapProbes.find((p) => p.id === 'google_maps')!;
+  const appleProbe = mapProbes.find((p) => p.id === 'apple_mapkit')!;
   const last = (kind: string) => tests.find((t) => String(t.kind) === kind);
   const lastInboundWebhook = tests.find((t) => String(t.kind) === 'resend_inbound_received');
   const lastOutboundWebhook = tests.find((t) => String(t.kind) === 'resend_webhook_outbound');
@@ -99,7 +114,6 @@ export default async function AdminIntegrationsPage() {
   const fromEmail = resendFromEmail();
   const domainOk = resendDomainVerified();
   const resendWarn = resendDomainWarning();
-  const appleAdvanced = appleAdvancedApiStatus();
 
   return (
     <DashboardShell 
@@ -118,6 +132,24 @@ export default async function AdminIntegrationsPage() {
       {resendWarn ? (
         <p className='mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>{resendWarn}</p>
       ) : null}
+
+      <div className='border-b border-white/10 pb-3 mb-5 flex items-center justify-between'>
+        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Maps &amp; Discovery (Titan Growth OS)</p>
+        <span className='text-[10px] text-zinc-500 font-mono'>Places required · Maps required · Apple optional</span>
+      </div>
+
+      <section className='mb-8'>
+        {workspace ? (
+          <MapsDiscoverySettings
+            mapProvider={workspace.mapProvider}
+            effectiveProvider={resolveMapProvider(workspace.mapProvider)}
+            probes={mapProbes}
+          />
+        ) : null}
+        <div className='mt-4 rounded-3xl border border-white/5 bg-zinc-950/45 p-6'>
+          <IntegrationProbeButtons />
+        </div>
+      </section>
 
       <div className='border-b border-white/10 pb-3 mb-5 flex items-center justify-between'>
         <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Active Infrastructure Nodes</p>
@@ -190,7 +222,8 @@ export default async function AdminIntegrationsPage() {
             ['STRIPE_SECRET_KEY / LIVE', Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY_LIVE)], 
             ['STRIPE_WEBHOOK_SECRET', Boolean(process.env.STRIPE_WEBHOOK_SECRET)], 
             ['NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)]
-          ]} 
+          ]}
+          last={last('stripe_probe')}
         />
 
         <Card 
@@ -231,51 +264,71 @@ export default async function AdminIntegrationsPage() {
             ['BUSINESS_HOME_BASE_ADDRESS', businessHomeBaseConfigured()],
             ['BUSINESS_LAT', Boolean(process.env.BUSINESS_LAT)],
             ['BUSINESS_LNG', Boolean(process.env.BUSINESS_LNG)],
-            ['GOOGLE_MAPS_API_KEY / MAPS_API_KEY', googleMapsConfigured()],
           ]}
           alert={
             openWeatherConfigured()
-              ? 'Weather widgets use OpenWeather first. BUSINESS_HOME_BASE_ADDRESS is the fallback service-area lookup; BUSINESS_LAT and BUSINESS_LNG bypass geocoding when set.'
+              ? 'Weather widgets use OpenWeather first. BUSINESS_LAT and BUSINESS_LNG are used for integration tests and discovery center.'
               : 'missing OPENWEATHER_API_KEY'
           }
         >
           <p className='text-xs leading-relaxed text-zinc-400'>
-            Apple WeatherKit is future/advanced and is not required for current weather widgets.
+            Use Test Integration → OpenWeather on this page to verify the key.
           </p>
         </Card>
 
         <Card
-          name='Apple Maps/Weather Advanced APIs'
-          ok={appleAdvanced.configured}
+          name='Google Places API (Lead Radar discovery)'
+          ok={placesDiscoveryConfigured()}
           vars={[
-            ['APPLE_TEAM_ID', Boolean(process.env.APPLE_TEAM_ID)],
-            ['APPLE_KEY_ID', Boolean(process.env.APPLE_KEY_ID)],
-            ['APPLE_SERVICE_ID', Boolean(process.env.APPLE_SERVICE_ID)],
-            ['APPLE_PRIVATE_KEY', Boolean(process.env.APPLE_PRIVATE_KEY)],
-            ['APPLE_MAPS_KEY_ID', Boolean(process.env.APPLE_MAPS_KEY_ID)],
-            ['APPLE_MAPS_PRIVATE_KEY', Boolean(process.env.APPLE_MAPS_PRIVATE_KEY)],
-          ]}
-          alert={appleAdvanced.configured ? null : APPLE_ADVANCED_API_MESSAGE}
-        >
-          <p className='text-xs leading-relaxed text-zinc-400'>
-            Navigation uses basic Apple Maps and Google Maps direction links now, so no Apple Developer token is required yet.
-          </p>
-        </Card>
-
-        <Card
-          name='Titan Lead Radar (Google Places)'
-          ok={googleMapsConfigured() && businessHomeBaseConfigured()}
-          vars={[
-            ['GOOGLE_PLACES_API_KEY / GOOGLE_MAPS_API_KEY', googleMapsConfigured()],
-            ['BUSINESS_HOME_BASE_ADDRESS', businessHomeBaseConfigured()],
+            ['GOOGLE_PLACES_API_KEY', Boolean(getGooglePlacesApiKey())],
             ['BUSINESS_LAT', Boolean(process.env.BUSINESS_LAT)],
             ['BUSINESS_LNG', Boolean(process.env.BUSINESS_LNG)],
             ['TITAN_DISCOVERY_RADIUS_MILES', Boolean(process.env.TITAN_DISCOVERY_RADIUS_MILES)],
           ]}
+          last={last('google_places_probe')}
           alert={
-            googleMapsConfigured()
-              ? 'Enable Places API (New) on your Google Cloud project. Daily Titan nightly cron (06:00 UTC) discovers B2B prospects — or use Run discovery now in Command Center.'
-              : 'missing GOOGLE_PLACES_API_KEY or GOOGLE_MAPS_API_KEY'
+            placesDiscoveryConfigured()
+              ? 'Required for Lead Radar discovery — apartments, dealerships, fleets, landscapers, construction, realtors, HOAs, property managers.'
+              : 'Discovery disabled until Google Places API is connected.'
+          }
+        >
+          {placesProbe.disabledFeatures.length > 0 ? (
+            <p className='text-xs text-amber-200'>Disabled: {placesProbe.disabledFeatures.join(' · ')}</p>
+          ) : null}
+        </Card>
+
+        <Card
+          name='Google Maps (map view / routing)'
+          ok={googleMapsRenderConfigured()}
+          vars={[
+            ['NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', Boolean(getGoogleMapsPublicKey())],
+          ]}
+          last={last('google_maps_probe')}
+          alert={
+            googleMapsRenderConfigured()
+              ? 'Required for Lead Radar map toggle and routing preview.'
+              : 'Map view disabled — set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.'
+          }
+        >
+          {mapsProbe.disabledFeatures.length > 0 ? (
+            <p className='text-xs text-amber-200'>Disabled: {mapsProbe.disabledFeatures.join(' · ')}</p>
+          ) : null}
+        </Card>
+
+        <Card
+          name='Apple MapKit JS (optional map layer)'
+          ok={appleMapKitCredentialsPresent()}
+          vars={[
+            ['APPLE_MAPKIT_JS_TOKEN', Boolean(getAppleMapKitJsToken())],
+            ['APPLE_MAPS_TEAM_ID', Boolean(process.env.APPLE_MAPS_TEAM_ID)],
+            ['APPLE_MAPS_KEY_ID', Boolean(process.env.APPLE_MAPS_KEY_ID)],
+            ['APPLE_MAPS_PRIVATE_KEY', Boolean(process.env.APPLE_MAPS_PRIVATE_KEY)],
+          ]}
+          last={last('apple_mapkit_probe')}
+          alert={
+            appleMapKitCredentialsPresent()
+              ? 'Optional alternative map provider — visual layer only, not used for Places discovery.'
+              : 'Apple Maps setup is separate from Google Places. Not required for Lead Radar discovery.'
           }
         />
 

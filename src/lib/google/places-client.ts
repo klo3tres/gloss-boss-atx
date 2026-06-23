@@ -1,13 +1,9 @@
 /** Google Maps / Places API key resolution (server-only). */
 
+import { getGooglePlacesApiKey as placesKeyOnly, getGoogleMapsServerKey } from '@/lib/integrations/maps-discovery-status';
+
 export function getGoogleMapsApiKey(): string | null {
-  const key =
-    process.env.GOOGLE_PLACES_API_KEY?.trim() ||
-    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.MAPS_API_KEY?.trim() ||
-    process.env.GOOGLE_API_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
-  return key || null;
+  return placesKeyOnly() ?? getGoogleMapsServerKey();
 }
 
 export function placesApiConfigured(): boolean {
@@ -50,6 +46,7 @@ export type PlaceResult = {
   name: string;
   address: string | null;
   phone: string | null;
+  website: string | null;
   lat: number;
   lng: number;
   types: string[];
@@ -61,6 +58,7 @@ const PLACE_FIELD_MASK = [
   'places.formattedAddress',
   'places.location',
   'places.nationalPhoneNumber',
+  'places.websiteUri',
   'places.types',
 ].join(',');
 
@@ -78,6 +76,7 @@ function mapPlace(row: Record<string, unknown>): PlaceResult | null {
     name,
     address: row.formattedAddress ? String(row.formattedAddress) : null,
     phone: row.nationalPhoneNumber ? String(row.nationalPhoneNumber) : null,
+    website: row.websiteUri ? String(row.websiteUri) : null,
     lat,
     lng,
     types: Array.isArray(row.types) ? row.types.map((t) => String(t)) : [],

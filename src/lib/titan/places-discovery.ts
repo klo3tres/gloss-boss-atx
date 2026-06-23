@@ -206,6 +206,7 @@ export async function discoverPlacesProspects(
           prospect_type: prospectType,
           contact_role: CONTACT_ROLES[prospectType],
           phone: place.phone,
+          website: place.website,
           address: place.address,
           distance_miles: distance,
           lat: place.lat,

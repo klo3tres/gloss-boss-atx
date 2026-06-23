@@ -22,6 +22,19 @@ import {
   type TitanOpportunity,
 } from '@/lib/titan/opportunity-scanner';
 import { fetchWeatherForAddress } from '@/lib/weather-forecast';
+import {
+  buildMapsDiscoveryProbes,
+  getAppleMapKitJsToken,
+  getGoogleMapsPublicKey,
+  leadRadarDiscoveryMessage,
+  placesDiscoveryConfigured,
+  googleMapsRenderConfigured,
+  appleMapKitCredentialsPresent,
+  resolveMapProvider,
+  type IntegrationProbe,
+  type MapProviderId,
+} from '@/lib/integrations/maps-discovery-status';
+import { businessCoordinates } from '@/lib/weather-config';
 
 export type TitanAction = {
   id: string;
@@ -97,6 +110,31 @@ export type TitanBriefing = {
     learning: OpportunityLearning;
   };
   setupWarnings: TitanSetupWarning[];
+  mapsIntegration: {
+    discoveryMessage: string;
+    placesConnected: boolean;
+    mapsRenderConnected: boolean;
+    appleMapKitConnected: boolean;
+    mapProvider: MapProviderId;
+    effectiveMapProvider: MapProviderId;
+    googleMapsPublicKey: string | null;
+    appleMapKitToken: string | null;
+    businessCenter: { lat: number; lng: number } | null;
+    probes: IntegrationProbe[];
+  };
+  socialOutreach: {
+    tablesReady: boolean;
+    targets: Array<{ id: string; platform: string; label: string; url: string | null; keywords: string | null }>;
+    posts: Array<{
+      id: string;
+      post_text: string;
+      author_name: string | null;
+      generated_reply: string | null;
+      generated_dm: string | null;
+      status: string;
+      outcome: string | null;
+    }>;
+  };
 };
 
 function str(v: unknown) {
@@ -364,11 +402,11 @@ function buildSetupWarnings(
 ): TitanSetupWarning[] {
   const warnings: TitanSetupWarning[] = [];
 
-  if (!process.env.GOOGLE_PLACES_API_KEY?.trim()) {
+  if (!placesDiscoveryConfigured()) {
     warnings.push({
       id: 'places',
       severity: 'warning',
-      message: 'GOOGLE_PLACES_API_KEY missing — Lead Radar is in manual discovery mode.',
+      message: 'Discovery disabled until Google Places API is connected.',
       href: '/admin/integrations',
     });
   }
@@ -477,6 +515,17 @@ export async function loadTitanBriefing(
 
   const name = ownerName?.trim() || null;
 
+  const socialProbe = await admin.from('titan_social_outreach').select('id').limit(1);
+  const socialTablesReady = !socialProbe.error;
+  const [socialTargetsRes, socialPostsRes] = socialTablesReady
+    ? await Promise.all([
+        admin.from('titan_social_outreach').select('*').order('created_at', { ascending: false }).limit(20),
+        admin.from('titan_social_posts').select('*').order('found_at', { ascending: false }).limit(10),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const effectiveMapProvider = resolveMapProvider(workspace.mapProvider);
+
   return {
     generatedAt: new Date().toISOString(),
     greeting: greetingForHour(),
@@ -541,5 +590,42 @@ export async function loadTitanBriefing(
       learning: opportunityLearning,
     },
     setupWarnings: buildSetupWarnings(workspace, revenueTarget),
+    mapsIntegration: {
+      discoveryMessage: leadRadarDiscoveryMessage(),
+      placesConnected: placesDiscoveryConfigured(),
+      mapsRenderConnected: googleMapsRenderConfigured(),
+      appleMapKitConnected: appleMapKitCredentialsPresent(),
+      mapProvider: workspace.mapProvider,
+      effectiveMapProvider,
+      googleMapsPublicKey: getGoogleMapsPublicKey(),
+      appleMapKitToken: getAppleMapKitJsToken(),
+      businessCenter: businessCoordinates(),
+      probes: buildMapsDiscoveryProbes(),
+    },
+    socialOutreach: {
+      tablesReady: socialTablesReady,
+      targets: (socialTargetsRes.data ?? []).map((r) => {
+        const row = r as Record<string, unknown>;
+        return {
+          id: str(row.id),
+          platform: str(row.platform),
+          label: str(row.label),
+          url: str(row.url) || null,
+          keywords: str(row.keywords) || null,
+        };
+      }),
+      posts: (socialPostsRes.data ?? []).map((r) => {
+        const row = r as Record<string, unknown>;
+        return {
+          id: str(row.id),
+          post_text: str(row.post_text),
+          author_name: str(row.author_name) || null,
+          generated_reply: str(row.generated_reply) || null,
+          generated_dm: str(row.generated_dm) || null,
+          status: str(row.status) || 'new',
+          outcome: str(row.outcome) || null,
+        };
+      }),
+    },
   };
 }

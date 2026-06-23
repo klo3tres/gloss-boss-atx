@@ -153,7 +153,7 @@ export function TitanAutonomyPanels({ snapshot }: { snapshot: Titan10Snapshot })
             title="No outreach kits yet"
             reason="Outreach is generated from prospects and opportunities in Lead Radar."
             missing="titan_prospects or manual prospect"
-            nextStep="Add Google Places API or log a prospect manually."
+            nextStep="Discovery disabled until Google Places API is connected. Manual prospect entry still works."
             href="/admin/super"
             actionLabel="Open Lead Radar"
           />
@@ -225,7 +225,7 @@ export function TitanAutonomyPanels({ snapshot }: { snapshot: Titan10Snapshot })
               <p className="text-[10px] font-black uppercase text-blue-300">{TITAN_ENGINES.fleet}</p>
             </div>
             {fleet.accounts.length === 0 ? (
-              <TitanEmptyState title="No fleet prospects" reason="Fleet accounts come from fleet inquiries and B2B prospects." nextStep="Add prospects manually or enable Places discovery." href="/admin/fleet" />
+              <TitanEmptyState title="No fleet prospects" reason="Fleet accounts come from fleet inquiries and B2B prospects." nextStep="Connect Google Places for discovery or add prospects manually." href="/admin/super" />
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {fleet.accounts.slice(0, 4).map((f) => (

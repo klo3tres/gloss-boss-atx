@@ -88,7 +88,7 @@ const CRON_SCHEDULE_ITEMS: TitanCronSchedule[] = [
 ];
 
 export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promise<TitanSystemHealth> {
-  const latestMigration = '000097';
+  const latestMigration = '000098';
   const hobbyMode = true;
   const hobbyModeWarning = HOBBY_MODE_AUTOMATION_WARNING;
   const integrations: TitanHealthItem[] = [
@@ -115,8 +115,19 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
     {
       id: 'places',
       label: 'Google Places API',
-      status: envOk('GOOGLE_PLACES_API_KEY') ? 'ok' : 'manual',
-      detail: envOk('GOOGLE_PLACES_API_KEY') ? 'Connected' : 'Manual mode active — Lead Radar discovery disabled',
+      status: envOk('GOOGLE_PLACES_API_KEY') || envOk('GOOGLE_MAPS_API_KEY') ? 'ok' : 'missing',
+      detail:
+        envOk('GOOGLE_PLACES_API_KEY') || envOk('GOOGLE_MAPS_API_KEY')
+          ? 'Connected — Lead Radar discovery enabled'
+          : 'Discovery disabled until Google Places API is connected',
+    },
+    {
+      id: 'google_maps',
+      label: 'Google Maps (render)',
+      status: envOk('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY') ? 'ok' : 'missing',
+      detail: envOk('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY')
+        ? 'Connected — map view available'
+        : 'Map view disabled — set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY',
     },
     {
       id: 'stripe',

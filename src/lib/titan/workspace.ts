@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import type { MapProviderId } from '@/lib/integrations/maps-discovery-status';
+
 export type TitanIndustry =
   | 'mobile_detailing'
   | 'pressure_washing'
@@ -26,6 +28,7 @@ export type TitanWorkspace = {
   onboardingCompletedAt: string | null;
   subscriptionTier: string;
   subscriptionStatus: string | null;
+  mapProvider: MapProviderId;
 };
 
 const DEFAULT_HOURS: Record<string, string> = {
@@ -70,6 +73,7 @@ function defaults(): TitanWorkspace {
     onboardingCompletedAt: null,
     subscriptionTier: 'none',
     subscriptionStatus: null,
+    mapProvider: 'list_only',
   };
 }
 
@@ -96,6 +100,9 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
     onboardingCompletedAt: str(row.onboarding_completed_at) || null,
     subscriptionTier: str(row.subscription_tier) || 'none',
     subscriptionStatus: str(row.subscription_status) || null,
+    mapProvider: (['google_maps', 'apple_mapkit', 'list_only'].includes(str(row.map_provider))
+      ? str(row.map_provider)
+      : 'list_only') as MapProviderId,
   };
 }
 
@@ -129,6 +136,7 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     onboardingCompletedAt: input.onboardingCompletedAt ?? current.onboardingCompletedAt,
     subscriptionTier: input.subscriptionTier ?? current.subscriptionTier,
     subscriptionStatus: input.subscriptionStatus ?? current.subscriptionStatus,
+    mapProvider: input.mapProvider ?? current.mapProvider,
   };
 
   const { error } = await admin.from('titan_workspace_settings').upsert(
@@ -150,6 +158,7 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
       onboarding_completed_at: merged.onboardingCompletedAt,
       subscription_tier: merged.subscriptionTier,
       subscription_status: merged.subscriptionStatus,
+      map_provider: merged.mapProvider,
       updated_at: now,
     },
     { onConflict: 'workspace_key' },

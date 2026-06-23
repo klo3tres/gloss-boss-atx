@@ -6,6 +6,12 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { loadTitanSystemHealth } from '@/lib/titan/system-health';
+import {
+  buildMapsDiscoveryProbes,
+  placesDiscoveryConfigured,
+  googleMapsRenderConfigured,
+  appleMapKitCredentialsPresent,
+} from '@/lib/integrations/maps-discovery-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +23,7 @@ type Check = {
   fix: string;
   href: string;
   testHref?: string;
+  disabledFeatures?: string[];
 };
 
 function badge(status: Check['status']) {
@@ -34,13 +41,17 @@ export default async function LaunchReadinessPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
 
-  const [stripe, health, bookingProbe, reviewProbe, placesKey] = await Promise.all([
+  const [stripe, health, bookingProbe, reviewProbe, mapProbes] = await Promise.all([
     getStripeSecrets(admin),
     loadTitanSystemHealth(admin),
     admin.from('appointments').select('id').limit(1),
     admin.from('customer_reviews').select('id').eq('published', true).limit(1),
-    Promise.resolve(process.env.GOOGLE_PLACES_API_KEY?.trim() || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || ''),
+    Promise.resolve(buildMapsDiscoveryProbes()),
   ]);
+
+  const placesProbe = mapProbes.find((p) => p.id === 'google_places')!;
+  const mapsProbe = mapProbes.find((p) => p.id === 'google_maps')!;
+  const appleProbe = mapProbes.find((p) => p.id === 'apple_mapkit')!;
 
   const openWeather = Boolean(process.env.OPENWEATHER_API_KEY?.trim() || process.env.OPENWEATHER_API_KE?.trim());
   const twilio = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim());
@@ -73,20 +84,41 @@ export default async function LaunchReadinessPage() {
       testHref: '/',
     },
     {
+      id: 'google_places',
+      label: 'Google Places',
+      status: placesDiscoveryConfigured() ? 'live' : 'broken',
+      affects: 'Lead Radar cannot discover prospects — Run discovery now disabled',
+      fix: 'Set GOOGLE_PLACES_API_KEY and enable Places API (New) with billing.',
+      href: '/admin/integrations',
+      disabledFeatures: placesProbe.disabledFeatures,
+    },
+    {
+      id: 'google_maps',
+      label: 'Google Maps',
+      status: googleMapsRenderConfigured() ? 'live' : 'broken',
+      affects: 'Map view and routing preview disabled in Lead Radar',
+      fix: 'Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and enable Maps JavaScript API.',
+      href: '/admin/integrations',
+      disabledFeatures: mapsProbe.disabledFeatures,
+    },
+    {
+      id: 'apple_mapkit',
+      label: 'Apple Maps / MapKit',
+      status: appleMapKitCredentialsPresent() ? 'live' : 'manual',
+      affects: appleMapKitCredentialsPresent()
+        ? 'Optional alternative map layer available'
+        : 'Apple map toggle unavailable — Google Maps or list-only still works',
+      fix: 'Optional — APPLE_MAPKIT_JS_TOKEN or APPLE_MAPS_TEAM_ID + KEY_ID + PRIVATE_KEY. Does not replace Google Places discovery.',
+      href: '/admin/integrations',
+      disabledFeatures: appleProbe.disabledFeatures,
+    },
+    {
       id: 'weather',
       label: 'Weather',
       status: openWeather ? 'live' : 'manual',
       affects: 'Job cards and calendar lack weather context',
       fix: 'Set OPENWEATHER_API_KEY in environment.',
       href: '/admin/integrations',
-    },
-    {
-      id: 'places',
-      label: 'Google Places',
-      status: placesKey ? 'live' : 'manual',
-      affects: 'Lead Radar auto-discovery disabled',
-      fix: 'Set GOOGLE_PLACES_API_KEY — manual prospect mode still works.',
-      href: '/admin/super',
     },
     {
       id: 'twilio',
@@ -142,6 +174,11 @@ export default async function LaunchReadinessPage() {
               <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${badge(c.status)}`}>{c.status}</span>
             </div>
             <p className="mt-2 text-xs text-zinc-500"><strong className="text-zinc-400">Affects:</strong> {c.affects}</p>
+            {c.disabledFeatures && c.disabledFeatures.length > 0 ? (
+              <p className="mt-1 text-xs text-amber-300/90">
+                <strong className="text-amber-200">Disabled Titan features:</strong> {c.disabledFeatures.join(' · ')}
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-zinc-500"><strong className="text-zinc-400">Fix:</strong> {c.fix}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Link href={c.href} className="rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft">Open settings</Link>

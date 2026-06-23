@@ -16,6 +16,9 @@ import {
 import type { TitanBriefing } from '@/lib/titan-briefing';
 import { prospectTypeLabel, type ProspectType } from '@/lib/titan/lead-radar';
 import { displayMoney } from '@/lib/display-format';
+import { MapsDiscoverySettings } from '@/components/admin/maps-discovery-settings';
+import { LeadRadarMapView } from '@/components/admin/lead-radar-map-view';
+import { SocialOutreachManualPanel } from '@/components/admin/social-outreach-manual-panel';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -49,6 +52,12 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
 
   return (
     <div className="space-y-6">
+      <MapsDiscoverySettings
+        mapProvider={briefing.mapsIntegration.mapProvider}
+        effectiveProvider={briefing.mapsIntegration.effectiveMapProvider}
+        probes={briefing.mapsIntegration.probes}
+      />
+
       <section className="rounded-3xl border border-gold/30 bg-gradient-to-br from-gold/10 via-black to-zinc-950 p-6">
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-gold">Titan Growth OS</p>
         <p className="mt-2 max-w-2xl text-sm text-zinc-400">
@@ -160,7 +169,9 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-300">Phase 11 — Titan Lead Radar</p>
             <p className="mt-2 text-sm text-zinc-500">
-              Titan discovers B2B opportunities every morning via Google Places — scored and ready for outreach.
+              {briefing.mapsIntegration.placesConnected
+                ? 'Titan discovers B2B opportunities via Google Places — scored and ready for outreach.'
+                : briefing.mapsIntegration.discoveryMessage}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -170,7 +181,7 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
               title={
                 growth.radar.discovery.configured
                   ? 'Run Google Places discovery now'
-                  : 'Google Places API key required — use manual prospect entry'
+                  : 'Discovery disabled until Google Places API is connected.'
               }
               onClick={() => run(() => runPlacesDiscoveryAction())}
               className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-blue-200 disabled:cursor-not-allowed disabled:opacity-40"
@@ -223,9 +234,18 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
           )
         ) : (
           <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-            Lead Radar manual mode active — Google Places not connected. Add prospects manually or paste opportunities in Opportunity Scanner.
+            Discovery disabled until Google Places API is connected. Manual prospect entry still works — connect{' '}
+            <span className="font-mono">GOOGLE_PLACES_API_KEY</span> in Admin → Integrations.
           </p>
         )}
+
+        <LeadRadarMapView
+          prospects={growth.radar.prospects}
+          mapProvider={briefing.mapsIntegration.effectiveMapProvider}
+          googleMapsKey={briefing.mapsIntegration.googleMapsPublicKey}
+          appleMapKitToken={briefing.mapsIntegration.appleMapKitToken}
+          businessCenter={briefing.mapsIntegration.businessCenter}
+        />
 
         {growth.radar.discovery.lastError ? (
           <p className="mt-3 text-xs text-amber-300">Last scan note: {growth.radar.discovery.lastError}</p>
@@ -409,6 +429,15 @@ export function TitanGrowthPanels({ briefing }: { briefing: TitanBriefing }) {
       </div>
 
       {err ? <p className="text-xs text-red-300">{err}</p> : null}
+
+      {briefing.socialOutreach.tablesReady ? (
+        <SocialOutreachManualPanel targets={briefing.socialOutreach.targets} posts={briefing.socialOutreach.posts} />
+      ) : (
+        <section className="rounded-3xl border border-pink-500/20 bg-black/55 p-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-pink-300">Social Outreach — Manual Mode</p>
+          <p className="mt-2 text-xs text-amber-200">Apply migration 000098 to enable social outreach manual mode.</p>
+        </section>
+      )}
     </div>
   );
 }

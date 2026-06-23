@@ -35,6 +35,10 @@ export type TitanProspect = {
   acquisitionSource: string | null;
   notes: string | null;
   leadId: string | null;
+  lat: number | null;
+  lng: number | null;
+  googlePlaceId: string | null;
+  discoveredAt: string | null;
 };
 
 function str(v: unknown) {
@@ -145,6 +149,10 @@ export function mapProspect(row: Record<string, unknown>): TitanProspect {
     acquisitionSource: str(row.acquisition_source) || null,
     notes: str(row.notes) || str(row.enrichment_notes) || null,
     leadId: str(row.lead_id) || null,
+    lat: row.lat != null ? Number(row.lat) : null,
+    lng: row.lng != null ? Number(row.lng) : null,
+    googlePlaceId: str(row.google_place_id) || null,
+    discoveredAt: str(row.discovered_at) || null,
   };
 }
 
