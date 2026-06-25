@@ -22,6 +22,7 @@ import {
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { OffersMarketingBand } from "@/components/marketing/offers-marketing-band";
 import { FleetInquiryForm } from "@/components/public/fleet-inquiry-form";
+import { ServicesTrustBand, ServicesHeroActions, ServicesMobileBookBar } from "@/components/marketing/services-conversion-band";
 import { mediaUrl, type MediaRegistry } from "@/lib/media-registry";
 
 const emptyDeals: DealConfig = {
@@ -67,6 +68,78 @@ function servicePresentation(service: ServicePackage) {
 
 function fmtMoney(cents: number) {
   return `$${(cents / 100).toFixed(0)}`;
+}
+
+const ADDON_METADATA: Record<
+  string,
+  {
+    description: string;
+    pricing: Array<{ label: string; value: string }>;
+  }
+> = {
+  'upholstery shampoo + stain extraction': {
+    description: 'Deep fiber steam cleaning, sanitization, and hot water extraction targeting spills, mud, and drink stains on fabric seats.',
+    pricing: [
+      { label: 'Sedan', value: '$95+' },
+      { label: 'SUV', value: '$125+' },
+      { label: 'Truck', value: '$150+' },
+    ],
+  },
+  'clay bar': {
+    description: 'Decontaminates paint surface by removing embedded industrial fallout, overspray, and road grit for a glass-like finish.',
+    pricing: [
+      { label: 'Sedan', value: '$40+' },
+      { label: 'SUV', value: '$55+' },
+      { label: 'Truck', value: '$70+' },
+    ],
+  },
+  'pet hair': {
+    description: 'Thorough multi-stage vacuuming and static brushing to extract embedded pet fur from carpet fibers and upholstery.',
+    pricing: [
+      { label: 'Starting at', value: '$50+' },
+      { label: 'Heavy Stains', value: '$75–$100' },
+    ],
+  },
+  'engine bay': {
+    description: 'Eco-safe degreasing, hand agitation, pressurized steam blowout, and dry-touch plastic protective dressing.',
+    pricing: [{ label: 'All Vehicles', value: '$50+' }],
+  },
+  'heavy condition fee': {
+    description: 'Applied for vehicles with extreme mud, sand, interior mold, excessive trash, or heavy neglect requiring extra labor.',
+    pricing: [{ label: 'Starting at', value: '$50+' }],
+  },
+  'heavy stains': {
+    description: 'Restoration-level deep extraction, spot dye correction, or specialized chemical treatments for severe carpet/seat blemishes.',
+    pricing: [{ label: 'Requires review', value: 'Quote' }],
+  },
+  'odor treatment': {
+    description: 'Commercial ozone gas generator cycles to neutralize smoke, pet, mold, and organic odors at the molecular level.',
+    pricing: [{ label: 'Sanitization', value: 'Coming soon' }],
+  },
+};
+
+function getAddonShortLabel(label: string) {
+  const l = label.toLowerCase().trim();
+  if (l.includes('shampoo') || l.includes('upholstery')) return 'Upholstery Shampoo ($95+)';
+  if (l.includes('clay')) return 'Clay Bar ($40+)';
+  if (l.includes('pet')) return 'Pet Hair ($50+)';
+  if (l.includes('engine')) return 'Engine Bay ($50+)';
+  if (l.includes('heavy condition')) return 'Heavy Condition Fee ($50+)';
+  if (l.includes('heavy stains')) return 'Heavy Stains (Quote)';
+  if (l.includes('odor')) return 'Odor Treatment (Soon)';
+  return label;
+}
+
+function getAddonPresentation(label: string, detail: string) {
+  const key = label.toLowerCase().trim();
+  const matched = ADDON_METADATA[key];
+  if (matched) {
+    return matched;
+  }
+  return {
+    description: detail,
+    pricing: [{ label: 'Pricing', value: 'View in cart' }],
+  };
 }
 
 export default function ServicesPage() {
@@ -192,7 +265,7 @@ export default function ServicesPage() {
   };
 
   return (
-    <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">
+    <main className="gb-luxury-page min-h-screen overflow-x-hidden bg-black pb-28 text-foreground lg:pb-24">
       {/* Category-Specific Hero Banner */}
       <section className="relative w-full h-[45vh] min-h-[350px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-12">
         <Image
@@ -216,13 +289,16 @@ export default function ServicesPage() {
           <p className="mt-3 max-w-2xl mx-auto text-xs sm:text-sm text-zinc-300 leading-relaxed">
             Professional mobile detailing at your doorstep. We supply our own spot-free filtered water, electricity, and premium chemicals.
           </p>
+          <ServicesHeroActions />
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <ServicesTrustBand />
+
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 overflow-x-hidden">
         {/* Navigation Tabs */}
-        <div className="flex justify-center mb-10">
-          <div className="inline-flex flex-wrap justify-center gap-2 rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md">
+        <div className="flex justify-center mb-12 -mx-1 overflow-x-auto px-1 pb-2 scrollbar-none">
+          <div className="inline-flex min-w-max flex-wrap justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 backdrop-blur-xl sm:min-w-0 shadow-[0_0_40px_rgba(212,175,55,0.06)]">
             {[
               ['all', 'All Services'],
               ['exterior', 'Exterior Detailing'],
@@ -230,20 +306,26 @@ export default function ServicesPage() {
               ['full', 'Full Packages'],
               ['ceramic', 'Ceramic Coatings'],
               ['memberships', 'Memberships'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(key as any)}
-                className={`rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-300 ${
-                  activeTab === key
-                    ? 'bg-gold text-black shadow-[0_0_15px_rgba(212,175,55,0.3)]'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            ].map(([key, label]) => {
+              const isActive = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setActiveTab(key as any)}
+                  className={`relative rounded-xl px-5 py-3 text-xs font-black uppercase tracking-wider transition-all duration-300 transform active:scale-95 hover:scale-105 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-gold via-gold-soft to-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.35)] font-black'
+                      : 'text-zinc-400 hover:text-white hover:bg-white/5 hover:translate-y-[-1px]'
+                  }`}
+                >
+                  {isActive && (
+                    <span className="absolute -inset-0.5 rounded-xl bg-gold-soft opacity-20 blur-sm -z-10 animate-pulse" />
+                  )}
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -317,105 +399,119 @@ export default function ServicesPage() {
               const isQuoteOnly = !service.sedanPrice || service.quoteRequired || service.comingSoon;
               const presentation = servicePresentation(service);
 
+              const isPopular = /full/i.test(service.title) && !/exterior|interior/i.test(service.title);
+
               return (
                 <article
                   key={service.id}
-                  className="group relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/40 backdrop-blur-md hover:-translate-y-1 hover:border-gold/30 hover:shadow-[0_0_44px_rgba(212,175,55,0.12)] transition-all duration-300"
+                  className="group relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/50 backdrop-blur-xl hover:-translate-y-1.5 hover:border-gold/30 hover:shadow-[0_0_50px_rgba(212,175,55,0.15)] transition-all duration-500"
                 >
+                  {isPopular ? (
+                    <span className="absolute right-4 top-4 z-10 rounded-full border border-gold/45 bg-gold/15 px-3.5 py-1 text-[9px] font-black uppercase tracking-wider text-gold-soft shadow-[0_0_10px_rgba(212,175,55,0.1)]">
+                      Most booked
+                    </span>
+                  ) : null}
                   <div className="grid gap-0 lg:grid-cols-[0.9fr_1.35fr]">
-                    <div className="relative min-h-[260px] overflow-hidden">
+                    <div className="relative min-h-[280px] overflow-hidden">
                       <Image
                         src={mediaUrl(mediaRegistry, presentation.imageKey)}
                         alt={`${service.title} vehicle detail`}
                         fill
                         unoptimized={mediaUrl(mediaRegistry, presentation.imageKey).startsWith('http')}
-                        className="object-cover opacity-75 transition duration-700 group-hover:scale-105 group-hover:opacity-95"
+                        className="object-cover opacity-75 transition-all duration-700 ease-out group-hover:scale-110 group-hover:opacity-95"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
                       <div className="absolute bottom-5 left-5 right-5">
-                        <span className="rounded-full border border-gold/30 bg-black/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-gold-soft backdrop-blur">
+                        <span className="rounded-full border border-gold/30 bg-black/70 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-gold backdrop-blur-sm">
                           Member savings available
                         </span>
-                        <p className="mt-3 text-sm leading-6 text-zinc-200">{presentation.ideal}</p>
+                        <p className="mt-3 text-sm leading-relaxed text-zinc-200">{presentation.ideal}</p>
                       </div>
                     </div>
-                    <div className="p-6 sm:p-8">
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 pb-6 border-b border-white/5">
-                    <div>
-                      <h2 className="text-2.5xl font-black uppercase text-white tracking-tight">{service.title}</h2>
-                      {service.subtitle?.trim() && <p className="mt-1 text-xs text-zinc-400 italic">{service.subtitle}</p>}
-                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/5 px-3 py-1 text-xs text-zinc-300">
-                        <Clock className="h-3.5 w-3.5 text-gold-soft" />
-                        <span>Estimated Duration: <strong className="text-white">{duration}</strong></span>
-                      </div>
-                    </div>
+                    <div className="p-6 sm:p-8 flex flex-col justify-between">
+                      <div>
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 pb-6 border-b border-white/5">
+                          <div>
+                            <h2 className="text-2.5xl font-black uppercase text-white tracking-tight group-hover:text-gold-soft transition-colors duration-300">{service.title}</h2>
+                            {service.subtitle?.trim() && <p className="mt-1 text-xs text-zinc-400 italic">{service.subtitle}</p>}
+                            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-zinc-900/60 border border-white/5 px-3.5 py-1 text-xs text-zinc-300">
+                              <Clock className="h-3.5 w-3.5 text-gold" />
+                              <span>Estimated Duration: <strong className="text-white">{duration}</strong></span>
+                            </div>
+                          </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!isQuoteOnly ? (
-                        <>
-                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
-                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">Sedan</span>
-                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.sedanPrice)}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {!isQuoteOnly ? (
+                              <>
+                                <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px] hover:border-gold/30 transition-all duration-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                                  <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">Sedan</span>
+                                  <span className="text-base font-black text-gold-soft mt-0.5 block">{formatVehiclePrice(service.sedanPrice)}</span>
+                                </div>
+                                <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px] hover:border-gold/30 transition-all duration-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                                  <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">SUV</span>
+                                  <span className="text-base font-black text-gold-soft mt-0.5 block">{formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
+                                </div>
+                                <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px] hover:border-gold/30 transition-all duration-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                                  <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">Truck</span>
+                                  <span className="text-base font-black text-gold-soft mt-0.5 block">{formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="rounded-2xl bg-gold/10 border border-gold/30 px-6 py-3 text-center shadow-[0_0_15px_rgba(212,175,55,0.1)]">
+                                <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">Starting at</span>
+                                <span className="text-base font-black text-gold-soft mt-0.5 block">Quote Required</span>
+                              </div>
+                            )}
                           </div>
-                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
-                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">SUV</span>
-                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice)}</span>
-                          </div>
-                          <div className="rounded-2xl bg-zinc-900/80 border border-white/5 px-4 py-3 text-center min-w-[100px]">
-                            <span className="block text-[9px] font-black uppercase text-zinc-500 tracking-wider">Truck</span>
-                            <span className="text-sm font-bold text-gold-soft">{formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice)}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="rounded-2xl bg-gold/10 border border-gold/30 px-6 py-3 text-center">
-                          <span className="block text-[9px] font-black uppercase text-zinc-400 tracking-wider">Starting at</span>
-                          <span className="text-sm font-black text-gold-soft">Quote Required</span>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Checklist of deliverables */}
-                  <div className="mt-6">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-3">Service Inclusions</p>
-                    <ul className="grid gap-3 text-xs text-zinc-300 sm:grid-cols-2 md:grid-cols-3">
-                      {service.includes.map((line) => (
-                        <li key={line} className="flex items-start gap-2 bg-zinc-950/30 p-2.5 rounded-xl border border-white/5">
-                          <Check className="h-4 w-4 shrink-0 text-gold-soft mt-0.5" />
-                          <span>{line}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                        {/* Checklist of deliverables */}
+                        <div className="mt-6">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-3">Service Inclusions</p>
+                          <ul className="grid gap-3 text-xs text-zinc-300 sm:grid-cols-2 md:grid-cols-3">
+                            {service.includes.map((line) => (
+                              <li key={line} className="flex items-start gap-3 bg-zinc-950/50 p-3 rounded-xl border border-white/5 hover:border-white/10 transition-colors duration-300">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gold/45 bg-gold/10 shadow-[0_0_8px_rgba(212,175,55,0.15)] mt-0.5">
+                                  <Check className="h-3 w-3 text-gold-soft" strokeWidth={3} />
+                                </span>
+                                <span className="text-zinc-300 group-hover:text-zinc-200 transition-colors duration-300">{line}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
 
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-black/35 p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gold-soft">Popular upgrades</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {PUBLIC_ADDON_PRICING.slice(0, 4).map((addon) => (
-                        <span key={`${service.id}-${addon.label}`} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[10px] font-bold text-zinc-300">
-                          {addon.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="mt-6 rounded-2xl border border-white/10 bg-black/45 p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.03)]">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gold">Popular upgrades</p>
+                          <div className="mt-3 flex flex-wrap gap-2.5">
+                            {PUBLIC_ADDON_PRICING.slice(0, 4).map((addon) => (
+                              <span
+                                key={`${service.id}-${addon.label}`}
+                                className="rounded-full border border-white/15 bg-white/[0.04] hover:border-gold/30 hover:bg-gold/5 px-3.5 py-1.5 text-[10px] font-medium text-zinc-300 hover:text-white transition-all duration-300"
+                              >
+                                {getAddonShortLabel(addon.label)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="mt-8 flex flex-wrap justify-end gap-3">
-                    {isQuoteOnly ? (
-                      <Link
-                        href="/contact"
-                        className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition"
-                      >
-                        Request Custom Quote
-                      </Link>
-                    ) : (
-                      <Link
-                        href={`/book?service=${service.id}&package=${service.id}`}
-                        className="rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black shadow-[0_0_15px_rgba(212,175,55,0.2)] hover:bg-gold-soft transition"
-                      >
-                        Book this service
-                      </Link>
-                    )}
-                  </div>
+                      <div className="mt-8 flex flex-wrap justify-end gap-3">
+                        {isQuoteOnly ? (
+                          <Link
+                            href="/contact"
+                            className="rounded-xl bg-gradient-to-r from-gold to-gold-soft px-6 py-3.5 text-xs font-black uppercase text-black hover:brightness-110 active:scale-98 transition-all duration-300 shadow-[0_0_15px_rgba(212,175,55,0.15)]"
+                          >
+                            Request Custom Quote
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/book?service=${service.id}&package=${service.id}`}
+                            className="rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-6 py-3.5 text-xs font-black uppercase text-black shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:brightness-110 hover:shadow-[0_0_30px_rgba(212,175,55,0.45)] active:scale-98 transition-all duration-300"
+                          >
+                            Book this service
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -516,16 +612,46 @@ export default function ServicesPage() {
         )}
 
         {/* Add-ons & Upgrades List */}
-        <section className="mb-16 rounded-3xl border border-white/10 bg-zinc-950/30 p-6 sm:p-8">
-          <h3 className="text-xl font-black uppercase tracking-tight text-white mb-2">Available Individual Add-ons</h3>
-          <p className="text-xs text-zinc-400 mb-6">Customize your detailing package. Add-ons can be selected during the booking checkout flow.</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {PUBLIC_ADDON_PRICING.map((addon) => (
-              <div key={addon.label} className="rounded-2xl border border-white/5 bg-black/40 p-4 hover:border-gold/15 transition-all">
-                <p className="text-xs font-black uppercase text-white tracking-wide">{addon.label}</p>
-                <p className="mt-1 text-xs text-zinc-400">{addon.detail}</p>
-              </div>
-            ))}
+        <section className="mb-16 rounded-3xl border border-white/10 bg-zinc-950/40 p-6 sm:p-8 backdrop-blur-md">
+          <h3 className="text-2xl font-black uppercase tracking-tight text-white mb-2">Available Individual Add-ons</h3>
+          <p className="text-xs text-zinc-400 mb-8">Customize your detailing package. Add-ons can be selected during the booking checkout flow.</p>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {PUBLIC_ADDON_PRICING.map((addon) => {
+              const { description, pricing } = getAddonPresentation(addon.label, addon.detail);
+              return (
+                <div
+                  key={addon.label}
+                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/60 p-5 hover:border-gold/35 hover:shadow-[0_0_30px_rgba(212,175,55,0.08)] transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-gold/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <h4 className="text-sm font-black uppercase text-white tracking-wide group-hover:text-gold-soft transition-colors duration-300">
+                        {addon.label}
+                      </h4>
+                      <Sparkles className="h-4 w-4 shrink-0 text-gold opacity-30 group-hover:opacity-100 transition-opacity duration-300" />
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+                      {description}
+                    </p>
+                  </div>
+                  <div className="mt-auto border-t border-white/5 pt-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500 mb-2">Pricing Guide</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pricing.map((p, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-1.5 rounded-lg bg-zinc-900/90 border border-white/5 px-2.5 py-1 text-[10px]"
+                        >
+                          <span className="text-zinc-500 font-bold">{p.label}:</span>
+                          <span className="text-gold font-black">{p.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -551,6 +677,7 @@ export default function ServicesPage() {
           <p>{PRICING_DISCOUNT_RULES}</p>
         </div>
       </div>
+      <ServicesMobileBookBar />
     </main>
   );
 }

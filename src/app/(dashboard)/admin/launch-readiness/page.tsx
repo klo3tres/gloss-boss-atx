@@ -12,6 +12,8 @@ import {
   googleMapsRenderConfigured,
   appleMapKitCredentialsPresent,
 } from '@/lib/integrations/maps-discovery-status';
+import { loadDomainHealthReport } from '@/lib/domain-health';
+import { validateAppUrlConfig, CANONICAL_ORIGIN } from '@/lib/env/canonical-domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,13 +43,16 @@ export default async function LaunchReadinessPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
 
-  const [stripe, health, bookingProbe, reviewProbe, mapProbes] = await Promise.all([
+  const [stripe, health, bookingProbe, reviewProbe, mapProbes, domainHealth] = await Promise.all([
     getStripeSecrets(admin),
     loadTitanSystemHealth(admin),
     admin.from('appointments').select('id').limit(1),
     admin.from('customer_reviews').select('id').eq('published', true).limit(1),
     Promise.resolve(buildMapsDiscoveryProbes()),
+    loadDomainHealthReport(),
   ]);
+
+  const appUrlCheck = validateAppUrlConfig();
 
   const placesProbe = mapProbes.find((p) => p.id === 'google_places')!;
   const mapsProbe = mapProbes.find((p) => p.id === 'google_maps')!;
@@ -57,6 +62,52 @@ export default async function LaunchReadinessPage() {
   const twilio = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim());
 
   const checks: Check[] = [
+    {
+      id: 'domain_ssl_apex',
+      label: 'HTTPS certificate (glossbossatx.com)',
+      status: domainHealth.apex.ok ? 'live' : 'broken',
+      affects: 'Browser security warnings — site flagged as unsafe / phishing',
+      fix: domainHealth.apex.error
+        ? `Apex TLS failed: ${domainHealth.apex.error}. Add glossbossatx.com in Vercel Domains with Valid Configuration.`
+        : 'Verify glossbossatx.com in Vercel → Settings → Domains.',
+      href: 'https://vercel.com/dashboard',
+      testHref: CANONICAL_ORIGIN,
+    },
+    {
+      id: 'domain_ssl_www',
+      label: 'HTTPS certificate (www)',
+      status: domainHealth.www.ok ? 'live' : 'broken',
+      affects: 'Visitors using www may see certificate errors',
+      fix: 'Add www.glossbossatx.com in Vercel; CNAME www → cname.vercel-dns.com.',
+      href: 'https://vercel.com/dashboard',
+      testHref: `https://www.glossbossatx.com`,
+    },
+    {
+      id: 'domain_redirect',
+      label: 'www → apex redirect',
+      status: domainHealth.wwwRedirectsToApex ? 'live' : domainHealth.wwwRedirectsToApex === false ? 'partial' : 'manual',
+      affects: 'Split traffic between www and apex hurts SEO and cookies',
+      fix: domainHealth.wwwRedirectsToApex
+        ? 'www redirects to apex — ensure apex SSL is valid before sending public traffic.'
+        : 'Configure www to redirect to https://glossbossatx.com in Vercel Domains.',
+      href: 'https://vercel.com/dashboard',
+    },
+    {
+      id: 'domain_app_url',
+      label: 'NEXT_PUBLIC_APP_URL',
+      status: appUrlCheck.ok ? 'live' : process.env.VERCEL_ENV === 'production' ? 'broken' : 'partial',
+      affects: 'Stripe return URLs, webhooks, emails, and auth redirects use wrong domain',
+      fix: appUrlCheck.issues[0] ?? `Set NEXT_PUBLIC_APP_URL=${CANONICAL_ORIGIN} in Vercel Production env.`,
+      href: '/admin/integrations',
+    },
+    {
+      id: 'domain_https',
+      label: 'HTTP → HTTPS',
+      status: domainHealth.httpApexRedirectsToHttps ? 'live' : domainHealth.httpApexRedirectsToHttps === false ? 'broken' : 'manual',
+      affects: 'Insecure HTTP connections before redirect',
+      fix: 'Vercel enables HTTPS automatically when domain SSL is valid.',
+      href: 'https://vercel.com/dashboard',
+    },
     {
       id: 'booking',
       label: 'Booking',
@@ -79,7 +130,7 @@ export default async function LaunchReadinessPage() {
       label: 'Reviews',
       status: (reviewProbe.data?.length ?? 0) > 0 ? 'live' : 'manual',
       affects: 'Homepage social proof empty',
-      fix: 'Add manual reviews or configure Google review URL.',
+      fix: 'Set GOOGLE_PLACES_API_KEY in Vercel and sync reviews in Admin → CMS, or add manual reviews.',
       href: '/admin/reviews',
       testHref: '/',
     },
@@ -166,6 +217,17 @@ export default async function LaunchReadinessPage() {
 
   return (
     <DashboardShell title="Launch Readiness" subtitle="What is live, manual, or broken before customers hit the site" role={session.profile!.role as 'admin' | 'super_admin'}>
+      {domainHealth.criticalIssue ? (
+        <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-red-300">Domain security — fix before sharing the public site</p>
+          <p className="mt-2 text-sm text-red-100">{domainHealth.criticalIssue}</p>
+          <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-red-200/90">
+            {domainHealth.fixSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="space-y-4">
         {checks.map((c) => (
           <article key={c.id} className="rounded-2xl border border-white/10 bg-black/50 p-5">

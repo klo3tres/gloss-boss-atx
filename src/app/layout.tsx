@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { getAppOrigin } from '@/lib/env/app-origin';
+import { CANONICAL_ORIGIN } from '@/lib/env/canonical-domain';
 
 /** Root layout uses `node:fs` — must stay on Node (never Edge) or SSR can hard-fail → blank page. */
 export const runtime = 'nodejs';
@@ -32,19 +33,10 @@ function resolveMetadataBase(): URL {
   } catch {
     /* fall through */
   }
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) {
-    const host = vercel.startsWith('http') ? vercel : `https://${vercel}`;
-    try {
-      return new URL(host);
-    } catch {
-      /* fall through */
-    }
-  }
   try {
-    return new URL(process.env.NEXT_PUBLIC_APP_URL?.trim() || 'https://vercel.app');
+    return new URL(CANONICAL_ORIGIN);
   } catch {
-    return new URL('https://vercel.app');
+    return new URL('https://glossbossatx.com');
   }
 }
 

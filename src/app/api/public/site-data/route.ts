@@ -16,6 +16,7 @@ import { loadActiveServicesResilient, mapServicePriceRows, mergeServicesWithPric
 import { parseFleetPricing } from '@/lib/fleet-pricing';
 import { normalizeMediaRegistry } from '@/lib/media-registry';
 import { consolidatePriceRowsForUi } from '@/lib/vehicle-pricing';
+import { maybeAutoSyncGoogleReviews } from '@/lib/google/google-place-reviews';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -79,7 +80,7 @@ export async function GET() {
       client.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
       client
         .from('customer_reviews')
-        .select('id, customer_name, rating, testimonial, created_at, approved_at, published')
+        .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured')
         .eq('published', true)
         .order('created_at', { ascending: false })
         .limit(12),
@@ -108,6 +109,24 @@ export async function GET() {
     if (ssGoogle.error) schemaWarnings.push(`site_settings(google_review_url): ${ssGoogle.error.message}`);
     if (reviewsRes.error) schemaWarnings.push(`customer_reviews: ${reviewsRes.error.message}`);
     if (socialRes.error) schemaWarnings.push(`site_settings(social): ${socialRes.error.message}`);
+
+    let reviewRows = reviewsRes.error ? [] : ((reviewsRes.data ?? []) as Record<string, unknown>[]);
+    if (admin && !reviewsRes.error && reviewRows.length === 0) {
+      try {
+        const auto = await maybeAutoSyncGoogleReviews(admin);
+        if (auto.ran && auto.result?.ok && (auto.result.imported > 0 || auto.result.updated > 0)) {
+          const refetch = await admin
+            .from('customer_reviews')
+            .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured')
+            .eq('published', true)
+            .order('created_at', { ascending: false })
+            .limit(12);
+          if (!refetch.error && refetch.data) reviewRows = refetch.data as Record<string, unknown>[];
+        }
+      } catch (syncErr) {
+        console.warn('[google-reviews] auto-sync', syncErr instanceof Error ? syncErr.message : String(syncErr));
+      }
+    }
 
     let offerRows: Record<string, unknown>[] = [];
     if (offersFull.error) {
@@ -222,7 +241,7 @@ export async function GET() {
       mediaRegistry: normalizeMediaRegistry(mediaRes.data?.value ?? null),
       reviews: reviewsRes.error
         ? []
-        : ((reviewsRes.data ?? []) as Record<string, unknown>[])
+        : reviewRows
             .map((r) => ({
               id: String(r.id ?? ''),
               reviewerName: String(r.customer_name ?? 'Gloss Boss customer'),

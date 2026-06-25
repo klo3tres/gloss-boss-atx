@@ -9,6 +9,9 @@ import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import type { CustomerApptSnapshotView } from '@/lib/customer-dashboard-snapshot';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
+import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
+import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
+import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
 
 export type CustomerAppt = {
   id: string;
@@ -54,6 +57,7 @@ export type CustomerDashboardProps = {
   accountCreditBalanceCents?: number;
   activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
   weatherForecast?: WeatherSnapshot | null;
+  weatherLocationLabel?: string;
 };
 
 export type CustomerMembershipView = {
@@ -233,6 +237,24 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     return out;
   }, [props.inFlight, props.pending, props.upcoming]);
 
+  const scheduleItems: ScheduleWidgetItem[] = useMemo(() => {
+    return appointmentCards.map((a) => {
+      const snap = props.snapshotByAppt?.[a.id];
+      const merged = apptFromSnapshot(a, snap);
+      const addr =
+        merged.service_address ||
+        [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ');
+      return {
+        id: a.id,
+        scheduledStart: a.scheduled_start,
+        title: a.service_slug.replace(/-/g, ' '),
+        subtitle: vehiclesFrom(merged).join(' · '),
+        address: addr || undefined,
+        status: a.status,
+      };
+    });
+  }, [appointmentCards, props.snapshotByAppt]);
+
   const liveJob = props.liveJob
     ? apptFromSnapshot(props.liveJob, props.snapshotByAppt?.[props.liveJob.id])
     : null;
@@ -305,25 +327,16 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               <p className="mt-1 text-xs text-zinc-500">
                 {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
               </p>
-              {props.weatherForecast?.ok && props.weatherForecast?.bestDetailingDays ? (
-                <div className="mt-4 rounded-2xl border border-gold/25 bg-gold/5 p-3.5 text-xs transition">
-                  <p className="font-black text-gold-soft uppercase tracking-wider flex items-center gap-1.5">
-                    <span>☀️ Optimal Wash Forecast</span>
-                  </p>
-                  <p className="text-[11px] text-zinc-400 mt-1 leading-normal">
-                    {props.weatherForecast.bestDetailingDays.length > 0 ? (
-                      <>Best days in the current OpenWeather forecast: <strong className="text-white">{props.weatherForecast.bestDetailingDays.join(', ')}</strong>.</>
-                    ) : (
-                      <>High rain probability detected this week. Consider booking under our covered detail bays.</>
-                    )}
-                  </p>
+              {props.weatherForecast ? (
+                <div className="mt-4">
+                  <WeatherReadinessWidget
+                    snapshot={props.weatherForecast}
+                    locationLabel={props.weatherLocationLabel ?? 'Your service area'}
+                    variant="customer"
+                    compact
+                  />
                 </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-3.5 text-xs">
-                  <p className="font-black uppercase tracking-wider text-zinc-300">Booking weather unavailable</p>
-                  <p className="mt-1 font-mono text-[11px] text-zinc-500">{props.weatherForecast?.blocker || 'Weather forecast has not loaded.'}</p>
-                </div>
-              )}
+              ) : null}
             </div>
             <div className="mt-5 grid gap-2">
               <Link href="/book" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110">
@@ -492,10 +505,18 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
       </section>
 
       {/* Main content grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-3">
         {/* Left Column: Scheduled Appointments & Vehicles Garage */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Upcoming Schedule */}
+        <div className="min-w-0 space-y-6 lg:col-span-2">
+          <UpcomingScheduleWidget
+            items={scheduleItems}
+            title="Your calendar"
+            subtitle="Upcoming appointments"
+            emptyMessage="No upcoming details scheduled."
+            bookHref="/book"
+          />
+
+          {/* Upcoming detail cards */}
           <GlassCard glow>
             <SectionEyebrow>Upcoming appointments</SectionEyebrow>
             {(props.inFlight?.length ?? 0) > 0 ? (
@@ -581,8 +602,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           </GlassCard>
         </div>
 
-        {/* Right Column: Loyalty Tracker & Google Review */}
-        <div className="space-y-6">
+        {/* Right Column: Weather + Loyalty */}
+        <div className="min-w-0 space-y-6">
+          <WeatherReadinessWidget
+            snapshot={props.weatherForecast ?? null}
+            locationLabel={props.weatherLocationLabel ?? 'Austin service area'}
+            variant="customer"
+          />
           {/* Luxury 3D Carbon & Gold Punch Card */}
           <LoyaltyCard3D 
             activeCardDesign={props.activeCardDesign} 

@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   Brain,
-  CloudRain,
   Crosshair,
   DollarSign,
   Radar,
@@ -28,6 +27,7 @@ import { TitanWorkspaceForm } from '@/components/admin/titan-workspace-form';
 import { TitanWidgetStatsPanel, TitanTerritoryPanel } from '@/components/titan/titan-public-panels';
 import { TitanOpportunityScannerPanel } from '@/components/titan/titan-opportunity-scanner-panel';
 import { TitanSetupBanner, TitanMetricTile, TitanSection, TitanEmptyState } from '@/components/titan/titan-ui';
+import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { TitanActionStrip } from '@/components/titan/titan-action-strip';
 import { titanCommandCenterTitle } from '@/lib/titan/branding';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
@@ -209,31 +209,7 @@ export function TitanCommandCenter({ briefing }: { briefing: TitanBriefing }) {
       {/* Operations */}
       <TitanSection title="Operations" subtitle="Business DNA, weather, and workspace config" icon={Wrench}>
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-3xl border border-white/8 bg-zinc-950/50 p-5">
-            <div className="flex items-center gap-2">
-              <CloudRain className="h-4 w-4 text-sky-400" />
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Weather intelligence</p>
-            </div>
-            {briefing.weather.configured ? (
-              <div className="mt-4 space-y-2">
-                <p className="text-sm text-zinc-300">{briefing.weather.summary ?? 'Conditions look manageable.'}</p>
-                {briefing.weather.rainWarning ? (
-                  <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-                    {briefing.weather.rainWarning}
-                  </p>
-                ) : (
-                  <p className="text-xs text-zinc-600">No rain conflicts flagged for today.</p>
-                )}
-              </div>
-            ) : (
-              <TitanEmptyState
-                title="Weather not configured"
-                detail="Add OPENWEATHER_API_KEY in integrations to flag rain risk on scheduled jobs."
-                actionLabel="Open integrations"
-                actionHref="/admin/integrations"
-              />
-            )}
-          </section>
+          <WeatherReadinessWidget autoFetch variant="admin" locationLabel="Austin service area" settingsHref="/admin/integrations#weather" />
           <TitanWorkspaceForm workspace={briefing.workspace} compact />
         </div>
       </TitanSection>

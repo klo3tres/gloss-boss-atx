@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteManualReviewAction, saveManualReviewAction, type ReviewActionResult } from '@/lib/admin/review-manager-actions';
+import { syncGoogleReviewsAction, type GoogleReviewSyncActionResult } from '@/lib/admin/sync-google-reviews-action';
 
 type ReviewRow = {
   id: string;
@@ -28,34 +29,50 @@ function GoogleStatus({
   googleReviewUrl,
   googleApiConfigured,
   googlePlaceConfigured,
+  onSync,
+  syncPending,
+  syncResult,
 }: {
   googleConfigured: boolean;
   googleReviewUrl: string;
   googleApiConfigured: boolean;
   googlePlaceConfigured: boolean;
+  onSync: () => void;
+  syncPending: boolean;
+  syncResult: GoogleReviewSyncActionResult | null;
 }) {
-  const blockers = [
-    !googleApiConfigured ? 'missing GOOGLE_PLACES_API_KEY' : '',
-    !googlePlaceConfigured ? 'missing GOOGLE_PLACE_ID' : '',
-  ].filter(Boolean);
+  const canSync = googleApiConfigured;
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div className={`rounded-2xl border p-4 ${googleConfigured ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-amber-500/35 bg-amber-500/10'}`}>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Google review link</p>
         <p className="mt-2 break-all text-sm font-bold text-white">{googleConfigured ? googleReviewUrl : 'Not configured'}</p>
-        <p className="mt-1 text-xs text-zinc-400">Used for public Google review CTAs. Manual reviews work either way.</p>
+        <p className="mt-1 text-xs text-zinc-400">Powers leave-a-review buttons. Sync imports review text onto the homepage.</p>
       </div>
-      <div className={`rounded-2xl border p-4 ${blockers.length === 0 ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-amber-500/35 bg-amber-500/10'}`}>
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Google Places import</p>
-        <p className="mt-2 text-sm font-bold text-white">{blockers.length === 0 ? 'Configured' : 'Setup blocker'}</p>
-        {blockers.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-xs text-amber-100">
-            {blockers.map((b) => <li key={b}>{b}</li>)}
-          </ul>
+      <div className={`rounded-2xl border p-4 ${canSync ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-amber-500/35 bg-amber-500/10'}`}>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Google review sync</p>
+        <p className="mt-2 text-sm font-bold text-white">{canSync ? 'Ready to import' : 'API key required'}</p>
+        {!googleApiConfigured ? (
+          <p className="mt-2 text-xs text-amber-100">Add GOOGLE_PLACES_API_KEY in Vercel. GOOGLE_PLACE_ID is optional — we auto-find Gloss Boss ATX.</p>
+        ) : !googlePlaceConfigured ? (
+          <p className="mt-1 text-xs text-zinc-400">No GOOGLE_PLACE_ID set — sync will search for your business automatically.</p>
         ) : (
-          <p className="mt-1 text-xs text-zinc-400">Google Places credentials are present.</p>
+          <p className="mt-1 text-xs text-zinc-400">Place ID configured. Up to 5 latest Google reviews import on sync.</p>
         )}
+        <button
+          type="button"
+          disabled={!canSync || syncPending}
+          onClick={onSync}
+          className="mt-3 rounded-xl bg-gold px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+        >
+          {syncPending ? 'Syncing…' : 'Sync Google reviews now'}
+        </button>
+        {syncResult ? (
+          <p className={`mt-2 text-xs ${syncResult.ok ? 'text-emerald-100' : 'text-rose-200'}`} role="status">
+            {syncResult.ok ? syncResult.message : syncResult.error}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -85,7 +102,18 @@ export function CmsReviewsManager({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [syncPending, startSyncTransition] = useTransition();
   const [result, setResult] = useState<ReviewActionResult | null>(null);
+  const [syncResult, setSyncResult] = useState<GoogleReviewSyncActionResult | null>(null);
+
+  const syncFromGoogle = () => {
+    setSyncResult(null);
+    startSyncTransition(async () => {
+      const res = await syncGoogleReviewsAction();
+      setSyncResult(res);
+      if (res.ok) router.refresh();
+    });
+  };
 
   const submit = (formData: FormData) => {
     setResult(null);
@@ -110,10 +138,18 @@ export function CmsReviewsManager({
       <div className="rounded-3xl border border-gold/20 bg-black/45 p-5">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Reviews / Testimonials Manager</p>
         <h2 className="mt-2 text-2xl font-black uppercase text-white">Public social proof, owned by CMS</h2>
-        <p className="mt-2 text-sm text-zinc-400">Manual reviews work without Google API. Publish only the testimonials that should appear on the public homepage.</p>
+        <p className="mt-2 text-sm text-zinc-400">Sync from Google or add manual reviews. Only published testimonials appear on the homepage.</p>
       </div>
 
-      <GoogleStatus googleConfigured={googleConfigured} googleReviewUrl={googleReviewUrl} googleApiConfigured={googleApiConfigured} googlePlaceConfigured={googlePlaceConfigured} />
+      <GoogleStatus
+        googleConfigured={googleConfigured}
+        googleReviewUrl={googleReviewUrl}
+        googleApiConfigured={googleApiConfigured}
+        googlePlaceConfigured={googlePlaceConfigured}
+        onSync={syncFromGoogle}
+        syncPending={syncPending}
+        syncResult={syncResult}
+      />
       <ResultBanner result={result} />
 
       <form action={submit} className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5">
@@ -139,7 +175,7 @@ export function CmsReviewsManager({
       </form>
 
       <div className="space-y-3">
-        {rows.length === 0 ? <p className="rounded-2xl border border-white/10 bg-black/35 p-5 text-sm text-zinc-400">No reviews yet. Add one manually or connect Google API later.</p> : null}
+        {rows.length === 0 ? <p className="rounded-2xl border border-white/10 bg-black/35 p-5 text-sm text-zinc-400">No reviews yet. Click Sync Google reviews above or add one manually.</p> : null}
         {rows.map((row) => (
           <details key={row.id} className="rounded-2xl border border-white/10 bg-black/35 p-4">
             <summary className="cursor-pointer text-sm font-bold text-white">

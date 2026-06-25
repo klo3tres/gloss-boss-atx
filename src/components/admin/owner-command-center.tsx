@@ -40,6 +40,7 @@ import { PremiumBadge, SectionEyebrow, GlassCard } from '@/components/ui/premium
 import { displayMoney } from '@/lib/display-format';
 import { addCalendarEventAction } from '@/lib/admin/calendar-events-actions';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
+import { WeatherReadinessWidget as WeatherReadinessPanel } from '@/components/widgets/weather-readiness-widget';
 
 // Helper component for TODAY metric cards
 function TodayMetricCard({
@@ -600,152 +601,6 @@ function ExecutiveCalendarWidget({ jobs, events }: { jobs: OwnerDashboardSnapsho
 
 function todayKeySafe(input: Date) {
   return chicagoDateKey(input);
-}
-
-function WeatherReadinessWidget() {
-  const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchWeather = (signal?: AbortSignal) => {
-    setLoading(true);
-    fetch('/api/weather', { signal })
-      .then((res) => res.json())
-      .then((data: WeatherSnapshot) => setWeather(data))
-      .catch((error) => {
-        if (error.name !== 'AbortError') {
-          setWeather({ ok: false, blocker: error instanceof Error ? error.message : 'Weather lookup failed.' });
-        }
-      })
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    fetchWeather(ctrl.signal);
-    return () => ctrl.abort();
-  }, []);
-
-  const rain = weather?.rainChancePct ?? 0;
-  const highRain = rain >= 45;
-
-  return (
-    <GlassCard className="border-cyan-400/15 bg-black/45">
-      <div className="flex items-center justify-between border-b border-white/15 pb-2 mb-3">
-        <SectionEyebrow>Weather Readiness</SectionEyebrow>
-        <button 
-          type="button" 
-          onClick={() => fetchWeather()} 
-          disabled={loading}
-          className="text-[10px] font-black uppercase text-gold hover:text-white hover:underline transition disabled:opacity-50"
-        >
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
-      </div>
-      <p className="text-3xl font-black text-white">Austin / Round Rock</p>
-      {loading && !weather ? <p className="mt-4 text-xs text-zinc-500">Checking service-area weather...</p> : null}
-      {weather?.ok ? (
-        <div className="mt-4 grid gap-3 text-xs text-zinc-300">
-          <div className={`rounded-xl border p-3 ${highRain || weather.severe ? 'border-rose-500/30 bg-rose-500/10' : 'border-cyan-400/20 bg-cyan-400/5'}`}>
-            <p className="font-black uppercase tracking-wider text-cyan-200">Current condition - OpenWeather</p>
-            <p className="mt-2 text-2xl font-black text-white">{weather.temperatureF ?? '--'}F</p>
-            <p className="mt-1 capitalize text-zinc-400">{weather.description || weather.condition || 'Forecast available'} - rain {rain}%</p>
-          </div>
-
-          {/* Daily Forecast Grid */}
-          {weather.dailyForecasts && weather.dailyForecasts.length > 0 && (
-            <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
-              <p className="font-black uppercase tracking-wider text-zinc-400">5-Day Outlook</p>
-              <div className="grid grid-cols-5 gap-1.5 text-center">
-                {weather.dailyForecasts.map((d) => (
-                  <div 
-                    key={d.date} 
-                    className={`rounded-lg p-1.5 border ${
-                      d.isBest 
-                        ? 'border-gold/35 bg-gold/5 shadow-[0_0_10px_rgba(212,175,55,0.08)]' 
-                        : d.isRainy 
-                          ? 'border-rose-500/30 bg-rose-500/5' 
-                          : 'border-white/5 bg-black/45'
-                    }`}
-                  >
-                    <p className="text-[8px] font-bold text-zinc-500 truncate">{d.dayName.slice(0, 3)}</p>
-                    <p className="text-[10px] font-bold text-zinc-300 mt-1 font-mono">{d.tempMaxF}°</p>
-                    <p className="text-[9px] font-medium text-zinc-500 font-mono mt-0.5">{d.rainChancePct}%</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations and Warnings */}
-          {weather.bestDetailingDays && weather.bestDetailingDays.length > 0 && (
-            <div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-xs">
-              <p className="font-black uppercase tracking-wider text-gold-soft">Best Detailing Days</p>
-              <p className="mt-1 text-zinc-300">Perfect conditions forecasted for: <strong>{weather.bestDetailingDays.join(', ')}</strong></p>
-            </div>
-          )}
-
-          {weather.rainWarningDays && weather.rainWarningDays.length > 0 && (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
-              <p className="font-black uppercase tracking-wider text-rose-300">Rain Alerts</p>
-              <p className="mt-1">High rain probability expected on: <strong>{weather.rainWarningDays.join(', ')}</strong>. Monitor bookings closely.</p>
-            </div>
-          )}
-
-          {highRain || weather.severe ? (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-rose-100">
-              Weather may affect mobile detailing. Confirm exterior work, shade, wind, and rain before dispatch.
-            </div>
-          ) : (
-            <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
-              <p className="font-black uppercase tracking-wider text-white">Dispatch rule</p>
-              <p className="mt-1 text-zinc-500">Verify heat, rain, and wind before exterior correction or wash work.</p>
-            </div>
-          )}
-          {weather.appleAdvancedApi?.configured ? null : (
-            <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3 text-zinc-400">
-              <p className="font-black uppercase tracking-wider text-zinc-200">Apple advanced APIs</p>
-              <p className="mt-1">{weather.appleAdvancedApi?.message || 'Apple advanced weather/maps API not configured. Basic Apple Maps links still work.'}</p>
-            </div>
-          )}
-        </div>
-      ) : !loading ? (
-        <div className="mt-4 grid gap-2 text-xs text-zinc-300">
-          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3">
-            <div className="flex justify-between items-center">
-              <p className="font-black uppercase tracking-wider text-amber-200">Weather setup blocker</p>
-              <button 
-                type="button" 
-                onClick={() => fetchWeather()} 
-                disabled={loading}
-                className="text-[10px] font-black uppercase text-gold hover:text-white hover:underline transition disabled:opacity-50"
-              >
-                Retry
-              </button>
-            </div>
-            <p className="mt-2 text-zinc-300">{weather?.blocker || 'missing OPENWEATHER_API_KEY'}</p>
-            <ul className="mt-2 space-y-1 text-amber-100">
-              <li>missing OPENWEATHER_API_KEY</li>
-              <li>Add it in Vercel Project Settings - Environment Variables.</li>
-              <li>Optional: BUSINESS_HOME_BASE_ADDRESS, BUSINESS_LAT, BUSINESS_LNG.</li>
-              <li>OpenWeather is the active weather provider for this widget.</li>
-            </ul>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
-            <p className="font-black uppercase tracking-wider text-zinc-200">Apple advanced APIs</p>
-            <p className="mt-1 text-zinc-400">{weather?.appleAdvancedApi?.message || 'Apple advanced weather/maps API not configured. Basic Apple Maps links still work.'}</p>
-            {weather?.appleAdvancedApi?.missing?.length ? (
-              <p className="mt-2 break-words font-mono text-[10px] text-zinc-500">
-                Missing later: {weather.appleAdvancedApi.missing.join(', ')}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-      <Link href="/admin/integrations#weather" className="mt-5 inline-flex rounded-xl border border-cyan-400/30 px-4 py-2 text-xs font-black uppercase text-cyan-200 hover:bg-cyan-400/10">
-        Configure weather
-      </Link>
-    </GlassCard>
-  );
 }
 
 function ExecutiveRecommendations({ 
@@ -1601,7 +1456,7 @@ export function OwnerCommandCenter({
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <ExecutiveCalendarWidget jobs={metrics.scheduleMonth ?? []} events={metrics.calendarEvents ?? []} />
-        <WeatherReadinessWidget />
+        <WeatherReadinessPanel autoFetch variant="admin" locationLabel="Austin / Round Rock" settingsHref="/admin/integrations#weather" />
       </section>
 
       <details className="group rounded-3xl border border-white/5 bg-zinc-950/45">

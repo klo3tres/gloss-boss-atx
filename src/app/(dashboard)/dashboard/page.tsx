@@ -505,11 +505,17 @@ export default async function CustomerDashboardRootPage() {
   }
 
   let weatherForecast = null;
+  let weatherLocationLabel = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin service area';
   if (supabase && session.user && userEmail) {
     try {
       const { fetchWeatherForAddress } = await import('@/lib/weather-forecast');
-      const baseAddress = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
-      weatherForecast = await fetchWeatherForAddress(baseAddress);
+      const nextAppt = upcoming[0];
+      const apptAddress = nextAppt
+        ? [nextAppt.service_address, nextAppt.service_city, nextAppt.service_state, nextAppt.service_zip].filter(Boolean).join(', ')
+        : '';
+      const weatherAddress = apptAddress || process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || 'Austin, TX';
+      weatherLocationLabel = apptAddress ? 'At your next appointment' : weatherLocationLabel;
+      weatherForecast = await fetchWeatherForAddress(weatherAddress);
     } catch (e) {
       console.error('[customer dashboard] weather forecast fetch error', e);
     }
@@ -543,6 +549,7 @@ export default async function CustomerDashboardRootPage() {
         accountCreditBalanceCents={accountCreditBalanceCents}
         activeDeals={activeDeals}
         weatherForecast={weatherForecast}
+        weatherLocationLabel={weatherLocationLabel}
       />
     </DashboardShell>
   );

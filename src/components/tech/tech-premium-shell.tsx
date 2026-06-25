@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -100,6 +100,9 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
 import { workOrderPath } from '@/lib/work-order-links';
 import { isRealTimerId, isStaleTimerStart } from '@/lib/tech-job-filters';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
+import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
+import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
+import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
 
 function workOrderHref(job: TechJob) {
   const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
@@ -245,6 +248,22 @@ export function TechPremiumShell({
   const [mileageBusy, setMileageBusy] = useState(false);
   const [supplyBusy, setSupplyBusy] = useState(false);
   const [leadBusy, setLeadBusy] = useState(false);
+
+  const scheduleItems: ScheduleWidgetItem[] = useMemo(
+    () =>
+      [...jobs]
+        .sort((a, b) => new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime())
+        .map((job) => ({
+          id: job.id,
+          scheduledStart: job.scheduled_start,
+          title: job.guest_name ?? 'Customer',
+          subtitle: `${job.service_slug.replace(/-/g, ' ')} · ${job.vehicle_description ?? 'Vehicle TBD'}`,
+          address: job.service_address ?? undefined,
+          href: workOrderHref(job),
+          status: job.status,
+        })),
+    [jobs],
+  );
 
   return (
     <div className='relative min-h-screen overflow-hidden pb-24'>
@@ -484,69 +503,11 @@ export function TechPremiumShell({
             </section>
           </div>
 
-          {weatherForecast && weatherForecast.ok && weatherForecast.dailyForecasts && (
-            <section className={cardGlow}>
-              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Daily Weather Readiness</p>
-              <p className='mt-1 text-xs text-zinc-400'>
-                Detailing readiness & 5-day weather conditions for Austin, TX
-              </p>
-              <div className='mt-4 grid gap-3 sm:grid-cols-5'>
-                {weatherForecast.dailyForecasts.map((day) => {
-                  const isToday = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long' }) === day.dayName;
-                  return (
-                    <div
-                      key={day.date}
-                      className={`rounded-xl p-3 border transition duration-300 ${
-                        isToday
-                          ? 'border-gold bg-gold/5 shadow-[0_0_15px_rgba(212,175,55,0.1)]'
-                          : 'border-white/5 bg-black/45 hover:border-white/15'
-                      }`}
-                    >
-                      <div className='flex items-center justify-between'>
-                        <p className={`text-[10px] font-black uppercase tracking-wider ${isToday ? 'text-gold' : 'text-zinc-400'}`}>
-                          {day.dayName.slice(0, 3)} {isToday ? '(Today)' : ''}
-                        </p>
-                        <span className='text-xs'>
-                          {day.rainChancePct >= 55 ? '🌧️' : day.tempMaxF >= 80 ? '☀️' : day.rainChancePct >= 20 ? '⛅' : '☀️'}
-                        </span>
-                      </div>
-                      <div className='mt-2'>
-                        <p className='text-lg font-black text-white'>
-                          {day.tempMaxF}°<span className='text-xs font-normal text-zinc-500'> / {day.tempMinF}°F</span>
-                        </p>
-                        <p className='text-[10px] text-zinc-400 capitalize mt-0.5 truncate'>{day.description}</p>
-                        <p className={`text-[10px] font-bold mt-1 ${day.rainChancePct >= 50 ? 'text-red-400' : 'text-zinc-500'}`}>
-                          ☔ {day.rainChancePct}% rain
-                        </p>
-                      </div>
-                      <div className='mt-2.5 pt-2 border-t border-white/5'>
-                        {day.isBest ? (
-                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'>
-                            ✓ Great Day
-                          </span>
-                        ) : day.isRainy ? (
-                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/20'>
-                            ⚠ Rain Risk
-                          </span>
-                        ) : (
-                          <span className='inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-white/5 text-zinc-500 border border-white/5'>
-                            Moderate
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-          {weatherForecast && !weatherForecast.ok ? (
-            <section className={cardGlow}>
-              <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Weather readiness</p>
-              <p className='mt-2 text-xs text-zinc-400'>OpenWeather could not load for dispatch.</p>
-              <p className='mt-2 font-mono text-[11px] text-red-200'>{weatherForecast.blocker || 'Weather provider unavailable.'}</p>
-            </section>
-          ) : null}
+          <WeatherReadinessWidget
+            snapshot={weatherForecast}
+            locationLabel="Austin / Round Rock field area"
+            variant="tech"
+          />
 
           <section className='mt-4'>
             <p className='mb-3 text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Quick actions</p>
@@ -635,26 +596,14 @@ export function TechPremiumShell({
       )}
 
       {activeTab === 'calendar' && (
-        <section className="space-y-4 animate-in fade-in duration-200">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft">Field calendar</p>
-            <h2 className="mt-1 text-2xl font-black text-white">Your upcoming schedule</h2>
-          </div>
-          {jobs.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-sm text-zinc-500">No assigned jobs are scheduled.</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[...jobs].sort((a, b) => new Date(a.scheduled_start).getTime() - new Date(b.scheduled_start).getTime()).map((job) => (
-                <article key={job.id} className="rounded-2xl border border-white/10 bg-black/45 p-4 hover:border-gold/30">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">{new Date(job.scheduled_start).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-                  <p className="mt-1 text-lg font-black text-white">{new Date(job.scheduled_start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
-                  <p className="mt-2 font-bold text-zinc-200">{job.guest_name ?? 'Customer'}</p>
-                  <p className="text-xs text-zinc-500">{job.service_slug.replace(/-/g, ' ')} · {job.vehicle_description ?? 'Vehicle TBD'}</p>
-                  <Link href={workOrderHref(job)} className="mt-4 inline-flex rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">Open work order</Link>
-                </article>
-              ))}
-            </div>
-          )}
+        <section className="min-w-0 animate-in fade-in duration-200">
+          <UpcomingScheduleWidget
+            items={scheduleItems}
+            title="Field calendar"
+            subtitle="Your assigned schedule"
+            emptyMessage="No assigned jobs are scheduled."
+            maxList={12}
+          />
         </section>
       )}
 

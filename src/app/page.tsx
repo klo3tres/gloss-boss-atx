@@ -613,7 +613,7 @@ export default function HomePage() {
           {reviews.length === 0 ? (
             <div className="mx-auto max-w-2xl rounded-3xl border border-gold/20 bg-black p-8 text-center">
               <p className="text-sm font-bold text-white">Published customer reviews are being curated.</p>
-              <p className="mt-2 text-xs text-zinc-400">Admin can approve testimonials in CMS. Google reviews appear after the Google review setup is configured.</p>
+              <p className="mt-2 text-xs text-zinc-400">Reviews sync from your Google Business profile when Places API is connected, or you can publish them manually in Admin → CMS.</p>
               {googleReviewUrl ? (
                 <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft">
                   Read Google reviews

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { createManualReviewAction, toggleReviewPublishedAction } from '@/lib/admin/reviews-actions';
+import { syncGoogleReviewsAction } from '@/lib/admin/sync-google-reviews-action';
 
 type Review = {
   id: string;
@@ -14,12 +16,28 @@ type Review = {
 };
 
 export function ReviewsManagerClient({ reviews }: { reviews: Review[] }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [rating, setRating] = useState(5);
   const [text, setText] = useState('');
   const [source, setSource] = useState('Google');
+
+  const syncGoogle = () => {
+    setSyncMsg(null);
+    setErr(null);
+    startTransition(async () => {
+      const res = await syncGoogleReviewsAction();
+      if (res.ok) {
+        setSyncMsg(res.message ?? 'Google reviews synced.');
+        router.refresh();
+      } else {
+        setErr(res.error ?? 'Google sync failed.');
+      }
+    });
+  };
 
   const submit = () => {
     setErr(null);
@@ -41,9 +59,18 @@ export function ReviewsManagerClient({ reviews }: { reviews: Review[] }) {
 
   return (
     <div className="space-y-8">
+      <section className="rounded-3xl border border-emerald-500/25 bg-emerald-500/5 p-6">
+        <h2 className="text-lg font-black text-white">Import from Google</h2>
+        <p className="mt-1 text-xs text-zinc-400">Pulls your latest Google Business reviews onto the homepage. Requires GOOGLE_PLACES_API_KEY in Vercel.</p>
+        <button type="button" disabled={pending} onClick={syncGoogle} className="mt-4 rounded-xl bg-gold px-4 py-2 text-[10px] font-black uppercase text-black disabled:opacity-40">
+          {pending ? 'Syncing…' : 'Sync Google reviews'}
+        </button>
+        {syncMsg ? <p className="mt-2 text-xs text-emerald-200">{syncMsg}</p> : null}
+      </section>
+
       <section className="rounded-3xl border border-gold/20 bg-black/45 p-6">
         <h2 className="text-lg font-black text-white">Add review manually</h2>
-        <p className="mt-1 text-xs text-zinc-500">Published reviews appear on the homepage. Use when Google Business API is not connected.</p>
+        <p className="mt-1 text-xs text-zinc-500">Published reviews appear on the homepage. Use for reviews you want to curate by hand.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <input className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white" placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white" placeholder="Source (Google, Manual…)" value={source} onChange={(e) => setSource(e.target.value)} />

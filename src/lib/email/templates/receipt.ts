@@ -1,6 +1,6 @@
 import { GLOSS_BOSS_BRAND_NAME } from '@/lib/branding';
 
-export const RECEIPT_LOGO_URL = 'https://www.glossbossatx.com/branding/gloss-boss-atx-logo.png';
+export const RECEIPT_LOGO_URL = 'https://glossbossatx.com/branding/gloss-boss-atx-logo.png';
 import {
   emailCard,
   emailCtaButton,
