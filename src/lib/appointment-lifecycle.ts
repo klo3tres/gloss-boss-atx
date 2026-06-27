@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
+import { queueGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 function str(v: unknown) {
@@ -125,6 +126,8 @@ export async function cancelAppointmentLifecycle(
     console.warn('[lifecycle] owner cancel notify', e);
   }
 
+  queueGoogleCalendarSync(admin, id, 'delete');
+
   return { ok: true };
 }
 
@@ -186,6 +189,8 @@ export async function rescheduleAppointmentLifecycle(
   } catch (e) {
     console.warn('[lifecycle] owner reschedule notify', e);
   }
+
+  queueGoogleCalendarSync(admin, id, 'upsert');
 
   return { ok: true };
 }

@@ -22,6 +22,7 @@ export type WeatherSnapshot = {
   condition?: string;
   severe?: boolean;
   provider?: 'openweather';
+  selectedDateKey?: string;
   dailyForecasts?: DailyForecast[];
   bestDetailingDays?: string[];
   rainWarningDays?: string[];
@@ -31,6 +32,40 @@ export type WeatherSnapshot = {
     missing: string[];
   };
 };
+
+const BUSINESS_TZ = 'America/Chicago';
+
+function parseChicagoDateKey(whenIso?: string): { when: Date; dateKey: string | null } {
+  const trimmed = whenIso?.trim();
+  if (trimmed && /^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    // Noon Central — avoids UTC midnight shifting to the previous day
+    const when = new Date(`${trimmed}T12:00:00-06:00`);
+    return { when, dateKey: trimmed };
+  }
+  const when = trimmed ? new Date(trimmed) : new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(when);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const m = parts.find((p) => p.type === 'month')?.value;
+  const d = parts.find((p) => p.type === 'day')?.value;
+  const dateKey = y && m && d ? `${y}-${m}-${d}` : null;
+  return { when, dateKey };
+}
+
+async function geocodeAddress(q: string, key: string): Promise<{ lat: number; lon: number } | null> {
+  const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(q)}&limit=1&appid=${key}`;
+  const geoRes = await fetch(geoUrl, { next: { revalidate: 3600 } });
+  if (!geoRes.ok) return null;
+  const geo = (await geoRes.json()) as Array<{ lat?: number; lon?: number }>;
+  const lat = geo[0]?.lat;
+  const lon = geo[0]?.lon;
+  if (lat == null || lon == null) return null;
+  return { lat, lon };
+}
 
 /** Lightweight forecast via OpenWeather. Does not block booking or dispatch. */
 export async function fetchWeatherForAddress(address: string, whenIso?: string): Promise<WeatherSnapshot> {
@@ -57,26 +92,31 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
   }
 
   try {
+    const homeBase = process.env.BUSINESS_HOME_BASE_ADDRESS?.trim().toLowerCase() ?? '';
+    const queryNorm = q.toLowerCase();
     const coords = businessCoordinates();
-    let lat = coords?.lat;
-    let lon = coords?.lng;
+    let lat: number | undefined;
+    let lon: number | undefined;
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(q)}&limit=1&appid=${key}`;
-      const geoRes = await fetch(geoUrl, { next: { revalidate: 3600 } });
-      if (!geoRes.ok) {
-        return { ok: false, provider: 'openweather', blocker: `OpenWeather geocode failed (${geoRes.status}).`, appleAdvancedApi };
+    if (coords && (!queryNorm || (homeBase && queryNorm === homeBase))) {
+      lat = coords.lat;
+      lon = coords.lng;
+    } else {
+      const geocoded = await geocodeAddress(q, key);
+      if (geocoded) {
+        lat = geocoded.lat;
+        lon = geocoded.lon;
+      } else if (coords) {
+        lat = coords.lat;
+        lon = coords.lng;
       }
-      const geo = (await geoRes.json()) as Array<{ lat?: number; lon?: number }>;
-      lat = geo[0]?.lat;
-      lon = geo[0]?.lon;
     }
 
     if (lat == null || lon == null) {
       return { ok: false, provider: 'openweather', blocker: 'Could not geocode address for weather.', appleAdvancedApi };
     }
 
-    const when = whenIso ? new Date(whenIso) : new Date();
+    const { when, dateKey: targetDateKey } = parseChicagoDateKey(whenIso);
     const daysOut = Math.max(0, Math.min(5, Math.floor((when.getTime() - Date.now()) / (24 * 60 * 60 * 1000))));
     const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=imperial&appid=${key}`;
     const fRes = await fetch(forecastUrl, { next: { revalidate: 1800 } });
@@ -114,7 +154,7 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
     for (const slot of data.list) {
       const date = new Date(slot.dt * 1000);
       const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Chicago',
+        timeZone: BUSINESS_TZ,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
@@ -142,7 +182,7 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
       let minHourDiff = Infinity;
       for (const slot of group) {
         const slotDate = new Date(slot.dt * 1000);
-        const hour = parseInt(slotDate.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false, hour: 'numeric' }));
+        const hour = parseInt(slotDate.toLocaleTimeString('en-US', { timeZone: BUSINESS_TZ, hour12: false, hour: 'numeric' }));
         const diff = Math.abs(hour - 13); // closest to 1 PM Central Time
         if (diff < minHourDiff) {
           minHourDiff = diff;
@@ -162,7 +202,7 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
       const isRainy = rainChancePct >= 50;
 
       const dateObj = new Date(group[0].dt * 1000);
-      const dayName = dateObj.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long' });
+      const dayName = dateObj.toLocaleDateString('en-US', { timeZone: BUSINESS_TZ, weekday: 'long' });
 
       dailyForecasts.push({
         date: dateStr,
@@ -185,14 +225,17 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
       }
     }
 
+    const matchedDay = targetDateKey ? dailyForecasts.find((d) => d.date === targetDateKey) : undefined;
+
     return {
       ok: true,
       provider: 'openweather',
-      temperatureF: Math.round(best.main?.temp ?? 0),
-      rainChancePct: rainPct,
-      description: daysOut > 5 ? `${desc} (approx - appointment >5 days out)` : desc,
-      condition,
-      severe,
+      selectedDateKey: targetDateKey ?? matchedDay?.date,
+      temperatureF: matchedDay ? Math.round((matchedDay.tempMinF + matchedDay.tempMaxF) / 2) : Math.round(best.main?.temp ?? 0),
+      rainChancePct: matchedDay?.rainChancePct ?? rainPct,
+      description: matchedDay?.description ?? (daysOut > 5 ? `${desc} (approx - appointment >5 days out)` : desc),
+      condition: matchedDay?.condition ?? condition,
+      severe: matchedDay?.severe ?? severe,
       dailyForecasts,
       bestDetailingDays,
       rainWarningDays,

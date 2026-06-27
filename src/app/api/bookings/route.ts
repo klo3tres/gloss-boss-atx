@@ -8,6 +8,8 @@ import {
 } from '@/lib/booking-diagnostics';
 import { isBookingSlotAllowed } from '@/lib/booking-availability';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
+import { loadDurationCatalog } from '@/lib/booking-duration-catalog';
+import { queueGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
 import { fetchBookedBlocks, slotConflictsWithBlocks } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import {
@@ -334,7 +336,8 @@ export async function POST(request: Request) {
       vehicleClass: r.vehicleClass,
       addOnSlugs: r.addOnSlugs ?? [],
     }));
-    const durationMinutes = totalBookingDurationMinutes(durationLines);
+    const durationCatalog = await loadDurationCatalog(admin);
+    const durationMinutes = totalBookingDurationMinutes(durationLines, durationCatalog);
     const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
     const bookedBlocks = await fetchBookedBlocks(admin, rangeStart, rangeEnd);
@@ -345,7 +348,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const scheduleFields = buildAppointmentScheduleFields(scheduled.toISOString(), durationLines);
+    const scheduleFields = buildAppointmentScheduleFields(scheduled.toISOString(), durationLines, durationCatalog);
 
     const emailNorm = guestEmail.trim().toLowerCase();
     let customerId: string | null = null;
@@ -564,6 +567,8 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    queueGoogleCalendarSync(admin, String(appointment.id), 'upsert');
 
     const appliedCreditCents = await applyCustomerCreditsToAppointment({
       admin,

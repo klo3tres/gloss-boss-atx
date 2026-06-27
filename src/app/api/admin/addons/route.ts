@@ -60,6 +60,8 @@ export async function PATCH(request: Request) {
     price_cents?: number;
     active?: boolean;
     sort_order?: number;
+    estimated_min_minutes?: number;
+    estimated_max_minutes?: number;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -79,6 +81,12 @@ export async function PATCH(request: Request) {
   if (typeof body.price_cents === 'number' && !Number.isNaN(body.price_cents)) patch.price_cents = Math.max(0, Math.round(body.price_cents));
   if (typeof body.active === 'boolean') patch.active = body.active;
   if (typeof body.sort_order === 'number' && !Number.isNaN(body.sort_order)) patch.sort_order = body.sort_order;
+  if (typeof body.estimated_min_minutes === 'number' && !Number.isNaN(body.estimated_min_minutes)) {
+    patch.estimated_min_minutes = Math.max(0, Math.round(body.estimated_min_minutes));
+  }
+  if (typeof body.estimated_max_minutes === 'number' && !Number.isNaN(body.estimated_max_minutes)) {
+    patch.estimated_max_minutes = Math.max(0, Math.round(body.estimated_max_minutes));
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ ok: false, error: 'No changes' }, { status: 400 });

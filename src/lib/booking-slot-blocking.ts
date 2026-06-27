@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { estimatedEndIso, totalBookingDurationMinutes, type VehicleDurationLine } from '@/lib/booking-service-duration';
+import type { DurationCatalog } from '@/lib/booking-duration-catalog';
 
 export type BookedBlock = { start: string; end: string; appointmentId?: string };
 
@@ -134,8 +135,9 @@ export function slotConflictsWithBlocks(
 export function buildAppointmentScheduleFields(
   scheduledStartIso: string,
   lines: VehicleDurationLine[],
+  catalog?: DurationCatalog,
 ): { estimated_duration_minutes: number; estimated_end: string } {
-  const estimated_duration_minutes = totalBookingDurationMinutes(lines);
+  const estimated_duration_minutes = totalBookingDurationMinutes(lines, catalog);
   return {
     estimated_duration_minutes,
     estimated_end: estimatedEndIso(scheduledStartIso, estimated_duration_minutes),

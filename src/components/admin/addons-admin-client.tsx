@@ -11,6 +11,8 @@ export type AddonRow = {
   price_cents: number;
   active: boolean;
   sort_order: number;
+  estimated_min_minutes: number;
+  estimated_max_minutes: number;
 };
 
 async function patchAddon(body: object) {
@@ -130,6 +132,8 @@ function AddonEditorRow({
   const [dollars, setDollars] = useState(row.price_cents / 100);
   const [active, setActive] = useState(row.active);
   const [sortOrder, setSortOrder] = useState(row.sort_order);
+  const [minMinutes, setMinMinutes] = useState(row.estimated_min_minutes);
+  const [maxMinutes, setMaxMinutes] = useState(row.estimated_max_minutes);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -138,6 +142,8 @@ function AddonEditorRow({
     setDollars(row.price_cents / 100);
     setActive(row.active);
     setSortOrder(row.sort_order);
+    setMinMinutes(row.estimated_min_minutes);
+    setMaxMinutes(row.estimated_max_minutes);
   }, [row]);
 
   return (
@@ -187,7 +193,30 @@ function AddonEditorRow({
               className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
             />
           </label>
+          <label className='block text-xs text-zinc-500'>
+            Est. minutes (min)
+            <input
+              type='number'
+              min={0}
+              value={minMinutes}
+            onChange={(e) => setMinMinutes(Number(e.target.value))}
+            placeholder='Auto if 0'
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
+          <label className='block text-xs text-zinc-500'>
+            Est. minutes (max)
+            <input
+              type='number'
+              min={0}
+              value={maxMinutes}
+            onChange={(e) => setMaxMinutes(Number(e.target.value))}
+            placeholder='Auto if 0'
+              className='mt-1.5 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-xs text-white focus:border-gold/50 outline-none transition'
+            />
+          </label>
         </div>
+        <p className='text-[10px] text-zinc-600'>Titan uses these for multi-car scheduling. Leave blank to use smart defaults by add-on type.</p>
 
         <div className='flex items-center gap-2 bg-black/40 border border-white/5 p-3 rounded-xl'>
           <input 
@@ -218,6 +247,8 @@ function AddonEditorRow({
                 price_cents: Math.round(dollars * 100),
                 active,
                 sort_order: sortOrder,
+                estimated_min_minutes: minMinutes,
+                estimated_max_minutes: maxMinutes,
               });
               setBusy(false);
               if (!r.ok) {

@@ -1,4 +1,9 @@
 import { addonDurationMinutes, BOOKING_BUFFER_MINUTES } from '@/lib/addon-vehicle-pricing';
+import {
+  addonDurationFromCatalog,
+  serviceDurationFromCatalog,
+  type DurationCatalog,
+} from '@/lib/booking-duration-catalog';
 
 export type VehicleDurationLine = {
   serviceSlug: string;
@@ -7,7 +12,10 @@ export type VehicleDurationLine = {
 };
 
 /** Estimated service duration in minutes (mobile detailing). */
-export function serviceDurationMinutes(serviceSlug: string, vehicleClass: string): number {
+export function serviceDurationMinutes(serviceSlug: string, vehicleClass: string, catalog?: DurationCatalog): number {
+  const fromDb = serviceDurationFromCatalog(serviceSlug, vehicleClass, catalog);
+  if (fromDb != null && fromDb > 0) return fromDb;
+
   const slug = String(serviceSlug ?? '').toLowerCase();
   void vehicleClass;
 
@@ -19,11 +27,17 @@ export function serviceDurationMinutes(serviceSlug: string, vehicleClass: string
   return 120;
 }
 
-export function totalBookingDurationMinutes(lines: VehicleDurationLine[]): number {
+function addonMinutes(slug: string, catalog?: DurationCatalog): number {
+  const fromDb = addonDurationFromCatalog(slug, catalog);
+  if (fromDb != null && fromDb > 0) return fromDb;
+  return addonDurationMinutes(slug);
+}
+
+export function totalBookingDurationMinutes(lines: VehicleDurationLine[], catalog?: DurationCatalog): number {
   if (!lines.length) return 60 + BOOKING_BUFFER_MINUTES;
   const serviceMins = lines.reduce((sum, line) => {
-    const base = serviceDurationMinutes(line.serviceSlug, line.vehicleClass);
-    const addonMins = (line.addOnSlugs ?? []).reduce((s, slug) => s + addonDurationMinutes(slug), 0);
+    const base = serviceDurationMinutes(line.serviceSlug, line.vehicleClass, catalog);
+    const addonMins = (line.addOnSlugs ?? []).reduce((s, slug) => s + addonMinutes(slug, catalog), 0);
     return sum + base + addonMins;
   }, 0);
   return serviceMins + BOOKING_BUFFER_MINUTES;

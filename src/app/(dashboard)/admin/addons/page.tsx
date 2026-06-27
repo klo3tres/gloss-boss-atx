@@ -41,6 +41,8 @@ export default async function AdminAddonsPage() {
         price_cents: n.price_cents,
         active: Boolean(r.active),
         sort_order: typeof r.sort_order === 'number' ? r.sort_order : n.sort_order,
+        estimated_min_minutes: typeof r.estimated_min_minutes === 'number' ? r.estimated_min_minutes : 0,
+        estimated_max_minutes: typeof r.estimated_max_minutes === 'number' ? r.estimated_max_minutes : 0,
       };
     });
   }
@@ -48,7 +50,7 @@ export default async function AdminAddonsPage() {
   return (
     <DashboardShell
       title='Booking add-ons'
-      subtitle='Engine bay, pet hair, odor, clay bar — prices sync to public booking and field quotes.'
+      subtitle='Engine bay, pet hair, odor, clay bar — prices and duration estimates sync to booking slots.'
       role='admin'
     >
       {!admin ? (

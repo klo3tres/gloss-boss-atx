@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { BookingAvailabilityConfig } from '@/lib/booking-availability-config';
+import { DEFAULT_BOOKING_AVAILABILITY } from '@/lib/booking-availability';
+import { WindowFields } from '@/components/admin/booking-window-fields';
 
 export function CmsBookingAvailabilityClient({ initial }: { initial: BookingAvailabilityConfig }) {
   const router = useRouter();
@@ -11,6 +13,10 @@ export function CmsBookingAvailabilityClient({ initial }: { initial: BookingAvai
   const [allowSunday, setAllowSunday] = useState(initial.allowSunday);
   const [allowAllOtherDays, setAllowAllOtherDays] = useState(initial.allowAllOtherDays);
   const [fridayHour, setFridayHour] = useState(initial.allowFridayAfterHour);
+  const [slotInterval, setSlotInterval] = useState(initial.slotIntervalMinutes ?? 15);
+  const [fridayWindow, setFridayWindow] = useState(initial.fridayWindow ?? DEFAULT_BOOKING_AVAILABILITY.fridayWindow!);
+  const [saturdayWindow, setSaturdayWindow] = useState(initial.saturdayWindow ?? DEFAULT_BOOKING_AVAILABILITY.saturdayWindow!);
+  const [sundayWindow, setSundayWindow] = useState(initial.sundayWindow ?? DEFAULT_BOOKING_AVAILABILITY.sundayWindow!);
   const [blackoutDates, setBlackoutDates] = useState((initial.blackoutDates ?? []).join('\n'));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -31,6 +37,10 @@ export function CmsBookingAvailabilityClient({ initial }: { initial: BookingAvai
               allowSunday,
               allowAllOtherDays,
               allowFridayAfterHour: fridayHour,
+              slotIntervalMinutes: slotInterval,
+              fridayWindow,
+              saturdayWindow,
+              sundayWindow,
               blackoutDates,
             }),
             credentials: 'same-origin',
@@ -70,6 +80,24 @@ export function CmsBookingAvailabilityClient({ initial }: { initial: BookingAvai
           className='mt-1 w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
         />
       </label>
+      <label className='block text-xs text-zinc-400'>
+        Slot interval (minutes between start times)
+        <input
+          type='number'
+          min={5}
+          max={120}
+          step={5}
+          value={slotInterval}
+          onChange={(e) => setSlotInterval(Number(e.target.value))}
+          className='mt-1 w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+        />
+      </label>
+      <div className='space-y-3'>
+        <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Time blocks (when customers can book)</p>
+        <WindowFields label='Friday window' value={fridayWindow} onChange={setFridayWindow} />
+        <WindowFields label='Saturday window' value={saturdayWindow} onChange={setSaturdayWindow} />
+        <WindowFields label='Sunday window' value={sundayWindow} onChange={setSundayWindow} />
+      </div>
       <label className='block text-xs text-zinc-400'>
         Blackout dates
         <textarea

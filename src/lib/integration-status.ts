@@ -1,6 +1,7 @@
 import { twilioAccountSid, twilioCredentialsPresent, twilioSenderReady } from '@/lib/twilio-config';
 import { resendConfigured } from '@/lib/email-send';
 import { placesDiscoveryConfigured, googleMapsRenderConfigured, appleMapKitCredentialsPresent } from '@/lib/integrations/maps-discovery-status';
+import { googleCalendarOAuthConfigured } from '@/lib/google/google-calendar-config';
 
 export type IntegrationStatusLevel = 'missing' | 'trial' | 'ready' | 'optional';
 
@@ -57,7 +58,23 @@ export function buildIntegrationStatusRows(): IntegrationStatusRow[] {
       id: 'resend',
       label: 'Resend email',
       level: resendConfigured() ? 'ready' : 'missing',
-      detail: resendConfigured() ? 'Owner + customer email delivery configured.' : 'Set RESEND_API_KEY and RESEND_FROM_EMAIL.',
+      detail: resendConfigured()
+        ? 'Owner + customer email delivery configured. Owner alerts forward to workspace email from Setup Center.'
+        : 'Set RESEND_API_KEY and RESEND_FROM_EMAIL.',
+    },
+    {
+      id: 'google_calendar',
+      label: 'Google Calendar sync',
+      level: googleCalendarOAuthConfigured() ? 'optional' : 'optional',
+      detail: googleCalendarOAuthConfigured()
+        ? 'OAuth ready — connect in Setup Center to push bookings to Google Calendar.'
+        : 'Set GOOGLE_CALENDAR_CLIENT_ID/SECRET/REDIRECT_URI, then connect in Setup Center.',
+    },
+    {
+      id: 'analytics',
+      label: 'Site analytics (GA + Clarity)',
+      level: 'ready',
+      detail: 'Google Tag G-VWFWQ0P9GB and Microsoft Clarity load on every page via root layout.',
     },
   ];
 }

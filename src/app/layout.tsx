@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { SiteAnalytics } from '@/components/analytics/site-analytics';
 import { getAppOrigin } from '@/lib/env/app-origin';
 import { CANONICAL_ORIGIN } from '@/lib/env/canonical-domain';
 
@@ -96,6 +97,7 @@ export default function RootLayout({
         Optional Tailwind bundle fallback lives in <body> (valid HTML5 for stylesheet links).
       */}
       <body className='min-h-full bg-background font-sans text-foreground antialiased'>
+        <SiteAnalytics />
         <script
           type='application/ld+json'
           dangerouslySetInnerHTML={{

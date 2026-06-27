@@ -26,6 +26,9 @@ export type BookingAvailabilityRules = {
 
   allowAllOtherDays: boolean;
 
+  /** Minutes between bookable start times (default 15). */
+  slotIntervalMinutes?: number;
+
   blackoutDates?: string[];
 
   fridayWindow?: DayTimeWindow;
@@ -55,6 +58,8 @@ export const DEFAULT_BOOKING_AVAILABILITY: BookingAvailabilityRules = {
   allowSunday: true,
 
   allowAllOtherDays: false,
+
+  slotIntervalMinutes: 15,
 
   fridayWindow: DEFAULT_FRIDAY,
 
@@ -127,6 +132,14 @@ export function parseBookingAvailabilityRules(raw: unknown): BookingAvailability
     allowAllOtherDays:
 
       typeof o.allowAllOtherDays === 'boolean' ? o.allowAllOtherDays : DEFAULT_BOOKING_AVAILABILITY.allowAllOtherDays,
+
+    slotIntervalMinutes:
+
+      typeof o.slotIntervalMinutes === 'number' && o.slotIntervalMinutes >= 5 && o.slotIntervalMinutes <= 120
+
+        ? Math.round(o.slotIntervalMinutes)
+
+        : DEFAULT_BOOKING_AVAILABILITY.slotIntervalMinutes,
 
     fridayWindow: parseWindow(o.fridayWindow, DEFAULT_FRIDAY),
 

@@ -1,4 +1,5 @@
 import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-settings';
+import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-connect-panel';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { buildIntegrationStatusRows } from '@/lib/integration-status';
 import Link from 'next/link';
@@ -171,9 +172,13 @@ export default async function OwnerSetupCenterPage() {
         </div>
       </section>
 
+      <section className="mt-6">
+        <GoogleCalendarConnectPanel />
+      </section>
+
       <section className="mt-6 rounded-3xl border border-white/10 bg-black/55 p-6">
         <h2 className="text-sm font-black uppercase text-white">Integration status (accurate)</h2>
-        <p className="mt-1 text-xs text-zinc-500">Google Places ≠ Google Maps render. Apple Maps is optional. Twilio trial can send to verified numbers.</p>
+        <p className="mt-1 text-xs text-zinc-500">Google Places ≠ Google Maps render. Twilio trial sends SMS to verified numbers only — owner alerts also email via Resend when configured.</p>
         <ul className="mt-4 space-y-2">
           {integrationRows.map((row) => (
             <li key={row.id} className="rounded-xl border border-white/8 bg-black/40 px-4 py-3 text-xs">

@@ -51,8 +51,9 @@ export function getTimeSlotsForDate(dateKey: string, rules: BookingAvailabilityC
 
   const startM = w.startHour * 60 + w.startMinute;
   const endM = w.endHour * 60 + w.endMinute;
+  const step = rules.slotIntervalMinutes ?? 15;
   const out: { value: string; label: string }[] = [];
-  for (let m = startM; m <= endM; m += 15) {
+  for (let m = startM; m <= endM; m += step) {
     const { h, min } = minutesToClock(m);
     const value = `${pad2(h)}:${pad2(min)}`;
     out.push({ value, label: formatSlotLabel(h, min) });

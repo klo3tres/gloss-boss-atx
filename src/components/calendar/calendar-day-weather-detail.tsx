@@ -6,7 +6,8 @@ export function CalendarDayWeatherDetail({ weather, loading }: { weather: Weathe
   if (loading) return <p className="text-xs text-zinc-500 animate-pulse">Loading weather…</p>;
   if (!weather?.ok) return <p className="text-xs text-zinc-500">{weather?.blocker ?? 'Weather unavailable — set OPENWEATHER_API_KEY.'}</p>;
 
-  const daily = weather.dailyForecasts?.[0];
+  const daily =
+    weather.dailyForecasts?.find((d) => d.date === weather.selectedDateKey) ?? weather.dailyForecasts?.[0];
   const rain = weather.rainChancePct ?? daily?.rainChancePct ?? 0;
   const readiness =
     rain >= 50 || weather.severe ? 'Rain risk — reschedule exterior work' : rain >= 30 ? 'Moderate — watch rain windows' : 'Good day for details';
