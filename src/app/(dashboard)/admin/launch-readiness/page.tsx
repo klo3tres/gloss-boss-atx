@@ -13,7 +13,8 @@ import {
   appleMapKitCredentialsPresent,
 } from '@/lib/integrations/maps-discovery-status';
 import { loadDomainHealthReport } from '@/lib/domain-health';
-import { validateAppUrlConfig, CANONICAL_ORIGIN } from '@/lib/env/canonical-domain';
+import { validateAppUrlConfig, CANONICAL_ORIGIN, EXPECTED_APP_URL } from '@/lib/env/canonical-domain';
+import { LaunchReadinessHostDebug } from '@/components/admin/launch-readiness-host-debug';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,20 +85,21 @@ export default async function LaunchReadinessPage() {
     },
     {
       id: 'domain_redirect',
-      label: 'www → apex redirect',
-      status: domainHealth.wwwRedirectsToApex ? 'live' : domainHealth.wwwRedirectsToApex === false ? 'partial' : 'manual',
-      affects: 'Split traffic between www and apex hurts SEO and cookies',
-      fix: domainHealth.wwwRedirectsToApex
-        ? 'www redirects to apex — ensure apex SSL is valid before sending public traffic.'
-        : 'Configure www to redirect to https://glossbossatx.com in Vercel Domains.',
+      label: 'Apex → www redirect (Vercel only)',
+      status: domainHealth.apexRedirectsToWww ? 'live' : domainHealth.apexRedirectsToWww === false ? 'broken' : 'manual',
+      affects: 'Redirect loops if app also redirects www ↔ apex',
+      fix: domainHealth.apexRedirectsToWww
+        ? 'glossbossatx.com redirects to www in Vercel — app must NOT add host redirects in middleware or vercel.json.'
+        : 'Configure glossbossatx.com → https://www.glossbossatx.com in Vercel Domains only. Remove app-level redirects.',
       href: 'https://vercel.com/dashboard',
+      testHref: '/api/debug/host',
     },
     {
       id: 'domain_app_url',
       label: 'NEXT_PUBLIC_APP_URL',
       status: appUrlCheck.ok ? 'live' : process.env.VERCEL_ENV === 'production' ? 'broken' : 'partial',
       affects: 'Stripe return URLs, webhooks, emails, and auth redirects use wrong domain',
-      fix: appUrlCheck.issues[0] ?? `Set NEXT_PUBLIC_APP_URL=${CANONICAL_ORIGIN} in Vercel Production env.`,
+      fix: appUrlCheck.issues[0] ?? `Set NEXT_PUBLIC_APP_URL=${EXPECTED_APP_URL} in Vercel Production env.`,
       href: '/admin/integrations',
     },
     {
@@ -217,6 +219,15 @@ export default async function LaunchReadinessPage() {
 
   return (
     <DashboardShell title="Launch Readiness" subtitle="What is live, manual, or broken before customers hit the site" role={session.profile!.role as 'admin' | 'super_admin'}>
+      {!appUrlCheck.ok ? (
+        <div className="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">NEXT_PUBLIC_APP_URL mismatch</p>
+          <p className="mt-2 text-sm text-amber-100">
+            Must be exactly <code className="text-amber-200">{EXPECTED_APP_URL}</code>
+            {appUrlCheck.configured ? ` — currently ${appUrlCheck.configured}` : ' — not set in production'}.
+          </p>
+        </div>
+      ) : null}
       {domainHealth.criticalIssue ? (
         <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-red-300">Domain security — fix before sharing the public site</p>
@@ -228,7 +239,8 @@ export default async function LaunchReadinessPage() {
           </ul>
         </div>
       ) : null}
-      <div className="space-y-4">
+      <LaunchReadinessHostDebug />
+      <div className="mt-6 space-y-4">
         {checks.map((c) => (
           <article key={c.id} className="rounded-2xl border border-white/10 bg-black/50 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">

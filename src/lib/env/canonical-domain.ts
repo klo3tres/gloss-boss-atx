@@ -1,13 +1,19 @@
 /**
- * Production canonical domain for Gloss Boss ATX.
- * Apex (glossbossatx.com) is canonical; www redirects here once SSL is valid on both hosts.
+ * Production app URL helpers for Gloss Boss ATX.
+ * Canonical production host: www.glossbossatx.com (Vercel Domains handles apex → www).
+ * App code must NOT redirect between apex and www.
  */
 
-export const CANONICAL_HOST = (process.env.CANONICAL_HOST?.trim() || 'glossbossatx.com').toLowerCase();
+export const EXPECTED_APP_URL = 'https://www.glossbossatx.com';
 
-export const CANONICAL_ORIGIN = `https://${CANONICAL_HOST}`;
+export const APEX_HOST = 'glossbossatx.com';
 
-export const WWW_HOST = `www.${CANONICAL_HOST}`;
+export const CANONICAL_HOST = (process.env.CANONICAL_HOST?.trim() || 'www.glossbossatx.com').toLowerCase();
+
+export const CANONICAL_ORIGIN = `https://${CANONICAL_HOST.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
+
+/** www host — avoids double www when CANONICAL_HOST already includes www */
+export const WWW_HOST = CANONICAL_HOST.startsWith('www.') ? CANONICAL_HOST : `www.${CANONICAL_HOST}`;
 
 export function isLocalDevHost(host: string): boolean {
   const h = host.toLowerCase();
@@ -18,7 +24,6 @@ export function isVercelPreviewHost(host: string): boolean {
   return host.toLowerCase().endsWith('.vercel.app');
 }
 
-/** Hosts that should not be forced to canonical (local dev + Vercel previews). */
 export function shouldSkipCanonicalRedirect(host: string): boolean {
   return isLocalDevHost(host) || isVercelPreviewHost(host);
 }
@@ -38,7 +43,7 @@ export function resolveProductionAppOrigin(): string {
     return configured;
   }
   if (process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production') {
-    return CANONICAL_ORIGIN;
+    return EXPECTED_APP_URL;
   }
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) {
@@ -57,28 +62,13 @@ export type AppUrlValidation = {
 
 export function validateAppUrlConfig(): AppUrlValidation {
   const configured = configuredAppUrl();
-  const expected = CANONICAL_ORIGIN;
+  const expected = EXPECTED_APP_URL;
   const issues: string[] = [];
 
   if (!configured) {
-    issues.push('NEXT_PUBLIC_APP_URL is not set — emails, Stripe redirects, and webhooks may use wrong domain.');
-  } else if (configured.includes('localhost')) {
-    issues.push('NEXT_PUBLIC_APP_URL points to localhost — must be the live HTTPS domain in production.');
-  } else if (configured.includes('.vercel.app')) {
-    issues.push('NEXT_PUBLIC_APP_URL is a Vercel preview URL — set to https://glossbossatx.com in production.');
-  } else if (!configured.startsWith('https://')) {
-    issues.push('NEXT_PUBLIC_APP_URL must use HTTPS in production.');
-  } else {
-    try {
-      const host = new URL(configured).host.toLowerCase();
-      if (host === WWW_HOST) {
-        issues.push(`NEXT_PUBLIC_APP_URL uses www — canonical is https://${CANONICAL_HOST}`);
-      } else if (host !== CANONICAL_HOST) {
-        issues.push(`NEXT_PUBLIC_APP_URL host "${host}" does not match canonical ${CANONICAL_HOST}.`);
-      }
-    } catch {
-      issues.push('NEXT_PUBLIC_APP_URL is not a valid URL.');
-    }
+    issues.push(`NEXT_PUBLIC_APP_URL is not set — set exactly ${expected} in Vercel Production.`);
+  } else if (configured !== expected) {
+    issues.push(`NEXT_PUBLIC_APP_URL must be exactly ${expected} (currently ${configured}).`);
   }
 
   return { ok: issues.length === 0, configured, expected, issues };

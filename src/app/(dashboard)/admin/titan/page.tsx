@@ -5,6 +5,9 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { loadTitan10Snapshot } from '@/lib/titan/engines/load';
 import { loadTitanSystemHealth } from '@/lib/titan/system-health';
+import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
+import { loadLeadRadarItems, topLeadRadarForToday } from '@/lib/titan/lead-radar-engine';
+import { loadConversionGoalStats, loadDailyHuntTasks } from '@/lib/titan/lead-radar-hunt';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -17,9 +20,13 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
 
   const ownerName = session.profile?.full_name ?? session.user.email?.split('@')[0] ?? null;
-  const [snapshot, health] = await Promise.all([
+  const [snapshot, health, revenueHunt, leadRadar, dailyHunt, conversionGoal] = await Promise.all([
     loadTitan10Snapshot(admin, ownerName),
     loadTitanSystemHealth(admin),
+    loadRevenueHuntBundle(admin),
+    loadLeadRadarItems(admin),
+    loadDailyHuntTasks(admin),
+    loadConversionGoalStats(admin),
   ]);
   const requestedWorkspace = (await searchParams).workspace;
   const workspace: TitanWorkspace = ['today', 'growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
@@ -27,8 +34,20 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
     : 'today';
 
   return (
-    <DashboardShell title="Titan" subtitle="Business development — revenue first" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
-      <Titan10HomeClient snapshot={snapshot} health={health} setupWarnings={snapshot.setupWarnings} workspace={workspace} />
+    <DashboardShell title="Titan" subtitle="AI Business Operator — revenue first" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
+      <Titan10HomeClient
+        snapshot={snapshot}
+        health={health}
+        setupWarnings={snapshot.setupWarnings}
+        workspace={workspace}
+        revenueHunt={revenueHunt}
+        leadRadarTop={topLeadRadarForToday(leadRadar.items)}
+        leadRadarTablesReady={leadRadar.tablesReady}
+        dailyHuntTasks={dailyHunt.tasks}
+        dailyHuntReady={dailyHunt.tablesReady}
+        dailyHuntDate={dailyHunt.taskDate ?? new Date().toISOString().slice(0, 10)}
+        conversionGoal={conversionGoal}
+      />
     </DashboardShell>
   );
 }

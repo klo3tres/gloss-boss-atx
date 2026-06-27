@@ -1,5 +1,5 @@
 import tls from 'node:tls';
-import { CANONICAL_HOST, CANONICAL_ORIGIN, WWW_HOST } from '@/lib/env/canonical-domain';
+import { APEX_HOST, CANONICAL_ORIGIN, EXPECTED_APP_URL, WWW_HOST } from '@/lib/env/canonical-domain';
 
 export type TlsProbeResult = {
   host: string;
@@ -14,7 +14,7 @@ export type DomainHealthReport = {
   canonicalOrigin: string;
   apex: TlsProbeResult;
   www: TlsProbeResult;
-  wwwRedirectsToApex: boolean | null;
+  apexRedirectsToWww: boolean | null;
   httpApexRedirectsToHttps: boolean | null;
   criticalIssue: string | null;
   fixSteps: string[];
@@ -73,16 +73,16 @@ async function probeRedirect(fromUrl: string): Promise<{ status: number; locatio
 }
 
 export async function loadDomainHealthReport(): Promise<DomainHealthReport> {
-  const [apex, www, wwwHead, httpApex] = await Promise.all([
-    probeTls(CANONICAL_HOST),
+  const [apex, www, apexHead, httpApex] = await Promise.all([
+    probeTls(APEX_HOST),
     probeTls(WWW_HOST),
-    probeRedirect(`https://${WWW_HOST}/`),
-    probeRedirect(`http://${CANONICAL_HOST}/`),
+    probeRedirect(`https://${APEX_HOST}/`),
+    probeRedirect(`http://${APEX_HOST}/`),
   ]);
 
-  const wwwLocation = wwwHead?.location?.toLowerCase() ?? '';
-  const wwwRedirectsToApex =
-    wwwHead != null ? wwwLocation.includes(CANONICAL_HOST) && !wwwLocation.includes(WWW_HOST) : null;
+  const apexLocation = apexHead?.location?.toLowerCase() ?? '';
+  const apexRedirectsToWww =
+    apexHead != null ? apexLocation.includes(WWW_HOST) || apexLocation.includes('www.glossbossatx.com') : null;
 
   const httpLocation = httpApex?.location?.toLowerCase() ?? '';
   const httpApexRedirectsToHttps =
@@ -91,33 +91,26 @@ export async function loadDomainHealthReport(): Promise<DomainHealthReport> {
   const fixSteps: string[] = [];
   let criticalIssue: string | null = null;
 
-  if (!apex.ok) {
-    criticalIssue =
-      `HTTPS certificate invalid for ${CANONICAL_HOST} — browsers show security warnings. ${apex.error ?? 'Certificate mismatch.'}`;
-    fixSteps.push(
-      'Vercel → Project → Settings → Domains: add glossbossatx.com with a green Valid Configuration badge.',
-      'DNS apex A record @ → 76.76.21.21 (Vercel) OR use Vercel nameservers.',
-      'Wait for SSL provisioning (usually under 30 minutes). Do not redirect www → apex until apex cert is valid.',
-    );
+  if (!www.ok) {
+    criticalIssue = `HTTPS certificate invalid for ${WWW_HOST} — production site may show security warnings. ${www.error ?? ''}`;
+    fixSteps.push('Vercel → Domains: www.glossbossatx.com must show Valid Configuration (CNAME www → cname.vercel-dns.com).');
   }
 
-  if (!www.ok) {
-    fixSteps.push(`Fix www SSL: add www.glossbossatx.com in Vercel with CNAME www → cname.vercel-dns.com.`);
+  if (!apex.ok) {
+    fixSteps.push(`Apex ${APEX_HOST} TLS: ${apex.error ?? 'invalid'}. Apex should redirect to www in Vercel — both domains need valid SSL.`);
+  }
+
+  if (apexRedirectsToWww === false) {
+    fixSteps.push(
+      'Configure glossbossatx.com → redirect to www.glossbossatx.com in Vercel Domains only. Remove any app-level or vercel.json host redirects.',
+    );
     if (!criticalIssue) {
-      criticalIssue = `HTTPS certificate invalid for ${WWW_HOST}.`;
+      criticalIssue = 'Apex is not redirecting to www — visitors may hit redirect loops or wrong host.';
     }
   }
 
-  if (wwwRedirectsToApex && !apex.ok && www.ok) {
-    criticalIssue =
-      'www has valid SSL but redirects to apex where the certificate fails — this is the likely cause of coworker browser warnings.';
-    fixSteps.unshift(
-      'URGENT: In Vercel Domains, ensure glossbossatx.com shows Valid Configuration before www redirects to it.',
-    );
-  }
-
   if (httpApexRedirectsToHttps === false) {
-    fixSteps.push('Ensure HTTP → HTTPS redirect is enabled (Vercel does this automatically when SSL is valid).');
+    fixSteps.push('Ensure HTTP → HTTPS redirect is enabled in Vercel.');
   }
 
   return {
@@ -125,9 +118,11 @@ export async function loadDomainHealthReport(): Promise<DomainHealthReport> {
     canonicalOrigin: CANONICAL_ORIGIN,
     apex,
     www,
-    wwwRedirectsToApex,
+    apexRedirectsToWww,
     httpApexRedirectsToHttps,
     criticalIssue,
     fixSteps,
   };
 }
+
+export { EXPECTED_APP_URL };

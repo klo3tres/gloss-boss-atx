@@ -24,9 +24,14 @@ import {
   createExperimentAction,
   runAcquisitionHuntAction,
 } from '@/app/(dashboard)/admin/titan/titan-1-actions';
-import { TitanAutonomyPanels } from '@/components/titan/titan-autonomy-panels';
 import { TitanProofPanels } from '@/components/titan/titan-proof-panels';
-import { TitanStartHere } from '@/components/titan/titan-start-here';
+import { TitanRevenueHuntPanel } from '@/components/titan/titan-revenue-hunt-panel';
+import { TitanLeadRadarTodayPanel } from '@/components/titan/titan-lead-radar-today-panel';
+import { TitanConversionGoalPanel } from '@/components/titan/titan-conversion-goal-panel';
+import { TitanDailyHuntChecklist } from '@/components/titan/titan-daily-hunt-checklist';
+import type { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
+import type { LeadRadarItem } from '@/lib/titan/lead-radar-engine';
+import type { ConversionGoalStats } from '@/lib/titan/lead-radar-hunt';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -78,11 +83,25 @@ export function Titan10HomeClient({
   health,
   setupWarnings,
   workspace,
+  revenueHunt,
+  leadRadarTop,
+  leadRadarTablesReady,
+  dailyHuntTasks,
+  dailyHuntReady,
+  dailyHuntDate,
+  conversionGoal,
 }: {
   snapshot: Titan10Snapshot;
   health: TitanSystemHealth;
   setupWarnings: Titan10Snapshot['setupWarnings'];
   workspace: 'today' | 'growth' | 'outreach' | 'reports';
+  revenueHunt: Awaited<ReturnType<typeof loadRevenueHuntBundle>>;
+  leadRadarTop: LeadRadarItem[];
+  leadRadarTablesReady: boolean;
+  dailyHuntTasks: Array<{ taskKey: string; label: string; completed: boolean; id: string | null }>;
+  dailyHuntReady: boolean;
+  dailyHuntDate: string;
+  conversionGoal: ConversionGoalStats;
 }) {
   const [pending, startTransition] = useTransition();
   const [huntMsg, setHuntMsg] = useState<string | null>(null);
@@ -128,13 +147,13 @@ export function Titan10HomeClient({
       <header className="overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_35%),linear-gradient(135deg,rgba(9,9,11,0.98),rgba(0,0,0,0.98))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Titan Business OS</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Titan AI Business Operator</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{snapshot.ownerGreeting}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{snapshot.mission}</p>
           </div>
           <Link href="/admin/titan/settings" className="w-fit rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300 hover:border-emerald-500/30 hover:text-white">Settings & health</Link>
         </div>
-        <nav className="mt-7 grid grid-cols-2 gap-2 border-t border-white/8 pt-5 sm:grid-cols-5" aria-label="Titan workspace">
+        <nav className="mt-7 flex flex-wrap gap-2 border-t border-white/8 pt-5" aria-label="Titan workspace">
           {[
             { key: 'today', label: 'Today' },
             { key: 'growth', label: 'Growth' },
@@ -145,15 +164,80 @@ export function Titan10HomeClient({
               {item.label}
             </Link>
           ))}
+          <Link href="/admin/titan/opportunities" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200 hover:text-white">
+            Opportunity Board
+          </Link>
+          <Link href="/admin/titan/lead-radar" className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
+            Lead Radar
+          </Link>
           <Link href="/admin/titan/settings" className="rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">Settings</Link>
         </nav>
       </header>
 
-      <TitanSetupBanner warnings={setupWarnings} />
+      {workspace !== 'today' && setupWarnings.length > 0 ? <TitanSetupBanner warnings={setupWarnings} /> : null}
 
-      {workspace === 'today' ? <TitanStartHere /> : null}
+      {workspace === 'today' ? (
+        <TitanConversionGoalPanel stats={conversionGoal} />
+      ) : null}
 
-      {workspace === 'today' ? <TitanAutonomyPanels snapshot={snapshot} /> : null}
+      {workspace === 'today' ? (
+        <TitanDailyHuntChecklist tasks={dailyHuntTasks} tablesReady={dailyHuntReady} taskDate={dailyHuntDate} />
+      ) : null}
+
+      {workspace === 'today' ? (
+        <TitanRevenueHuntPanel
+          huntTop5={revenueHunt.huntTop5}
+          followUpsDue={revenueHunt.followUpsDue}
+          recentEvents={revenueHunt.recentEvents}
+          tablesReady={revenueHunt.tablesReady}
+          totalCount={revenueHunt.opportunities.length}
+        />
+      ) : null}
+
+      {workspace === 'today' ? (
+        <TitanLeadRadarTodayPanel topItems={leadRadarTop} tablesReady={leadRadarTablesReady} />
+      ) : null}
+
+      {workspace === 'today' && snapshot.recovery.items.length > 0 ? (
+      <Section
+        title="Revenue Recovery"
+        subtitle={`Recoverable today: ${money(snapshot.recovery.recoverableTodayCents)}`}
+        icon={Wallet}
+        accent="orange"
+      >
+        <ul className="space-y-2">
+          {snapshot.recovery.items.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={item.href}
+                className="flex flex-wrap justify-between gap-2 rounded-xl border border-white/8 bg-black/40 px-4 py-3 hover:border-orange-500/30"
+              >
+                <div>
+                  <p className="text-xs font-bold text-white">{item.title}</p>
+                  <p className="text-[10px] text-zinc-500">{item.detail}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase text-orange-300">{item.nextAction}</p>
+                </div>
+                <p className="font-mono text-sm font-black text-emerald-300">{money(item.recoverableCents)}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Section>
+      ) : null}
+
+      {workspace === 'today' && setupWarnings.length > 0 ? (
+        <details className="rounded-2xl border border-white/6 bg-zinc-950/30">
+          <summary className="cursor-pointer px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            Setup / integrations ({setupWarnings.length})
+          </summary>
+          <div className="border-t border-white/6 p-4">
+            <TitanSetupBanner warnings={setupWarnings} />
+            <div className="mt-4">
+              <TitanSystemHealthPanel health={health} />
+            </div>
+          </div>
+        </details>
+      ) : null}
 
       {workspace === 'outreach' ? <div id="proof"><TitanProofPanels snapshot={snapshot} /></div> : null}
 
@@ -182,82 +266,6 @@ export function Titan10HomeClient({
           ))}
         </div>
       </Section>
-      ) : null}
-
-      {workspace === 'today' ? (
-      <>
-      <Section
-        title={TITAN_ENGINES.weeklyMission}
-        subtitle={
-          snapshot.weeklyMission.isWeeklyFocus
-            ? 'Monday mission — your sales manager briefing'
-            : "Today's mission — top actions ranked by revenue × probability"
-        }
-        icon={Target}
-        accent="gold"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-gold/20 bg-gold/5 p-4">
-          <div>
-            <p className="text-[10px] font-black uppercase text-zinc-500">Potential revenue available</p>
-            <p className="font-mono text-3xl font-black text-gold-soft">
-              {money(snapshot.weeklyMission.potentialRevenueCents)}
-            </p>
-          </div>
-          <p className="text-sm text-zinc-400">
-            Recommended focus: <span className="font-bold text-white">{snapshot.weeklyMission.recommendedFocus}</span>
-          </p>
-        </div>
-        <ul className="mt-4 space-y-2">
-          {snapshot.weeklyMission.topActions.map((a) => (
-            <li key={a.rank}>
-              <Link
-                href={a.href}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-black/40 px-4 py-3 hover:border-gold/30"
-              >
-                <div>
-                  <p className="text-[10px] font-black text-gold-soft">#{a.rank}</p>
-                  <p className="font-bold text-white">{a.title}</p>
-                  <p className="text-[10px] text-cyan-300">{a.nextAction}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono text-sm font-black text-emerald-300">{money(a.expectedRevenueCents)}</p>
-                  <p className="text-[10px] text-zinc-600">{a.probabilityPercent}% probability</p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section
-        title="Titan Revenue Recovery Engine™"
-        subtitle={`Recoverable today: ${money(snapshot.recovery.recoverableTodayCents)}`}
-        icon={Wallet}
-        accent="orange"
-      >
-        <ul className="space-y-2">
-          {snapshot.recovery.items.length === 0 ? (
-            <li className="text-sm text-zinc-500">No recovery leaks detected.</li>
-          ) : (
-            snapshot.recovery.items.map((item) => (
-              <li key={item.id}>
-                <Link
-                  href={item.href}
-                  className="flex flex-wrap justify-between gap-2 rounded-xl border border-white/8 bg-black/40 px-4 py-3 hover:border-orange-500/30"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-white">{item.title}</p>
-                    <p className="text-[10px] text-zinc-500">{item.detail}</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase text-orange-300">{item.nextAction}</p>
-                  </div>
-                  <p className="font-mono text-sm font-black text-emerald-300">{money(item.recoverableCents)}</p>
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </Section>
-      </>
       ) : null}
 
       {workspace === 'growth' ? (
@@ -298,9 +306,9 @@ export function Titan10HomeClient({
             </li>
           ))}
         </ul>
-        <Link href="/admin/super" className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase text-zinc-500 hover:text-white">
-          Full acquisition workspace <ArrowRight className="h-3 w-3" />
-        </Link>
+          <Link href="/admin/titan/opportunities" className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-400 hover:text-white">
+            Open Opportunity Board <ArrowRight className="h-3 w-3" />
+          </Link>
       </Section>
 
       <Section

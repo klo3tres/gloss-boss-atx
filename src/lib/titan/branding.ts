@@ -1,6 +1,7 @@
-/** Titan™ product branding — color system, naming, iconography tokens. */
+/** Titan™ product branding — AI Business Operator, not a CRM. */
 
 export const TITAN_PRODUCT_NAME = 'Titan';
+export const TITAN_PRODUCT_TAGLINE = 'AI Business Operator';
 export const TITAN_TAGLINE = 'Business Development Department';
 export const TITAN_MISSION =
   'Create revenue. Recover revenue. Increase revenue. Everything else is secondary.';
