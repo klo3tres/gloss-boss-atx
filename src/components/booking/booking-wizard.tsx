@@ -68,6 +68,7 @@ type AddonOption = { slug: string; label: string; price_cents: number };
 type BookingCreditState = {
   signedIn: boolean;
   availableCents: number;
+  membershipDiscountPercent: number;
   credits: Array<{ id: string; remainingCents: number; reason: string; expiresAt: string | null }>;
   setupNeeded?: boolean;
 };
@@ -194,6 +195,7 @@ export function BookingWizard() {
   const [customerCredits, setCustomerCredits] = useState<BookingCreditState>({
     signedIn: false,
     availableCents: 0,
+    membershipDiscountPercent: 0,
     credits: [],
   });
   const [requestedCreditCents, setRequestedCreditCents] = useState(0);
@@ -217,12 +219,13 @@ export function BookingWizard() {
         setCustomerCredits({
           signedIn: Boolean(data.signedIn),
           availableCents: Math.max(0, Number(data.availableCents ?? 0)),
+          membershipDiscountPercent: Math.max(0, Number(data.membershipDiscountPercent ?? 0)),
           credits: Array.isArray(data.credits) ? data.credits : [],
           setupNeeded: Boolean(data.setupNeeded),
         });
       })
       .catch(() => {
-        if (!cancelled) setCustomerCredits({ signedIn: false, availableCents: 0, credits: [] });
+        if (!cancelled) setCustomerCredits({ signedIn: false, availableCents: 0, membershipDiscountPercent: 0, credits: [] });
       });
     return () => {
       cancelled = true;
@@ -685,6 +688,7 @@ export function BookingWizard() {
           }
         : null,
       depositPercent: 30,
+      membershipDiscountPercent: customerCredits.membershipDiscountPercent,
     });
     if ('kind' in bd) return null;
 
@@ -700,7 +704,7 @@ export function BookingWizard() {
         : (bd as BookingPricingBreakdown);
 
     return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
-  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents]);
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents, customerCredits.membershipDiscountPercent]);
 
   const pricePreviewText =
     priceSummary?.kind === 'quote'
@@ -1297,6 +1301,17 @@ export function BookingWizard() {
 
   return (
     <form onSubmit={handleSubmit} className='gb-booking-form space-y-8 overflow-x-hidden pb-28 lg:pb-8'>
+      <div className='sticky top-0 z-20 -mx-1 rounded-2xl border border-gold/20 bg-black/90 px-4 py-3 backdrop-blur-md lg:hidden'>
+        <div className='flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+          <span>Package</span><span>Vehicle</span><span>Schedule</span><span>Pay</span>
+        </div>
+        <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-white/10'>
+          <div className='h-full w-2/3 bg-gold transition-all' />
+        </div>
+        {bookingDurationMinutes > 0 ? (
+          <p className='mt-2 text-[10px] text-zinc-500'>Est. {Math.round(bookingDurationMinutes / 15) * 15} min · {pricePreviewText ?? 'Select package'}</p>
+        ) : null}
+      </div>
       {draftExpiredNotice ? (
         <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
           Your old booking draft expired. Start fresh — we kept your name and email.
@@ -1935,6 +1950,12 @@ export function BookingWizard() {
                   <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Sitewide promo</span>
                     <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
+                {priceSummary.breakdown.membershipDiscountCents > 0 ? (
+                  <p className='flex justify-between text-xs text-emerald-300'>
+                    <span>Member savings ({priceSummary.breakdown.membershipDiscountPercent}%)</span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.membershipDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
                 {freePromoEligible ? (

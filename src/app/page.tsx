@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Sparkles, X, Check, Star, ShieldCheck, Award, Flame, Calendar, Clock, MapPin, BadgePercent, Zap, Layers, Phone, Mail } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
+import { HomepageHeroBackground } from '@/components/marketing/homepage-hero-background';
+import type { PublicBrandPayload } from '@/lib/brand/public-brand-types';
 import { ContactForm } from '@/components/marketing/contact-form';
 import { FeaturedTransformationsSection } from '@/components/marketing/featured-transformations-section';
 import { MotionFade } from '@/components/marketing/motion-fade';
@@ -71,6 +73,7 @@ export default function HomePage() {
   const [visuals, setVisuals] = useState<any>(null);
   const [reviews, setReviews] = useState<PublicReview[]>([]);
   const [mediaRegistry, setMediaRegistry] = useState<MediaRegistry>({});
+  const [brand, setBrand] = useState<PublicBrandPayload | null>(null);
 
   const packagesForGrid = siteLoaded && services.length > 0 ? services : defaultServicePackages;
   const displayDeals = siteLoaded ? deals : defaultDealConfig;
@@ -103,6 +106,7 @@ export default function HomePage() {
         setVisuals(data.homepageVisuals ?? null);
         setReviews(data.reviews ?? []);
         setMediaRegistry(data.mediaRegistry ?? {});
+        setBrand(data.brand ?? null);
         setSiteLoaded(true);
       })
       .catch(() => {
@@ -201,26 +205,22 @@ export default function HomePage() {
       {/* SECTION 1: PREMIUM HERO */}
       {isSectionVisible('hero') && (
         <section className='relative flex min-h-screen items-center border-b border-white/10 px-4 pb-16 pt-28 sm:px-6 lg:px-8 overflow-hidden'>
-          <div className='absolute inset-0 z-0'>
-            <img
-              src={visuals?.hero?.image || mediaUrl(mediaRegistry, 'homepage.hero')}
-              alt='Premium Detailing Hero'
-              style={getObjectStyle(visuals?.hero)}
-              className="absolute inset-0 w-full h-full opacity-35"
-            />
-            <div className='absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(212,175,55,0.22),transparent_38%),radial-gradient(circle_at_80%_60%,rgba(212,175,55,0.1),transparent_40%),linear-gradient(to_bottom,rgba(0,0,0,0.5),rgba(0,0,0,0.98))]' />
-          </div>
+          <HomepageHeroBackground
+            imageUrl={visuals?.hero?.image || mediaUrl(mediaRegistry, 'homepage.hero')}
+            brand={brand}
+            objectStyle={getObjectStyle(visuals?.hero)}
+          />
 
           <div className='relative z-10 mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[1.25fr_0.75fr]'>
             <MotionFade>
               <div className="gb-glass-card border border-gold/15 p-6 sm:p-10 shadow-[0_0_60px_rgba(212,175,55,0.05)] bg-black/45 backdrop-blur-xl rounded-3xl">
                 <div className='mb-6 flex items-center gap-4'>
                   <div className='rounded-2xl border border-gold/25 bg-black/65 p-3 shadow-[0_0_34px_rgba(212,175,55,0.16)]'>
-                    <img src='/brand/glossboss-clean-logo.png' alt='Gloss Boss ATX' className='h-14 w-auto object-contain sm:h-20' />
+                    <img src={brand?.logoUrl ?? '/brand/glossboss-clean-logo.png'} alt={brand?.businessDisplayName ?? 'Gloss Boss ATX'} className='h-14 w-auto object-contain sm:h-20' />
                   </div>
                   <div>
-                    <p className='text-[10px] font-black uppercase tracking-[0.32em] text-gold-soft'>Gloss Boss ATX</p>
-                    <p className='mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400'>Austin luxury mobile detailing</p>
+                    <p className='text-[10px] font-black uppercase tracking-[0.32em] text-gold-soft'>{brand?.businessDisplayName ?? 'Gloss Boss ATX'}</p>
+                    <p className='mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400'>{brand?.brandCityLabel ?? 'Austin luxury mobile detailing'}</p>
                   </div>
                 </div>
                 <p className='inline-flex items-center gap-2 rounded-full border border-gold/30 bg-black/60 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-gold-soft shadow-[0_0_15px_rgba(212,175,55,0.1)]'>

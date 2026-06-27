@@ -15,10 +15,16 @@ export async function GET() {
     return NextResponse.json({ signedIn: true, availableCents: 0, credits: [], setupNeeded: true });
   }
 
-  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
+  const { data: customer } = await admin
+    .from('customers')
+    .select('id, membership_discount_percent')
+    .ilike('email', email)
+    .maybeSingle();
   if (!customer?.id) {
     return NextResponse.json({ signedIn: true, availableCents: 0, credits: [] });
   }
+
+  const memberPct = Math.max(0, Number((customer as { membership_discount_percent?: number }).membership_discount_percent ?? 0));
 
   const { data, error } = await admin
     .from('customer_credits')
@@ -42,5 +48,5 @@ export async function GET() {
     }))
     .filter((row) => row.remainingCents > 0);
   const availableCents = credits.reduce((sum, row) => sum + row.remainingCents, 0);
-  return NextResponse.json({ signedIn: true, availableCents, credits });
+  return NextResponse.json({ signedIn: true, availableCents, credits, membershipDiscountPercent: memberPct });
 }

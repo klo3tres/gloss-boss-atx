@@ -12,6 +12,9 @@ import {
   updateOpportunityStatus,
   type RevenueOpportunityStatus,
 } from '@/lib/titan/revenue-opportunities';
+import { sendCustomerSms } from '@/lib/sms-send';
+import { twilioConfigured } from '@/lib/email-send';
+import { twilioSendMode } from '@/lib/twilio-config';
 
 async function gate() {
   const session = await getSessionWithProfile();
@@ -111,4 +114,45 @@ export async function syncDerivedOpportunitiesAction(): Promise<{ ok?: boolean; 
   const created = await syncDerivedRevenueOpportunities(g.admin);
   revalidate();
   return { ok: true, created };
+}
+
+export async function sendOpportunitySmsAction(
+  opportunityId: string,
+  message?: string,
+): Promise<{ ok?: boolean; error?: string; copied?: boolean }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+
+  const { data: opp } = await g.admin.from('titan_opportunities').select('*').eq('id', opportunityId).maybeSingle();
+  if (!opp) return { error: 'Opportunity not found' };
+  const row = opp as Record<string, unknown>;
+  const phone = String(row.contact_phone ?? '').trim();
+  const body = String(message ?? row.recommended_message ?? '').trim();
+  if (!phone) return { error: 'No phone number on this opportunity.' };
+  if (!body) return { error: 'No message to send.' };
+
+  if (!twilioConfigured()) {
+    return { ok: false, error: 'Twilio not configured — copy the message instead.', copied: true };
+  }
+
+  const sent = await sendCustomerSms({
+    db: g.admin,
+    kind: 'opportunity_outreach',
+    to: phone,
+    body,
+    requireConsent: false,
+    template_key: 'opportunity_sms',
+    extraPayload: { opportunity_id: opportunityId, send_mode: twilioSendMode() },
+  });
+
+  if (!sent.ok) {
+    const trialHint = process.env.TWILIO_ACCOUNT_SID?.startsWith('AC') && !process.env.TWILIO_MESSAGING_SERVICE_SID
+      ? ' Twilio trial only sends to verified numbers.'
+      : '';
+    return { error: (sent.error ?? 'SMS failed') + trialHint };
+  }
+
+  await updateOpportunityStatus(g.admin, opportunityId, 'contacted', 'SMS sent from Opportunity Board');
+  revalidate();
+  return { ok: true };
 }

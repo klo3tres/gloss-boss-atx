@@ -17,6 +17,7 @@ import { parseFleetPricing } from '@/lib/fleet-pricing';
 import { normalizeMediaRegistry } from '@/lib/media-registry';
 import { consolidatePriceRowsForUi } from '@/lib/vehicle-pricing';
 import { maybeAutoSyncGoogleReviews } from '@/lib/google/google-place-reviews';
+import { loadWorkspaceBrand, publicBrandPayload } from '@/lib/brand/workspace-brand';
 import { tryCreateAdminSupabase, tryCreateRoutePublicSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -256,6 +257,7 @@ export async function GET() {
       fleetServicesEnabled,
       fleetServicesBlurb,
       fleetPricing,
+      brand: admin ? publicBrandPayload(await loadWorkspaceBrand(admin)) : undefined,
     };
 
     return NextResponse.json(payload);

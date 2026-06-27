@@ -1,5 +1,6 @@
 import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-settings';
 import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-connect-panel';
+import { PostDeployQaChecklist, TitanOnboardingChecklistPanel } from '@/components/titan/titan-onboarding-panels';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { buildIntegrationStatusRows } from '@/lib/integration-status';
 import Link from 'next/link';
@@ -175,6 +176,9 @@ export default async function OwnerSetupCenterPage() {
       <section className="mt-6">
         <GoogleCalendarConnectPanel />
       </section>
+
+      <TitanOnboardingChecklistPanel />
+      <PostDeployQaChecklist />
 
       <section className="mt-6 rounded-3xl border border-white/10 bg-black/55 p-6">
         <h2 className="text-sm font-black uppercase text-white">Integration status (accurate)</h2>

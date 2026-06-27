@@ -71,6 +71,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'System',
     links: [
       { href: '/admin/setup-center', label: 'Setup center' },
+      { href: '/admin/brand-settings', label: 'Brand settings' },
+      { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/launch-readiness', label: 'Launch readiness' },
       { href: '/admin/notifications', label: 'Notifications' },
       { href: '/admin/integrations', label: 'Integrations' },

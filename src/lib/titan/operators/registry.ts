@@ -26,6 +26,14 @@ export const TITAN_OPERATORS: TitanOperator[] = [
     status: 'live',
   },
   {
+    id: 'territory',
+    name: 'Territory Tracker',
+    purpose: 'Door knocking, DNR flags, and neighborhood conversion.',
+    href: '/admin/titan/territory',
+    kpiLabel: 'Unvisited doors nearby',
+    status: 'beta',
+  },
+  {
     id: 'calendar',
     name: 'Calendar Operator',
     purpose: 'Scheduling, time blocks, and Google Calendar sync.',

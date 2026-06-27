@@ -112,6 +112,24 @@ export async function fetchBookedBlocks(
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
   }
 
+  const { data: manualBlocks } = await admin
+    .from('booking_availability_blocks')
+    .select('id, title, start_at, end_at, blocks_booking')
+    .gte('end_at', rangeStartIso)
+    .lte('start_at', rangeEndIso)
+    .eq('blocks_booking', true);
+
+  for (const row of manualBlocks ?? []) {
+    const r = row as Record<string, unknown>;
+    const startIso = str(r.start_at);
+    const endIso = str(r.end_at);
+    if (!startIso || !endIso) continue;
+    const startMs = new Date(startIso).getTime();
+    const endMs = new Date(endIso).getTime();
+    if (endMs <= rangeStart || startMs >= rangeEnd) continue;
+    blocks.push({ start: startIso, end: endIso, appointmentId: str(r.id) || undefined });
+  }
+
   return blocks;
 }
 

@@ -76,6 +76,7 @@ export type PublicSiteDataPayload = {
     monthlyDiscount: string;
     commercialNotes: string;
   };
+  brand?: import('@/lib/brand/public-brand-types').PublicBrandPayload;
 };
 
 export type PublicReview = {

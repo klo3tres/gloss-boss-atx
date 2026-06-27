@@ -15,6 +15,7 @@ import {
   markOpportunityStatusAction,
   scheduleFollowUpAction,
   seedWarmLeadsAction,
+  sendOpportunitySmsAction,
   syncDerivedOpportunitiesAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 
@@ -146,9 +147,20 @@ function OpportunityCard({ opp, events }: { opp: RevenueOpportunity; events: Rev
       <p className="mt-3 rounded-xl border border-white/6 bg-white/5 p-3 text-xs italic text-zinc-300">{opp.recommendedMessage}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        {opp.contactPhone ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => act(() => sendOpportunitySmsAction(opp.id, opp.recommendedMessage), 'SMS sent')}
+            className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+          >
+            Send SMS
+          </button>
+        ) : null}
         <button type="button" onClick={() => { void navigator.clipboard.writeText(opp.recommendedMessage); setMsg('Copied.'); }} className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
           <Copy className="h-3 w-3" /> Copy
         </button>
+        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'contacted', 'Customer replied'), 'Marked replied')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50">Replied</button>
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'contacted'), 'Contacted')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50">Contacted</button>
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Booked!')} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">Booked</button>
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Lost')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-200 disabled:opacity-50">Lost</button>

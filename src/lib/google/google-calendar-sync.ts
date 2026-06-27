@@ -317,3 +317,116 @@ export async function exchangeGoogleOAuthCode(code: string): Promise<{
 export function formatAppointmentWhenChicago(iso: string) {
   return formatChicago(iso);
 }
+
+export async function pullGoogleCalendarEvents(
+  admin: SupabaseClient,
+  opts?: { daysAhead?: number },
+): Promise<{ ok: boolean; imported?: number; error?: string }> {
+  if (!googleCalendarOAuthConfigured()) return { ok: false, error: 'Google Calendar OAuth not configured' };
+
+  const connection = await loadGoogleCalendarConnection(admin);
+  if (!connection) return { ok: false, error: 'No Google Calendar connection' };
+
+  const accessToken = await ensureFreshToken(admin, connection);
+  if (!accessToken) return { ok: false, error: 'Could not refresh Google token' };
+
+  const now = new Date();
+  const end = new Date(now.getTime() + (opts?.daysAhead ?? 30) * 24 * 60 * 60 * 1000);
+  const calendarId = encodeURIComponent(connection.calendar_id || 'primary');
+  const params = new URLSearchParams({
+    timeMin: now.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '250',
+  });
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    await admin.from('google_calendar_connections').update({ last_error: err.slice(0, 500), updated_at: new Date().toISOString() }).eq('id', connection.id);
+    return { ok: false, error: `Google list failed (${res.status})` };
+  }
+
+  const payload = (await res.json()) as {
+    items?: Array<{
+      id?: string;
+      summary?: string;
+      description?: string;
+      location?: string;
+      status?: string;
+      etag?: string;
+      start?: { dateTime?: string; date?: string };
+      end?: { dateTime?: string; date?: string };
+    }>;
+  };
+
+  const { data: mapped } = await admin.from('google_calendar_event_map').select('google_event_id');
+  const titanEventIds = new Set((mapped ?? []).map((m) => str((m as { google_event_id?: string }).google_event_id)));
+
+  let imported = 0;
+  for (const ev of payload.items ?? []) {
+    const googleEventId = str(ev.id);
+    if (!googleEventId || titanEventIds.has(googleEventId)) continue;
+    const startIso = ev.start?.dateTime ?? (ev.start?.date ? `${ev.start.date}T12:00:00-06:00` : '');
+    const endIso = ev.end?.dateTime ?? (ev.end?.date ? `${ev.end.date}T13:00:00-06:00` : startIso);
+    if (!startIso) continue;
+
+    await admin.from('google_calendar_external_events').upsert(
+      {
+        google_event_id: googleEventId,
+        google_calendar_id: connection.calendar_id || 'primary',
+        summary: str(ev.summary) || 'Google event',
+        description: str(ev.description) || null,
+        location: str(ev.location) || null,
+        start_at: startIso,
+        end_at: endIso,
+        blocks_booking: true,
+        etag: str(ev.etag) || null,
+        status: str(ev.status) || 'confirmed',
+        last_pulled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'google_event_id,google_calendar_id' },
+    );
+
+    const { data: existingBlock } = await admin
+      .from('booking_availability_blocks')
+      .select('id')
+      .eq('google_event_id', googleEventId)
+      .maybeSingle();
+
+    const blockPayload = {
+      title: str(ev.summary) || 'Google Calendar block',
+      start_at: startIso,
+      end_at: endIso,
+      blocks_booking: true,
+      source: 'google_calendar',
+      google_event_id: googleEventId,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingBlock?.id) {
+      await admin.from('booking_availability_blocks').update(blockPayload).eq('id', existingBlock.id);
+    } else {
+      await admin.from('booking_availability_blocks').insert(blockPayload);
+    }
+
+    imported += 1;
+  }
+
+  await admin
+    .from('google_calendar_connections')
+    .update({
+      last_pull_at: new Date().toISOString(),
+      pull_count: (connection as { pull_count?: number }).pull_count ? Number((connection as { pull_count?: number }).pull_count) + 1 : 1,
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connection.id);
+
+  return { ok: true, imported };
+}

@@ -11,11 +11,13 @@ export type BookingPricingBreakdown = {
   prePromoCents: number;
   websitePromoDiscountCents: number;
   offerDiscountCents: number;
+  membershipDiscountCents: number;
   /** Scoped promo code discount (may apply to base only or specific add-on per rules). */
   promoDiscountCents: number;
   finalTotalCents: number;
   depositCents: number;
   depositPercent: number;
+  membershipDiscountPercent?: number;
 };
 
 type OfferSnap = {
@@ -39,6 +41,8 @@ export function computeBookingPricing(params: {
   /** Active CMS offer from ?offer= */
   claimedOffer: OfferSnap;
   depositPercent?: number;
+  /** Active member discount percent (0–100). Applied to services after promos unless deal blocks stacking. */
+  membershipDiscountPercent?: number;
 }): BookingPricingBreakdown | { kind: 'invalid' } {
   const lines = params.vehicleLineCents;
   if (lines.length === 0 || lines.some((c) => c < 0 || !Number.isFinite(c))) {
@@ -86,7 +90,15 @@ export function computeBookingPricing(params: {
   }
 
   const finalTotalCents = Math.max(0, prePromoCents - offerDiscountCents - websitePromoDiscountCents);
-  const depositCents = Math.round((finalTotalCents * depositPercent) / 100);
+  const memberPct = Math.min(100, Math.max(0, params.membershipDiscountPercent ?? 0));
+  let membershipDiscountCents = 0;
+  let afterPromos = finalTotalCents;
+  if (memberPct > 0) {
+    membershipDiscountCents = Math.round(afterPromos * (memberPct / 100));
+    afterPromos = Math.max(0, afterPromos - membershipDiscountCents);
+  }
+
+  const depositCents = Math.round((afterPromos * depositPercent) / 100);
 
   return {
     vehicleSubtotalCents,
@@ -96,9 +108,11 @@ export function computeBookingPricing(params: {
     prePromoCents,
     websitePromoDiscountCents,
     offerDiscountCents,
+    membershipDiscountCents,
     promoDiscountCents: 0,
-    finalTotalCents,
+    finalTotalCents: afterPromos,
     depositCents,
     depositPercent,
+    membershipDiscountPercent: memberPct > 0 ? memberPct : undefined,
   };
 }
