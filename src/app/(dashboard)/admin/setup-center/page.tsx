@@ -1,8 +1,12 @@
 import { Suspense } from 'react';
 import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-settings';
 import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-connect-panel';
+import { PushoverSetupPanel } from '@/components/admin/pushover-setup-panel';
+import { NotificationSettingsPanel } from '@/components/admin/notification-settings-panel';
 import { PostDeployQaChecklist, TitanOnboardingChecklistPanel } from '@/components/titan/titan-onboarding-panels';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
+import { pushoverConfigured } from '@/lib/pushover';
 import { buildIntegrationStatusRows } from '@/lib/integration-status';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -58,6 +62,8 @@ export default async function OwnerSetupCenterPage() {
   const twilioConfigured = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim());
   const integrationRows = buildIntegrationStatusRows();
   const wsSettings = await loadTitanWorkspace(admin);
+  const notifyPrefs = await loadOwnerNotificationPreferences(admin);
+  const pushoverReady = pushoverConfigured();
   const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
   const weatherConfigured = Boolean(process.env.OPENWEATHER_API_KEY?.trim() && (process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || (process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim())));
   const reviewConfigured = Boolean(String(reviewRes.data?.value ?? '').trim());
@@ -182,6 +188,11 @@ export default async function OwnerSetupCenterPage() {
 
       <TitanOnboardingChecklistPanel />
       <PostDeployQaChecklist />
+
+      <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <PushoverSetupPanel configured={pushoverReady} />
+        <NotificationSettingsPanel prefs={notifyPrefs} />
+      </section>
 
       <section className="mt-6 rounded-3xl border border-white/10 bg-black/55 p-6">
         <h2 className="text-sm font-black uppercase text-white">Integration status (accurate)</h2>

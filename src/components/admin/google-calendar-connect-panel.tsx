@@ -72,6 +72,7 @@ export function GoogleCalendarConnectPanel() {
       <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Google Calendar</p>
       <p className='mt-2 text-xs text-zinc-400'>
         Titan pushes bookings to Google Calendar and can pull external events to block availability.
+        Calendar auto-syncs in the background when you open admin (every 10 minutes).
       </p>
 
       {banner ? (

@@ -146,6 +146,16 @@ export async function applyInventoryUsage(
         },
         created_at: now,
       });
+      const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+      void emitOwnerNotification(admin, {
+        eventType: 'low_inventory',
+        title: `Low stock: ${r.label}`,
+        body: `${r.label} is at ${newQty} (reorder at ${r.reorder_threshold}). Restock before jobs stall.`,
+        source: 'inventory',
+        relatedType: 'inventory_item',
+        relatedId: r.id,
+        relatedUrl: '/admin/titan/inventory',
+      });
     }
   }
 

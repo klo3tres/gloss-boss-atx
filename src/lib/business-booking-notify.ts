@@ -209,10 +209,8 @@ export async function notifyBusinessNewBookingFull(params: {
       skipped_reason: 'Resend not configured.',
       payload: { to: emailTo },
     });
-    return;
-  }
-
-  const inner = `
+  } else {
+    const inner = `
     <p style="margin:0 0 16px;font-size:15px;color:#fafafa;">${copy.headline} — review in your dashboard.</p>
     <div style="border:1px solid #3f3f46;border-radius:10px;padding:16px;">
       <p style="margin:0;font-size:12px;color:#fcd34d;text-transform:uppercase;letter-spacing:0.08em;">Ref ${ref}</p>
@@ -229,35 +227,60 @@ export async function notifyBusinessNewBookingFull(params: {
     <p style="margin:20px 0 0;text-align:center;">
       <a href="${dashUrl}" style="display:inline-block;padding:14px 28px;background:#d4a64d;color:#000;font-weight:800;text-decoration:none;border-radius:8px;font-size:14px;">Open work order</a>
     </p>`;
-  const html = glossBossEmailLayout({
-    title: copy.headline,
-    preview: `${copy.subjectPrefix} ${total}`,
-    headline: copy.headline,
-    bodyHtml: inner,
-  });
+    const html = glossBossEmailLayout({
+      title: copy.headline,
+      preview: `${copy.subjectPrefix} ${total}`,
+      headline: copy.headline,
+      bodyHtml: inner,
+    });
 
-  try {
-    const sent = await sendResendHtml({
-      to: emailTo,
-      subject: `Gloss Boss ATX — ${copy.subjectPrefix} ${ref}: ${params.guestName}`,
-      html,
-    });
-    await insertOutbox(admin, {
-      appointment_id: params.appointmentId,
-      kind,
-      channel: 'email',
-      status: sent.ok ? 'sent' : 'failed',
-      error_message: sent.ok ? null : sent.error ?? 'send failed',
-      payload: { to: emailTo, dashboard_url: dashUrl, ics_url: icsUrl, calendar_fallback: Boolean(icsUrl), event_kind: kind },
-    });
-  } catch (e) {
-    await insertOutbox(admin, {
-      appointment_id: params.appointmentId,
-      kind: 'admin_new_booking',
-      channel: 'email',
-      status: 'failed',
-      error_message: e instanceof Error ? e.message : String(e),
-      payload: { to: emailTo },
+    try {
+      const sent = await sendResendHtml({
+        to: emailTo,
+        subject: `Gloss Boss ATX — ${copy.subjectPrefix} ${ref}: ${params.guestName}`,
+        html,
+      });
+      await insertOutbox(admin, {
+        appointment_id: params.appointmentId,
+        kind,
+        channel: 'email',
+        status: sent.ok ? 'sent' : 'failed',
+        error_message: sent.ok ? null : sent.error ?? 'send failed',
+        payload: { to: emailTo, dashboard_url: dashUrl, ics_url: icsUrl, calendar_fallback: Boolean(icsUrl), event_kind: kind },
+      });
+    } catch (e) {
+      await insertOutbox(admin, {
+        appointment_id: params.appointmentId,
+        kind: 'admin_new_booking',
+        channel: 'email',
+        status: 'failed',
+        error_message: e instanceof Error ? e.message : String(e),
+        payload: { to: emailTo },
+      });
+    }
+  }
+
+  const eventType =
+    kind === 'cancelled'
+      ? 'booking_canceled'
+      : kind === 'job_completed'
+        ? 'work_order_completed'
+        : ['payment_received', 'deposit_paid', 'paid_full'].includes(kind)
+          ? 'payment_received'
+          : 'new_booking';
+
+  if (admin) {
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    void emitOwnerNotification(admin, {
+      eventType,
+      title: copy.headline,
+      body: `${params.guestName} · ${whenLabel} · ${total}`,
+      source: 'bookings',
+      relatedType: 'appointment',
+      relatedId: params.appointmentId,
+      relatedUrl: dashUrl,
+      emailStatus: 'sent',
+      smsStatus: ownerPhone ? 'sent' : 'skipped',
     });
   }
 }

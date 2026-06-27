@@ -1,7 +1,9 @@
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { NotificationCenterClient } from '@/components/admin/notification-center-client';
+import { TitanNotificationHub } from '@/components/admin/titan-notification-hub';
 import { getResendEnvStatus, resendConfigured, twilioConfigured } from '@/lib/email-send';
 import { normalizeNotificationTemplateRow } from '@/lib/notification-template-db';
+import { loadTitanNotificationEvents, countUnreadNotifications } from '@/lib/titan/notification-events';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -12,14 +14,16 @@ function str(v: unknown) {
 
 export default async function AdminNotificationsPage() {
   const admin = tryCreateAdminSupabase();
-  const [{ data: templates }, { data: outbox }] = await Promise.all([
+  const [{ data: templates }, { data: outbox }, hub] = await Promise.all([
     admin
       ? admin.from('notification_templates').select('*').order('template_key', { ascending: true }).limit(200)
       : Promise.resolve({ data: [] }),
     admin
       ? admin.from('notification_outbox').select('*').order('created_at', { ascending: false }).limit(200)
       : Promise.resolve({ data: [] }),
+    admin ? loadTitanNotificationEvents(admin, { limit: 100 }) : Promise.resolve({ events: [], tablesReady: false }),
   ]);
+  const unreadCount = admin ? await countUnreadNotifications(admin) : 0;
 
   const templateRows = (templates ?? []).map((r) => normalizeNotificationTemplateRow(r as Record<string, unknown>));
 
@@ -64,6 +68,7 @@ export default async function AdminNotificationsPage() {
 
   return (
     <DashboardShell title='Notification center' subtitle='Templates, delivery log, test send, and provider status.' role='admin'>
+      <TitanNotificationHub initialEvents={hub.events} tablesReady={hub.tablesReady} unreadCount={unreadCount} />
       <section className='grid gap-4 md:grid-cols-3 xl:grid-cols-6'>
         {[
           ['Email Status', resendConfigured() ? 'Configured' : 'Setup needed', `${emailRows.length} recent email events`],

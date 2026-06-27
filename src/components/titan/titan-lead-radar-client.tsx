@@ -18,6 +18,9 @@ import {
   SOURCE_TYPE_LABELS,
 } from '@/lib/titan/lead-radar-engine';
 import { displayMoney } from '@/lib/display-format';
+import { ScanBudgetMeter } from '@/components/titan/scan-budget-meter';
+import type { ScanBudgetRow } from '@/lib/titan/scan-budget';
+import { useToast } from '@/components/ui/toast-provider';
 import {
   bulkImportLeadsAction,
   convertLeadToOpportunityAction,
@@ -118,6 +121,9 @@ export function TitanLeadRadarClient({
   playbooks,
   playbooksReady,
   huntSources,
+  scanBudget = null,
+  scanBudgetReady = false,
+  dailyLimit = 25,
 }: {
   items: LeadRadarItem[];
   summary: LeadRadarSummary;
@@ -127,8 +133,12 @@ export function TitanLeadRadarClient({
   playbooks: LeadPlaybook[];
   playbooksReady: boolean;
   huntSources: HuntSource[];
+  scanBudget?: ScanBudgetRow | null;
+  scanBudgetReady?: boolean;
+  dailyLimit?: number;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const [captureOpen, setCaptureOpen] = useState(false);
   const [capturePrefill, setCapturePrefill] = useState<LeadCapturePrefill | undefined>();
@@ -233,7 +243,8 @@ export function TitanLeadRadarClient({
         </div>
       </section>
 
-      <section className="rounded-3xl border border-violet-500/20 bg-violet-500/5 p-5">
+      <section className="rounded-3xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-4">
+        <ScanBudgetMeter budget={scanBudget} tablesReady={scanBudgetReady} />
         <h2 className="text-sm font-black uppercase text-white">Google Places discovery</h2>
         {!placesConfigured ? (
           <div className="mt-3 text-xs text-zinc-400">
@@ -247,15 +258,19 @@ export function TitanLeadRadarClient({
         ) : (
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || (scanBudget?.remaining ?? dailyLimit) <= 0}
             onClick={() => startTransition(async () => {
               const res = await runGooglePlacesLeadRadarAction();
-              setBanner(res.error ?? `Added ${res.created ?? 0} Google Places targets.`);
+              if (res.error) toast.error('Scan failed', res.error);
+              else {
+                toast.success('Scan complete', `Added ${res.created ?? 0} targets · ${res.remaining ?? 0} credits left.`);
+                setBanner(`Added ${res.created ?? 0} Google Places targets.`);
+              }
               router.refresh();
             })}
             className="mt-3 rounded-xl bg-violet-500 px-4 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
           >
-            Run Google Places scan
+            {(scanBudget?.remaining ?? dailyLimit) <= 0 ? 'Daily limit reached' : 'Run Google Places scan'}
           </button>
         )}
       </section>

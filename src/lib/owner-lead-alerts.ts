@@ -1,36 +1,28 @@
-import { resendConfigured, sendResendHtml } from '@/lib/email-send';
-import { sendCustomerSms } from '@/lib/sms-send';
-import { resolveOwnerNotifyContact } from '@/lib/owner-contact';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { emitOwnerNotification } from '@/lib/titan/owner-notification-router';
+
 export async function notifyOwnerLeadHighConfidence(
   admin: SupabaseClient | null,
   input: { authorName?: string | null; sourceType: string; rawPreview: string; confidence: number },
 ) {
-  const contact = await resolveOwnerNotifyContact(admin);
   const preview = input.rawPreview.slice(0, 120);
   const title = input.authorName?.trim() || 'New high-confidence lead';
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
 
-  if (contact.email && resendConfigured()) {
-    await sendResendHtml({
-      to: contact.email,
-      subject: `Gloss Boss — Lead Radar: ${title}`,
-      html: `<p>High-confidence lead (${input.confidence}%) from ${input.sourceType}.</p><p>${preview}</p><p><a href="${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/titan/lead-radar">Open Lead Radar</a></p>`,
-    });
-  }
-
-  if (contact.phone) {
-    await sendCustomerSms({
-      db: admin,
-      kind: 'owner_lead_alert',
-      template_key: 'owner_lead_alert',
-      to: contact.phone,
-      body: `Gloss Boss Lead Radar (${input.confidence}%): ${title}. ${preview}`,
-      requireConsent: false,
-    });
-  }
+  await emitOwnerNotification(admin, {
+    eventType: 'high_confidence_lead',
+    title: `Lead Radar: ${title}`,
+    body: `${input.confidence}% confidence from ${input.sourceType}. ${preview}`,
+    source: 'lead_radar',
+    priority: 'high',
+    relatedType: 'lead_radar',
+    relatedUrl: `${appBase}/admin/titan/lead-radar`,
+  });
 }
 
 export async function sendTestOwnerEmail(admin: SupabaseClient | null): Promise<{ ok: boolean; error?: string }> {
+  const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+  const { resolveOwnerNotifyContact } = await import('@/lib/owner-contact');
   const contact = await resolveOwnerNotifyContact(admin);
   if (!contact.email) return { ok: false, error: 'No owner email configured.' };
   if (!resendConfigured()) return { ok: false, error: 'Resend not configured.' };
@@ -43,6 +35,8 @@ export async function sendTestOwnerEmail(admin: SupabaseClient | null): Promise<
 }
 
 export async function sendTestOwnerSms(admin: SupabaseClient | null): Promise<{ ok: boolean; error?: string; skipped?: string }> {
+  const { sendCustomerSms } = await import('@/lib/sms-send');
+  const { resolveOwnerNotifyContact } = await import('@/lib/owner-contact');
   const contact = await resolveOwnerNotifyContact(admin);
   if (!contact.phone) return { ok: false, error: 'No owner phone configured.' };
   const sms = await sendCustomerSms({

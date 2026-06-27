@@ -1,19 +1,18 @@
-'use client';
+import { AdminLayoutClient } from '@/components/admin/admin-layout-client';
+import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
-import { usePathname } from 'next/navigation';
-import { DashboardRoleGate } from '@/components/auth/dashboard-role-gate';
-import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
-import { OutboundMessageProvider } from '@/components/admin/outbound-message-provider';
-
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const variant = pathname.startsWith('/admin/super') ? 'super_admin_only' : 'admin';
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const admin = tryCreateAdminSupabase();
+  const prefs = admin ? await loadOwnerNotificationPreferences(admin) : null;
 
   return (
-    <SafeRenderBoundary label='Admin dashboard'>
-      <DashboardRoleGate variant={variant}>
-        <OutboundMessageProvider>{children}</OutboundMessageProvider>
-      </DashboardRoleGate>
-    </SafeRenderBoundary>
+    <AdminLayoutClient
+      leadRadarAutoEnabled={prefs?.leadRadarAutoScanEnabled ?? false}
+      lastLeadRadarScanAt={prefs?.lastLeadRadarScanAt ?? null}
+      scanFrequency={prefs?.googlePlacesScanFrequency ?? 'on_login'}
+    >
+      {children}
+    </AdminLayoutClient>
   );
 }

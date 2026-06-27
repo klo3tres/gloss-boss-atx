@@ -6,6 +6,8 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { leadRadarPlacesConfigured, loadLeadRadarItems } from '@/lib/titan/lead-radar-engine';
 import { HUNT_CATEGORIES, loadLeadPlaybooks, WHERE_TO_HUNT_SOURCES } from '@/lib/titan/lead-radar-hunt';
+import { getOrCreateScanBudget } from '@/lib/titan/scan-budget';
+import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -17,6 +19,12 @@ export default async function TitanLeadRadarPage() {
 
   const loaded = await loadLeadRadarItems(admin);
   const playbooks = await loadLeadPlaybooks(admin);
+  const prefs = await loadOwnerNotificationPreferences(admin);
+  const budget = await getOrCreateScanBudget(admin, {
+    provider: 'google_places',
+    scanType: 'lead_radar',
+    dailyLimit: prefs.maxPlacesRequestsPerDay,
+  });
 
   return (
     <DashboardShell title="Lead Radar" subtitle="Find revenue opportunities — manual-assisted, compliant" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
@@ -30,6 +38,9 @@ export default async function TitanLeadRadarPage() {
           playbooks={playbooks.playbooks}
           playbooksReady={playbooks.tablesReady}
           huntSources={WHERE_TO_HUNT_SOURCES}
+          scanBudget={budget.row}
+          scanBudgetReady={budget.tablesReady}
+          dailyLimit={prefs.maxPlacesRequestsPerDay}
         />
       </Suspense>
     </DashboardShell>

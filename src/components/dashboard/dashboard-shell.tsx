@@ -9,6 +9,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { GlobalAppNav } from '@/components/dashboard/global-app-nav';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
+import { NotificationBellDropdown } from '@/components/admin/notification-bell-dropdown';
 
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
 export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
@@ -394,6 +395,9 @@ export function DashboardShell({
             </div>
             
             <div className="flex shrink-0 items-center gap-2">
+              {navRole === 'admin' || navRole === 'super_admin' ? (
+                <NotificationBellDropdown className="mt-1" />
+              ) : (
               <button
                 type="button"
                 onClick={() => setShowNotifications(true)}
@@ -419,10 +423,14 @@ export function DashboardShell({
                   </span>
                 )}
               </button>
+              )}
             </div>
           </header>
           ) : (
             <div className="gb-no-print flex items-center justify-end gap-2">
+              {navRole === 'admin' || navRole === 'super_admin' ? (
+                <NotificationBellDropdown />
+              ) : (
               <button
                 type="button"
                 onClick={() => setShowNotifications(true)}
@@ -435,6 +443,7 @@ export function DashboardShell({
               >
                 <Bell className="h-5 w-5" />
               </button>
+              )}
             </div>
           )}
           <SafeRenderBoundary label='Dashboard content'>

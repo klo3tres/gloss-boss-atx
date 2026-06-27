@@ -104,11 +104,36 @@ export async function convertLeadToOpportunityAction(id: string) {
 export async function runGooglePlacesLeadRadarAction() {
   const g = await gate();
   if (!g) return { error: 'Unauthorized' };
+
+  const { loadOwnerNotificationPreferences } = await import('@/lib/titan/notification-preferences');
+  const { canSpendScanCredits, consumeScanCredits, LEAD_RADAR_ESTIMATED_REQUESTS } = await import('@/lib/titan/scan-budget');
+  const prefs = await loadOwnerNotificationPreferences(g.admin);
+
+  const budget = await canSpendScanCredits(g.admin, {
+    provider: 'google_places',
+    scanType: 'lead_radar',
+    estimatedRequests: LEAD_RADAR_ESTIMATED_REQUESTS,
+    dailyLimit: prefs.maxPlacesRequestsPerDay,
+  });
+
+  if (!budget.allowed) {
+    return { error: budget.message ?? 'Daily scan limit reached.', configured: true, remaining: budget.remaining };
+  }
+
   const res = await runGooglePlacesLeadDiscovery(g.admin);
   if (!res.configured) return { error: res.error, configured: false };
   if (!res.ok) return { error: res.error ?? res.lastApiError, configured: true };
+
+  await consumeScanCredits(g.admin, {
+    provider: 'google_places',
+    scanType: 'lead_radar',
+    requestsUsed: LEAD_RADAR_ESTIMATED_REQUESTS,
+    dailyLimit: prefs.maxPlacesRequestsPerDay,
+  });
+
   revalidate();
-  return { ok: true, created: res.created, configured: true };
+  const remaining = Math.max(0, budget.remaining - LEAD_RADAR_ESTIMATED_REQUESTS);
+  return { ok: true, created: res.created, configured: true, remaining };
 }
 
 export async function toggleDailyHuntTaskAction(taskKey: string, completed: boolean) {

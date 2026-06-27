@@ -71,6 +71,7 @@ export async function sendPreviewedSmsAction(input: {
   if (!gate) return { error: 'Unauthorized' };
 
   const { sendCustomerSms } = await import('@/lib/sms-send');
+  const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
   const sent = await sendCustomerSms({
     db: gate.admin,
     kind: input.kind,
@@ -97,7 +98,17 @@ export async function sendPreviewedSmsAction(input: {
     entity_id: input.entityId ?? null,
   });
 
-  if (!sent.ok) return { error: sent.error ?? 'SMS failed' };
+  if (!sent.ok) {
+    void emitOwnerNotification(gate.admin, {
+      eventType: 'delivery_failed',
+      title: 'SMS delivery failed',
+      body: `To ${input.to}: ${sent.error ?? 'unknown error'}`,
+      source: 'outbox',
+      priority: 'high',
+      bypassQuietHours: true,
+    });
+    return { error: sent.error ?? 'SMS failed' };
+  }
   return { ok: true };
 }
 
