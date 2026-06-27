@@ -52,6 +52,9 @@ export type TitanWorkspace = {
   gaMeasurementId?: string | null;
   clarityProjectId?: string | null;
   gscVerificationNote?: string | null;
+  gscVerified?: boolean;
+  gscPropertyUrl?: string | null;
+  gscLastVerifiedAt?: string | null;
   isTitanPlatformMode?: boolean;
   publicTitanEnabled?: boolean;
   allowedDomains?: string[];
@@ -125,6 +128,9 @@ function defaults(): TitanWorkspace {
     gaMeasurementId: 'G-VWFWQ0P9GB',
     clarityProjectId: 'xddon9jp0d',
     gscVerificationNote: null,
+    gscVerified: false,
+    gscPropertyUrl: 'https://www.glossbossatx.com/',
+    gscLastVerifiedAt: null,
     isTitanPlatformMode: false,
     publicTitanEnabled: true,
     allowedDomains: [],
@@ -182,6 +188,9 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
     gaMeasurementId: str(row.ga_measurement_id) || null,
     clarityProjectId: str(row.clarity_project_id) || null,
     gscVerificationNote: str(row.gsc_verification_note) || null,
+    gscVerified: row.gsc_verified === true,
+    gscPropertyUrl: str(row.gsc_property_url) || null,
+    gscLastVerifiedAt: str(row.gsc_last_verified_at) || null,
     isTitanPlatformMode: row.is_titan_platform_mode === true,
     publicTitanEnabled: row.public_titan_enabled !== false,
     allowedDomains: Array.isArray(row.allowed_domains) ? (row.allowed_domains as string[]) : [],
@@ -244,6 +253,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     gaMeasurementId: input.gaMeasurementId !== undefined ? input.gaMeasurementId : current.gaMeasurementId,
     clarityProjectId: input.clarityProjectId !== undefined ? input.clarityProjectId : current.clarityProjectId,
     gscVerificationNote: input.gscVerificationNote !== undefined ? input.gscVerificationNote : current.gscVerificationNote,
+    gscVerified: input.gscVerified ?? current.gscVerified,
+    gscPropertyUrl: input.gscPropertyUrl !== undefined ? input.gscPropertyUrl : current.gscPropertyUrl,
+    gscLastVerifiedAt: input.gscLastVerifiedAt !== undefined ? input.gscLastVerifiedAt : current.gscLastVerifiedAt,
     isTitanPlatformMode: input.isTitanPlatformMode ?? current.isTitanPlatformMode,
     publicTitanEnabled: input.publicTitanEnabled ?? current.publicTitanEnabled,
     allowedDomains: input.allowedDomains ?? current.allowedDomains,
@@ -294,6 +306,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
       ga_measurement_id: merged.gaMeasurementId,
       clarity_project_id: merged.clarityProjectId,
       gsc_verification_note: merged.gscVerificationNote,
+      gsc_verified: merged.gscVerified === true,
+      gsc_property_url: merged.gscPropertyUrl,
+      gsc_last_verified_at: merged.gscLastVerifiedAt,
       is_titan_platform_mode: merged.isTitanPlatformMode,
       public_titan_enabled: merged.publicTitanEnabled,
       allowed_domains: merged.allowedDomains,

@@ -4,6 +4,8 @@ import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-c
 import { PushoverSetupPanel } from '@/components/admin/pushover-setup-panel';
 import { NotificationSettingsPanel } from '@/components/admin/notification-settings-panel';
 import { PostDeployQaChecklist, TitanOnboardingChecklistPanel } from '@/components/titan/titan-onboarding-panels';
+import { WebsiteIntelligenceSetupCard } from '@/components/titan/website-intelligence-setup-card';
+import { loadWebsiteIntelligenceBundle, summarizeWebsiteIntelligence } from '@/lib/titan/website-intelligence';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
 import { pushoverConfigured } from '@/lib/pushover';
@@ -63,6 +65,8 @@ export default async function OwnerSetupCenterPage() {
   const integrationRows = buildIntegrationStatusRows();
   const wsSettings = await loadTitanWorkspace(admin);
   const notifyPrefs = await loadOwnerNotificationPreferences(admin);
+  const websiteIntelBundle = await loadWebsiteIntelligenceBundle(admin);
+  const websiteIntelSummary = summarizeWebsiteIntelligence(websiteIntelBundle);
   const pushoverReady = pushoverConfigured();
   const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
   const weatherConfigured = Boolean(process.env.OPENWEATHER_API_KEY?.trim() && (process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || (process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim())));
@@ -188,6 +192,10 @@ export default async function OwnerSetupCenterPage() {
 
       <TitanOnboardingChecklistPanel />
       <PostDeployQaChecklist />
+
+      <section className="mt-6">
+        <WebsiteIntelligenceSetupCard summary={websiteIntelSummary} />
+      </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-2">
         <PushoverSetupPanel configured={pushoverReady} />

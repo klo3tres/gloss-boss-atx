@@ -174,6 +174,9 @@ export function Titan10HomeClient({
           <Link href="/admin/titan/lead-radar" className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
             Lead Radar
           </Link>
+          <Link href="/admin/titan/website-intelligence" className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-violet-200 hover:text-white">
+            Website Intelligence
+          </Link>
           <Link href="/admin/titan/settings" className="rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">Settings</Link>
         </nav>
       </header>

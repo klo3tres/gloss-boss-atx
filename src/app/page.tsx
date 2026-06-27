@@ -7,6 +7,7 @@ import { ArrowRight, Sparkles, X, Check, Star, ShieldCheck, Award, Flame, Calend
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
+import { HomeTrustStrip } from '@/components/marketing/home-trust-strip';
 import { HomepageHeroBackground } from '@/components/marketing/homepage-hero-background';
 import type { PublicBrandPayload } from '@/lib/brand/public-brand-types';
 import { ContactForm } from '@/components/marketing/contact-form';
@@ -609,6 +610,9 @@ export default function HomePage() {
       )}
 
       {/* SECTION 9: TESTIMONIALS/REVIEWS */}
+      <SectionErrorBoundary label='Home trust strip'>
+        <HomeTrustStrip reviews={reviews} googleReviewUrl={googleReviewUrl} />
+      </SectionErrorBoundary>
       <section className="bg-zinc-950 border-b border-white/5 py-20">
         <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8">
           <SectionErrorBoundary label='Reviews Carousel'>

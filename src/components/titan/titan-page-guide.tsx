@@ -123,4 +123,12 @@ export const TITAN_GUIDES = {
     successLooksLike: '100% required systems green with successful test notification.',
     storageKey: 'setup_center',
   },
+  websiteIntelligence: {
+    title: 'Website Intelligence',
+    purpose: 'See GA, Clarity, Search Console, and Google Reviews status in one trust center.',
+    howToUse: 'Check integration cards, fix gaps, sync reviews, and follow Titan recommendations.',
+    firstAction: 'Confirm GA Realtime hits, mark Search Console verified, publish three reviews.',
+    successLooksLike: 'Owner knows exactly what is live, what needs API keys, and what to do next.',
+    storageKey: 'website_intelligence',
+  },
 } as const satisfies Record<string, TitanPageGuideConfig>;

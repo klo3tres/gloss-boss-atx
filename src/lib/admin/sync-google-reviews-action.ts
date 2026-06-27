@@ -30,6 +30,7 @@ export async function syncGoogleReviewsAction(): Promise<GoogleReviewSyncActionR
     revalidatePath('/');
     revalidatePath('/admin/cms');
     revalidatePath('/admin/reviews');
+    revalidatePath('/admin/titan/website-intelligence');
     revalidatePath('/api/public/site-data');
   }
 

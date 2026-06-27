@@ -76,10 +76,10 @@ export const TITAN_OPERATORS: TitanOperator[] = [
   {
     id: 'website',
     name: 'Website Operator',
-    purpose: 'Analytics, SEO, and booking conversion (Clarity + GA connected).',
-    href: '/admin/integrations',
+    purpose: 'Analytics, SEO, Clarity, reviews, and booking conversion intelligence.',
+    href: '/admin/titan/website-intelligence',
     kpiLabel: 'Site health',
-    status: 'beta',
+    status: 'live',
   },
 ];
 

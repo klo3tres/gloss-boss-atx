@@ -28,6 +28,7 @@ function dateIso(v: unknown) {
 function revalidateReviews() {
   revalidatePath('/');
   revalidatePath('/admin/cms');
+  revalidatePath('/admin/titan/website-intelligence');
   revalidatePath('/api/public/site-data');
 }
 
