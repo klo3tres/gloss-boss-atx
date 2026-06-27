@@ -5,6 +5,10 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { loadOwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
 import { loadOperationsSnapshot, type OperationsSnapshot } from '@/lib/operations-snapshot';
+import { loadOwnerInsights } from '@/lib/titan/owner-insights';
+import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { resolveOwnerFirstName } from '@/lib/owner-identity';
+import { TitanOwnerInsightsPanel } from '@/components/titan/titan-owner-insights-panel';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -98,6 +102,8 @@ export default async function AdminDashboardPage({
 
   let goals: any[] = [];
   let operations: OperationsSnapshot | null = null;
+  let ownerInsights: Awaited<ReturnType<typeof loadOwnerInsights>> | null = null;
+  let ownerFirstName = 'Owner';
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {
     const admin = tryCreateAdminSupabase();
@@ -105,8 +111,17 @@ export default async function AdminDashboardPage({
       loadErr = 'Service role key missing — set SUPABASE_SERVICE_ROLE_KEY to load live operations data.';
     } else {
       try {
-        metrics = await loadOwnerDashboardSnapshot(admin);
-        operations = await loadOperationsSnapshot(admin);
+        const ws = await loadTitanWorkspace(admin);
+        ownerFirstName = resolveOwnerFirstName({
+          ownerDisplayName: ws.ownerDisplayName,
+          profileFullName: session.profile?.full_name,
+          profileEmail: session.user.email,
+        });
+        [metrics, operations, ownerInsights] = await Promise.all([
+          loadOwnerDashboardSnapshot(admin),
+          loadOperationsSnapshot(admin),
+          loadOwnerInsights(admin),
+        ]);
 
         // Fetch live goals for the dashboard summary
         const { data } = await admin
@@ -140,7 +155,7 @@ export default async function AdminDashboardPage({
   if (
     !loadErr &&
     operations &&
-    operations.summary.critical > 0 &&
+    operations.summary.critical >= 5 &&
     params.overview !== '1' &&
     session.user &&
     isAdminLevel(session.profile?.role ?? null)
@@ -149,11 +164,16 @@ export default async function AdminDashboardPage({
   }
 
   return (
-    <DashboardShell title='Command center' subtitle='What needs attention, today’s jobs, and revenue at a glance.' role='admin'>
+    <DashboardShell title='Command center' subtitle={`Good to see you, ${ownerFirstName} — what needs attention today.`} role='admin'>
       {loadErr ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
           {loadErr}
         </p>
+      ) : null}
+      {ownerInsights ? (
+        <div className="mb-6">
+          <TitanOwnerInsightsPanel bundle={ownerInsights} />
+        </div>
       ) : null}
       <OwnerCommandCenter
         metrics={metrics}

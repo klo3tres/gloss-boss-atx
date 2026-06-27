@@ -24,6 +24,7 @@ import { loadTouchSchedule } from '@/lib/titan/engines/touch-schedule';
 import { loadJobCloseouts } from '@/lib/titan/engines/job-closeout';
 import { loadOffers } from '@/lib/titan/engines/offer-builder';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { resolveOwnerFirstName } from '@/lib/owner-identity';
 import { buildDemoSnapshot } from '@/lib/titan/demo-snapshot';
 import { buildRealDailyActions } from '@/lib/titan/engines/real-daily-actions';
 import type { Titan10Snapshot } from '@/lib/titan/engines/types';
@@ -78,7 +79,11 @@ export async function loadTitan10Snapshot(
     loadTitanWorkspace(admin),
   ]);
 
-  const name = briefing.ownerName?.split(' ')[0] ?? 'there';
+  const firstName = resolveOwnerFirstName({
+    ownerDisplayName: workspace.ownerDisplayName ?? ownerName,
+    profileFullName: briefing.ownerName ?? ownerName,
+    profileEmail: null,
+  });
 
   const workspaceMeta = {
     demoMode: workspace.demoMode,
@@ -90,7 +95,7 @@ export async function loadTitan10Snapshot(
 
   const snapshot: Titan10Snapshot = {
     mission: TITAN_MISSION,
-    ownerGreeting: `${briefing.greeting}, ${name}`,
+    ownerGreeting: `${briefing.greeting}, ${firstName}`,
     setupWarnings: briefing.setupWarnings,
     scoreboard,
     dailyAutonomy,

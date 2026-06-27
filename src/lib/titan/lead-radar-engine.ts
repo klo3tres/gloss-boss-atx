@@ -393,6 +393,21 @@ export async function captureLeadRadarItem(
 
   const id = str((data as { id?: string })?.id);
   if (id) await logRadarEvent(admin, id, 'captured', 'Lead captured', workspaceKey);
+
+  if (scores.confidence >= 65) {
+    try {
+      const { notifyOwnerLeadHighConfidence } = await import('@/lib/owner-lead-alerts');
+      void notifyOwnerLeadHighConfidence(admin, {
+        authorName: author,
+        sourceType: input.sourceType,
+        rawPreview: rawText,
+        confidence: scores.confidence,
+      });
+    } catch {
+      /* non-blocking */
+    }
+  }
+
   return { ok: true, id };
 }
 

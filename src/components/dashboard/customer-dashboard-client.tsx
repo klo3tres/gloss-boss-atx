@@ -327,16 +327,6 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               <p className="mt-1 text-xs text-zinc-500">
                 {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
               </p>
-              {props.weatherForecast ? (
-                <div className="mt-4">
-                  <WeatherReadinessWidget
-                    snapshot={props.weatherForecast}
-                    locationLabel={props.weatherLocationLabel ?? 'Your service area'}
-                    variant="customer"
-                    compact
-                  />
-                </div>
-              ) : null}
             </div>
             <div className="mt-5 grid gap-2">
               <Link href="/book" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-gold via-gold-soft to-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black hover:brightness-110">

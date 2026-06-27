@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Copy, ExternalLink, Plus, Radar } from 'lucide-react';
 import type { LeadRadarItem, LeadRadarSummary } from '@/lib/titan/lead-radar-engine';
-import type { HuntCategory, LeadPlaybook } from '@/lib/titan/lead-radar-hunt';
+import type { HuntCategory, HuntSource, LeadPlaybook } from '@/lib/titan/lead-radar-hunt';
 import { Titan24HourHunt } from '@/components/titan/titan-24-hour-hunt';
+import { TitanWhereToHuntPanel } from '@/components/titan/titan-where-to-hunt-panel';
+import { TitanLeadCaptureModal, type LeadCapturePrefill } from '@/components/titan/titan-lead-capture-modal';
 import { TitanCompetitorReviewTool } from '@/components/titan/titan-competitor-review-tool';
 import { TitanOutreachScriptsPanel } from '@/components/titan/titan-outreach-scripts-panel';
 import {
@@ -18,7 +20,6 @@ import {
 import { displayMoney } from '@/lib/display-format';
 import {
   bulkImportLeadsAction,
-  captureLeadAction,
   convertLeadToOpportunityAction,
   markLeadStatusAction,
   runGooglePlacesLeadRadarAction,
@@ -29,80 +30,6 @@ const SOURCE_TYPES = Object.entries(SOURCE_TYPE_LABELS);
 
 function money(dollars: number) {
   return displayMoney(Math.round(dollars * 100));
-}
-
-function CaptureModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
-  const [sourceType, setSourceType] = useState('facebook_group');
-  const [sourceName, setSourceName] = useState('');
-  const [sourceUrl, setSourceUrl] = useState('');
-  const [authorName, setAuthorName] = useState('');
-  const [authorProfileUrl, setAuthorProfileUrl] = useState('');
-  const [rawText, setRawText] = useState('');
-  const [location, setLocation] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [revenue, setRevenue] = useState('');
-  const [notes, setNotes] = useState('');
-
-  if (!open) return null;
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    startTransition(async () => {
-      const res = await captureLeadAction({
-        sourceType,
-        sourceName,
-        sourceUrl,
-        authorName,
-        authorProfileUrl,
-        rawText,
-        locationText: location,
-        phone,
-        email,
-        estimatedRevenue: revenue ? Number(revenue) : undefined,
-        notes,
-      });
-      if (res.error) setErr(res.error);
-      else {
-        onClose();
-        router.refresh();
-      }
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-4 sm:items-center">
-      <form onSubmit={submit} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-cyan-500/25 bg-zinc-950 p-6">
-        <h2 className="text-xl font-black text-white">Capture lead</h2>
-        <div className="mt-4 grid gap-3">
-          <select value={sourceType} onChange={(e) => setSourceType(e.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white">
-            {SOURCE_TYPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-          </select>
-          <input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="Source name / group" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="Source URL" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={authorName} onChange={(e) => setAuthorName(e.target.value)} placeholder="Author name" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={authorProfileUrl} onChange={(e) => setAuthorProfileUrl(e.target.value)} placeholder="Author profile URL" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <textarea required value={rawText} onChange={(e) => setRawText(e.target.value)} placeholder="Paste post or comment text" rows={5} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          </div>
-          <input value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="Est. revenue ($) optional" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-        </div>
-        {err ? <p className="mt-2 text-xs text-rose-300">{err}</p> : null}
-        <div className="mt-4 flex gap-2">
-          <button type="submit" disabled={pending} className="rounded-xl bg-cyan-500 px-4 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50">Save & classify</button>
-          <button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-4 py-3 text-[10px] font-black uppercase text-zinc-400">Cancel</button>
-        </div>
-      </form>
-    </div>
-  );
 }
 
 function LeadCard({ item }: { item: LeadRadarItem }) {
@@ -190,6 +117,7 @@ export function TitanLeadRadarClient({
   huntCategories,
   playbooks,
   playbooksReady,
+  huntSources,
 }: {
   items: LeadRadarItem[];
   summary: LeadRadarSummary;
@@ -198,18 +126,28 @@ export function TitanLeadRadarClient({
   huntCategories: HuntCategory[];
   playbooks: LeadPlaybook[];
   playbooksReady: boolean;
+  huntSources: HuntSource[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [capturePrefill, setCapturePrefill] = useState<LeadCapturePrefill | undefined>();
   const [pending, startTransition] = useTransition();
   const [banner, setBanner] = useState<string | null>(null);
   const [importText, setImportText] = useState('');
   const [importSource, setImportSource] = useState('facebook_group');
 
   useEffect(() => {
-    if (searchParams.get('capture') === '1') setCaptureOpen(true);
+    if (searchParams.get('capture') === '1') {
+      setCapturePrefill(undefined);
+      setCaptureOpen(true);
+    }
   }, [searchParams]);
+
+  const openCapture = (prefill?: LeadCapturePrefill) => {
+    setCapturePrefill(prefill);
+    setCaptureOpen(true);
+  };
 
   if (!tablesReady) {
     return (
@@ -231,8 +169,8 @@ export function TitanLeadRadarClient({
           <p className="mt-1 text-sm text-zinc-400">Manual-assisted lead capture — paste posts, classify intent, copy replies, convert to Opportunity Board.</p>
           <p className="mt-2 text-xs text-zinc-500">Messy Facebook/Nextdoor paste supported — Titan extracts name, intent, location, and contact when visible.</p>
         </div>
-        <button type="button" onClick={() => setCaptureOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-cyan-500 px-4 py-2 text-[10px] font-black uppercase text-black">
-          <Plus className="h-3.5 w-3.5" /> Capture lead
+        <button type="button" onClick={() => openCapture()} className="inline-flex items-center gap-1 rounded-xl bg-cyan-500 px-4 py-2 text-[10px] font-black uppercase text-black">
+          <Plus className="h-3.5 w-3.5" /> Paste Lead / Capture Post
         </button>
       </header>
 
@@ -253,7 +191,9 @@ export function TitanLeadRadarClient({
 
       {banner ? <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{banner}</p> : null}
 
-      <Titan24HourHunt categories={huntCategories} playbooks={playbooks} playbooksReady={playbooksReady} />
+      <TitanWhereToHuntPanel sources={huntSources} onOpenCapture={openCapture} />
+
+      <Titan24HourHunt categories={huntCategories} playbooks={playbooks} playbooksReady={playbooksReady} onOpenCapture={openCapture} />
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-3xl border border-white/10 bg-black/40 p-5">
@@ -329,7 +269,7 @@ export function TitanLeadRadarClient({
         <div className="rounded-3xl border border-white/10 bg-black/40 p-8 text-center">
           <p className="text-sm font-bold text-white">No radar leads yet.</p>
           <p className="mt-2 text-xs text-zinc-400">Capture or paste posts from Facebook groups, Nextdoor, Reddit, or referrals.</p>
-          <button type="button" onClick={() => setCaptureOpen(true)} className="mt-4 rounded-xl bg-cyan-500 px-5 py-3 text-[10px] font-black uppercase text-black">Capture first lead</button>
+          <button type="button" onClick={() => openCapture()} className="mt-4 rounded-xl bg-cyan-500 px-5 py-3 text-[10px] font-black uppercase text-black">Paste first lead</button>
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -339,7 +279,7 @@ export function TitanLeadRadarClient({
         </div>
       )}
 
-      <CaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      <TitanLeadCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} prefill={capturePrefill} />
     </div>
   );
 }

@@ -97,6 +97,48 @@ export const HUNT_CATEGORIES: HuntCategory[] = [
   },
 ];
 
+export const RECENCY_GUIDANCE = [
+  'Search posts from Today first',
+  'Then Past 7 days',
+  'Then Past 14 days',
+  'Still worth replying if no strong answer was given',
+];
+
+export type HuntSource = {
+  id: string;
+  title: string;
+  whyItMatters: string;
+  whatToSearch: string[];
+  whatToPaste: string;
+  messageAngle: string;
+  expectedValue: string;
+  effort: 'low' | 'medium' | 'high';
+  urgency: 'high' | 'medium' | 'low';
+};
+
+export const WHERE_TO_HUNT_SOURCES: HuntSource[] = [
+  { id: 'warm', title: 'Coworkers / nurses / warm contacts', whyItMatters: 'Fastest path to a booking — they already trust you.', whatToSearch: ['canceled customers', 'previous customers', 'referrals'], whatToPaste: 'Paste warm text thread into Lead Radar', messageAngle: 'Personal opening + specific weekend slot', expectedValue: '$125–$250', effort: 'low', urgency: 'high' },
+  { id: 'facebook', title: 'Facebook local groups', whyItMatters: 'People actively ask for detailers daily.', whatToSearch: ['who does mobile detailing', 'need car detailed', 'interior car cleaning'], whatToPaste: 'Full post + comments from group search', messageAngle: 'Helpful reply — mobile Austin/Round Rock', expectedValue: '$125–$275', effort: 'medium', urgency: 'high' },
+  { id: 'nextdoor', title: 'Nextdoor', whyItMatters: 'Hyper-local buyers with high intent.', whatToSearch: ['car detailer', 'mobile detailing', 'car wash recommendation'], whatToPaste: 'Neighbor post + your reply draft', messageAngle: 'Neighbor trust + come to you', expectedValue: '$125–$250', effort: 'medium', urgency: 'high' },
+  { id: 'google_b2b', title: 'Google Places B2B', whyItMatters: 'Repeat fleet/apartment revenue.', whatToSearch: ['apartment complexes Round Rock', 'property management Austin', 'fleet companies'], whatToPaste: 'Business name + address from Maps', messageAngle: 'B2B partnership / resident detail day', expectedValue: '$800–$8,000/mo', effort: 'high', urgency: 'medium' },
+  { id: 'apartments', title: 'Apartment complexes', whyItMatters: 'Resident detail days = volume.', whatToSearch: ['apartment complex Round Rock', 'multifamily Austin'], whatToPaste: 'Property name from Google Maps', messageAngle: 'Resident mobile detail event', expectedValue: '$500–$3,000', effort: 'high', urgency: 'medium' },
+  { id: 'fleet', title: 'Fleet businesses', whyItMatters: 'Recurring on-site revenue.', whatToSearch: ['fleet service Austin', 'trucking company Round Rock'], whatToPaste: 'Company name + contact if found', messageAngle: 'Mobile fleet — no downtime', expectedValue: '$800–$5,000/mo', effort: 'high', urgency: 'medium' },
+  { id: 'dealerships', title: 'Dealerships', whyItMatters: 'Lot-ready inventory detailing.', whatToSearch: ['used car dealer Round Rock', 'car dealer Austin'], whatToPaste: 'Dealer name + decision maker if known', messageAngle: 'Photo-ready lot inventory', expectedValue: '$500–$4,000', effort: 'high', urgency: 'low' },
+  { id: 'car_clubs', title: 'Car clubs (BMW/Tesla/etc.)', whyItMatters: 'Premium buyers + group rates.', whatToSearch: ['BMW Austin group', 'Tesla Austin club'], whatToPaste: 'Club post or member request', messageAngle: 'Member group rate for meets', expectedValue: '$175–$500', effort: 'medium', urgency: 'high' },
+  { id: 'reddit', title: 'Reddit local threads', whyItMatters: 'Buyers researching detailers.', whatToSearch: ['Austin car detailing', 'Round Rock car wash'], whatToPaste: 'Thread text into Lead Radar', messageAngle: 'Helpful non-spam local reply', expectedValue: '$125–$250', effort: 'medium', urgency: 'medium' },
+  { id: 'winback', title: 'Canceled / previous customers', whyItMatters: 'Already sold — easy reschedule.', whatToSearch: ['canceled appointments', 'past customers 90 days'], whatToPaste: 'CRM note or message thread', messageAngle: 'No-pressure reschedule offer', expectedValue: '$150–$275', effort: 'low', urgency: 'high' },
+];
+
+export const TODAYS_EXACT_HUNT_PLAN = [
+  'Text 3 warm leads',
+  'Search 3 buyer-intent phrases (Today → 7 days → 14 days)',
+  'Paste 5 posts/comments into Lead Radar',
+  'Run Google Places prospect scan',
+  'Contact 3 B2B prospects',
+  'Post one weekend opening',
+  'Ask one previous customer for referral',
+];
+
 export const DAILY_HUNT_TASK_DEFS = [
   { taskKey: 'text_warm_leads', label: 'Text warm leads' },
   { taskKey: 'search_facebook_groups', label: 'Search 3 Facebook groups' },

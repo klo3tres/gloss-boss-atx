@@ -39,7 +39,7 @@ export function LaunchReadinessHostDebug() {
           {onCanonical === null ? 'loading' : onCanonical ? 'expected host' : 'host mismatch'}
         </span>
       </div>
-      <p className="mt-2 text-xs text-zinc-500">Live fetch of <code className="text-zinc-300">/api/debug/host</code> — no app-level domain redirects should appear here.</p>
+      <p className="mt-2 text-xs text-zinc-500">Live fetch of <code className="text-zinc-300">/api/debug/host</code>. App middleware is auth-only — no www↔apex redirects in code.</p>
       {err ? <p className="mt-3 text-xs text-rose-300">{err}</p> : null}
       {data ? (
         <dl className="mt-4 grid gap-2 text-xs sm:grid-cols-2">

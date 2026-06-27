@@ -8,6 +8,8 @@ import { loadTitanSystemHealth } from '@/lib/titan/system-health';
 import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import { loadLeadRadarItems, topLeadRadarForToday } from '@/lib/titan/lead-radar-engine';
 import { loadConversionGoalStats, loadDailyHuntTasks } from '@/lib/titan/lead-radar-hunt';
+import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { resolveOwnerFirstName } from '@/lib/owner-identity';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +21,12 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
 
-  const ownerName = session.profile?.full_name ?? session.user.email?.split('@')[0] ?? null;
+  const wsSettings = await loadTitanWorkspace(admin);
+  const ownerName = resolveOwnerFirstName({
+    ownerDisplayName: wsSettings.ownerDisplayName,
+    profileFullName: session.profile?.full_name,
+    profileEmail: session.user.email,
+  });
   const [snapshot, health, revenueHunt, leadRadar, dailyHunt, conversionGoal] = await Promise.all([
     loadTitan10Snapshot(admin, ownerName),
     loadTitanSystemHealth(admin),

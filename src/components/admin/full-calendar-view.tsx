@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { addCalendarEventAction } from '@/lib/admin/calendar-events-actions';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
+import { CalendarDayWeatherDetail } from '@/components/calendar/calendar-day-weather-detail';
 import { displayMoney } from '@/lib/display-format';
 
 type JobItem = {
@@ -295,7 +296,7 @@ export function FullCalendarView({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 right-0 z-[140] w-full max-w-md border-l border-gold/20 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+              className="fixed inset-y-0 right-0 z-[140] w-full max-w-lg border-l border-gold/20 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-white sm:p-6"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
                 <div>
@@ -312,30 +313,11 @@ export function FullCalendarView({
 
               <div className="space-y-4">
                 {/* Weather Forecast Snapshot */}
-                <div className="rounded-2xl border border-white/10 bg-black/45 p-4 text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="font-black uppercase tracking-wider text-zinc-500">Day Weather outlook</p>
-                    {loadingWeather && <span className="text-[9px] text-zinc-500 animate-pulse">Fetching...</span>}
+                <div className="rounded-2xl border border-white/10 bg-black/45 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-black uppercase tracking-wider text-zinc-500 text-[10px]">Weather & detail readiness</p>
                   </div>
-                  {selectedDayWeather?.ok ? (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-bold text-white text-base font-mono">{selectedDayWeather.temperatureF}°F</p>
-                        <p className="text-[10px] text-zinc-400 capitalize mt-0.5">{selectedDayWeather.description || selectedDayWeather.condition} · rain {selectedDayWeather.rainChancePct ?? 0}%</p>
-                      </div>
-                      <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${
-                        (selectedDayWeather.rainChancePct ?? 0) >= 50 || selectedDayWeather.severe
-                          ? 'bg-rose-500/15 text-rose-200 border border-rose-500/30'
-                          : (selectedDayWeather.rainChancePct ?? 0) < 30
-                            ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30'
-                            : 'bg-zinc-500/15 text-zinc-200 border border-zinc-500/30'
-                      }`}>
-                        {(selectedDayWeather.rainChancePct ?? 0) >= 50 || selectedDayWeather.severe ? 'Rain risk' : (selectedDayWeather.rainChancePct ?? 0) < 30 ? 'Ideal' : 'Moderate'}
-                      </span>
-                    </div>
-                  ) : !loadingWeather ? (
-                    <p className="text-zinc-500">{selectedDayWeather?.blocker || 'Weather forecast unavailable.'}</p>
-                  ) : null}
+                  <CalendarDayWeatherDetail weather={selectedDayWeather} loading={loadingWeather} />
                 </div>
 
                 {/* Scheduled Jobs */}

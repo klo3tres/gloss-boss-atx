@@ -5,7 +5,7 @@ import { TitanLeadRadarClient } from '@/components/titan/titan-lead-radar-client
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { leadRadarPlacesConfigured, loadLeadRadarItems } from '@/lib/titan/lead-radar-engine';
-import { HUNT_CATEGORIES, loadLeadPlaybooks } from '@/lib/titan/lead-radar-hunt';
+import { HUNT_CATEGORIES, loadLeadPlaybooks, WHERE_TO_HUNT_SOURCES } from '@/lib/titan/lead-radar-hunt';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +29,7 @@ export default async function TitanLeadRadarPage() {
           huntCategories={HUNT_CATEGORIES}
           playbooks={playbooks.playbooks}
           playbooksReady={playbooks.tablesReady}
+          huntSources={WHERE_TO_HUNT_SOURCES}
         />
       </Suspense>
     </DashboardShell>

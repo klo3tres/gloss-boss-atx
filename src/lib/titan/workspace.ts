@@ -12,6 +12,9 @@ export type TitanIndustry =
 
 export type TitanWorkspace = {
   businessName: string;
+  ownerDisplayName: string | null;
+  ownerEmail: string | null;
+  ownerPhone: string | null;
   industry: TitanIndustry;
   businessType: string;
   revenueModel: string;
@@ -57,6 +60,9 @@ function str(v: unknown) {
 function defaults(): TitanWorkspace {
   return {
     businessName: 'Gloss Boss ATX',
+    ownerDisplayName: null,
+    ownerEmail: null,
+    ownerPhone: null,
     industry: 'mobile_detailing',
     businessType: 'owner_operator',
     revenueModel: 'per_job',
@@ -81,6 +87,9 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
   const hours = row.operating_hours;
   return {
     businessName: str(row.business_name) || 'My Business',
+    ownerDisplayName: str(row.owner_display_name) || null,
+    ownerEmail: str(row.owner_email) || null,
+    ownerPhone: str(row.owner_phone) || null,
     industry: (str(row.industry) || 'mobile_detailing') as TitanIndustry,
     businessType: str(row.business_type) || 'service',
     revenueModel: str(row.revenue_model) || 'per_job',
@@ -120,6 +129,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
   const current = await loadTitanWorkspace(admin);
   const merged: TitanWorkspace = {
     businessName: input.businessName ?? current.businessName,
+    ownerDisplayName: input.ownerDisplayName !== undefined ? input.ownerDisplayName : current.ownerDisplayName,
+    ownerEmail: input.ownerEmail !== undefined ? input.ownerEmail : current.ownerEmail,
+    ownerPhone: input.ownerPhone !== undefined ? input.ownerPhone : current.ownerPhone,
     industry: input.industry ?? current.industry,
     businessType: input.businessType ?? current.businessType,
     revenueModel: input.revenueModel ?? current.revenueModel,
@@ -143,6 +155,9 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     {
       workspace_key: 'default',
       business_name: merged.businessName,
+      owner_display_name: merged.ownerDisplayName,
+      owner_email: merged.ownerEmail,
+      owner_phone: merged.ownerPhone,
       industry: merged.industry,
       business_type: merged.businessType,
       revenue_model: merged.revenueModel,

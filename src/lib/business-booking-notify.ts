@@ -3,6 +3,7 @@ import { businessNotifyDestination, resendConfigured, sendResendHtml } from '@/l
 import { glossBossEmailLayout } from '@/lib/email/templates/layout';
 import { sendCustomerSms } from '@/lib/sms-send';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { resolveOwnerNotifyContact } from '@/lib/owner-contact';
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -151,7 +152,8 @@ export async function notifyBusinessNewBookingFull(params: {
     .filter(Boolean)
     .join('\n');
 
-  const ownerPhone = businessNotifyPhone();
+  const ownerContact = await resolveOwnerNotifyContact(admin);
+  const ownerPhone = ownerContact.phone ?? businessNotifyPhone();
   if (ownerPhone) {
     try {
       const sms = await sendCustomerSms({
@@ -196,7 +198,7 @@ export async function notifyBusinessNewBookingFull(params: {
     });
   }
 
-  const emailTo = businessNotifyDestination();
+  const emailTo = ownerContact.email ?? businessNotifyDestination();
 
   if (!resendConfigured()) {
     await insertOutbox(admin, {

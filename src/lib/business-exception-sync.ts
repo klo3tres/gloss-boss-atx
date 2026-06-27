@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OperationException } from '@/lib/operations-snapshot';
+import { loadDismissalRecords, isDismissalActive } from '@/lib/business-exception-inbox';
 
 function isMissingTable(message: string) {
   return /exception_|business_exceptions|schema cache|does not exist|Could not find/i.test(message);
@@ -27,9 +28,13 @@ export async function syncBusinessExceptions(
 
   const now = new Date().toISOString();
   const fingerprints = new Set(items.map((item) => item.id));
+  const dismissals = await loadDismissalRecords(admin);
   let synced = 0;
 
   for (const item of items) {
+    const dismissal = dismissals.get(item.id);
+    if (isDismissalActive(dismissal)) continue;
+
     const { data: existing } = await admin
       .from('business_exceptions')
       .select('id, first_seen_at, status')

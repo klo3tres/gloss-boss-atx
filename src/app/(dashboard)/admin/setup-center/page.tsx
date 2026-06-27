@@ -1,3 +1,6 @@
+import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-settings';
+import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { buildIntegrationStatusRows } from '@/lib/integration-status';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, CircleDashed } from 'lucide-react';
@@ -50,6 +53,8 @@ export default async function OwnerSetupCenterPage() {
   const bookingMediaCount = bookingKeys.filter((key) => Boolean(registry[key])).length;
   const serviceMediaCount = serviceKeys.filter((key) => Boolean(registry[key])).length;
   const twilioConfigured = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim());
+  const integrationRows = buildIntegrationStatusRows();
+  const wsSettings = await loadTitanWorkspace(admin);
   const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
   const weatherConfigured = Boolean(process.env.OPENWEATHER_API_KEY?.trim() && (process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || (process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim())));
   const reviewConfigured = Boolean(String(reviewRes.data?.value ?? '').trim());
@@ -115,7 +120,7 @@ export default async function OwnerSetupCenterPage() {
       title: 'Customer SMS delivery',
       ok: twilioConfigured,
       important: true,
-      detail: twilioConfigured ? 'Twilio SMS credentials are configured.' : 'Appointment reminders and technician updates need Twilio credentials.',
+      detail: integrationRows.find((r) => r.id === 'twilio')?.detail ?? (twilioConfigured ? 'Twilio SMS credentials are configured.' : 'Appointment reminders and owner alerts need Twilio credentials.'),
       action: 'Open integrations',
       href: '/admin/integrations',
     },
@@ -149,6 +154,43 @@ export default async function OwnerSetupCenterPage() {
         <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Required launch systems</p>
         <div className='mt-3 flex items-end justify-between gap-4'><p className='text-4xl font-black text-white'>{percentage}% ready</p><p className='text-xs text-zinc-400'>{requiredDone} of {required.length} required systems</p></div>
         <div className='mt-4 h-2 overflow-hidden rounded-full bg-white/10'><div className='h-full bg-gold' style={{ width: `${percentage}%` }} /></div>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-white/10 bg-black/55 p-6">
+        <h2 className="text-sm font-black uppercase text-white">Owner profile</h2>
+        <div className="mt-4">
+          <OwnerProfileSettingsForm
+            tablesReady={wsSettings.tablesReady}
+            initial={{
+              ownerDisplayName: wsSettings.ownerDisplayName ?? '',
+              ownerEmail: wsSettings.ownerEmail ?? '',
+              ownerPhone: wsSettings.ownerPhone ?? '',
+              businessName: wsSettings.businessName,
+            }}
+          />
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-white/10 bg-black/55 p-6">
+        <h2 className="text-sm font-black uppercase text-white">Integration status (accurate)</h2>
+        <p className="mt-1 text-xs text-zinc-500">Google Places ≠ Google Maps render. Apple Maps is optional. Twilio trial can send to verified numbers.</p>
+        <ul className="mt-4 space-y-2">
+          {integrationRows.map((row) => (
+            <li key={row.id} className="rounded-xl border border-white/8 bg-black/40 px-4 py-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-white">{row.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${row.level === 'ready' ? 'bg-emerald-500/15 text-emerald-200' : row.level === 'trial' ? 'bg-amber-500/15 text-amber-200' : row.level === 'optional' ? 'bg-zinc-700 text-zinc-300' : 'bg-rose-500/15 text-rose-200'}`}>
+                  {row.level}
+                </span>
+              </div>
+              <p className="mt-1 text-zinc-500">{row.detail}</p>
+            </li>
+          ))}
+        </ul>
+        <Link href="/admin/integrations" className="mt-4 inline-flex rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft">
+          Test integrations →
+        </Link>
+        <p className="mt-3 text-[10px] text-zinc-600">Owner test alerts: use buttons on Admin → Integrations (email/SMS test send).</p>
       </section>
 
       <section className='mt-6 grid gap-3 lg:grid-cols-2'>

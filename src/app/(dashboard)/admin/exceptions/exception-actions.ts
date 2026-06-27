@@ -9,6 +9,7 @@ import {
   findAndRepairAllDuplicatePayments,
   repairDuplicatePaymentGroups,
 } from '@/lib/payment-duplicate-repair';
+import { fetchPaymentsSince } from '@/lib/revenue-metrics';
 import { rescheduleAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 import { syncOperationsExceptions } from '@/lib/operations-snapshot';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -75,6 +76,23 @@ export async function dismissExceptionAction(
   await logExceptionAction(gate.admin, gate.session.user!.id, fp, 'dismiss', { note, snoozeDays });
   revalidateOpsPaths();
   return { ok: true };
+}
+
+export async function dismissDuplicatePaymentExceptionsAction(): Promise<{ ok?: boolean; error?: string; count?: number }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  const since = new Date();
+  since.setMonth(since.getMonth() - 6);
+  const rows = await fetchPaymentsSince(gate.admin, since.toISOString());
+  const groups = findDuplicatePaymentGroups(rows);
+  let count = 0;
+  for (const g of groups) {
+    const fp = `payment:dup:${g.key}`;
+    const res = await dismissExceptionAction(fp, 'Dismissed duplicate payment group');
+    if (res.ok) count += 1;
+  }
+  revalidateOpsPaths();
+  return { ok: true, count };
 }
 
 export async function repairDuplicatePaymentsInboxAction(): Promise<{

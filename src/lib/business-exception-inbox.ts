@@ -161,8 +161,10 @@ export async function loadInboxFromDatabase(
   }
 
   const items: InboxException[] = [];
+  const seenFingerprints = new Set<string>();
   for (const row of rows ?? []) {
     const fp = str(row.fingerprint);
+    if (seenFingerprints.has(fp)) continue;
     const dismissal = dismissals.get(fp);
     const dismissed = isDismissalActive(dismissal);
     if (dismissed && !opts.includeDismissed) continue;
@@ -173,7 +175,10 @@ export async function loadInboxFromDatabase(
       dismissal,
       row.resolved_by ? resolverNames.get(str(row.resolved_by)) ?? null : null,
     );
-    if (inbox) items.push(inbox);
+    if (inbox) {
+      seenFingerprints.add(fp);
+      items.push(inbox);
+    }
   }
 
   const { data: lastRun } = await admin
