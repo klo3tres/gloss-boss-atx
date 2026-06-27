@@ -231,6 +231,76 @@ export async function createEstimateForLead(
   return { ok: true, estimate };
 }
 
+export async function createEstimateForContact(
+  admin: SupabaseClient,
+  actorId: string,
+  input: {
+    customerId?: string;
+    opportunityId?: string;
+    contactName: string;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
+    serviceSlug: string;
+    vehicleClass?: string;
+    totalCents: number;
+    depositCents?: number;
+    notes?: string;
+  },
+): Promise<{ ok: boolean; error?: string; estimate?: ServiceEstimate }> {
+  const probe = await admin.from('service_estimates').select('id').limit(1);
+  if (probe.error && isMissingTable(probe.error.message)) {
+    return { ok: false, error: 'Estimate table not migrated. Apply migration 000085.' };
+  }
+
+  let customerId = input.customerId ?? null;
+  let name = input.contactName;
+  let email = input.contactEmail ?? null;
+  let phone = input.contactPhone ?? null;
+
+  if (customerId) {
+    const { data: cust } = await admin.from('customers').select('*').eq('id', customerId).maybeSingle();
+    if (cust) {
+      const c = cust as Record<string, unknown>;
+      name = str(c.name) || name;
+      email = str(c.email) || email;
+      phone = str(c.phone) || phone;
+    }
+  }
+
+  const totalCents = Math.max(0, input.totalCents);
+  const depositCents = computeDepositCents(totalCents, input.depositCents);
+  const now = new Date().toISOString();
+  const validUntil = new Date(Date.now() + 14 * 86400000).toISOString();
+  const lineItems = [{ label: input.serviceSlug.replace(/-/g, ' '), amountCents: totalCents }];
+
+  const { data, error } = await admin
+    .from('service_estimates')
+    .insert({
+      lead_id: null,
+      customer_id: customerId,
+      status: 'draft',
+      customer_name: name || 'Customer',
+      customer_email: email ? str(email).toLowerCase() : null,
+      customer_phone: phone ? str(phone) : null,
+      service_slug: input.serviceSlug,
+      vehicle_class: input.vehicleClass ?? 'sedan',
+      line_items: lineItems,
+      subtotal_cents: totalCents,
+      discount_cents: 0,
+      total_cents: totalCents,
+      deposit_cents: depositCents,
+      notes: input.notes?.trim() || (input.opportunityId ? `Opportunity: ${input.opportunityId}` : null),
+      valid_until: validUntil,
+      created_by: actorId,
+      updated_at: now,
+    })
+    .select('*')
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, estimate: mapRow(data as Record<string, unknown>) };
+}
+
 export async function sendEstimateToCustomer(
   admin: SupabaseClient,
   estimateId: string,
@@ -318,6 +388,112 @@ export async function sendEstimateSmsToCustomer(
   });
 
   if (!sent.ok && !sent.skipped) return { ok: false, error: sent.error ?? 'SMS failed' };
+  return { ok: true };
+}
+
+export async function sendEstimateSmsWithBody(
+  admin: SupabaseClient,
+  estimateId: string,
+  body: string,
+  origin?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const estimate = await loadEstimateById(admin, estimateId);
+  if (!estimate) return { ok: false, error: 'Estimate not found' };
+  if (!estimate.customerPhone) return { ok: false, error: 'Customer phone required.' };
+
+  const { sendCustomerSms } = await import('@/lib/sms-send');
+  const sent = await sendCustomerSms({
+    db: admin,
+    to: estimate.customerPhone,
+    body,
+    kind: 'estimate_sent',
+    customer_id: estimate.customerId,
+    template_key: 'estimate_quote',
+    requireConsent: false,
+    extraPayload: { estimate_id: estimate.id, url: estimatePublicUrl(estimate.accessToken, origin), body },
+  });
+
+  const now = new Date().toISOString();
+  await admin.from('notification_outbox').insert({
+    kind: 'estimate_sent_sms',
+    customer_id: estimate.customerId,
+    channel: 'sms',
+    status: sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed',
+    sent_at: sent.ok ? now : null,
+    payload: {
+      to: estimate.customerPhone,
+      body,
+      estimate_id: estimate.id,
+      error: sent.error ?? null,
+      sid: sent.sid ?? null,
+      entity_type: 'estimate',
+      entity_id: estimate.id,
+    },
+    created_at: now,
+  });
+
+  if (estimate.status === 'draft') {
+    await admin.from('service_estimates').update({ status: 'sent', sent_at: now, updated_at: now }).eq('id', estimate.id);
+    if (estimate.leadId) await admin.from('leads').update({ status: 'quoted', updated_at: now }).eq('id', estimate.leadId);
+  }
+
+  if (!sent.ok && !sent.skipped) return { ok: false, error: sent.error ?? 'SMS failed' };
+  return { ok: true };
+}
+
+export async function sendEstimateEmailWithBody(
+  admin: SupabaseClient,
+  estimateId: string,
+  input: { subject?: string; body: string },
+  origin?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const estimate = await loadEstimateById(admin, estimateId);
+  if (!estimate) return { ok: false, error: 'Estimate not found' };
+  if (!estimate.customerEmail) return { ok: false, error: 'Customer email required.' };
+
+  const subject = input.subject?.trim() || buildEstimateEmailSubject(estimate);
+  const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+  const { glossBossEmailLayout } = await import('@/lib/email/templates/layout');
+
+  const html = glossBossEmailLayout({
+    title: subject,
+    bodyHtml: `<p style="color:#e4e4e7;font-size:15px;line-height:1.6;white-space:pre-wrap">${input.body.replace(/</g, '&lt;')}</p>`,
+  });
+
+  const now = new Date().toISOString();
+  let status = 'failed';
+  let err: string | null = null;
+  if (resendConfigured()) {
+    const sent = await sendResendHtml({ to: estimate.customerEmail, subject, html });
+    status = sent.ok ? 'sent' : 'failed';
+    err = sent.ok ? null : sent.error ?? 'send failed';
+  } else {
+    err = 'Resend not configured';
+  }
+
+  await admin.from('notification_outbox').insert({
+    kind: 'estimate_sent',
+    customer_id: estimate.customerId,
+    channel: 'email',
+    status,
+    subject,
+    sent_at: status === 'sent' ? now : null,
+    payload: {
+      to: estimate.customerEmail,
+      body: input.body,
+      estimate_id: estimate.id,
+      url: estimatePublicUrl(estimate.accessToken, origin),
+      error: err,
+      entity_type: 'estimate',
+      entity_id: estimate.id,
+    },
+    created_at: now,
+  });
+
+  await admin.from('service_estimates').update({ status: 'sent', sent_at: now, updated_at: now }).eq('id', estimate.id);
+  if (estimate.leadId) await admin.from('leads').update({ status: 'quoted', updated_at: now }).eq('id', estimate.leadId);
+
+  if (status !== 'sent') return { ok: false, error: err ?? 'Email failed' };
   return { ok: true };
 }
 

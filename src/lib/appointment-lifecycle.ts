@@ -136,7 +136,15 @@ export async function cancelAppointmentLifecycle(
 
 export async function rescheduleAppointmentLifecycle(
   admin: SupabaseClient,
-  input: { appointmentId: string; newScheduledStart: string; reason?: string; notifyCustomer?: boolean },
+  input: {
+    appointmentId: string;
+    newScheduledStart: string;
+    reason?: string;
+    notifyCustomer?: boolean;
+    customEmailBody?: string;
+    customEmailSubject?: string;
+    customSmsBody?: string;
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const id = str(input.appointmentId);
   const newStart = str(input.newScheduledStart);
@@ -177,14 +185,42 @@ export async function rescheduleAppointmentLifecycle(
 
   const guest = str(row.guest_name) || 'Customer';
   const email = str(row.guest_email);
+  const phone = str(row.guest_phone);
   const token = str(row.access_token);
   const calUrl = `${appBase()}/api/calendar/appointment/${id}`;
   const confirmUrl =
     token ? `${appBase()}/book/confirmation?appointment_id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}` : `${appBase()}/book`;
 
-  if (input.notifyCustomer !== false && email) {
-    const html = `<p>Hi ${guest},</p><p>Your appointment has been rescheduled.</p><p><strong>Was:</strong> ${whenChicago(oldStart)}<br/><strong>Now:</strong> ${whenChicago(newStart)}</p><p><a href="${confirmUrl}">View confirmation</a> · <a href="${calUrl}">Add to calendar (.ics)</a></p>`;
-    await emailCustomer(admin, email, 'Gloss Boss ATX — Appointment rescheduled', html, id, 'booking_rescheduled');
+  if (input.notifyCustomer !== false && (email || phone)) {
+    const { buildRescheduleEmailBody, buildRescheduleSmsBody } = await import('@/lib/outbound-message-builders');
+    const plainBody =
+      input.customEmailBody ??
+      buildRescheduleEmailBody({ guestName: guest, oldStart, newStart, confirmUrl, calUrl });
+    const smsBody =
+      input.customSmsBody ?? buildRescheduleSmsBody({ oldStart, newStart, confirmUrl });
+    const subject = input.customEmailSubject ?? 'Gloss Boss ATX — Appointment rescheduled';
+    if (email) {
+      const html = input.customEmailBody
+        ? `<p style="color:#e4e4e7;font-size:15px;line-height:1.6;white-space:pre-wrap">${plainBody.replace(/</g, '&lt;')}</p>`
+        : `<p>Hi ${guest},</p><p>Your appointment has been rescheduled.</p><p><strong>Was:</strong> ${whenChicago(oldStart)}<br/><strong>Now:</strong> ${whenChicago(newStart)}</p><p><a href="${confirmUrl}">View confirmation</a> · <a href="${calUrl}">Add to calendar (.ics)</a></p>`;
+      await emailCustomer(admin, email, subject, html, id, 'booking_rescheduled');
+    }
+    if (phone) {
+      const { twilioConfigured } = await import('@/lib/email-send');
+      const { sendCustomerSms } = await import('@/lib/sms-send');
+      if (twilioConfigured()) {
+        await sendCustomerSms({
+          db: admin,
+          kind: 'booking_rescheduled',
+          template_key: 'reschedule_cancel',
+          to: phone,
+          body: smsBody,
+          appointment_id: id,
+          customer_id: row.customer_id ? str(row.customer_id) : null,
+          requireConsent: false,
+        });
+      }
+    }
   }
 
   try {

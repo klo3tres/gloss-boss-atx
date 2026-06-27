@@ -315,6 +315,7 @@ export async function deliverFollowUp(
   admin: SupabaseClient,
   followUp: CustomerFollowUpRow,
   setting: FollowUpSetting,
+  customBody?: string,
 ): Promise<{ ok: boolean; channel?: string; error?: string; skippedReason?: string }> {
   const vars = {
     customer: followUp.customerName?.trim() || 'there',
@@ -323,7 +324,7 @@ export async function deliverFollowUp(
     promo: setting.promoCode || 'GLOSS10',
   };
 
-  const smsBody = renderTemplate(setting.smsTemplate, vars);
+  const smsBody = customBody?.trim() || renderTemplate(setting.smsTemplate, vars);
   const emailSubject = renderTemplate(setting.emailSubject, vars);
   const emailPlain = renderTemplate(setting.emailBody, vars);
 
@@ -511,9 +512,58 @@ export async function runFollowUpEngine(admin: SupabaseClient) {
   }
 }
 
+export async function previewFollowUpMessage(
+  admin: SupabaseClient,
+  followUpId: string,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  channel?: 'sms' | 'email';
+  recipient?: string;
+  body?: string;
+  subject?: string;
+  customerName?: string;
+}> {
+  const { data } = await admin.from('customer_follow_ups').select('*').eq('id', followUpId).maybeSingle();
+  if (!data) return { ok: false, error: 'Follow-up not found' };
+  const followUp = mapFollowUp(data as Record<string, unknown>);
+  const settings = await loadFollowUpSettings(admin);
+  const setting = settings.find((s) => s.tier === followUp.tier);
+  if (!setting) return { ok: false, error: 'Settings missing' };
+
+  const vars = {
+    customer: followUp.customerName?.trim() || 'there',
+    vehicle: followUp.vehicleDescription?.trim() || 'vehicle',
+    bookLink: BOOK_LINK,
+    promo: setting.promoCode || 'GLOSS10',
+  };
+
+  if (setting.smsEnabled && followUp.customerPhone) {
+    return {
+      ok: true,
+      channel: 'sms',
+      recipient: followUp.customerPhone,
+      body: renderTemplate(setting.smsTemplate, vars),
+      customerName: followUp.customerName ?? undefined,
+    };
+  }
+  if (setting.emailEnabled && followUp.customerEmail) {
+    return {
+      ok: true,
+      channel: 'email',
+      recipient: followUp.customerEmail,
+      subject: renderTemplate(setting.emailSubject, vars),
+      body: renderTemplate(setting.emailBody, vars),
+      customerName: followUp.customerName ?? undefined,
+    };
+  }
+  return { ok: false, error: 'No phone or email on file.' };
+}
+
 export async function sendFollowUpNow(
   admin: SupabaseClient,
   followUpId: string,
+  customBody?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const { data } = await admin.from('customer_follow_ups').select('*').eq('id', followUpId).maybeSingle();
   if (!data) return { ok: false, error: 'Follow-up not found' };
@@ -523,7 +573,7 @@ export async function sendFollowUpNow(
   const setting = settings.find((s) => s.tier === followUp.tier);
   if (!setting) return { ok: false, error: 'Follow-up settings missing' };
 
-  const result = await deliverFollowUp(admin, followUp, setting);
+  const result = await deliverFollowUp(admin, followUp, setting, customBody);
   const nowIso = new Date().toISOString();
   if (result.ok) {
     await admin

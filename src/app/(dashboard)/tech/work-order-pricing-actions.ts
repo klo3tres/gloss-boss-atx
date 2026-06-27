@@ -549,25 +549,78 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
   if (notifyCustomer && oldStart && oldStart !== scheduled.toISOString()) {
     const row = ctx.job as Record<string, unknown>;
     const email = str(row.guest_email);
+    const phone = str(row.guest_phone);
     const guest = str(row.guest_name) || 'Customer';
+    const token = str(row.access_token);
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+    const confirmUrl = token
+      ? `${appBase}/book/confirmation?appointment_id=${encodeURIComponent(ctx.jobId)}&token=${encodeURIComponent(token)}`
+      : `${appBase}/book`;
+    const customEmailBody = str(formData.get('customNotifyEmailBody'));
+    const customSmsBody = str(formData.get('customNotifySmsBody'));
+    const { buildWorkOrderTimeChangeEmailBody, buildWorkOrderTimeChangeSmsBody } = await import(
+      '@/lib/outbound-message-builders'
+    );
+    const plainEmail =
+      customEmailBody ||
+      buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart: scheduled.toISOString(), confirmUrl });
+    const smsBody =
+      customSmsBody || buildWorkOrderTimeChangeSmsBody({ oldStart, newStart: scheduled.toISOString(), confirmUrl });
+    const { logOutboundMessage } = await import('@/app/(dashboard)/admin/outbound-message-actions');
     if (email.includes('@')) {
       const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+      const { glossBossEmailLayout } = await import('@/lib/email/templates/layout');
       if (resendConfigured()) {
-        const fmt = (iso: string) =>
-          new Intl.DateTimeFormat('en-US', {
-            timeZone: 'America/Chicago',
-            dateStyle: 'full',
-            timeStyle: 'short',
-          }).format(new Date(iso));
-        const token = str(row.access_token);
-        const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
-        const confirmUrl = token
-          ? `${appBase}/book/confirmation?appointment_id=${encodeURIComponent(ctx.jobId)}&token=${encodeURIComponent(token)}`
-          : `${appBase}/book`;
-        await sendResendHtml({
+        const html = glossBossEmailLayout({
+          title: 'Appointment time updated',
+          bodyHtml: `<p style="color:#e4e4e7;font-size:15px;line-height:1.6;white-space:pre-wrap">${plainEmail.replace(/</g, '&lt;')}</p>`,
+        });
+        const sent = await sendResendHtml({
           to: email,
           subject: 'Gloss Boss ATX — Appointment time updated',
-          html: `<p>Hi ${guest},</p><p>Your appointment time was updated.</p><p><strong>Was:</strong> ${fmt(oldStart)}<br/><strong>Now:</strong> ${fmt(scheduled.toISOString())}</p><p><a href="${confirmUrl}">View confirmation</a></p>`,
+          html,
+        });
+        await logOutboundMessage(gate.admin, {
+          kind: 'work_order_time_change',
+          channel: 'email',
+          status: sent.ok ? 'sent' : 'failed',
+          body: plainEmail,
+          subject: 'Gloss Boss ATX — Appointment time updated',
+          recipient: email,
+          provider_message_id: sent.emailId ?? null,
+          error_message: sent.ok ? null : sent.error ?? null,
+          appointment_id: ctx.jobId,
+          customer_id: row.customer_id ? str(row.customer_id) : null,
+          entity_type: 'appointment',
+          entity_id: ctx.jobId,
+        });
+      }
+    }
+    if (phone) {
+      const { twilioConfigured } = await import('@/lib/email-send');
+      const { sendCustomerSms } = await import('@/lib/sms-send');
+      if (twilioConfigured()) {
+        const sent = await sendCustomerSms({
+          db: gate.admin,
+          kind: 'work_order_time_change',
+          to: phone,
+          body: smsBody,
+          appointment_id: ctx.jobId,
+          customer_id: row.customer_id ? str(row.customer_id) : null,
+          requireConsent: false,
+        });
+        await logOutboundMessage(gate.admin, {
+          kind: 'work_order_time_change',
+          channel: 'sms',
+          status: sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed',
+          body: smsBody,
+          recipient: phone,
+          provider_message_id: sent.sid ?? null,
+          error_message: sent.error ?? null,
+          appointment_id: ctx.jobId,
+          customer_id: row.customer_id ? str(row.customer_id) : null,
+          entity_type: 'appointment',
+          entity_id: ctx.jobId,
         });
       }
     }
@@ -576,4 +629,43 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
   revalidatePath(`/tech/work-orders/${ctx.jobId}`);
   revalidatePath('/admin/dispatch');
   return { ok: true, conflict: conflict && allowConflict };
+}
+
+export async function previewWorkOrderScheduleNotifyAction(input: {
+  appointmentId: string;
+  scheduledStart: string;
+}): Promise<{
+  ok?: boolean;
+  error?: string;
+  guestName?: string;
+  email?: string;
+  phone?: string;
+  emailBody?: string;
+  smsBody?: string;
+}> {
+  const gate = await requireAdmin();
+  if ('error' in gate) return { error: gate.error };
+  const { data: appt } = await gate.admin.from('appointments').select('*').eq('id', input.appointmentId).maybeSingle();
+  if (!appt) return { error: 'Appointment not found' };
+  const row = appt as Record<string, unknown>;
+  const oldStart = str(row.scheduled_start);
+  const newStart = new Date(input.scheduledStart).toISOString();
+  if (oldStart === newStart) return { error: 'Start time unchanged — no notification needed.' };
+  const guest = str(row.guest_name) || 'Customer';
+  const email = str(row.guest_email);
+  const phone = str(row.guest_phone);
+  const token = str(row.access_token);
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+  const confirmUrl = token
+    ? `${appBase}/book/confirmation?appointment_id=${encodeURIComponent(input.appointmentId)}&token=${encodeURIComponent(token)}`
+    : `${appBase}/book`;
+  const { buildWorkOrderTimeChangeEmailBody, buildWorkOrderTimeChangeSmsBody } = await import('@/lib/outbound-message-builders');
+  return {
+    ok: true,
+    guestName: guest,
+    email: email || undefined,
+    phone: phone || undefined,
+    emailBody: buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart, confirmUrl }),
+    smsBody: buildWorkOrderTimeChangeSmsBody({ oldStart, newStart, confirmUrl }),
+  };
 }

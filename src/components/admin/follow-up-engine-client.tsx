@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import {
+  previewFollowUpAction,
   sendFollowUpNowAction,
   skipFollowUpAction,
   snoozeFollowUpAction,
   syncFollowUpsNowAction,
   toggleFollowUpTierAction,
 } from '@/app/(dashboard)/admin/follow-ups/follow-up-actions';
+import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
 import type { FollowUpDashboard, FollowUpTier } from '@/lib/follow-up-engine';
 import { formatChicagoDate, formatChicagoDateTime } from '@/lib/chicago-time';
 
@@ -26,6 +29,7 @@ function StatTile({ label, value, hint }: { label: string; value: string | numbe
 
 export function FollowUpEngineClient({ dashboard }: { dashboard: FollowUpDashboard }) {
   const router = useRouter();
+  const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -48,13 +52,27 @@ export function FollowUpEngineClient({ dashboard }: { dashboard: FollowUpDashboa
   const sendNow = (id: string) => {
     setMsg(null);
     setErr(null);
-    startTransition(async () => {
-      const res = await sendFollowUpNowAction(id);
-      if (res.error) setErr(res.error);
-      else {
-        setMsg('Follow-up sent.');
-        router.refresh();
+    void previewFollowUpAction(id).then((preview) => {
+      if (preview.error || !preview.recipient || !preview.body) {
+        setErr(preview.error ?? 'Cannot preview follow-up');
+        return;
       }
+      const channel = preview.channel ?? 'sms';
+      const tones = channel === 'sms' ? buildToneVariants(preview.body, { name: preview.customerName }) : undefined;
+      openPreview({
+        title: 'Send follow-up',
+        channel,
+        recipient: preview.recipient,
+        body: preview.body,
+        subject: preview.subject,
+        toneVariants: tones,
+        contextLabel: `Follow-up · ${preview.customerName ?? id.slice(0, 8)}`,
+        onSend: async (final) => {
+          const res = await sendFollowUpNowAction(id, channel === 'sms' ? final.body : undefined);
+          if (!res.error) router.refresh();
+          return res;
+        },
+      });
     });
   };
 

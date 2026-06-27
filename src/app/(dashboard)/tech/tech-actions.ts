@@ -820,29 +820,26 @@ const NOTIFY_LABELS: Record<string, string> = {
   booking_confirmation: 'Booking confirmation',
 };
 
-export async function techSendActiveJobNotificationAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
-  const gate = await requireTechSupabase();
-  if (!gate.ok) return actionErr('Not signed in.');
-  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
-  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
-  const kind = String(formData.get('kind') ?? '').trim();
-  const allowed = new Set([
-    'job_started',
-    'technician_on_the_way',
-    'halfway_complete',
-    'last_touches',
-    'payment_link',
-    'review_request',
-    'job_completed',
-    'technician_assigned',
-    'work_started',
-    'appointment_reminder',
-    'appointment_confirmed',
-    'booking_confirmation',
-  ]);
-  if (!allowed.has(kind) || (!appointmentId && !fallbackBookingId)) return actionErr('Invalid notification request.');
-  const admin = tryCreateAdminSupabase();
-  const db = admin ?? gate.supabase;
+const NOTIFY_KINDS = new Set([
+  'job_started',
+  'technician_on_the_way',
+  'halfway_complete',
+  'last_touches',
+  'payment_link',
+  'review_request',
+  'job_completed',
+  'technician_assigned',
+  'work_started',
+  'appointment_reminder',
+  'appointment_confirmed',
+  'booking_confirmation',
+]);
+
+async function loadJobNotificationContext(
+  db: SupabaseClient,
+  appointmentId: string,
+  fallbackBookingId: string,
+) {
   let vehicle = 'your vehicle';
   let guestName = 'there';
   let guestEmail: string | null = null;
@@ -864,6 +861,59 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com';
   const dashboardUrl = `${appBaseUrl}/dashboard`;
   const customerReviewUrl = appointmentId ? `${appBaseUrl}/review/${encodeURIComponent(appointmentId)}` : dashboardUrl;
+  return { vehicle, guestName, guestEmail, guestPhone, customerId, dashboardUrl, customerReviewUrl };
+}
+
+export async function previewTechJobNotificationAction(input: {
+  appointmentId?: string;
+  fallbackBookingId?: string;
+  kind: string;
+}): Promise<{
+  ok?: boolean;
+  error?: string;
+  channel?: 'sms' | 'email';
+  recipient?: string;
+  body?: string;
+  subject?: string;
+  guestName?: string;
+  vehicle?: string;
+}> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return { error: 'Not signed in.' };
+  const appointmentId = String(input.appointmentId ?? '').trim();
+  const fallbackBookingId = String(input.fallbackBookingId ?? '').trim();
+  const kind = String(input.kind ?? '').trim();
+  if (!NOTIFY_KINDS.has(kind) || (!appointmentId && !fallbackBookingId)) return { error: 'Invalid notification request.' };
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const ctx = await loadJobNotificationContext(db, appointmentId, fallbackBookingId);
+  const { buildJobNotificationSms, buildJobNotificationEmailSubject } = await import('@/lib/outbound-message-builders');
+  const paymentPlaceholder = kind === 'payment_link' ? '[Stripe Checkout URL]' : null;
+  const body = buildJobNotificationSms(kind, {
+    vehicle: ctx.vehicle,
+    dashboardUrl: ctx.dashboardUrl,
+    reviewUrl: ctx.customerReviewUrl,
+    paymentUrl: paymentPlaceholder,
+  });
+  const subject = buildJobNotificationEmailSubject(kind);
+  const channel: 'sms' | 'email' = ctx.guestPhone ? 'sms' : 'email';
+  const recipient = ctx.guestPhone || ctx.guestEmail || '';
+  if (!recipient) return { error: 'No customer phone or email on file.' };
+  return { ok: true, channel, recipient, body, subject, guestName: ctx.guestName, vehicle: ctx.vehicle };
+}
+
+export async function techSendActiveJobNotificationAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) return actionErr('Not signed in.');
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
+  const kind = String(formData.get('kind') ?? '').trim();
+  const customBody = String(formData.get('customBody') ?? '').trim();
+  if (!NOTIFY_KINDS.has(kind) || (!appointmentId && !fallbackBookingId)) return actionErr('Invalid notification request.');
+  const admin = tryCreateAdminSupabase();
+  const db = admin ?? gate.supabase;
+  const ctx = await loadJobNotificationContext(db, appointmentId, fallbackBookingId);
+  let { vehicle, guestName, guestEmail, guestPhone, customerId, dashboardUrl, customerReviewUrl } = ctx;
   let paymentUrl: string | null = null;
   const notificationConfigured = Boolean(resendConfigured() || twilioConfigured());
   let outboxStatus = guestEmail || guestPhone ? (notificationConfigured ? 'queued' : 'skipped') : 'skipped';
@@ -897,26 +947,15 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       return actionErr(checkout.error || 'Could not create balance checkout.');
     }
   }
+  const { buildJobNotificationSms } = await import('@/lib/outbound-message-builders');
   const message =
-    kind === 'technician_on_the_way'
-      ? `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`
-      : kind === 'halfway_complete'
-        ? `Gloss Boss ATX update: We are about halfway through ${vehicle}. Track updates here: ${dashboardUrl}`
-        : kind === 'last_touches'
-      ? `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`
-      : kind === 'payment_link'
-        ? `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. ${paymentUrl ? `Pay here: ${paymentUrl}` : `Track updates here: ${dashboardUrl}`}`
-        : kind === 'job_started' || kind === 'work_started'
-          ? `Gloss Boss ATX update: Work has started on ${vehicle}. Track live progress here: ${dashboardUrl}`
-          : kind === 'job_completed'
-            ? `Gloss Boss ATX update: Your detail is complete for ${vehicle}. Photos and receipt are available here: ${dashboardUrl}`
-            : kind === 'technician_assigned'
-              ? `Gloss Boss ATX update: Your technician has been assigned for ${vehicle}. Track your appointment here: ${dashboardUrl}`
-              : kind === 'appointment_reminder'
-                ? `Gloss Boss ATX reminder: Your appointment for ${vehicle} is coming up. Details: ${dashboardUrl}`
-                : kind === 'appointment_confirmed' || kind === 'booking_confirmation'
-                  ? `Gloss Boss ATX: Your appointment for ${vehicle} is confirmed. Details: ${dashboardUrl}`
-                  : `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${customerReviewUrl}`;
+    customBody ||
+    buildJobNotificationSms(kind, {
+      vehicle,
+      dashboardUrl,
+      reviewUrl: customerReviewUrl,
+      paymentUrl,
+    });
   let smsResult: Awaited<ReturnType<typeof sendCustomerSms>> | null = null;
   let emailResult: Awaited<ReturnType<typeof sendResendHtml>> | null = null;
   if (outboxStatus !== 'skipped') {
@@ -1493,6 +1532,24 @@ export async function techCompleteJobAction(
   if (completeUpdate.error) {
     console.error('[tech] complete job', completeUpdate.error.message);
     return { error: completeUpdate.error.message || 'Could not update job status.' };
+  }
+
+  const inventoryRaw = String(formData.get('inventoryUsage') ?? '').trim();
+  if (inventoryRaw && admin) {
+    try {
+      const parsed = JSON.parse(inventoryRaw) as {
+        lines?: Array<{ inventoryItemId: string; quantity: number }>;
+        skipReason?: string;
+      };
+      const { applyInventoryUsage } = await import('@/lib/titan/inventory-usage');
+      await applyInventoryUsage(admin, {
+        appointmentId,
+        lines: parsed.lines ?? [],
+        skipReason: parsed.skipReason,
+      });
+    } catch (e) {
+      console.warn('[tech] inventory usage', e);
+    }
   }
 
   const adminClient = tryCreateAdminSupabase();

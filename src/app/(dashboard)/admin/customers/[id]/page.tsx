@@ -12,6 +12,7 @@ import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { CustomerProfileTabs } from '@/components/admin/customer-profile-tabs';
+import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
 import { CustomerTimelineFeed } from '@/components/admin/customer-timeline-feed';
 import { loadCustomerTimeline } from '@/lib/customer-timeline';
 import { 
@@ -25,6 +26,7 @@ import {
   ShieldAlert,
   PhoneCall,
   ArrowLeft,
+  FileText,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -161,6 +163,27 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const stampsTotal = loyaltyStatus.totalStamps;
   const currentPunchCardStamps = loyaltyStatus.progressStamps;
   const isRewardReady = loyaltyStatus.rewardReady;
+
+  const [servicesRes, pricesRes] = await Promise.all([
+    admin.from('services').select('slug, title, duration_minutes').eq('active', true).order('sort_order'),
+    admin.from('service_prices').select('price_cents, services(slug)'),
+  ]);
+  const priceBySlug = new Map<string, number>();
+  for (const row of pricesRes.data ?? []) {
+    const r = row as { price_cents?: number; services?: { slug?: string } | { slug?: string }[] | null };
+    const svc = r.services;
+    const slug = Array.isArray(svc) ? svc[0]?.slug : svc?.slug;
+    if (slug && typeof r.price_cents === 'number') priceBySlug.set(String(slug), r.price_cents);
+  }
+  const serviceOptions = (servicesRes.data ?? []).map((s) => {
+    const row = s as { slug: string; title: string; duration_minutes?: number };
+    return {
+      slug: row.slug,
+      title: row.title,
+      priceCents: priceBySlug.get(row.slug),
+      durationMinutes: row.duration_minutes ?? 120,
+    };
+  });
 
   const { data: activeMembership } = await admin
     .from('customer_memberships')
@@ -419,6 +442,26 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       <p className="text-xs text-zinc-500 italic py-2">No services have been processed yet.</p>
                     )}
                   </div>
+                </div>
+              ),
+            },
+            {
+              id: 'quote',
+              label: 'Send quote',
+              icon: <FileText className="h-3.5 w-3.5" />,
+              content: (
+                <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-6 backdrop-blur-md">
+                  <h2 className="text-xs font-black uppercase text-gold-soft tracking-wider">Titan Quote Builder</h2>
+                  <p className="text-[10px] text-zinc-500 mt-1 mb-4">Build, preview, and send a quote in under 60 seconds.</p>
+                  <QuoteBuilderPanel
+                    customerId={id}
+                    contactName={String(c.name ?? c.full_name ?? 'Customer')}
+                    leadEmail={String(c.email ?? '') || null}
+                    leadPhone={String(c.phone ?? '') || null}
+                    estimates={[]}
+                    serviceOptions={serviceOptions}
+                    contextLabel={`Customer · ${String(c.name ?? c.email ?? id.slice(0, 8))}`}
+                  />
                 </div>
               ),
             },

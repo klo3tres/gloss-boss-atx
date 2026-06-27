@@ -1061,3 +1061,29 @@ input[type="range"]::-moz-range-thumb {
 @keyframes weatherRainDrift { 0%{background-position:0 0} 100%{background-position:0 24px} }
 @keyframes weatherStormFlash { 0%,92%,100%{opacity:.2} 94%{opacity:.5} }
 
+/* Mobile usability — door-knocking / field use */
+@media (max-width: 640px) {
+  .gb-glass-card,
+  .gb-platform-kpi,
+  .gb-premium-card {
+    padding: 1rem !important;
+  }
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .fixed.inset-0.z-\[200\],
+  .fixed.inset-0.z-\[220\] {
+    padding: 0.75rem;
+    align-items: flex-end;
+  }
+  .gb-mobile-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .gb-mobile-full {
+    width: 100% !important;
+  }
+}
+

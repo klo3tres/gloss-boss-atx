@@ -61,6 +61,8 @@ function InventoryRow({
   const [threshold, setThreshold] = useState(item.reorder_threshold);
   const [busy, setBusy] = useState(false);
   const low = item.reorder_threshold > 0 && qty <= item.reorder_threshold;
+  const avgUse = item.slug.includes('towel') ? 8 : item.slug.includes('glove') ? 0.15 : 0.25;
+  const jobsLeft = qty > 0 && avgUse > 0 ? Math.floor(qty / avgUse) : 0;
 
   return (
     <li className='rounded-2xl border border-white/10 bg-black/40 p-5'>
@@ -75,6 +77,7 @@ function InventoryRow({
           <span className='rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-300'>OK</span>
         )}
       </div>
+      <p className="mt-2 text-[10px] text-zinc-600">~{jobsLeft} jobs remaining at typical use</p>
       <div className='mt-4 grid grid-cols-2 gap-3'>
         <label className='text-xs text-zinc-500'>
           On hand

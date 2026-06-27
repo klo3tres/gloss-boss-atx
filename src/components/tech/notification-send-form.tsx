@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
-import { techSendActiveJobNotificationAction } from '@/app/(dashboard)/tech/tech-actions';
+import {
+  previewTechJobNotificationAction,
+  techSendActiveJobNotificationAction,
+} from '@/app/(dashboard)/tech/tech-actions';
+import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 const UPDATE_TEMPLATES = [
   { value: 'technician_on_the_way', label: 'Technician on the way' },
@@ -35,116 +40,75 @@ export function NotificationSendForm({
   vehicleLabel?: string;
   guestName?: string;
 }) {
-  const [showModal, setShowModal] = useState(false);
+  const { openPreview } = useOutboundPreview();
   const [selectedKind, setSelectedKind] = useState(kind);
+  const [pending, startTransition] = useTransition();
   const hiddenSubmitRef = useRef<HTMLButtonElement>(null);
+  const customBodyRef = useRef<HTMLInputElement>(null);
 
-  const vehicle = vehicleLabel || 'your vehicle';
-  
-  // Construct client-side message preview matches tech-actions message builders
-  let previewText = '';
-  const dashboardUrl = typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : '/dashboard';
-  
-  switch (selectedKind) {
-    case 'technician_on_the_way':
-      previewText = `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`;
-      break;
-    case 'halfway_complete':
-      previewText = `Gloss Boss ATX update: We are about halfway through ${vehicle}. Track updates here: ${dashboardUrl}`;
-      break;
-    case 'last_touches':
-      previewText = `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`;
-      break;
-    case 'payment_link':
-      previewText = `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. Pay here: [Stripe Checkout URL] (or track here: ${dashboardUrl})`;
-      break;
-    case 'job_started':
-    case 'work_started':
-      previewText = `Gloss Boss ATX update: Work has started on ${vehicle}. Track live progress here: ${dashboardUrl}`;
-      break;
-    case 'job_completed':
-      previewText = `Gloss Boss ATX update: Your detail is complete for ${vehicle}. Photos and receipt are available here: ${dashboardUrl}`;
-      break;
-    case 'review_request':
-      previewText = `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Review your completed service here: ${dashboardUrl}`;
-      break;
-    default:
-      previewText = `Gloss Boss ATX update: Thanks for choosing Gloss Boss ATX. Track your service here: ${dashboardUrl}`;
-  }
-
-  const handleConfirm = () => {
-    setShowModal(false);
-    hiddenSubmitRef.current?.click();
+  const openSendPreview = () => {
+    startTransition(async () => {
+      const preview = await previewTechJobNotificationAction({
+        appointmentId,
+        fallbackBookingId,
+        kind: selectedKind,
+      });
+      if (preview.error || !preview.body || !preview.recipient) {
+        alert(preview.error ?? 'Could not build preview.');
+        return;
+      }
+      const tones = buildToneVariants(preview.body, { name: guestName });
+      const channel = preview.channel ?? 'sms';
+      openPreview({
+        title: channel === 'sms' ? 'Send customer SMS' : 'Send customer email',
+        channel,
+        recipient: preview.recipient,
+        body: tones.professional,
+        subject: preview.subject,
+        toneVariants: tones,
+        contextLabel: [guestName, vehicleLabel].filter(Boolean).join(' · ') || 'Work order update',
+        onSend: async (final) => {
+          if (customBodyRef.current) customBodyRef.current.value = final.body;
+          hiddenSubmitRef.current?.click();
+          return { ok: true };
+        },
+      });
+    });
   };
 
   return (
     <>
       <ToastActionForm action={techSendActiveJobNotificationAction} className={className}>
-        <input type='hidden' name='kind' value={selectedKind} />
-        {appointmentId ? <input type='hidden' name='appointmentId' value={appointmentId} /> : null}
-        {fallbackBookingId ? <input type='hidden' name='fallbackBookingId' value={fallbackBookingId} /> : null}
-        
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className={buttonClassName}
-        >
-          {children}
-        </button>
+        <input type="hidden" name="kind" value={selectedKind} />
+        <input type="hidden" name="customBody" ref={customBodyRef} defaultValue="" />
+        {appointmentId ? <input type="hidden" name="appointmentId" value={appointmentId} /> : null}
+        {fallbackBookingId ? <input type="hidden" name="fallbackBookingId" value={fallbackBookingId} /> : null}
+
+        <div className="space-y-2">
+          <select
+            value={selectedKind}
+            onChange={(e) => setSelectedKind(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-black px-3 py-2 text-xs text-white"
+            aria-label="Update template"
+          >
+            {UPDATE_TEMPLATES.map((template) => (
+              <option key={template.value} value={template.value}>
+                {template.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={openSendPreview}
+            disabled={pending}
+            className={buttonClassName}
+          >
+            {pending ? pendingText : children}
+          </button>
+        </div>
 
         <button type="submit" ref={hiddenSubmitRef} className="hidden" />
       </ToastActionForm>
-
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-          <div className="gb-glass w-full max-w-md rounded-3xl border border-gold/30 bg-black/95 p-6 space-y-4 text-left shadow-[0_0_50px_rgba(212,175,55,0.15)] animate-in fade-in duration-200">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft mb-1">Message Outbox Preview</p>
-              <h3 className="text-lg font-bold text-white">Confirm Customer Message</h3>
-            </div>
-
-            <label className="block text-xs font-black uppercase tracking-wider text-zinc-400">
-              Update template
-              <select
-                value={selectedKind}
-                onChange={(e) => setSelectedKind(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white"
-              >
-                {UPDATE_TEMPLATES.map((template) => (
-                  <option key={template.value} value={template.value}>
-                    {template.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
-              {previewText}
-            </div>
-
-            <p className="text-[10px] text-zinc-500">
-              Confirm before sending. This message goes to the customer via active SMS and email templates.
-            </p>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-black uppercase text-zinc-400 hover:text-white transition duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                className="rounded-xl bg-gold px-5 py-2.5 text-xs font-black uppercase text-black hover:bg-gold-soft transition duration-200 shadow-[0_0_15px_rgba(212,175,55,0.3)]"
-              >
-                Confirm & Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

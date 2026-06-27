@@ -9,6 +9,7 @@ import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import { loadLeadRadarItems, topLeadRadarForToday } from '@/lib/titan/lead-radar-engine';
 import { loadConversionGoalStats, loadDailyHuntTasks } from '@/lib/titan/lead-radar-hunt';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
+import { buildTodaysMoneyPlan } from '@/lib/titan/todays-money-plan';
 import { resolveOwnerFirstName } from '@/lib/owner-identity';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -35,6 +36,10 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
     loadDailyHuntTasks(admin),
     loadConversionGoalStats(admin),
   ]);
+  const moneyPlan = await buildTodaysMoneyPlan(admin, {
+    opportunities: revenueHunt.opportunities,
+    leadRadar: leadRadar.items,
+  });
   const requestedWorkspace = (await searchParams).workspace;
   const workspace: TitanWorkspace = ['today', 'growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
     ? (requestedWorkspace as TitanWorkspace)
@@ -54,6 +59,7 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
         dailyHuntReady={dailyHunt.tablesReady}
         dailyHuntDate={dailyHunt.taskDate ?? new Date().toISOString().slice(0, 10)}
         conversionGoal={conversionGoal}
+        moneyPlan={moneyPlan}
       />
     </DashboardShell>
   );

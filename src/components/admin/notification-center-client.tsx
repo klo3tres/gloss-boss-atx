@@ -494,7 +494,16 @@ function StructuredOutboxLogs({ rows, empty }: { rows: OutboxRow[]; empty: strin
 
                     {r.payload && Object.keys(p).length > 0 && (
                       <div className="space-y-1">
-                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Raw Payload JSON</p>
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Message body</p>
+                        <p className="rounded-lg border border-white/5 bg-black/40 p-3 text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap">
+                          {String((p as { body?: string }).body ?? (p as { body_preview?: string }).body_preview ?? '—')}
+                        </p>
+                      </div>
+                    )}
+
+                    {r.payload && Object.keys(p).length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Raw payload</p>
                         <pre className="text-[10px] text-zinc-400 font-mono bg-black/60 border border-white/5 p-3 rounded-lg overflow-x-auto max-h-[180px]">
                           {JSON.stringify(p, null, 2)}
                         </pre>

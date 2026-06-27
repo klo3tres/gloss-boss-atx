@@ -15,9 +15,12 @@ import {
   markOpportunityStatusAction,
   scheduleFollowUpAction,
   seedWarmLeadsAction,
-  sendOpportunitySmsAction,
   syncDerivedOpportunitiesAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
+import { sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
+import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
+import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
 
 const TYPES = Object.entries(OPPORTUNITY_TYPE_LABELS);
 
@@ -93,11 +96,21 @@ function AddModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-function OpportunityCard({ opp, events }: { opp: RevenueOpportunity; events: RevenueOpportunityEvent[] }) {
+function OpportunityCard({
+  opp,
+  events,
+  serviceOptions,
+}: {
+  opp: RevenueOpportunity;
+  events: RevenueOpportunityEvent[];
+  serviceOptions: { slug: string; title: string; priceCents?: number; durationMinutes?: number }[];
+}) {
   const router = useRouter();
+  const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
+  const [showQuote, setShowQuote] = useState(false);
   const [customDate, setCustomDate] = useState('');
 
   const act = (fn: () => Promise<{ ok?: boolean; error?: string }>, success: string) => {
@@ -151,10 +164,39 @@ function OpportunityCard({ opp, events }: { opp: RevenueOpportunity; events: Rev
           <button
             type="button"
             disabled={pending}
-            onClick={() => act(() => sendOpportunitySmsAction(opp.id, opp.recommendedMessage), 'SMS sent')}
+            onClick={() => {
+              const tones = buildToneVariants(opp.recommendedMessage, {
+                name: opp.contactName ?? undefined,
+                price: money(opp.estimatedRevenueCents),
+              });
+              openPreview({
+                title: 'Send opportunity SMS',
+                channel: 'sms',
+                recipient: opp.contactPhone!,
+                body: tones.professional,
+                toneVariants: tones,
+                contextLabel: `Opportunity · ${opp.title}`,
+                priceCents: opp.estimatedRevenueCents,
+                onSend: async (final) => {
+                  const res = await sendPreviewedSmsAction({
+                    to: opp.contactPhone!,
+                    body: final.body,
+                    kind: 'opportunity_outreach',
+                    templateKey: 'opportunity_sms',
+                    entityType: 'opportunity',
+                    entityId: opp.id,
+                  });
+                  if (!res.error) {
+                    await markOpportunityStatusAction(opp.id, 'contacted');
+                    router.refresh();
+                  }
+                  return res;
+                },
+              });
+            }}
             className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
           >
-            Send SMS
+            Preview & send SMS
           </button>
         ) : null}
         <button type="button" onClick={() => { void navigator.clipboard.writeText(opp.recommendedMessage); setMsg('Copied.'); }} className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
@@ -164,8 +206,25 @@ function OpportunityCard({ opp, events }: { opp: RevenueOpportunity; events: Rev
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'contacted'), 'Contacted')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50">Contacted</button>
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Booked!')} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">Booked</button>
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Lost')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-200 disabled:opacity-50">Lost</button>
+        <button type="button" disabled={pending} onClick={() => setShowQuote((v) => !v)} className="rounded-lg border border-cyan-500/30 px-3 py-2 text-[10px] font-black uppercase text-cyan-200 disabled:opacity-50">
+          {showQuote ? 'Hide quote' : 'Build quote'}
+        </button>
         <button type="button" disabled={pending} onClick={() => setShowFollowUp((v) => !v)} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 disabled:opacity-50">Follow-up</button>
       </div>
+
+      {showQuote && serviceOptions.length > 0 ? (
+        <div className="mt-4 border-t border-white/8 pt-4">
+          <QuoteBuilderPanel
+            opportunityId={opp.id}
+            contactName={opp.contactName ?? undefined}
+            leadEmail={opp.contactEmail}
+            leadPhone={opp.contactPhone}
+            estimates={[]}
+            serviceOptions={serviceOptions}
+            contextLabel={`Opportunity · ${opp.title}`}
+          />
+        </div>
+      ) : null}
 
       {showFollowUp ? (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-white/8 pt-3">
@@ -202,10 +261,12 @@ export function TitanOpportunitiesClient({
   opportunities,
   eventsByOpp,
   tablesReady,
+  serviceOptions = [],
 }: {
   opportunities: RevenueOpportunity[];
   eventsByOpp: Record<string, RevenueOpportunityEvent[]>;
   tablesReady: boolean;
+  serviceOptions?: { slug: string; title: string; priceCents?: number; durationMinutes?: number }[];
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -275,7 +336,7 @@ export function TitanOpportunitiesClient({
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {opportunities.map((opp) => (
-            <OpportunityCard key={opp.id} opp={opp} events={eventsByOpp[opp.id] ?? []} />
+            <OpportunityCard key={opp.id} opp={opp} events={eventsByOpp[opp.id] ?? []} serviceOptions={serviceOptions} />
           ))}
         </div>
       )}

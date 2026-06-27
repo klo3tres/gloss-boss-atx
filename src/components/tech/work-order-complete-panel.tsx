@@ -2,11 +2,10 @@
 
 import { CheckCircle2, PartyPopper, Receipt, Send } from 'lucide-react';
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useCallback, useState } from 'react';
 import { techCompleteJobAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
-import { ToastActionForm } from '@/components/ui/toast-action-form';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { WorkOrderSuppliesPanel } from '@/components/tech/work-order-supplies-panel';
 import { WorkOrderReceiptSendFlow } from '@/components/tech/work-order-receipt-send-flow';
 
 export function WorkOrderCompletePanel({
@@ -35,6 +34,13 @@ export function WorkOrderCompletePanel({
   onOfferMaintenancePlan?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(techCompleteJobAction, null);
+  const [inventoryPayload, setInventoryPayload] = useState('{}');
+  const onSuppliesChange = useCallback(
+    (p: { lines: Array<{ inventoryItemId: string; quantity: number }>; skipReason?: string }) => {
+      setInventoryPayload(JSON.stringify(p));
+    },
+    [],
+  );
 
   if (state?.ok || jobCompleted) {
     return (
@@ -141,6 +147,12 @@ export function WorkOrderCompletePanel({
             placeholder='Override reason (required when skipping requirements)'
             className='w-full rounded-xl border border-amber-500/30 bg-black px-3 py-2 text-sm text-white'
           />
+        </>
+      ) : null}
+      {!isFallback ? (
+        <>
+          <WorkOrderSuppliesPanel appointmentId={jobId} onChange={onSuppliesChange} />
+          <input type='hidden' name='inventoryUsage' value={inventoryPayload} />
         </>
       ) : null}
       {state?.error ? (

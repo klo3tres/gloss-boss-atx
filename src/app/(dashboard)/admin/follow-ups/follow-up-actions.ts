@@ -53,13 +53,33 @@ export async function syncFollowUpsNowAction(): Promise<{
   }
 }
 
-export async function sendFollowUpNowAction(followUpId: string): Promise<{ ok?: boolean; error?: string }> {
+export async function sendFollowUpNowAction(
+  followUpId: string,
+  customBody?: string,
+): Promise<{ ok?: boolean; error?: string }> {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
-  const result = await sendFollowUpNow(gate.admin, followUpId);
+  const result = await sendFollowUpNow(gate.admin, followUpId, customBody);
   revalidateFollowUpPaths();
   if (!result.ok) return { error: result.error ?? 'Send failed' };
   return { ok: true };
+}
+
+export async function previewFollowUpAction(followUpId: string): Promise<{
+  ok?: boolean;
+  error?: string;
+  channel?: 'sms' | 'email';
+  recipient?: string;
+  body?: string;
+  subject?: string;
+  customerName?: string;
+}> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  const { previewFollowUpMessage } = await import('@/lib/follow-up-engine');
+  const preview = await previewFollowUpMessage(gate.admin, followUpId);
+  if (!preview.ok) return { error: preview.error };
+  return preview;
 }
 
 export async function snoozeFollowUpAction(

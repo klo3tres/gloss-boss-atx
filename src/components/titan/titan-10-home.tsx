@@ -29,6 +29,8 @@ import { TitanRevenueHuntPanel } from '@/components/titan/titan-revenue-hunt-pan
 import { TitanLeadRadarTodayPanel } from '@/components/titan/titan-lead-radar-today-panel';
 import { TitanConversionGoalPanel } from '@/components/titan/titan-conversion-goal-panel';
 import { TitanDailyHuntChecklist } from '@/components/titan/titan-daily-hunt-checklist';
+import { TodaysMoneyPlanPanel } from '@/components/titan/todays-money-plan-panel';
+import type { TodaysMoneyPlan } from '@/lib/titan/todays-money-plan';
 import type { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import type { LeadRadarItem } from '@/lib/titan/lead-radar-engine';
 import type { ConversionGoalStats } from '@/lib/titan/lead-radar-hunt';
@@ -90,6 +92,7 @@ export function Titan10HomeClient({
   dailyHuntReady,
   dailyHuntDate,
   conversionGoal,
+  moneyPlan,
 }: {
   snapshot: Titan10Snapshot;
   health: TitanSystemHealth;
@@ -102,6 +105,7 @@ export function Titan10HomeClient({
   dailyHuntReady: boolean;
   dailyHuntDate: string;
   conversionGoal: ConversionGoalStats;
+  moneyPlan: TodaysMoneyPlan;
 }) {
   const [pending, startTransition] = useTransition();
   const [huntMsg, setHuntMsg] = useState<string | null>(null);
@@ -175,6 +179,10 @@ export function Titan10HomeClient({
       </header>
 
       {workspace !== 'today' && setupWarnings.length > 0 ? <TitanSetupBanner warnings={setupWarnings} /> : null}
+
+      {workspace === 'today' ? (
+        <TodaysMoneyPlanPanel plan={moneyPlan} />
+      ) : null}
 
       {workspace === 'today' ? (
         <TitanConversionGoalPanel stats={conversionGoal} />

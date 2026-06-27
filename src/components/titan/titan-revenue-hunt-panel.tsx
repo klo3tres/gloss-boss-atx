@@ -11,6 +11,9 @@ import {
   markOpportunityStatusAction,
   scheduleFollowUpAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
+import { sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
+import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -22,6 +25,7 @@ function copyText(text: string) {
 
 function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean }) {
   const router = useRouter();
+  const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
@@ -66,6 +70,40 @@ function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean
       <p className="mt-3 text-xs leading-relaxed text-zinc-300">{opp.recommendedMessage}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        {opp.contactPhone ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              const tones = buildToneVariants(opp.recommendedMessage, { name: opp.contactName ?? undefined });
+              openPreview({
+                title: 'Send hunt SMS',
+                channel: 'sms',
+                recipient: opp.contactPhone!,
+                body: tones.professional,
+                toneVariants: tones,
+                contextLabel: opp.title,
+                onSend: async (final) => {
+                  const res = await sendPreviewedSmsAction({
+                    to: opp.contactPhone!,
+                    body: final.body,
+                    kind: 'revenue_hunt',
+                    entityType: 'opportunity',
+                    entityId: opp.id,
+                  });
+                  if (!res.error) {
+                    await markOpportunityStatusAction(opp.id, 'contacted');
+                    router.refresh();
+                  }
+                  return res;
+                },
+              });
+            }}
+            className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+          >
+            Preview & send SMS
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={pending}
@@ -73,7 +111,7 @@ function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean
             copyText(opp.recommendedMessage);
             setMsg('Message copied.');
           }}
-          className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50"
         >
           <Copy className="h-3 w-3" /> Copy message
         </button>

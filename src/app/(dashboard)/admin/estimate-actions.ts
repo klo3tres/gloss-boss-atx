@@ -16,6 +16,8 @@ import {
   estimatePublicUrl,
   loadEstimatesForLead,
   sendEstimateSmsToCustomer,
+  sendEstimateSmsWithBody,
+  sendEstimateEmailWithBody,
   sendEstimateToCustomer,
   startEstimateDepositCheckout,
 } from '@/lib/service-estimates';
@@ -36,6 +38,7 @@ function revalidateEstimatePaths() {
 export async function createLeadEstimateAction(input: {
   leadId: string;
   serviceSlug: string;
+  vehicleClass?: string;
   totalCents: number;
   depositCents?: number;
   notes?: string;
@@ -46,11 +49,36 @@ export async function createLeadEstimateAction(input: {
   const result = await createEstimateForLead(gate.admin, gate.session.user!.id, {
     leadId: input.leadId,
     serviceSlug: input.serviceSlug,
+    vehicleClass: input.vehicleClass,
     totalCents: input.totalCents,
     depositCents: input.depositCents,
     notes: input.notes,
   });
 
+  if (!result.ok || !result.estimate) return { error: result.error ?? 'Failed to create estimate' };
+  revalidateEstimatePaths();
+  return {
+    ok: true,
+    estimateId: result.estimate.id,
+    publicUrl: estimatePublicUrl(result.estimate.accessToken),
+  };
+}
+
+export async function createContactEstimateAction(input: {
+  customerId?: string;
+  opportunityId?: string;
+  contactName: string;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  serviceSlug: string;
+  vehicleClass?: string;
+  totalCents: number;
+  notes?: string;
+}): Promise<{ ok?: boolean; error?: string; estimateId?: string; publicUrl?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  const { createEstimateForContact } = await import('@/lib/service-estimates');
+  const result = await createEstimateForContact(gate.admin, gate.session.user!.id, input);
   if (!result.ok || !result.estimate) return { error: result.error ?? 'Failed to create estimate' };
   revalidateEstimatePaths();
   return {
@@ -75,6 +103,30 @@ export async function sendLeadEstimateSmsAction(estimateId: string): Promise<{ o
   if (!gate) return { error: 'Unauthorized' };
   const result = await sendEstimateSmsToCustomer(gate.admin, estimateId, getAppOrigin());
   if (!result.ok) return { error: result.error };
+  return { ok: true };
+}
+
+export async function sendLeadEstimateSmsWithBodyAction(
+  estimateId: string,
+  body: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  const result = await sendEstimateSmsWithBody(gate.admin, estimateId, body, getAppOrigin());
+  if (!result.ok) return { error: result.error };
+  revalidateEstimatePaths();
+  return { ok: true };
+}
+
+export async function sendLeadEstimateEmailWithBodyAction(
+  estimateId: string,
+  input: { subject?: string; body: string },
+): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  const result = await sendEstimateEmailWithBody(gate.admin, estimateId, input, getAppOrigin());
+  if (!result.ok) return { error: result.error };
+  revalidateEstimatePaths();
   return { ok: true };
 }
 
