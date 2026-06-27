@@ -485,6 +485,8 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
   const scheduledRaw = str(formData.get('scheduledStart'));
   const allowConflict = str(formData.get('allowScheduleConflict')) === 'true';
   const overrideReason = str(formData.get('overrideReason'));
+  const notifyCustomer = str(formData.get('notifyCustomer')) === 'true';
+  const durationOverrideRaw = str(formData.get('durationMinutes'));
   const scheduled = new Date(scheduledRaw);
   if (Number.isNaN(scheduled.getTime())) return { ok: false, error: 'Invalid date/time' };
 
@@ -499,7 +501,11 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
     vehicleClass: str(v.vehicle_class) || 'sedan',
     addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
   }));
-  const durationMinutes = totalBookingDurationMinutes(durationLines);
+  const computedMinutes = totalBookingDurationMinutes(durationLines);
+  const durationMinutes =
+    durationOverrideRaw && Number.isFinite(Number(durationOverrideRaw)) && Number(durationOverrideRaw) > 0
+      ? Math.round(Number(durationOverrideRaw))
+      : computedMinutes;
   const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
   const blocks = await fetchBookedBlocks(gate.admin, rangeStart, rangeEnd);
@@ -513,7 +519,16 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
     };
   }
 
-  const scheduleFields = buildAppointmentScheduleFields(scheduled.toISOString(), durationLines);
+  const scheduleFields =
+    durationMinutes === computedMinutes
+      ? buildAppointmentScheduleFields(scheduled.toISOString(), durationLines)
+      : {
+          estimated_duration_minutes: durationMinutes,
+          estimated_end: new Date(scheduled.getTime() + durationMinutes * 60_000).toISOString(),
+        };
+
+  const oldStart = str((ctx.job as Record<string, unknown>).scheduled_start);
+
   await gate.admin
     .from('appointments')
     .update({
@@ -524,6 +539,39 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', ctx.jobId);
+
+  const { queueGoogleCalendarSync } = await import('@/lib/google/google-calendar-sync');
+  queueGoogleCalendarSync(gate.admin, ctx.jobId, 'upsert');
+  void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
+    upsertAppointmentAvailabilityBlock(gate.admin, ctx.jobId),
+  );
+
+  if (notifyCustomer && oldStart && oldStart !== scheduled.toISOString()) {
+    const row = ctx.job as Record<string, unknown>;
+    const email = str(row.guest_email);
+    const guest = str(row.guest_name) || 'Customer';
+    if (email.includes('@')) {
+      const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+      if (resendConfigured()) {
+        const fmt = (iso: string) =>
+          new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Chicago',
+            dateStyle: 'full',
+            timeStyle: 'short',
+          }).format(new Date(iso));
+        const token = str(row.access_token);
+        const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+        const confirmUrl = token
+          ? `${appBase}/book/confirmation?appointment_id=${encodeURIComponent(ctx.jobId)}&token=${encodeURIComponent(token)}`
+          : `${appBase}/book`;
+        await sendResendHtml({
+          to: email,
+          subject: 'Gloss Boss ATX — Appointment time updated',
+          html: `<p>Hi ${guest},</p><p>Your appointment time was updated.</p><p><strong>Was:</strong> ${fmt(oldStart)}<br/><strong>Now:</strong> ${fmt(scheduled.toISOString())}</p><p><a href="${confirmUrl}">View confirmation</a></p>`,
+        });
+      }
+    }
+  }
 
   revalidatePath(`/tech/work-orders/${ctx.jobId}`);
   revalidatePath('/admin/dispatch');

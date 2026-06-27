@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateWorkOrderScheduleAction } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 
@@ -9,6 +9,14 @@ function toLocalInput(iso: string) {
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultDurationMinutes(startIso: string, endIso?: string) {
+  if (!endIso) return 120;
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 120;
+  return Math.max(30, Math.round((end - start) / 60_000));
 }
 
 export function WorkOrderSchedulePanel({
@@ -23,6 +31,9 @@ export function WorkOrderSchedulePanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [allowConflict, setAllowConflict] = useState(false);
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
+  const initialDuration = useMemo(() => defaultDurationMinutes(scheduledStart, scheduledEnd), [scheduledStart, scheduledEnd]);
+  const [durationMinutes, setDurationMinutes] = useState(initialDuration);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
   return (
@@ -34,6 +45,8 @@ export function WorkOrderSchedulePanel({
         fd.set('appointmentId', appointmentId);
         fd.set('source', 'appointment');
         fd.set('scheduledStart', (e.currentTarget.elements.namedItem('when') as HTMLInputElement).value);
+        fd.set('durationMinutes', String(durationMinutes));
+        fd.set('notifyCustomer', notifyCustomer ? 'true' : 'false');
         if (allowConflict) {
           fd.set('allowScheduleConflict', 'true');
           fd.set('overrideReason', (e.currentTarget.elements.namedItem('reason') as HTMLInputElement).value);
@@ -44,7 +57,9 @@ export function WorkOrderSchedulePanel({
           if (res.ok) {
             setMsg({
               tone: 'ok',
-              text: res.conflict ? 'Saved with schedule override (conflict acknowledged).' : 'Schedule updated.',
+              text: res.conflict
+                ? 'Saved with override — calendar & availability updated.'
+                : 'Schedule updated — Titan block, Google Calendar, and availability synced.',
             });
             router.refresh();
           } else {
@@ -53,8 +68,10 @@ export function WorkOrderSchedulePanel({
         });
       }}
     >
-      <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Reschedule</p>
-      {scheduledEnd ? <p className='mt-1 text-xs text-zinc-500'>Estimated end: {scheduledEnd}</p> : null}
+      <p className='text-xs font-black uppercase tracking-widest text-gold-soft'>Job time & duration</p>
+      <p className='mt-1 text-xs text-zinc-500'>
+        Adjust start time or estimated duration. Blocks booking slots and updates Google Calendar when connected.
+      </p>
       <label className='mt-3 block text-xs text-zinc-400'>
         Appointment start
         <input
@@ -65,7 +82,24 @@ export function WorkOrderSchedulePanel({
           required
         />
       </label>
-      <label className='mt-3 flex items-center gap-2 text-xs text-amber-200'>
+      <label className='mt-3 block text-xs text-zinc-400'>
+        Estimated duration (minutes)
+        <input
+          name='durationMinutes'
+          type='number'
+          min={30}
+          step={15}
+          value={durationMinutes}
+          onChange={(e) => setDurationMinutes(Number(e.target.value) || initialDuration)}
+          className='mt-1 block w-full max-w-xs rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
+        />
+      </label>
+      {scheduledEnd ? <p className='mt-2 text-[11px] text-zinc-600'>Previous estimated end: {scheduledEnd}</p> : null}
+      <label className='mt-3 flex items-center gap-2 text-xs text-zinc-300'>
+        <input type='checkbox' checked={notifyCustomer} onChange={(e) => setNotifyCustomer(e.target.checked)} />
+        Email customer if start time changed
+      </label>
+      <label className='mt-2 flex items-center gap-2 text-xs text-amber-200'>
         <input type='checkbox' checked={allowConflict} onChange={(e) => setAllowConflict(e.target.checked)} />
         Override schedule conflict (admin)
       </label>
@@ -82,7 +116,7 @@ export function WorkOrderSchedulePanel({
         disabled={pending}
         className='mt-3 rounded-lg bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-50'
       >
-        {pending ? 'Saving…' : 'Update schedule'}
+        {pending ? 'Saving…' : 'Save schedule'}
       </button>
       {msg ? <p className={`mt-2 text-sm ${msg.tone === 'ok' ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</p> : null}
     </form>

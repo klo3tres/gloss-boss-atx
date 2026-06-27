@@ -5,6 +5,10 @@ import {
   googleCalendarOAuthConfigured,
   googleCalendarRedirectUri,
 } from '@/lib/google/google-calendar-config';
+import {
+  mapGoogleTokenError,
+  type GoogleCalendarOAuthErrorCode,
+} from '@/lib/google/google-calendar-oauth-errors';
 
 type CalendarConnection = {
   id: string;
@@ -201,7 +205,15 @@ export async function upsertGoogleCalendarEvent(
 
   await admin
     .from('google_calendar_connections')
-    .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({
+      last_push_at: new Date().toISOString(),
+      last_sync_at: new Date().toISOString(),
+      push_count: (connection as { push_count?: number }).push_count
+        ? Number((connection as { push_count?: number }).push_count) + 1
+        : 1,
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', connection.id);
 
   return { ok: true };
@@ -264,7 +276,10 @@ export function buildGoogleOAuthUrl(state: string): string | null {
     client_id: clientId,
     redirect_uri: googleCalendarRedirectUri(),
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/calendar.events',
+    scope: [
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ].join(' '),
     access_type: 'offline',
     prompt: 'consent',
     state,
@@ -272,45 +287,82 @@ export function buildGoogleOAuthUrl(state: string): string | null {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export async function exchangeGoogleOAuthCode(code: string): Promise<{
+export type GoogleOAuthTokens = {
   accessToken: string;
   refreshToken: string | null;
   expiresAt: string | null;
   email: string | null;
-} | null> {
+};
+
+export type GoogleOAuthExchangeResult =
+  | { ok: true; tokens: GoogleOAuthTokens }
+  | { ok: false; code: GoogleCalendarOAuthErrorCode; detail?: string };
+
+async function safeJson<T>(res: Response): Promise<T | null> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function exchangeGoogleOAuthCode(code: string): Promise<GoogleOAuthExchangeResult> {
   const clientId = googleCalendarClientId();
   const clientSecret = googleCalendarClientSecret();
-  if (!clientId || !clientSecret) return null;
+  if (!clientId) return { ok: false, code: 'missing_client_id' };
+  if (!clientSecret) return { ok: false, code: 'missing_client_secret' };
 
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: googleCalendarRedirectUri(),
-      grant_type: 'authorization_code',
-    }),
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
+  let res: Response;
+  try {
+    res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: googleCalendarRedirectUri(),
+        grant_type: 'authorization_code',
+      }),
+    });
+  } catch (e) {
+    return { ok: false, code: 'token_exchange_failed', detail: e instanceof Error ? e.message : String(e) };
+  }
+
+  const data = await safeJson<{
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
-  };
-  if (!data.access_token) return null;
+    error?: string;
+    error_description?: string;
+  }>(res);
 
-  const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${data.access_token}` },
-  });
-  const profile = profileRes.ok ? ((await profileRes.json()) as { email?: string }) : null;
+  if (!res.ok || !data?.access_token) {
+    const raw = data?.error_description ?? data?.error ?? `HTTP ${res.status}`;
+    return { ok: false, code: mapGoogleTokenError(raw), detail: raw };
+  }
+
+  let email: string | null = null;
+  try {
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    if (profileRes.ok) {
+      const profile = await safeJson<{ email?: string }>(profileRes);
+      email = profile?.email?.trim() || null;
+    }
+  } catch {
+    /* email is optional */
+  }
 
   return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? null,
-    expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null,
-    email: profile?.email ?? null,
+    ok: true,
+    tokens: {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token ?? null,
+      expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null,
+      email,
+    },
   };
 }
 

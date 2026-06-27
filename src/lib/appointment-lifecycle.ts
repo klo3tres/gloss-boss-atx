@@ -127,6 +127,9 @@ export async function cancelAppointmentLifecycle(
   }
 
   queueGoogleCalendarSync(admin, id, 'delete');
+  void import('@/lib/booking-availability-block').then(({ removeAppointmentAvailabilityBlock }) =>
+    removeAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
+  );
 
   return { ok: true };
 }
@@ -146,10 +149,24 @@ export async function rescheduleAppointmentLifecycle(
   const oldStart = str(row.scheduled_start);
   const now = new Date().toISOString();
 
+  const scheduleFields = await import('@/lib/booking-slot-blocking').then((m) => {
+    const vehicles = Array.isArray(row.booking_vehicles) ? row.booking_vehicles : [];
+    const durationLines =
+      vehicles.length > 0
+        ? (vehicles as Record<string, unknown>[]).map((v) => ({
+            serviceSlug: str(v.service_slug) || str(row.service_slug) || 'exterior-wash',
+            vehicleClass: str(v.vehicle_class) || str(row.vehicle_class) || 'sedan',
+            addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
+          }))
+        : [{ serviceSlug: str(row.service_slug) || 'exterior-wash', vehicleClass: str(row.vehicle_class) || 'sedan' }];
+    return m.buildAppointmentScheduleFields(newStart, durationLines);
+  });
+
   const { error } = await admin
     .from('appointments')
     .update({
       scheduled_start: newStart,
+      ...scheduleFields,
       rescheduled_from: oldStart || null,
       status: str(row.status) === 'cancelled' ? 'scheduled' : row.status,
       cancelled_at: null,
@@ -191,6 +208,9 @@ export async function rescheduleAppointmentLifecycle(
   }
 
   queueGoogleCalendarSync(admin, id, 'upsert');
+  void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
+    upsertAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
+  );
 
   return { ok: true };
 }

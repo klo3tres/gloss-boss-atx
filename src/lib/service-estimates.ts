@@ -113,6 +113,23 @@ export function estimatePublicUrl(accessToken: string, origin?: string) {
   return `${base}/estimate/${accessToken}`;
 }
 
+export function buildEstimateSmsBody(estimate: ServiceEstimate, origin?: string) {
+  const url = estimatePublicUrl(estimate.accessToken, origin);
+  const valid = estimate.validUntil
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium' }).format(new Date(estimate.validUntil))
+    : null;
+  return (
+    `Gloss Boss ATX quote for ${estimate.customerName}: ${displayMoney(estimate.totalCents)}` +
+    (estimate.depositCents ? ` (deposit ${displayMoney(estimate.depositCents)})` : '') +
+    `. Book: ${url}` +
+    (valid ? ` · Valid until ${valid}` : '')
+  );
+}
+
+export function buildEstimateEmailSubject(estimate: ServiceEstimate) {
+  return `Your Gloss Boss estimate — ${displayMoney(estimate.totalCents)}`;
+}
+
 export function computeDepositCents(totalCents: number, explicitDeposit?: number) {
   if (explicitDeposit != null && explicitDeposit >= 0) return explicitDeposit;
   return Math.max(0, Math.round(totalCents * 0.3));
@@ -266,6 +283,42 @@ export async function sendEstimateToCustomer(
   if (!sent.ok) return { ok: false, error: sent.error ?? 'Email failed', estimate: { ...estimate, status: 'sent', sentAt: now } };
 
   return { ok: true, estimate: { ...estimate, status: 'sent', sentAt: now } };
+}
+
+export async function sendEstimateSmsToCustomer(
+  admin: SupabaseClient,
+  estimateId: string,
+  origin?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const estimate = await loadEstimateById(admin, estimateId);
+  if (!estimate) return { ok: false, error: 'Estimate not found' };
+  if (!estimate.customerPhone) return { ok: false, error: 'Customer phone required for SMS quote.' };
+
+  const { sendCustomerSms } = await import('@/lib/sms-send');
+  const body = buildEstimateSmsBody(estimate, origin);
+  const sent = await sendCustomerSms({
+    db: admin,
+    to: estimate.customerPhone,
+    body,
+    kind: 'estimate_sent',
+    customer_id: estimate.customerId,
+    template_key: 'estimate_quote',
+    requireConsent: false,
+    extraPayload: { estimate_id: estimate.id, url: estimatePublicUrl(estimate.accessToken, origin) },
+  });
+
+  const now = new Date().toISOString();
+  await admin.from('notification_outbox').insert({
+    kind: 'estimate_sent_sms',
+    customer_id: estimate.customerId,
+    channel: 'sms',
+    status: sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed',
+    payload: { estimate_id: estimate.id, body, error: sent.error ?? null, sid: sent.sid ?? null },
+    created_at: now,
+  });
+
+  if (!sent.ok && !sent.skipped) return { ok: false, error: sent.error ?? 'SMS failed' };
+  return { ok: true };
 }
 
 export async function approveEstimateByToken(admin: SupabaseClient, token: string): Promise<{ ok: boolean; error?: string; estimate?: ServiceEstimate }> {

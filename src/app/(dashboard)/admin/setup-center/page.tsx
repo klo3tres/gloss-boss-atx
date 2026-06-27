@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-settings';
 import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-connect-panel';
 import { PostDeployQaChecklist, TitanOnboardingChecklistPanel } from '@/components/titan/titan-onboarding-panels';
@@ -174,7 +175,9 @@ export default async function OwnerSetupCenterPage() {
       </section>
 
       <section className="mt-6">
-        <GoogleCalendarConnectPanel />
+        <Suspense fallback={<div className="rounded-2xl border border-white/10 bg-black/45 p-5 text-xs text-zinc-500">Loading calendar…</div>}>
+          <GoogleCalendarConnectPanel />
+        </Suspense>
       </section>
 
       <TitanOnboardingChecklistPanel />

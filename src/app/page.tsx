@@ -240,12 +240,15 @@ export default function HomePage() {
                   )}
                 </h1>
                 <p className='mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base'>
-                  {visuals?.hero?.subtitle || 'Premium mobile auto care delivered to your driveway with online booking, professional service records, and showroom-level results.'}
+                  {visuals?.hero?.subtitle || 'Mobile detailing at your driveway — book online in minutes, pay deposit securely, and get showroom results without waiting at a shop.'}
                 </p>
                 
                 <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
                   <Link href={visuals?.hero?.ctaLink || '/book'} className='inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-black shadow-[0_0_35px_rgba(212,175,55,0.35)] hover:brightness-110 transition duration-300'>
-                    {visuals?.hero?.ctaText || 'Book Now'} <ArrowRight size={14} />
+                    {visuals?.hero?.ctaText || 'Book your detail'} <ArrowRight size={14} />
+                  </Link>
+                  <Link href='/services' className='inline-flex items-center justify-center rounded-xl border border-white/20 bg-black/40 px-6 py-4 text-xs font-black uppercase tracking-[0.12em] text-white hover:border-gold/40 transition duration-300'>
+                    View packages
                   </Link>
                   <Link href='/services' className='rounded-xl border border-white/20 bg-black/45 px-8 py-4 text-center text-xs font-black uppercase tracking-[0.15em] text-white hover:border-gold/50 hover:text-gold-soft transition duration-300'>
                     View Services

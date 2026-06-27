@@ -569,6 +569,11 @@ export async function POST(request: Request) {
     await recordBookingSuccess(admin);
 
     queueGoogleCalendarSync(admin, String(appointment.id), 'upsert');
+    void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
+      upsertAppointmentAvailabilityBlock(admin, String(appointment.id)).catch((e) =>
+        console.warn('[api/bookings] availability block', e),
+      ),
+    );
 
     const appliedCreditCents = await applyCustomerCreditsToAppointment({
       admin,

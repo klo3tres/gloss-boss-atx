@@ -1,15 +1,21 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { randomBytes } from 'crypto';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { getAppOrigin } from '@/lib/env/app-origin';
+import { displayMoney } from '@/lib/display-format';
 import {
   approveEstimateByToken,
+  buildEstimateEmailSubject,
+  buildEstimateSmsBody,
+  computeDepositCents,
   createEstimateForLead,
   declineEstimateByToken,
   estimatePublicUrl,
   loadEstimatesForLead,
+  sendEstimateSmsToCustomer,
   sendEstimateToCustomer,
   startEstimateDepositCheckout,
 } from '@/lib/service-estimates';
@@ -62,6 +68,44 @@ export async function sendLeadEstimateAction(estimateId: string): Promise<{ ok?:
   if (!result.ok) return { error: result.error };
   revalidateEstimatePaths();
   return { ok: true, publicUrl: result.estimate ? estimatePublicUrl(result.estimate.accessToken) : undefined };
+}
+
+export async function sendLeadEstimateSmsAction(estimateId: string): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  const result = await sendEstimateSmsToCustomer(gate.admin, estimateId, getAppOrigin());
+  if (!result.ok) return { error: result.error };
+  return { ok: true };
+}
+
+export async function previewLeadEstimateAction(input: {
+  leadId: string;
+  serviceSlug: string;
+  totalCents: number;
+  vehicleClass?: string;
+}): Promise<{ emailSubject?: string; emailBody?: string; smsBody?: string; publicPath?: string; error?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  const { data: lead } = await gate.admin.from('leads').select('*').eq('id', input.leadId).maybeSingle();
+  if (!lead) return { error: 'Lead not found' };
+  const L = lead as Record<string, unknown>;
+  const token = randomBytes(16).toString('hex');
+  const estimate = {
+    id: 'preview',
+    accessToken: token,
+    customerName: String(L.name ?? 'Customer'),
+    customerEmail: L.email ? String(L.email) : null,
+    customerPhone: L.phone ? String(L.phone) : null,
+    totalCents: input.totalCents,
+    depositCents: computeDepositCents(input.totalCents),
+    validUntil: new Date(Date.now() + 14 * 86400000).toISOString(),
+  } as import('@/lib/service-estimates').ServiceEstimate;
+  return {
+    emailSubject: buildEstimateEmailSubject(estimate),
+    emailBody: `Estimate total ${displayMoney(estimate.totalCents)} · deposit ${displayMoney(estimate.depositCents)} · ${estimatePublicUrl(token)}`,
+    smsBody: buildEstimateSmsBody(estimate),
+    publicPath: estimatePublicUrl(token),
+  };
 }
 
 export async function loadLeadEstimatesAction(leadId: string) {
