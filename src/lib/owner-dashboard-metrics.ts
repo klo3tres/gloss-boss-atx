@@ -236,7 +236,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
   );
   const sumOpts = { excludeTest: true as const, apptById };
 
-  const [todayPay, weekPay, monthPay, rolling30Pay, leadRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes, calendarEventsRes] = await Promise.all([
+  const [todayPay, weekPay, monthPay, rolling30Pay, leadRowsRes, eventRowsRes, messageCountRes, loyaltyStampsRes, supplyReqsRes, calendarEventsRes, blocksRes] = await Promise.all([
     fetchPaymentsSince(admin, startOfTodayIso(), now),
     fetchPaymentsSince(admin, startOfWeekIso(), now),
     fetchPaymentsSince(admin, startOfMonthIso(), now),
@@ -247,6 +247,7 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
     admin.from('loyalty_stamps').select('customer_id'),
     admin.from('business_expenses').select('id, category, notes').or('category.ilike.%supply%,notes.ilike.%Supply Request by tech%'),
     admin.from('site_settings').select('value').eq('key', 'calendar_events').maybeSingle(),
+    admin.from('booking_availability_blocks').select('id, title, start_at, end_at, source, notes, google_event_id, created_at'),
   ]);
   
   const today = summarizePayments(todayPay, sumOpts);
@@ -614,7 +615,18 @@ export async function loadOwnerDashboardSnapshot(admin: SupabaseClient): Promise
       href: appointmentId ? workOrderPath(appointmentId, { source: 'appointment', shell: 'admin' }) : '/admin/notifications',
     };
   });
-  const calendarEvents = parseCalendarEvents(calendarEventsRes.data?.value);
+  const blockEvents = ((blocksRes.data ?? []) as any[]).map((b) => {
+    const sourceLabel = b.google_event_id ? 'Google Sync' : 'Manual Block';
+    return {
+      id: `block-${b.id}`,
+      dayKey: dateKeyChicago(b.start_at),
+      title: `🚫 [${sourceLabel}] ${b.title || 'Blocked Availability'}`,
+      note: b.notes || `Blocked from ${new Date(b.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${new Date(b.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      createdAt: b.created_at || new Date().toISOString(),
+    };
+  });
+
+  const calendarEvents = [...parseCalendarEvents(calendarEventsRes.data?.value), ...blockEvents];
 
   return {
     revenueToday: displayMoney(today.grossCents),

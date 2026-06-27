@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 const MAX_BYTES = 3 * 1024 * 1024;
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']);
 
-const KEYS = new Set(['navbar_logo', 'homepage_logo']);
+const KEYS = new Set(['navbar_logo', 'homepage_logo', 'logo_url', 'icon_url']);
 
 function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 80) || 'logo';
@@ -83,15 +83,28 @@ export async function POST(request: Request) {
     const url = pub.publicUrl;
     const now = new Date().toISOString();
 
-    const { error: setErr } = await admin.from('site_settings').upsert(
-      { key: settingKey, value: url, updated_at: now },
-      { onConflict: 'key' },
-    );
-    if (setErr) {
-      return NextResponse.json({ error: setErr.message, url }, { status: 503 });
+    if (settingKey === 'logo_url' || settingKey === 'icon_url') {
+      const dbCol = settingKey === 'logo_url' ? 'logo_url' : 'icon_url';
+      const { error: setErr } = await admin.from('titan_workspace_settings').upsert(
+        { workspace_key: 'default', [dbCol]: url, updated_at: now },
+        { onConflict: 'workspace_key' },
+      );
+      if (setErr) {
+        return NextResponse.json({ error: setErr.message, url }, { status: 503 });
+      }
+    } else {
+      const { error: setErr } = await admin.from('site_settings').upsert(
+        { key: settingKey, value: url, updated_at: now },
+        { onConflict: 'key' },
+      );
+      if (setErr) {
+        return NextResponse.json({ error: setErr.message, url }, { status: 503 });
+      }
     }
 
     revalidatePath('/admin/cms');
+    revalidatePath('/admin/titan/settings');
+    revalidatePath('/api/public/brand');
     revalidatePath('/');
     return NextResponse.json({ ok: true, url, settingKey });
   } catch (e) {

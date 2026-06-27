@@ -16,6 +16,7 @@ type ReviewRow = {
   published: boolean;
   featured: boolean;
   created_at: string;
+  sort_order?: number;
 };
 
 function dateInputValue(value: string) {
@@ -164,6 +165,10 @@ export function CmsReviewsManager({
           <textarea name="testimonial" required rows={4} placeholder="Review text" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:col-span-2 md:text-sm" />
           <input name="source" defaultValue="Manual" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
           <input name="review_date" type="date" defaultValue={dateInputValue('')} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+          <label className="block text-xs md:col-span-2">
+            <span className="text-zinc-500 mb-1 block">Sort order (lower values appear first, e.g., -10, 0, 10)</span>
+            <input name="sort_order" type="number" defaultValue="0" className="w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+          </label>
           <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-300 md:col-span-2">
             <label className="flex min-h-10 items-center gap-2"><input name="published" type="checkbox" /> Show publicly</label>
             <label className="flex min-h-10 items-center gap-2"><input name="featured" type="checkbox" /> Featured</label>
@@ -192,6 +197,10 @@ export function CmsReviewsManager({
               <textarea name="testimonial" defaultValue={row.testimonial} rows={4} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:col-span-2 md:text-sm" />
               <input name="source" defaultValue={row.source} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
               <input name="review_date" type="date" defaultValue={dateInputValue(row.created_at)} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+              <label className="block text-xs md:col-span-2">
+                <span className="text-zinc-500 mb-1 block">Sort order (lower values appear first, e.g., -10, 0, 10)</span>
+                <input name="sort_order" type="number" defaultValue={row.sort_order ?? 0} className="w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-base text-white md:text-sm" />
+              </label>
               <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-300 md:col-span-2">
                 <label className="flex min-h-10 items-center gap-2"><input name="published" type="checkbox" defaultChecked={row.published} /> Show publicly</label>
                 <label className="flex min-h-10 items-center gap-2"><input name="featured" type="checkbox" defaultChecked={row.featured} /> Featured</label>

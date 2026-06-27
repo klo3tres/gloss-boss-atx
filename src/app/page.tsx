@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Sparkles, X, Check, Star, ShieldCheck, Award, Flame, Calendar, Clock, MapPin, BadgePercent, Zap, Layers, Phone, Mail } from 'lucide-react';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
+import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
+import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
 import { HomepageHeroBackground } from '@/components/marketing/homepage-hero-background';
 import type { PublicBrandPayload } from '@/lib/brand/public-brand-types';
 import { ContactForm } from '@/components/marketing/contact-form';
@@ -286,6 +288,10 @@ export default function HomePage() {
               <div className='grid gap-4 sm:grid-cols-1'>
                 <SectionErrorBoundary label='Before / after rotator'>
                   <BeforeAfterRotator />
+                </SectionErrorBoundary>
+                
+                <SectionErrorBoundary label='Weather forecast'>
+                  <WeatherReadinessWidget autoFetch variant="customer" locationLabel="Austin service area" className="bg-black/75 backdrop-blur-xl border-gold/20 shadow-[0_0_35px_rgba(212,175,55,0.05)]" />
                 </SectionErrorBoundary>
                 
                 <article className='rounded-3xl border border-gold/20 bg-black/70 p-6 backdrop-blur shadow-xl space-y-4'>
@@ -604,47 +610,10 @@ export default function HomePage() {
 
       {/* SECTION 9: TESTIMONIALS/REVIEWS */}
       <section className="bg-zinc-950 border-b border-white/5 py-20">
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-          <MotionFade>
-            <div className="text-center max-w-2xl mx-auto mb-12">
-              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft bg-gold/5 border border-gold/20 px-3.5 py-1.5 rounded-full">Client Feedback</span>
-              <h2 className="text-3xl font-black uppercase tracking-tight text-white sm:text-5xl mt-3">5-Star Detailing Reviews</h2>
-              <p className="text-sm text-zinc-400 mt-2">Austin car collectors and daily drivers trust Gloss Boss ATX.</p>
-            </div>
-          </MotionFade>
-
-          {reviews.length === 0 ? (
-            <div className="mx-auto max-w-2xl rounded-3xl border border-gold/20 bg-black p-8 text-center">
-              <p className="text-sm font-bold text-white">Published customer reviews are being curated.</p>
-              <p className="mt-2 text-xs text-zinc-400">Reviews sync from your Google Business profile when Places API is connected, or you can publish them manually in Admin → CMS.</p>
-              {googleReviewUrl ? (
-                <a href={googleReviewUrl} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex rounded-xl border border-gold/35 px-4 py-2 text-xs font-black uppercase text-gold-soft">
-                  Read Google reviews
-                </a>
-              ) : null}
-            </div>
-          ) : (
-            <div className={`grid gap-6 ${reviews.length === 1 ? 'mx-auto max-w-2xl' : reviews.length <= 3 ? 'md:grid-cols-3' : 'md:grid-cols-3'}`}>
-              {reviews.slice(0, reviews.length > 3 ? 6 : 3).map((rev, idx) => (
-                <MotionFade key={rev.id} delay={idx * 0.06}>
-                  <blockquote className="rounded-3xl border border-white/5 bg-black p-6 space-y-4 flex flex-col justify-between h-full shadow-md">
-                    <p className="text-xs text-zinc-300 italic leading-relaxed">"{rev.text}"</p>
-                    <div>
-                      <div className="flex gap-1 mb-2">
-                        {Array.from({ length: rev.rating }).map((_, i) => (
-                          <Star key={i} className="h-3.5 w-3.5 fill-gold text-gold" />
-                        ))}
-                      </div>
-                      <cite className="block not-italic">
-                        <p className="text-xs font-black uppercase text-white">{rev.reviewerName}</p>
-                        <p className="text-[10px] text-zinc-500 mt-0.5">{rev.vehicleOrService || rev.source}</p>
-                      </cite>
-                    </div>
-                  </blockquote>
-                </MotionFade>
-              ))}
-            </div>
-          )}
+        <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8">
+          <SectionErrorBoundary label='Reviews Carousel'>
+            <ReviewsCarousel reviews={reviews} />
+          </SectionErrorBoundary>
         </div>
       </section>
 

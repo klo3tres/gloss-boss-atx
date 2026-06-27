@@ -32,6 +32,31 @@ export type TitanWorkspace = {
   subscriptionTier: string;
   subscriptionStatus: string | null;
   mapProvider: MapProviderId;
+  workspaceSlug?: string;
+  businessDisplayName?: string | null;
+  legalBusinessName?: string | null;
+  brandShortName?: string | null;
+  brandCityLabel?: string | null;
+  brandSlug?: string | null;
+  logoUrl?: string | null;
+  iconUrl?: string | null;
+  heroVideoUrl?: string | null;
+  heroVideoPosterUrl?: string | null;
+  heroVideoEnabled?: boolean;
+  primaryColor?: string;
+  accentColor?: string;
+  supportEmail?: string | null;
+  supportPhone?: string | null;
+  websiteUrl?: string | null;
+  publicBookingUrl?: string | null;
+  gaMeasurementId?: string | null;
+  clarityProjectId?: string | null;
+  gscVerificationNote?: string | null;
+  isTitanPlatformMode?: boolean;
+  publicTitanEnabled?: boolean;
+  allowedDomains?: string[];
+  googleBlocksBooking?: boolean;
+  calendarLastPullAt?: string | null;
 };
 
 const DEFAULT_HOURS: Record<string, string> = {
@@ -80,6 +105,31 @@ function defaults(): TitanWorkspace {
     subscriptionTier: 'none',
     subscriptionStatus: null,
     mapProvider: 'list_only',
+    workspaceSlug: 'gloss-boss-atx',
+    businessDisplayName: 'Gloss Boss ATX',
+    legalBusinessName: 'Gloss Boss ATX LLC',
+    brandShortName: 'Gloss Boss',
+    brandCityLabel: 'Austin, TX',
+    brandSlug: 'gloss-boss-atx',
+    logoUrl: null,
+    iconUrl: null,
+    heroVideoUrl: null,
+    heroVideoPosterUrl: null,
+    heroVideoEnabled: false,
+    primaryColor: '#d4af37',
+    accentColor: '#f1d28a',
+    supportEmail: null,
+    supportPhone: null,
+    websiteUrl: 'https://www.glossbossatx.com',
+    publicBookingUrl: 'https://www.glossbossatx.com/book',
+    gaMeasurementId: 'G-VWFWQ0P9GB',
+    clarityProjectId: 'xddon9jp0d',
+    gscVerificationNote: null,
+    isTitanPlatformMode: false,
+    publicTitanEnabled: true,
+    allowedDomains: [],
+    googleBlocksBooking: true,
+    calendarLastPullAt: null,
   };
 }
 
@@ -112,6 +162,31 @@ function mapRow(row: Record<string, unknown>): TitanWorkspace {
     mapProvider: (['google_maps', 'apple_mapkit', 'list_only'].includes(str(row.map_provider))
       ? str(row.map_provider)
       : 'list_only') as MapProviderId,
+    workspaceSlug: str(row.workspace_slug) || 'gloss-boss-atx',
+    businessDisplayName: str(row.business_display_name) || null,
+    legalBusinessName: str(row.legal_business_name) || null,
+    brandShortName: str(row.brand_short_name) || null,
+    brandCityLabel: str(row.brand_city_label) || null,
+    brandSlug: str(row.brand_slug) || null,
+    logoUrl: str(row.logo_url) || null,
+    iconUrl: str(row.icon_url) || null,
+    heroVideoUrl: str(row.hero_video_url) || null,
+    heroVideoPosterUrl: str(row.hero_video_poster_url) || null,
+    heroVideoEnabled: row.hero_video_enabled === true,
+    primaryColor: str(row.primary_color) || '#d4af37',
+    accentColor: str(row.accent_color) || '#f1d28a',
+    supportEmail: str(row.support_email) || null,
+    supportPhone: str(row.support_phone) || null,
+    websiteUrl: str(row.website_url) || null,
+    publicBookingUrl: str(row.public_booking_url) || null,
+    gaMeasurementId: str(row.ga_measurement_id) || null,
+    clarityProjectId: str(row.clarity_project_id) || null,
+    gscVerificationNote: str(row.gsc_verification_note) || null,
+    isTitanPlatformMode: row.is_titan_platform_mode === true,
+    publicTitanEnabled: row.public_titan_enabled !== false,
+    allowedDomains: Array.isArray(row.allowed_domains) ? (row.allowed_domains as string[]) : [],
+    googleBlocksBooking: row.google_blocks_booking !== false,
+    calendarLastPullAt: str(row.calendar_last_pull_at) || null,
   };
 }
 
@@ -149,6 +224,31 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
     subscriptionTier: input.subscriptionTier ?? current.subscriptionTier,
     subscriptionStatus: input.subscriptionStatus ?? current.subscriptionStatus,
     mapProvider: input.mapProvider ?? current.mapProvider,
+    workspaceSlug: input.workspaceSlug ?? current.workspaceSlug,
+    businessDisplayName: input.businessDisplayName !== undefined ? input.businessDisplayName : current.businessDisplayName,
+    legalBusinessName: input.legalBusinessName !== undefined ? input.legalBusinessName : current.legalBusinessName,
+    brandShortName: input.brandShortName !== undefined ? input.brandShortName : current.brandShortName,
+    brandCityLabel: input.brandCityLabel !== undefined ? input.brandCityLabel : current.brandCityLabel,
+    brandSlug: input.brandSlug !== undefined ? input.brandSlug : current.brandSlug,
+    logoUrl: input.logoUrl !== undefined ? input.logoUrl : current.logoUrl,
+    iconUrl: input.iconUrl !== undefined ? input.iconUrl : current.iconUrl,
+    heroVideoUrl: input.heroVideoUrl !== undefined ? input.heroVideoUrl : current.heroVideoUrl,
+    heroVideoPosterUrl: input.heroVideoPosterUrl !== undefined ? input.heroVideoPosterUrl : current.heroVideoPosterUrl,
+    heroVideoEnabled: input.heroVideoEnabled ?? current.heroVideoEnabled,
+    primaryColor: input.primaryColor ?? current.primaryColor,
+    accentColor: input.accentColor ?? current.accentColor,
+    supportEmail: input.supportEmail !== undefined ? input.supportEmail : current.supportEmail,
+    supportPhone: input.supportPhone !== undefined ? input.supportPhone : current.supportPhone,
+    websiteUrl: input.websiteUrl !== undefined ? input.websiteUrl : current.websiteUrl,
+    publicBookingUrl: input.publicBookingUrl !== undefined ? input.publicBookingUrl : current.publicBookingUrl,
+    gaMeasurementId: input.gaMeasurementId !== undefined ? input.gaMeasurementId : current.gaMeasurementId,
+    clarityProjectId: input.clarityProjectId !== undefined ? input.clarityProjectId : current.clarityProjectId,
+    gscVerificationNote: input.gscVerificationNote !== undefined ? input.gscVerificationNote : current.gscVerificationNote,
+    isTitanPlatformMode: input.isTitanPlatformMode ?? current.isTitanPlatformMode,
+    publicTitanEnabled: input.publicTitanEnabled ?? current.publicTitanEnabled,
+    allowedDomains: input.allowedDomains ?? current.allowedDomains,
+    googleBlocksBooking: input.googleBlocksBooking ?? current.googleBlocksBooking,
+    calendarLastPullAt: input.calendarLastPullAt !== undefined ? input.calendarLastPullAt : current.calendarLastPullAt,
   };
 
   const { error } = await admin.from('titan_workspace_settings').upsert(
@@ -174,6 +274,31 @@ export async function saveTitanWorkspace(admin: SupabaseClient, input: Partial<T
       subscription_tier: merged.subscriptionTier,
       subscription_status: merged.subscriptionStatus,
       map_provider: merged.mapProvider,
+      workspace_slug: merged.workspaceSlug,
+      business_display_name: merged.businessDisplayName,
+      legal_business_name: merged.legalBusinessName,
+      brand_short_name: merged.brandShortName,
+      brand_city_label: merged.brandCityLabel,
+      brand_slug: merged.brandSlug,
+      logo_url: merged.logoUrl,
+      icon_url: merged.iconUrl,
+      hero_video_url: merged.heroVideoUrl,
+      hero_video_poster_url: merged.heroVideoPosterUrl,
+      hero_video_enabled: merged.heroVideoEnabled,
+      primary_color: merged.primaryColor,
+      accent_color: merged.accentColor,
+      support_email: merged.supportEmail,
+      support_phone: merged.supportPhone,
+      website_url: merged.websiteUrl,
+      public_booking_url: merged.publicBookingUrl,
+      ga_measurement_id: merged.gaMeasurementId,
+      clarity_project_id: merged.clarityProjectId,
+      gsc_verification_note: merged.gscVerificationNote,
+      is_titan_platform_mode: merged.isTitanPlatformMode,
+      public_titan_enabled: merged.publicTitanEnabled,
+      allowed_domains: merged.allowedDomains,
+      google_blocks_booking: merged.googleBlocksBooking,
+      calendar_last_pull_at: merged.calendarLastPullAt,
       updated_at: now,
     },
     { onConflict: 'workspace_key' },

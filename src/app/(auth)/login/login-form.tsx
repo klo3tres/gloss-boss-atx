@@ -36,6 +36,28 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
+  
+  const [brand, setBrand] = useState<{
+    businessDisplayName: string;
+    logoUrl: string | null;
+  }>({
+    businessDisplayName: 'Gloss Boss ATX',
+    logoUrl: '/brand/glossboss-clean-logo.png',
+  });
+
+  useEffect(() => {
+    fetch('/api/public/brand')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && !data.error) {
+          setBrand({
+            businessDisplayName: data.businessDisplayName || 'Gloss Boss ATX',
+            logoUrl: data.logoUrl || '/brand/glossboss-clean-logo.png',
+          });
+        }
+      })
+      .catch((err) => console.warn('Failed to load public brand for login:', err));
+  }, []);
 
   useEffect(() => {
     setSupabase(createSupabaseBrowserClient());
@@ -191,8 +213,8 @@ export default function LoginForm() {
         className={`relative z-[20] w-full max-w-md rounded-3xl border border-gold/15 bg-black/85 p-8 shadow-[0_0_50px_rgba(212,175,55,0.15)] backdrop-blur-xl gb-premium-card transition-opacity duration-300 ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
       >
         <div className="flex flex-col items-center mb-6">
-          <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-16 w-auto object-contain filter brightness-110 mb-4" />
-          <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>Gloss Boss ATX</p>
+          <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-16 w-auto object-contain filter brightness-110 mb-4" />
+          <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>{brand.businessDisplayName}</p>
         </div>
 
         <h1 className='text-2xl font-black uppercase tracking-tight text-white text-center'>Portal Sign In</h1>

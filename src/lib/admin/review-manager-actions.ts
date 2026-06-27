@@ -32,7 +32,7 @@ function revalidateReviews() {
 }
 
 function isSchemaFallbackError(message: string) {
-  return /column .* does not exist|schema cache|Could not find|review_text|vehicle_label|source|featured|updated_at/i.test(message);
+  return /column .* does not exist|schema cache|Could not find|review_text|vehicle_label|source|featured|updated_at|sort_order/i.test(message);
 }
 
 async function writeReview(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, id: string, row: Record<string, unknown>) {
@@ -75,6 +75,7 @@ export async function saveManualReviewAction(formData: FormData): Promise<Review
     source: str(formData.get('source')) || 'Manual',
     published,
     featured: formData.get('featured') === 'on' || formData.get('featured') === 'true',
+    sort_order: Number(formData.get('sort_order') ?? 0),
     approved_at: published ? now : null,
     created_at: createdAt,
     updated_at: now,

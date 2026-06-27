@@ -141,6 +141,34 @@ export function DashboardShell({
   const [navOpen, setNavOpen] = useState(false);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
   const [currentHash, setCurrentHash] = useState('');
+  
+  const [brand, setBrand] = useState<{
+    businessDisplayName: string;
+    brandShortName: string;
+    logoUrl: string | null;
+    iconUrl: string | null;
+  }>({
+    businessDisplayName: 'Gloss Boss ATX',
+    brandShortName: 'Gloss Boss',
+    logoUrl: '/brand/glossboss-clean-logo.png',
+    iconUrl: '/favicon.svg',
+  });
+
+  useEffect(() => {
+    fetch('/api/public/brand')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && !data.error) {
+          setBrand({
+            businessDisplayName: data.businessDisplayName || 'Gloss Boss ATX',
+            brandShortName: data.brandShortName || 'Gloss Boss',
+            logoUrl: data.logoUrl || '/brand/glossboss-clean-logo.png',
+            iconUrl: data.iconUrl || '/favicon.svg',
+          });
+        }
+      })
+      .catch((err) => console.warn('Failed to load public brand:', err));
+  }, []);
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -351,8 +379,8 @@ export function DashboardShell({
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-no-print flex items-center justify-between lg:hidden w-full bg-zinc-950/85 border border-gold/15 rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-[0_0_15px_rgba(212,175,55,0.08)]'>
           <div className="flex items-center gap-2">
-            <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-7 w-auto object-contain filter brightness-110" />
-            <span className='text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>Gloss Boss ATX</span>
+            <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-7 w-auto object-contain filter brightness-110" />
+            <span className='text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>{brand.businessDisplayName}</span>
           </div>
           <button
             type='button'
@@ -375,8 +403,8 @@ export function DashboardShell({
           }`}
         >
           <div className="flex flex-col items-center mb-5 border-b border-white/5 pb-4">
-            <img src="/brand/glossboss-clean-logo.png" alt="Gloss Boss ATX" className="h-16 w-auto object-contain filter brightness-110 mb-2" />
-            <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+            <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-16 w-auto object-contain filter brightness-110 mb-2" />
+            <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{brand.brandShortName}</p>
           </div>
           <h2 className='text-base font-black uppercase text-center text-white mb-2'>{panelTitle}</h2>
           {NavLinks}
@@ -387,7 +415,7 @@ export function DashboardShell({
           {!isTitanSurface ? (
           <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-center justify-between gap-4'>
             <div className="min-w-0 flex-1 flex items-center gap-4">
-              <img src="/brand/glossboss-clean-logo.png" alt="Logo" className="h-12 w-auto object-contain filter brightness-110 hidden md:block" />
+              <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt="Logo" className="h-12 w-auto object-contain filter brightness-110 hidden md:block" />
               <div>
                 <h1 className='text-2xl font-black uppercase sm:text-3xl'>{title}</h1>
                 <p className='mt-2 text-sm text-zinc-300'>{subtitle}</p>

@@ -9,7 +9,7 @@ import { logTitanActivity } from '@/lib/titan/activity-feed';
 async function requireSuperAdmin() {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
-  if (!session.user || session.profile?.role !== 'super_admin' || !admin) return null;
+  if (!session.user || !['admin', 'super_admin'].includes(session.profile?.role ?? '') || !admin) return null;
   return { admin };
 }
 

@@ -65,7 +65,7 @@ export async function GET() {
       return NextResponse.json(payload);
     }
 
-    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes, reviewsRes, socialRes] = await Promise.all([
+    const [pricesRes, dealRes, offersFull, featuredRes, svcLoad, reviewRes, ssGoogle, fleetRes, visualsRes, mediaRes, socialRes] = await Promise.all([
       client.from('service_prices').select('*'),
       client.from('homepage_content').select('value').eq('key', 'deal_config').maybeSingle(),
       client
@@ -79,14 +79,25 @@ export async function GET() {
       client.from('site_settings').select('key, value').in('key', ['fleet_services_enabled', 'fleet_services_blurb', 'fleet_pricing']),
       client.from('site_settings').select('value').eq('key', 'homepage_visuals').maybeSingle(),
       client.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
-      client
+      client.from('site_settings').select('key, value').in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']),
+    ]);
+
+    let reviewsRes: any = await client
+      .from('customer_reviews')
+      .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured, sort_order')
+      .eq('published', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(12);
+
+    if (reviewsRes.error && (reviewsRes.error.message.includes('sort_order') || reviewsRes.error.message.includes('column'))) {
+      reviewsRes = await client
         .from('customer_reviews')
         .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured')
         .eq('published', true)
         .order('created_at', { ascending: false })
-        .limit(12),
-      client.from('site_settings').select('key, value').in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']),
-    ]);
+        .limit(12);
+    }
 
     const sErr = svcLoad.error ? { message: svcLoad.error } : null;
     const pErr = pricesRes.error;
@@ -116,12 +127,21 @@ export async function GET() {
       try {
         const auto = await maybeAutoSyncGoogleReviews(admin);
         if (auto.ran && auto.result?.ok && (auto.result.imported > 0 || auto.result.updated > 0)) {
-          const refetch = await admin
+          let refetch: any = await admin
             .from('customer_reviews')
-            .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured')
+            .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured, sort_order')
             .eq('published', true)
+            .order('sort_order', { ascending: true })
             .order('created_at', { ascending: false })
             .limit(12);
+          if (refetch.error && (refetch.error.message.includes('sort_order') || refetch.error.message.includes('column'))) {
+            refetch = await admin
+              .from('customer_reviews')
+              .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured')
+              .eq('published', true)
+              .order('created_at', { ascending: false })
+              .limit(12);
+          }
           if (!refetch.error && refetch.data) reviewRows = refetch.data as Record<string, unknown>[];
         }
       } catch (syncErr) {
