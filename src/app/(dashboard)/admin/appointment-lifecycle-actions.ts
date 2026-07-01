@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import { actionErr, actionOk, actionWarn, type ActionResult } from '@/lib/action-result';
 import { cancelAppointmentLifecycle, rescheduleAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 
 async function requireAdmin() {
@@ -22,6 +22,12 @@ export async function adminRescheduleAppointmentActionState(_prev: ActionResult 
   return adminRescheduleAppointmentAction(formData);
 }
 
+function googleSyncNote(result?: { ok: boolean; skipped?: boolean; error?: string }): string {
+  if (!result || result.skipped) return '';
+  if (result.ok) return ' Google Calendar updated.';
+  return ` Google Calendar: ${result.error ?? 'sync failed'}.`;
+}
+
 export async function adminCancelAppointmentAction(formData: FormData): Promise<ActionResult> {
   const admin = await requireAdmin();
   if (!admin) return actionErr('Forbidden');
@@ -31,8 +37,13 @@ export async function adminCancelAppointmentAction(formData: FormData): Promise<
   if (!r.ok) return actionErr(r.error ?? 'Cancel failed');
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/dispatch');
+  revalidatePath('/admin/calendar');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
-  return actionOk('Appointment cancelled — slot released, emails queued.');
+  const gNote = googleSyncNote(r.googleCalendar);
+  if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {
+    return actionWarn(`Appointment cancelled — slot released.${gNote}`);
+  }
+  return actionOk(`Appointment cancelled — slot released.${gNote}`);
 }
 
 export async function adminRescheduleAppointmentAction(formData: FormData): Promise<ActionResult> {
@@ -58,8 +69,13 @@ export async function adminRescheduleAppointmentAction(formData: FormData): Prom
   if (!r.ok) return actionErr(r.error ?? 'Reschedule failed');
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/dispatch');
+  revalidatePath('/admin/calendar');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
-  return actionOk('Appointment rescheduled — customer notified.');
+  const gNote = googleSyncNote(r.googleCalendar);
+  if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {
+    return actionWarn(`Appointment rescheduled — customer notified.${gNote}`);
+  }
+  return actionOk(`Appointment rescheduled — customer notified.${gNote}`);
 }
 
 export async function previewRescheduleAppointmentAction(input: {

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
+import { useGoogleCalendarAutoSync } from '@/hooks/use-google-calendar-auto-sync';
 import { motion } from 'framer-motion';
 import { GripVertical, Search, Trash2, Clock, MapPin, ExternalLink, Compass } from 'lucide-react';
 import {
@@ -125,6 +126,7 @@ export function DispatchBoardClient({
   fallbacks?: DispatchFallbackRow[];
   jobNotes?: Record<string, string>;
 }) {
+  useGoogleCalendarAutoSync();
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
   const [filter, setFilter] = useState<BoardFilter>('active');

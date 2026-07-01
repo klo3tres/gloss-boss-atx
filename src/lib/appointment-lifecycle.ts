@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
-import { queueGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
+import { runGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 function str(v: unknown) {
@@ -75,7 +75,7 @@ async function emailCustomer(
 export async function cancelAppointmentLifecycle(
   admin: SupabaseClient,
   input: { appointmentId: string; reason?: string; notifyCustomer?: boolean },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; googleCalendar?: { ok: boolean; skipped?: boolean; error?: string } }> {
   const id = str(input.appointmentId);
   if (!id) return { ok: false, error: 'Missing appointment' };
 
@@ -126,12 +126,12 @@ export async function cancelAppointmentLifecycle(
     console.warn('[lifecycle] owner cancel notify', e);
   }
 
-  queueGoogleCalendarSync(admin, id, 'delete');
+  const googleCalendar = await runGoogleCalendarSync(admin, id, 'delete');
   void import('@/lib/booking-availability-block').then(({ removeAppointmentAvailabilityBlock }) =>
     removeAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
   );
 
-  return { ok: true };
+  return { ok: true, googleCalendar };
 }
 
 export async function rescheduleAppointmentLifecycle(
@@ -145,7 +145,7 @@ export async function rescheduleAppointmentLifecycle(
     customEmailSubject?: string;
     customSmsBody?: string;
   },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; googleCalendar?: { ok: boolean; skipped?: boolean; error?: string } }> {
   const id = str(input.appointmentId);
   const newStart = str(input.newScheduledStart);
   if (!id || !newStart) return { ok: false, error: 'Missing appointment or new time' };
@@ -243,12 +243,12 @@ export async function rescheduleAppointmentLifecycle(
     console.warn('[lifecycle] owner reschedule notify', e);
   }
 
-  queueGoogleCalendarSync(admin, id, 'upsert');
+  const googleCalendar = await runGoogleCalendarSync(admin, id, 'upsert');
   void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
     upsertAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
   );
 
-  return { ok: true };
+  return { ok: true, googleCalendar };
 }
 
 export async function verifyAppointmentAccessToken(appointmentId: string, token: string): Promise<boolean> {

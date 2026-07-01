@@ -19,13 +19,23 @@ export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'custo
 type NavLink = { href: string; label: string };
 type NavGroup = { title: string; links: NavLink[] };
 
+const TITAN_ADMIN_SURFACES = new Set([
+  '/admin',
+  '/admin/notifications',
+  '/admin/dispatch',
+  '/admin/customers',
+  '/admin/revenue',
+  '/admin/calendar',
+]);
+
 const adminNavGroups: NavGroup[] = [
   {
     title: 'Overview',
     links: [
-      { href: '/admin/titan', label: 'Titan workspace' },
-      { href: '/admin', label: 'Owner dashboard' },
+      { href: '/admin', label: 'Briefing' },
+      { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/calendar', label: 'Calendar' },
+      { href: '/admin/titan', label: 'Titan workspace' },
     ],
   },
   {
@@ -57,6 +67,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/cms', label: 'Website & gallery' },
       { href: '/admin/media', label: 'Vehicle & service images' },
       { href: '/admin/promotions', label: 'Promotions' },
+      { href: '/admin/referrals', label: 'Referrals' },
       { href: '/admin/fleet', label: 'Fleet growth' },
     ],
   },
@@ -75,7 +86,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/brand-settings', label: 'Brand settings' },
       { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/launch-readiness', label: 'Launch readiness' },
-      { href: '/admin/notifications', label: 'Notifications' },
+      { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/integrations', label: 'Integrations' },
       { href: '/admin/system-status', label: 'System status' },
     ],
@@ -282,7 +293,11 @@ export function DashboardShell({
     customer: 'Customer',
   };
 
-  const isTitanSurface = titanMode || pathname.startsWith('/admin/super') || pathname.startsWith('/admin/titan');
+  const isTitanSurface =
+    titanMode ||
+    pathname.startsWith('/admin/super') ||
+    pathname.startsWith('/admin/titan') ||
+    TITAN_ADMIN_SURFACES.has(pathname);
 
   const panelTitle =
     role === 'super_admin' && simNav && simNav !== 'super_admin'

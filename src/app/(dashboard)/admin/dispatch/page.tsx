@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { AdminTitanHero } from '@/components/titan/admin-titan-hero';
 import { DispatchBoardClient, type DispatchFallbackRow, type DispatchJobRow } from '@/components/admin/dispatch-board-client';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -101,16 +101,23 @@ export default async function AdminDispatchPage() {
       })
     : [];
 
+  const unassigned = jobs.filter((j) => !j.assigned_technician_id && !['completed', 'cancelled'].includes(j.status ?? '')).length;
+  const inProgress = jobs.filter((j) => j.job_started_at && !j.job_completed_at).length;
+
   return (
-    <DashboardShell title='Dispatch board' subtitle='Unassigned → assigned → in progress → completed.' role='admin'>
-      <div className='mb-4 flex flex-wrap gap-3 text-xs'>
-        <Link href='/admin/super' className='font-bold uppercase text-gold-soft underline'>
-          ← Command center
-        </Link>
-        <Link href='/admin/leads' className='font-bold uppercase text-zinc-400 underline'>
-          Leads pipeline
-        </Link>
-      </div>
+    <DashboardShell title="Dispatch" subtitle="Assign jobs to technicians." role="admin">
+      <AdminTitanHero
+        title="Dispatch board"
+        sentence="Move jobs from unassigned to assigned, in progress, and completed without losing context."
+        kpi={unassigned}
+        kpiHint={`${unassigned} need assignment · ${inProgress} in progress · ${fallbacks.length} fallback queue`}
+        primaryHref="/admin/leads"
+        primaryLabel="Leads pipeline"
+        secondaryLinks={[
+          { href: '/admin', label: '← Briefing' },
+          { href: '/admin/calendar', label: 'Calendar' },
+        ]}
+      />
       {jobsRes.error ? (
         <p className='mb-4 text-sm text-amber-200'>Appointments: {jobsRes.error.message}</p>
       ) : null}

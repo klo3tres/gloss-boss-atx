@@ -1,6 +1,9 @@
+import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { NotificationCenterClient } from '@/components/admin/notification-center-client';
 import { TitanNotificationHub } from '@/components/admin/titan-notification-hub';
+import { TitanPageShell } from '@/components/titan/titan-page-shell';
+import { CollapsibleSection } from '@/components/ui/premium';
 import { getResendEnvStatus, resendConfigured, twilioConfigured } from '@/lib/email-send';
 import { normalizeNotificationTemplateRow } from '@/lib/notification-template-db';
 import { loadTitanNotificationEvents, countUnreadNotifications } from '@/lib/titan/notification-events';
@@ -9,7 +12,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 export const dynamic = 'force-dynamic';
 
 function str(v: unknown) {
-  return v == null ? '' : String(v);
+  return v == null ? '' : String(v).trim();
 }
 
 export default async function AdminNotificationsPage() {
@@ -21,7 +24,7 @@ export default async function AdminNotificationsPage() {
     admin
       ? admin.from('notification_outbox').select('*').order('created_at', { ascending: false }).limit(200)
       : Promise.resolve({ data: [] }),
-    admin ? loadTitanNotificationEvents(admin, { limit: 100 }) : Promise.resolve({ events: [], tablesReady: false }),
+    admin ? loadTitanNotificationEvents(admin, { limit: 150 }) : Promise.resolve({ events: [], tablesReady: false }),
   ]);
   const unreadCount = admin ? await countUnreadNotifications(admin) : 0;
 
@@ -47,99 +50,56 @@ export default async function AdminNotificationsPage() {
       payload,
     };
   });
-  const emailRows = outboxRows.filter((row) => row.channel.toLowerCase().includes('email') || row.provider.toLowerCase().includes('resend'));
-  const smsRows = outboxRows.filter((row) => row.channel.toLowerCase().includes('sms') || row.provider.toLowerCase().includes('twilio'));
+
   const failedRows = outboxRows.filter((row) => ['failed', 'error'].includes(row.status.toLowerCase()) || row.error_message);
-  const pendingRows = outboxRows.filter((row) => ['pending', 'queued', 'new'].includes(row.status.toLowerCase()));
-  const deliveredRows = outboxRows.filter((row) => ['sent', 'delivered', 'success', 'succeeded'].includes(row.status.toLowerCase()));
-  const deliveryHealth = outboxRows.length > 0 ? Math.round((deliveredRows.length / outboxRows.length) * 100) : 100;
-  const ownerEmail = process.env.OWNER_EMAIL || process.env.BUSINESS_NOTIFY_EMAIL || 'glossbossatx1@gmail.com';
-  const ownerPhone = process.env.OWNER_PHONE || process.env.BUSINESS_NOTIFY_PHONE || '';
-  const infoInbound = process.env.INFO_FORWARDING_TARGET || ownerEmail;
-  const routingBlockers = [
-    !resendConfigured()
-      ? 'Email blocked: Resend is not fully configured. Add RESEND_API_KEY and a verified sender/from domain so owner email alerts can leave the outbox.'
-      : '',
-    !twilioConfigured()
-      ? 'SMS blocked: Twilio is not fully configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_PHONE so owner SMS alerts can send.'
-      : '',
-    'Info@ forwarding: configure info@glossbossatx.com at the domain/email provider to forward or catch all inbound mail to the owner inbox. The app can only show inbound messages it receives.',
-  ].filter(Boolean);
+  const deliveryHealth =
+    outboxRows.length > 0
+      ? Math.round(
+          (outboxRows.filter((row) => ['sent', 'delivered', 'success', 'succeeded'].includes(row.status.toLowerCase())).length /
+            outboxRows.length) *
+            100,
+        )
+      : 100;
 
   return (
-    <DashboardShell title='Notification center' subtitle='Templates, delivery log, test send, and provider status.' role='admin'>
-      <TitanNotificationHub initialEvents={hub.events} tablesReady={hub.tablesReady} unreadCount={unreadCount} />
-      <section className='grid gap-4 md:grid-cols-3 xl:grid-cols-6'>
-        {[
-          ['Email Status', resendConfigured() ? 'Configured' : 'Setup needed', `${emailRows.length} recent email events`],
-          ['SMS Status', twilioConfigured() ? 'Configured' : 'Setup needed', `${smsRows.length} recent SMS events`],
-          ['Delivery Health', `${deliveryHealth}%`, `${deliveredRows.length}/${outboxRows.length || 0} delivered`],
-          ['Failed Sends', String(failedRows.length), 'Open failures first'],
-          ['Pending Sends', String(pendingRows.length), 'Queued or waiting'],
-          ['Provider Status', resendConfigured() && twilioConfigured() ? 'Healthy' : 'Partial', 'Resend + Twilio'],
-        ].map(([label, value, hint]) => (
-          <div key={label} className='rounded-3xl border border-gold/15 bg-black/45 p-4 shadow-[0_0_24px_rgba(212,175,55,0.07)]'>
-            <p className='text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500'>{label}</p>
-            <p className='mt-3 text-xl font-black text-white'>{value}</p>
-            <p className='mt-1 text-[10px] text-zinc-500'>{hint}</p>
-          </div>
-        ))}
-      </section>
-      <section className='gb-glass rounded-3xl border border-gold/25 p-5'>
-        <div className='flex flex-wrap items-start justify-between gap-4'>
-          <div>
-            <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Owner alert routing</p>
-            <p className='mt-2 text-sm text-zinc-300'>Booking, payment, work order, and technician alerts should route to the owner destinations below.</p>
-          </div>
-          <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
-            resendConfigured() && twilioConfigured()
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-              : 'border-amber-500/35 bg-amber-500/10 text-amber-200'
-          }`}>
-            {resendConfigured() && twilioConfigured() ? 'Routes healthy' : 'Routes need setup'}
-          </span>
-        </div>
-        <div className='mt-4 grid gap-3 md:grid-cols-3'>
-          {[
-            ['Owner Email', ownerEmail, resendConfigured() ? 'Email provider ready' : 'Waiting on Resend setup'],
-            ['Owner SMS', ownerPhone || 'No owner phone env found', twilioConfigured() ? 'SMS provider ready' : 'Waiting on Twilio setup'],
-            ['Info@ Inbound', `info@glossbossatx.com -> ${infoInbound}`, 'Domain forwarding must be configured outside the app'],
-          ].map(([label, value, hint]) => (
-            <div key={label} className='rounded-2xl border border-white/10 bg-black/35 p-4'>
-              <p className='text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500'>{label}</p>
-              <p className='mt-2 break-words text-sm font-bold text-white'>{value}</p>
-              <p className='mt-1 text-[10px] text-zinc-500'>{hint}</p>
-            </div>
-          ))}
-        </div>
-        <div className='mt-4 space-y-2'>
-          {routingBlockers.map((blocker) => (
-            <p key={blocker} className='rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-100'>
-              {blocker}
-            </p>
-          ))}
-        </div>
-      </section>
-      <section className='gb-glass rounded-3xl border border-gold/25 p-5'>
-        <p className='text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>Variables</p>
-        <div className='mt-3 flex flex-wrap gap-2'>
-          {['{{customer}}', '{{vehicle}}', '{{service}}', '{{tech}}', '{{address}}', '{{appointment_time}}', '{{payment_link}}', '{{review_link}}'].map(
-            (v) => (
-              <span key={v} className='rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300'>
-                {v}
-              </span>
-            ),
-          )}
-        </div>
-      </section>
+    <DashboardShell title="Activity" subtitle="Unified event feed for your business." role="admin" titanMode>
+      <TitanPageShell
+        title="Activity Center"
+        sentence="What happened across bookings, payments, calendar, leads, and system events."
+        kpi={unreadCount}
+        kpiHint={`${unreadCount} unread · ${hub.events.length} recent events · ${deliveryHealth}% delivery health`}
+        primaryAction={
+          <Link
+            href="/admin"
+            className="rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black hover:brightness-110"
+          >
+            ← Executive briefing
+          </Link>
+        }
+      >
+        <TitanNotificationHub
+          initialEvents={hub.events}
+          tablesReady={hub.tablesReady}
+          unreadCount={unreadCount}
+          compactHeader
+        />
 
-      <NotificationCenterClient
-        templates={templateRows}
-        outbox={outboxRows}
-        resendOk={resendConfigured()}
-        resendEnv={getResendEnvStatus()}
-        twilioOk={twilioConfigured()}
-      />
+        <CollapsibleSection title="Delivery & templates" subtitle="Admin tools — templates, outbox, provider status" defaultOpen={false}>
+          <NotificationCenterClient
+            templates={templateRows}
+            outbox={outboxRows}
+            resendOk={resendConfigured()}
+            resendEnv={getResendEnvStatus()}
+            twilioOk={twilioConfigured()}
+          />
+        </CollapsibleSection>
+
+        {failedRows.length > 0 ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+            {failedRows.length} failed delivery(s) in the recent outbox — expand Delivery & templates to investigate.
+          </p>
+        ) : null}
+      </TitanPageShell>
     </DashboardShell>
   );
 }

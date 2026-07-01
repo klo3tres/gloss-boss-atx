@@ -202,6 +202,14 @@ export function Navbar() {
           <div className='hidden items-center gap-6 md:flex md:flex-1 md:justify-end lg:gap-8'>
             {coreLinks}
             {!isDash ? (
+              <Link
+                href='/book'
+                className='gb-premium-btn ml-2 inline-flex items-center rounded-xl bg-gradient-to-r from-gold to-gold-soft px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black shadow-[0_0_20px_rgba(212,175,55,0.25)] hover:brightness-110'
+              >
+                Book now
+              </Link>
+            ) : null}
+            {!isDash ? (
               <div className='ml-4 flex items-center gap-4 border-l border-white/10 pl-6 text-xs uppercase tracking-widest text-zinc-300'>
                 {primaryMarketingLinks.map((item) => (
                   <a key={item.label} href={toSectionLink(item.href)} className='transition hover:text-gold-soft'>

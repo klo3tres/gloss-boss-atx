@@ -102,6 +102,7 @@ import { isRealTimerId, isStaleTimerStart } from '@/lib/tech-job-filters';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
 import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
+import { UnifiedCalendarView } from '@/components/calendar/unified-calendar-view';
 import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
 
 function workOrderHref(job: TechJob) {
@@ -597,13 +598,7 @@ export function TechPremiumShell({
 
       {activeTab === 'calendar' && (
         <section className="min-w-0 animate-in fade-in duration-200">
-          <UpcomingScheduleWidget
-            items={scheduleItems}
-            title="Field calendar"
-            subtitle="Your assigned schedule"
-            emptyMessage="No assigned jobs are scheduled."
-            maxList={12}
-          />
+          <UnifiedCalendarView variant="compact" role="tech" />
         </section>
       )}
 

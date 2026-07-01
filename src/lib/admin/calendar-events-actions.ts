@@ -54,7 +54,8 @@ export async function addCalendarEventAction(formData: FormData): Promise<{ ok: 
   const payload = JSON.stringify({ events: events.slice(0, 300) });
   const { error } = await admin.from('site_settings').upsert({ key: 'calendar_events', value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' });
   if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/calendar');
   revalidatePath('/admin');
-  revalidatePath('/admin/super');
+  revalidatePath('/tech');
   return { ok: true, message: 'Calendar event added.' };
 }

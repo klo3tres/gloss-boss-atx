@@ -1,17 +1,15 @@
 import { AdminLayoutClient } from '@/components/admin/admin-layout-client';
-import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
-import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const admin = tryCreateAdminSupabase();
-  const prefs = admin ? await loadOwnerNotificationPreferences(admin) : null;
-
+export default async function AdminLayout({
+  children,
+  automation,
+}: {
+  children: React.ReactNode;
+  automation: React.ReactNode;
+}) {
   return (
-    <AdminLayoutClient
-      leadRadarAutoEnabled={prefs?.leadRadarAutoScanEnabled ?? false}
-      lastLeadRadarScanAt={prefs?.lastLeadRadarScanAt ?? null}
-      scanFrequency={prefs?.googlePlacesScanFrequency ?? 'on_login'}
-    >
+    <AdminLayoutClient>
+      {automation}
       {children}
     </AdminLayoutClient>
   );

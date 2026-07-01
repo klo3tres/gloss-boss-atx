@@ -26,6 +26,8 @@ import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, 
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
 import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
+import { Suspense } from 'react';
+import { WorkOrderFlashToasts } from '@/components/admin/work-order-flash-toasts';
 import { WorkOrderErrorCard } from '@/components/tech/work-order-error-card';
 import { WorkOrderDebugPanel } from '@/components/tech/work-order-debug-panel';
 import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
@@ -911,6 +913,9 @@ export default async function TechWorkOrderDetailPage({
 
   return (
     <DashboardShell title='Work order' subtitle='Job overview, vehicles, agreement, photos, and payment.' role={shellRole}>
+      <Suspense fallback={null}>
+        <WorkOrderFlashToasts />
+      </Suspense>
       {showDebug ? (
         <div className='mb-6 space-y-4'>
           <WorkOrderDebugPanel

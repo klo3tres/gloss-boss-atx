@@ -10,6 +10,7 @@ import { isBookingSlotAllowed } from '@/lib/booking-availability';
 import { buildAppointmentScheduleFields } from '@/lib/booking-slot-blocking';
 import { loadDurationCatalog } from '@/lib/booking-duration-catalog';
 import { queueGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
+import { maybeAutoPullGoogleCalendar } from '@/lib/google/google-calendar-auto-pull';
 import { fetchBookedBlocks, slotConflictsWithBlocks } from '@/lib/booking-slot-blocking';
 import { totalBookingDurationMinutes } from '@/lib/booking-service-duration';
 import {
@@ -340,6 +341,7 @@ export async function POST(request: Request) {
     const durationMinutes = totalBookingDurationMinutes(durationLines, durationCatalog);
     const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
+    await maybeAutoPullGoogleCalendar(admin);
     const bookedBlocks = await fetchBookedBlocks(admin, rangeStart, rangeEnd);
     if (slotConflictsWithBlocks(scheduled.toISOString(), durationMinutes, bookedBlocks)) {
       return NextResponse.json(

@@ -21,6 +21,9 @@ import { slotConflictsWithBlocks, type BookedBlock } from '@/lib/booking-slot-bl
 import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { BookingStepProgress } from '@/components/booking/booking-step-progress';
+import { BookingWizardNav } from '@/components/booking/booking-wizard-nav';
+import { BOOKING_WIZARD_STEPS, clampBookingStep } from '@/lib/booking/booking-wizard-steps';
 import { BookingWeatherHint } from '@/components/weather/booking-weather-hint';
 import { safePriceCentsForDisplay, safePriceResolver } from '@/lib/safe-price-resolver';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
@@ -179,6 +182,8 @@ export function BookingWizard() {
   const [promoComped, setPromoComped] = useState(false);
   const [promoQuoteFinalCents, setPromoQuoteFinalCents] = useState<number | null>(null);
   const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
+  const [draftResumedNotice, setDraftResumedNotice] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
   type SavedBookingRef = {
     appointmentId?: string;
@@ -855,6 +860,12 @@ export function BookingWizard() {
         );
       }
     }
+    if (typeof draft.step === 'number' && draft.step > 0) {
+      setCurrentStep(clampBookingStep(draft.step));
+      setDraftResumedNotice(true);
+    } else if (draft.serviceSlug || draft.vehicleDescription || draft.scheduledStart) {
+      setDraftResumedNotice(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -886,11 +897,12 @@ export function BookingWizard() {
         accessNotes: serviceAddressNotes,
         hasWater: waterAccess === 'yes' ? true : waterAccess === 'no' ? false : null,
         hasPower: powerAccess === 'yes' ? true : powerAccess === 'no' ? false : null,
-        step: 0,
+        step: currentStep,
       });
     }, 500);
     return () => clearTimeout(t);
   }, [
+    currentStep,
     serviceSlug,
     vehicleClass,
     vehicleDescription,
@@ -1299,22 +1311,96 @@ export function BookingWizard() {
     return paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)';
   };
 
+  const lastWizardStep = BOOKING_WIZARD_STEPS.length - 1;
+
+  const validateBookingStep = (step: number): { ok: true } | { ok: false; message: string } => {
+    switch (clampBookingStep(step)) {
+      case 0:
+        if (!vehicleDescription.trim()) return { ok: false, message: 'Enter your vehicle year, make, and model.' };
+        if (!vehicleColor.trim()) return { ok: false, message: 'Enter your vehicle color.' };
+        return { ok: true };
+      case 1:
+        if (!serviceSlug) return { ok: false, message: 'Select a detailing package.' };
+        return { ok: true };
+      case 2:
+        for (let i = 0; i < extraVehicles.length; i++) {
+          const row = extraVehicles[i];
+          if (!row.vehicleDescription.trim() || !row.vehicleColor.trim()) {
+            return { ok: false, message: `Complete vehicle ${i + 2} year/make/model and color.` };
+          }
+        }
+        return { ok: true };
+      case 3:
+        if (!bookingDateKey) return { ok: false, message: 'Select an appointment date.' };
+        if (!bookingTimeValue) return { ok: false, message: 'Select a start time.' };
+        if (scheduleError) return { ok: false, message: scheduleError };
+        if (!filteredSlotOpts.some((s) => s.value === bookingTimeValue)) {
+          return { ok: false, message: 'That time is no longer available — pick another slot.' };
+        }
+        return { ok: true };
+      case 4:
+        if (!serviceLocationType) return { ok: false, message: 'Select a service location type.' };
+        if (!waterAccess || !powerAccess || !parkingAccess) {
+          return { ok: false, message: 'Answer water, power, and parking access questions.' };
+        }
+        if (!serviceAddress.trim() || !serviceCity.trim() || !serviceState.trim() || !serviceZip.trim()) {
+          return { ok: false, message: 'Enter your complete service address.' };
+        }
+        if (!guestName.trim() || !guestEmail.trim()) return { ok: false, message: 'Enter your name and email.' };
+        {
+          const phone = normalizeUsPhone10Digits(guestPhone);
+          if (!phone.ok) return { ok: false, message: phone.error };
+        }
+        return { ok: true };
+      default:
+        return { ok: true };
+    }
+  };
+
+  const goToStep = (step: number) => {
+    setError(null);
+    setCurrentStep(clampBookingStep(step));
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goNext = () => {
+    const result = validateBookingStep(currentStep);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setError(null);
+    goToStep(currentStep + 1);
+  };
+
+  const goBack = () => goToStep(currentStep - 1);
+
+  const stepTitle = BOOKING_WIZARD_STEPS[clampBookingStep(currentStep)]?.label ?? 'Book';
+
   return (
-    <form onSubmit={handleSubmit} className='gb-booking-form space-y-8 overflow-x-hidden pb-28 lg:pb-8'>
-      <div className='sticky top-0 z-20 -mx-1 rounded-2xl border border-gold/20 bg-black/90 px-4 py-3 backdrop-blur-md lg:hidden'>
-        <div className='flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-          <span>Package</span><span>Vehicle</span><span>Schedule</span><span>Pay</span>
-        </div>
-        <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-white/10'>
-          <div className='h-full w-2/3 bg-gold transition-all' />
-        </div>
+    <form onSubmit={handleSubmit} className='gb-booking-form space-y-6 overflow-x-hidden pb-36 lg:pb-8'>
+      <div className='sticky top-20 z-20 lg:top-24'>
+        <BookingStepProgress
+          currentStep={currentStep}
+          onStepClick={(step) => {
+            if (step < currentStep) goToStep(step);
+          }}
+        />
         {bookingDurationMinutes > 0 ? (
-          <p className='mt-2 text-[10px] text-zinc-500'>Est. {Math.round(bookingDurationMinutes / 15) * 15} min · {pricePreviewText ?? 'Select package'}</p>
+          <p className='mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500 lg:hidden'>
+            Est. {Math.round(bookingDurationMinutes / 15) * 15} min
+            {pricePreviewText ? ` · ${pricePreviewText}` : ''}
+          </p>
         ) : null}
       </div>
       {draftExpiredNotice ? (
         <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
           Your old booking draft expired. Start fresh — we kept your name and email.
+        </p>
+      ) : null}
+      {draftResumedNotice && !draftExpiredNotice ? (
+        <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
+          Welcome back — we restored your booking draft. Pick up where you left off.
         </p>
       ) : null}
       {catalogRefreshing ? (
@@ -1392,56 +1478,15 @@ export function BookingWizard() {
         </p>
       ) : null}
 
-      <div className='grid min-w-0 max-w-full gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,280px)]'>
-        <div className='order-2 min-w-0 space-y-8 lg:order-1'>
-          <section>
-            <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>1. Package (vehicle 1)</p>
-            <h2 className='mt-2 text-lg font-black uppercase text-white'>Select your detail</h2>
-            <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-              {services.map((s) => {
-                const active = s.slug === serviceSlug;
-                const duration = serviceDurationLabel(s);
-                const limited = Boolean(s.coming_soon || s.quote_required);
-                return (
-                  <button
-                    key={s.id}
-                    type='button'
-                    onClick={() => setServiceSlug(s.slug)}
-                    className={clsx(
-                      'rounded-2xl border p-4 text-left transition duration-300',
-                      active
-                        ? 'border-gold bg-black/80 shadow-[0_0_28px_rgba(212,166,77,0.35)] ring-2 ring-gold/50'
-                        : 'border-gold/20 bg-zinc-950/80 hover:border-gold/45 hover:shadow-[0_0_18px_rgba(212,166,77,0.12)]',
-                    )}
-                  >
-                    <div className='flex items-start justify-between gap-2'>
-                      <div>
-                        <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>{s.slug.replace(/-/g, ' ')}</p>
-                        <p className='mt-1 text-base font-black uppercase text-white'>{s.title}</p>
-                        <p className='mt-1 text-xs text-zinc-400'>{s.subtitle}</p>
-                        <p className='mt-2 text-[11px] font-bold uppercase tracking-wide text-zinc-300'>
-                          {duration ? `Estimated ${duration}` : 'Duration confirmed after review'}
-                          {limited ? ' · Quote required' : ''}
-                        </p>
-                      </div>
-                      {serviceIcon(s.slug)}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+      <div className='grid min-w-0 max-w-full gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,300px)]'>
+        <div className='order-2 min-w-0 lg:order-1'>
+          <div className='rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-6'>
+            <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>{stepTitle}</p>
 
-          <section className='rounded-3xl border border-gold/20 bg-black/35 p-4 sm:p-5'>
-            <div className='flex flex-wrap items-end justify-between gap-3'>
-              <div>
-                <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>2. Vehicle class (vehicle 1)</p>
-                <h2 className='mt-2 text-lg font-black uppercase text-white'>Choose your vehicle profile</h2>
-              </div>
-              <div className='rounded-full border border-gold/25 bg-gold/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gold-soft'>
-                Live price updates
-              </div>
-            </div>
+          {currentStep === 0 ? (
+          <section className='mt-4'>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Your vehicle</h2>
+            <p className='mt-1 text-sm text-zinc-400'>We price by vehicle size and tailor products to your paint.</p>
             <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
               {UI_VEHICLE_CLASSES.map((c) => {
                 const active = vehicleClass === c;
@@ -1477,6 +1522,77 @@ export function BookingWizard() {
                 );
               })}
             </div>
+            <div className='mt-6 grid gap-4 md:grid-cols-2'>
+              <label className='text-sm md:col-span-2'>
+                <span className='mb-2 block text-zinc-300'>Year / make / model</span>
+                <input
+                  value={vehicleDescription}
+                  onChange={(e) => setVehicleDescription(e.target.value)}
+                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base'
+                  placeholder='2022 BMW M3 Competition'
+                  required
+                />
+              </label>
+              <label className='text-sm md:col-span-2'>
+                <span className='mb-2 block text-zinc-300'>Color</span>
+                <input
+                  value={vehicleColor}
+                  onChange={(e) => setVehicleColor(e.target.value)}
+                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base'
+                  placeholder='Black'
+                  required
+                />
+              </label>
+            </div>
+          </section>
+          ) : null}
+
+          {currentStep === 1 ? (
+          <section className='mt-4'>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Select your detail</h2>
+            <p className='mt-1 text-sm text-zinc-400'>Duration and pricing update live for your {classLabel(vehicleClass)}.</p>
+            <div className='mt-4 grid gap-3 sm:grid-cols-2'>
+              {services.map((s) => {
+                const active = s.slug === serviceSlug;
+                const duration = serviceDurationLabel(s);
+                const limited = Boolean(s.coming_soon || s.quote_required);
+                return (
+                  <button
+                    key={s.id}
+                    type='button'
+                    onClick={() => setServiceSlug(s.slug)}
+                    className={clsx(
+                      'rounded-2xl border p-4 text-left transition duration-300',
+                      active
+                        ? 'border-gold bg-black/80 shadow-[0_0_28px_rgba(212,166,77,0.35)] ring-2 ring-gold/50'
+                        : 'border-gold/20 bg-zinc-950/80 hover:border-gold/45 hover:shadow-[0_0_18px_rgba(212,166,77,0.12)]',
+                    )}
+                  >
+                    <div className='flex items-start justify-between gap-2'>
+                      <div>
+                        <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>{s.slug.replace(/-/g, ' ')}</p>
+                        <p className='mt-1 text-base font-black uppercase text-white'>{s.title}</p>
+                        <p className='mt-1 text-xs text-zinc-400'>{s.subtitle}</p>
+                        <p className='mt-2 text-[11px] font-bold uppercase tracking-wide text-zinc-300'>
+                          {duration ? `Estimated ${duration}` : 'Duration confirmed after review'}
+                          {limited ? ' · Quote required' : ''}
+                        </p>
+                      </div>
+                      {serviceIcon(s.slug)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+          ) : null}
+
+          {currentStep === 2 ? (
+          <div className='mt-4 space-y-6'>
+          <section>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Add-ons</h2>
+            <p className='mt-1 text-sm text-zinc-400'>Optional upgrades for vehicle 1. Add more vehicles below if needed.</p>
+            {renderVehicleAddOns(0, primaryAddOnSlugs)}
           </section>
 
           {extraVehicles.map((line, idx) => (
@@ -1555,11 +1671,94 @@ export function BookingWizard() {
               Add vehicle (max 3 total)
             </button>
           ) : null}
+          </div>
+          ) : null}
 
+          {currentStep === 3 ? (
+          <section className='mt-4 grid gap-4 md:grid-cols-2'>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl md:col-span-2'>Date & time</h2>
+            <p className='text-sm text-zinc-400 md:col-span-2'>Only open slots are shown — calendar blocks and existing bookings are respected.</p>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Appointment date</span>
+              <p className='mb-2 text-xs text-zinc-500'>{bookingAvailabilityHint(bookingRules)}</p>
+              <select
+                value={bookingDateKey}
+                onChange={(e) => {
+                  setBookingDateKey(e.target.value);
+                  setScheduleError(null);
+                }}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                required
+              >
+                {bookableDateKeys.length === 0 ? <option value="">No online dates available — call us</option> : null}
+                {bookableDateKeys.map((k) => (
+                  <option key={k} value={k}>
+                    {new Date(`${k}T12:00:00`).toLocaleDateString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Start time (15-minute slots)</span>
+              <select
+                value={bookingTimeValue}
+                onChange={(e) => {
+                  setBookingTimeValue(e.target.value);
+                  setScheduleError(null);
+                }}
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                required
+              >
+                <option value=''>Select a time</option>
+                {filteredSlotOpts.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              {filteredSlotOpts.length > 0 && filteredSlotOpts.length <= 24 ? (
+                <div className='mt-3 flex flex-wrap gap-2'>
+                  {filteredSlotOpts.map((s) => (
+                    <button
+                      key={`btn-${s.value}`}
+                      type='button'
+                      onClick={() => {
+                        setBookingTimeValue(s.value);
+                        setScheduleError(null);
+                      }}
+                      className={clsx(
+                        'rounded-lg border px-3 py-2 text-xs font-semibold transition',
+                        bookingTimeValue === s.value ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
+              <BookingWeatherHint
+                serviceAddress={serviceAddress}
+                serviceCity={serviceCity}
+                serviceState={serviceState}
+                serviceZip={serviceZip}
+                scheduledIso={bookingScheduledIso}
+              />
+            </label>
+          </section>
+          ) : null}
+
+          {currentStep === 4 ? (
+          <div className='mt-4 space-y-6'>
           <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-black/45 p-4 md:grid-cols-2'>
             <div className='md:col-span-2'>
-              <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Service address & access</p>
-              <p className='mt-1 text-xs text-zinc-500'>Required before payment so we can confirm drive distance and arrival details.</p>
+              <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Service address & access</h2>
+              <p className='mt-1 text-sm text-zinc-400'>Required so we can confirm drive distance and arrival details.</p>
               <div className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
                 {[
                   [Droplets, 'Water access', 'Outdoor spigot or approved water source available at arrival.'],
@@ -1640,102 +1839,7 @@ export function BookingWizard() {
           </section>
 
           <section className='grid gap-4 md:grid-cols-2'>
-            <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Appointment date</span>
-              <p className='mb-2 text-xs text-zinc-500'>{bookingAvailabilityHint(bookingRules)}</p>
-              <select
-                value={bookingDateKey}
-                onChange={(e) => {
-                  setBookingDateKey(e.target.value);
-                  setScheduleError(null);
-                }}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
-                required
-              >
-                {bookableDateKeys.length === 0 ? <option value="">No online dates available — call us</option> : null}
-                {bookableDateKeys.map((k) => (
-                  <option key={k} value={k}>
-                    {new Date(`${k}T12:00:00`).toLocaleDateString(undefined, {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Start time (15-minute slots)</span>
-              <select
-                value={bookingTimeValue}
-                onChange={(e) => {
-                  setBookingTimeValue(e.target.value);
-                  setScheduleError(null);
-                }}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
-                required
-              >
-                <option value=''>Select a time</option>
-                {filteredSlotOpts.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              {filteredSlotOpts.length > 0 && filteredSlotOpts.length <= 24 ? (
-                <div className='mt-3 flex flex-wrap gap-2'>
-                  {filteredSlotOpts.map((s) => (
-                    <button
-                      key={`btn-${s.value}`}
-                      type='button'
-                      onClick={() => {
-                        setBookingTimeValue(s.value);
-                        setScheduleError(null);
-                      }}
-                      className={clsx(
-                        'rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                        bookingTimeValue === s.value ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
-                      )}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
-              <BookingWeatherHint
-                serviceAddress={serviceAddress}
-                serviceCity={serviceCity}
-                serviceState={serviceState}
-                serviceZip={serviceZip}
-                scheduledIso={bookingScheduledIso}
-              />
-            </label>
-            <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Vehicle 1 (year / make / model)</span>
-              <input
-                value={vehicleDescription}
-                onChange={(e) => setVehicleDescription(e.target.value)}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
-                placeholder='2022 BMW M3 Competition'
-                required
-              />
-            </label>
-            <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Vehicle 1 color</span>
-              <input
-                value={vehicleColor}
-                onChange={(e) => setVehicleColor(e.target.value)}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
-                placeholder='Black'
-                required
-              />
-            </label>
-            {renderVehicleAddOns(0, primaryAddOnSlugs)}
-          </section>
-
-          <section className='grid gap-4 md:grid-cols-2'>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl md:col-span-2'>Your contact info</h2>
             <label className='text-sm'>
               <span className='mb-2 block text-zinc-300'>Full name</span>
               <input value={guestName} onChange={(e) => setGuestName(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
@@ -1842,9 +1946,14 @@ export function BookingWizard() {
               ) : null}
             </label>
           </section>
+          </div>
+          ) : null}
 
-          <section className='rounded-xl border border-gold/20 bg-black/60 p-4 text-sm text-zinc-300'>
-            <div className='mb-4 grid gap-2 sm:grid-cols-2'>
+          {currentStep === 5 ? (
+          <section className='mt-4 rounded-xl border border-gold/20 bg-black/60 p-4 text-sm text-zinc-300'>
+            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Payment</h2>
+            <p className='mt-1 text-sm text-zinc-400'>Choose deposit or pay in full. Member credits apply on the right.</p>
+            <div className='mb-4 mt-4 grid gap-2 sm:grid-cols-2'>
               <button
                 type='button'
                 onClick={() => setPaymentChoice('deposit')}
@@ -1874,18 +1983,33 @@ export function BookingWizard() {
               {freePromoEligible ? 'FREE test comp is applied. Stripe will be bypassed and you will continue to agreement signing.' : 'After checkout, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.'}
             </p>
           </section>
+          ) : null}
 
-          <button
-            type='submit'
-            disabled={submitting || services.length === 0 || !canBookOnline}
-            className='w-full rounded-xl bg-gold px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[0_0_25px_rgba(212,166,77,0.35)] transition hover:brightness-110 disabled:opacity-50 lg:hidden'
-          >
-            {submitButtonLabel()}
-          </button>
+          {checkoutPhase === 'idle' ? (
+            <div className='hidden lg:block'>
+              <BookingWizardNav
+                currentStep={currentStep}
+                onBack={goBack}
+                onNext={goNext}
+                nextLabel={currentStep === 2 ? 'Continue (optional)' : 'Continue'}
+                nextDisabled={services.length === 0 || !canBookOnline}
+                isLastStep={currentStep === lastWizardStep}
+                submitLabel={submitButtonLabel()}
+                submitting={submitting}
+              />
+            </div>
+          ) : null}
+          </div>
         </div>
 
         <aside className='order-1 h-fit space-y-4 rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-5 shadow-[0_0_36px_rgba(212,166,77,0.12)] lg:order-2 lg:sticky lg:top-28'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Summary</p>
+          {bookingDurationMinutes > 0 ? (
+            <p className='flex items-center gap-2 text-xs text-zinc-400'>
+              <Clock className='h-3.5 w-3.5 text-gold-soft' />
+              Est. {Math.round(bookingDurationMinutes / 15) * 15} min on-site
+            </p>
+          ) : null}
           <div className='space-y-2.5 text-sm text-zinc-300'>
             {bookingLines.map((line, i) => {
               const svc = services.find((s) => s.slug === line.serviceSlug);
@@ -2035,10 +2159,18 @@ export function BookingWizard() {
                   ) : null}
                   <p className='mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gold/45 bg-gold/10 px-3 py-2.5 text-sm font-bold text-gold-soft shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'>
                     <span className='max-w-[62%] text-[11px] font-black uppercase leading-tight tracking-wide text-gold-soft'>
-                      {paymentChoice === 'full' ? 'Amount due today' : `Card deposit due today (${priceSummary.breakdown.depositPercent}%)`}
+                      {paymentChoice === 'full' ? 'Amount due today' : `Deposit due today (${priceSummary.breakdown.depositPercent}%)`}
                     </span>
                     <span className='tabular-nums text-base font-black tracking-tight'>${(cardDueCents / 100).toFixed(2)}</span>
                   </p>
+                  {paymentChoice === 'deposit' && !freePromoEligible ? (
+                    <p className='mt-2 flex justify-between text-xs text-zinc-400'>
+                      <span>Balance due at service</span>
+                      <span className='tabular-nums font-semibold text-zinc-200'>
+                        ${((priceSummary.breakdown.finalTotalCents - priceSummary.breakdown.depositCents) / 100).toFixed(2)}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -2058,6 +2190,7 @@ export function BookingWizard() {
               </p>
             ) : null}
           </div>
+          {currentStep === lastWizardStep && checkoutPhase === 'idle' ? (
           <button
             type='submit'
             disabled={submitting || services.length === 0 || !canBookOnline}
@@ -2065,10 +2198,63 @@ export function BookingWizard() {
           >
             {submitButtonLabel()}
           </button>
+          ) : null}
         </aside>
       </div>
 
-      {priceSummary?.kind === 'ok' ? (
+      {checkoutPhase === 'idle' ? (
+        <div
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 backdrop-blur-md lg:hidden'
+          role='navigation'
+          aria-label='Booking steps'
+        >
+          <div className='mx-auto flex max-w-5xl items-center gap-3'>
+            {currentStep > 0 ? (
+              <button
+                type='button'
+                onClick={goBack}
+                className='shrink-0 rounded-xl border border-white/15 px-4 py-3 text-[10px] font-black uppercase text-zinc-300'
+              >
+                Back
+              </button>
+            ) : null}
+            <div className='min-w-0 flex-1'>
+              {priceSummary?.kind === 'ok' ? (
+                <>
+                  <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>
+                    {paymentChoice === 'full' ? 'Due today' : 'Deposit'}
+                  </p>
+                  <p className='text-lg font-black tabular-nums text-white'>${(cardDueCents / 100).toFixed(2)}</p>
+                  <p className='truncate text-[10px] text-zinc-400'>
+                    Total ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
+                    {bookingDurationMinutes > 0 ? ` · ${Math.round(bookingDurationMinutes / 15) * 15} min` : ''}
+                  </p>
+                </>
+              ) : (
+                <p className='text-sm text-zinc-400'>{pricePreviewText ?? 'Select service'}</p>
+              )}
+            </div>
+            {currentStep === lastWizardStep ? (
+              <button
+                type='submit'
+                disabled={submitting || services.length === 0 || !canBookOnline}
+                className='shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
+              >
+                {submitting ? '…' : 'Pay'}
+              </button>
+            ) : (
+              <button
+                type='button'
+                onClick={goNext}
+                disabled={services.length === 0 || !canBookOnline}
+                className='shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      ) : priceSummary?.kind === 'ok' ? (
         <div
           className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 backdrop-blur-md lg:hidden'
           role='status'
@@ -2076,21 +2262,11 @@ export function BookingWizard() {
         >
           <div className='mx-auto flex max-w-5xl items-center justify-between gap-3'>
             <div className='min-w-0'>
-              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Total</p>
+              <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Processing</p>
               <p className='text-lg font-black tabular-nums text-white'>
                 ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
               </p>
-              <p className='text-[10px] text-zinc-400'>
-                {creditAppliedCents > 0 ? `Credit: -$${(creditAppliedCents / 100).toFixed(2)} · ` : ''}
-                Due: ${(cardDueCents / 100).toFixed(2)} ·{' '}
-                {paymentChoice === 'full' || freePromoEligible ? 'Pay full' : 'Pay deposit'}
-              </p>
             </div>
-            {freePromoEligible ? (
-              <span className='shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2 py-1 text-[10px] font-bold uppercase text-emerald-200'>
-                FREE
-              </span>
-            ) : null}
           </div>
         </div>
       ) : null}

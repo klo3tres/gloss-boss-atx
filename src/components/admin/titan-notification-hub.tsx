@@ -1,17 +1,18 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Archive, Bell, CheckCheck, ExternalLink, Mail, MessageSquare, Smartphone } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Archive, Bell, CheckCheck, ExternalLink, Mail, MessageSquare, Search, Smartphone, Filter } from 'lucide-react';
 import type { TitanNotificationEvent } from '@/lib/titan/notification-events';
-import { groupNotificationsByDay } from '@/lib/titan/notification-events';
+import { groupNotificationsByDay, mapTitanNotificationRow } from '@/lib/titan/notification-events';
 import {
   archiveNotificationAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
 } from '@/app/(dashboard)/admin/notifications/titan-notification-actions';
 import { useToast } from '@/components/ui/toast-provider';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 function channelChip(label: string, status: string | null) {
   if (!status || status === 'skipped' || status === 'not_configured') return null;
@@ -53,12 +54,15 @@ function NotificationCard({
   onArchive: (id: string) => void;
 }) {
   const unread = !evt.readAt;
+  const [hover, setHover] = useState(false);
 
   return (
     <motion.article
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       className={`group relative overflow-hidden rounded-2xl border p-4 backdrop-blur-xl transition ${
         unread
           ? 'border-gold/30 bg-gradient-to-br from-gold/10 via-black/60 to-black/80 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
@@ -87,8 +91,21 @@ function NotificationCard({
         }}
       >
         <h3 className="text-sm font-black text-white">{evt.title}</h3>
-        <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-zinc-400">{evt.body}</p>
+        <p className={`mt-1 text-xs leading-relaxed text-zinc-400 ${hover ? '' : 'line-clamp-2'}`}>{evt.body}</p>
       </button>
+
+      <AnimatePresence>
+        {hover && evt.body.length > 80 ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-2 rounded-xl border border-white/10 bg-black/80 p-3 text-[11px] text-zinc-300"
+          >
+            {evt.body}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {channelChip('Email', evt.emailStatus)}
@@ -135,22 +152,76 @@ export function TitanNotificationHub({
   initialEvents,
   tablesReady,
   unreadCount: initialUnread,
+  compactHeader,
 }: {
   initialEvents: TitanNotificationEvent[];
   tablesReady: boolean;
   unreadCount: number;
+  compactHeader?: boolean;
 }) {
   const toast = useToast();
   const [events, setEvents] = useState(initialEvents);
   const [unread, setUnread] = useState(initialUnread);
   const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
     setEvents(initialEvents);
     setUnread(initialUnread);
   }, [initialEvents, initialUnread]);
 
-  const grouped = groupNotificationsByDay(events);
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase || !tablesReady) return;
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      const { data } = await supabase
+        .from('titan_notification_events')
+        .select('*')
+        .is('archived_at', null)
+        .order('created_at', { ascending: false })
+        .limit(150);
+      if (cancelled || !data) return;
+      const mapped = data.map((r) => mapTitanNotificationRow(r as Record<string, unknown>));
+      setEvents(mapped);
+      setUnread(mapped.filter((e) => !e.readAt).length);
+      setLive(true);
+    };
+
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [tablesReady]);
+
+  const sources = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of events) if (e.source) set.add(e.source);
+    return ['all', ...Array.from(set).sort()];
+  }, [events]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return events.filter((e) => {
+      if (showUnreadOnly && e.readAt) return false;
+      if (sourceFilter !== 'all' && e.source !== sourceFilter) return false;
+      if (!q) return true;
+      return (
+        e.title.toLowerCase().includes(q) ||
+        e.body.toLowerCase().includes(q) ||
+        (e.source ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [events, query, sourceFilter, showUnreadOnly]);
+
+  const grouped = groupNotificationsByDay(filtered);
 
   const markRead = (id: string) => {
     setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, readAt: new Date().toISOString() } : e)));
@@ -178,18 +249,30 @@ export function TitanNotificationHub({
 
   return (
     <div className="space-y-6">
+      {!compactHeader ? (
       <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-gold/20 bg-[radial-gradient(circle_at_top_left,rgba(212,175,55,0.12),transparent_50%),rgba(0,0,0,0.55)] p-6 backdrop-blur-xl">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft">
-            <Bell className="h-4 w-4" /> Titan alerts
+            <Bell className="h-4 w-4" /> Activity Center
           </p>
-          <h1 className="mt-2 text-2xl font-black text-white">Notification Center</h1>
-          <p className="mt-1 text-sm text-zinc-400">Bookings, payments, leads, and system events — with delivery status.</p>
+          <h1 className="mt-2 text-2xl font-black text-white">Everything that happened</h1>
+          <p className="mt-1 text-sm text-zinc-400">Bookings, payments, leads, calendar, weather, and system events.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {unread > 0 ? (
             <span className="rounded-full bg-rose-500/20 px-3 py-1.5 text-xs font-black text-rose-200">{unread} unread</span>
           ) : null}
+          {live ? (
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase text-emerald-200">
+              Live
+            </span>
+          ) : null}
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-1 rounded-xl border border-white/10 px-4 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30"
+          >
+            ← Briefing
+          </Link>
           <button
             type="button"
             disabled={pending || unread === 0}
@@ -207,6 +290,44 @@ export function TitanNotificationHub({
           </button>
         </div>
       </header>
+      ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search activity…"
+            className="w-full rounded-xl border border-white/10 bg-black/50 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-zinc-600"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-[10px] font-bold uppercase text-zinc-400">
+            <Filter className="h-3.5 w-3.5" />
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="bg-transparent text-zinc-200 outline-none"
+            >
+              {sources.map((s) => (
+                <option key={s} value={s} className="bg-black">
+                  {s === 'all' ? 'All sources' : s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowUnreadOnly((v) => !v)}
+            className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase ${
+              showUnreadOnly ? 'border-gold/40 bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-400'
+            }`}
+          >
+            Unread only
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         {[
@@ -222,17 +343,17 @@ export function TitanNotificationHub({
         ))}
       </div>
 
-      {events.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="rounded-3xl border border-white/8 bg-black/40 p-12 text-center backdrop-blur-md">
           <Bell className="mx-auto h-8 w-8 text-zinc-600" />
-          <p className="mt-4 text-sm font-bold text-white">No alerts yet</p>
-          <p className="mt-1 text-xs text-zinc-500">New bookings, payments, and Titan events will appear here.</p>
+          <p className="mt-4 text-sm font-bold text-white">No activity matches</p>
+          <p className="mt-1 text-xs text-zinc-500">Try clearing filters or check back after your next booking.</p>
         </div>
       ) : (
         <div className="space-y-8">
           <Section title="Today" events={grouped.today} onRead={markRead} onArchive={archive} />
           <Section title="Yesterday" events={grouped.yesterday} onRead={markRead} onArchive={archive} />
-          <Section title="Older" events={grouped.older} onRead={markRead} onArchive={archive} />
+          <Section title="Earlier" events={grouped.older} onRead={markRead} onArchive={archive} />
         </div>
       )}
     </div>

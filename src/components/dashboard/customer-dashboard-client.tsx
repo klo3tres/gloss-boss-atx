@@ -12,6 +12,7 @@ import type { WeatherSnapshot } from '@/lib/weather-forecast';
 import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
 import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
+import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
 
 export type CustomerAppt = {
   id: string;
@@ -58,6 +59,10 @@ export type CustomerDashboardProps = {
   activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
   weatherForecast?: WeatherSnapshot | null;
   weatherLocationLabel?: string;
+  referralCode?: string | null;
+  referralLink?: string | null;
+  referralCompletedCount?: number;
+  referralFreeDetailThreshold?: number;
 };
 
 export type CustomerMembershipView = {
@@ -278,6 +283,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
 
   return (
     <div className="space-y-8 rounded-3xl p-1 sm:p-2">
+      {props.referralCode && props.referralLink ? (
+        <CustomerReferralCard
+          referralCode={props.referralCode}
+          referralLink={props.referralLink}
+          completedReferrals={props.referralCompletedCount ?? 0}
+          threshold={props.referralFreeDetailThreshold ?? 5}
+        />
+      ) : null}
       <section className={`overflow-hidden rounded-3xl border ${theme.border} bg-[radial-gradient(circle_at_top_left,rgba(212,175,55,0.18),transparent_34%),linear-gradient(135deg,rgba(24,24,27,0.96),rgba(0,0,0,0.96))] p-6 ${theme.glow}`}>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
           <div className="min-w-0 flex-1">

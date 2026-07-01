@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { Titan10HomeClient } from '@/components/titan/titan-10-home';
 import { getSessionWithProfile } from '@/lib/auth/session';
@@ -18,6 +18,12 @@ export const dynamic = 'force-dynamic';
 type TitanWorkspace = 'today' | 'growth' | 'outreach' | 'reports';
 
 export default async function TitanHomePage({ searchParams }: { searchParams: Promise<{ workspace?: string }> }) {
+  const params = await searchParams;
+  const requestedWorkspace = params.workspace;
+  if (!requestedWorkspace || requestedWorkspace === 'today') {
+    redirect('/admin');
+  }
+
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
@@ -40,13 +46,12 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
     opportunities: revenueHunt.opportunities,
     leadRadar: leadRadar.items,
   });
-  const requestedWorkspace = (await searchParams).workspace;
-  const workspace: TitanWorkspace = ['today', 'growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
+  const workspace: TitanWorkspace = ['growth', 'outreach', 'reports'].includes(requestedWorkspace)
     ? (requestedWorkspace as TitanWorkspace)
-    : 'today';
+    : 'growth';
 
   return (
-    <DashboardShell title="Titan" subtitle="AI Business Operator — revenue first" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
+    <DashboardShell title="Titan" subtitle="Growth, outreach, and reports." role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
       <Titan10HomeClient
         snapshot={snapshot}
         health={health}

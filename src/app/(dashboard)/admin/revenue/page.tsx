@@ -22,6 +22,7 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
 import { RevenueIssueCreditPanel } from '@/components/admin/revenue-issue-credit-panel';
+import { AdminTitanHero } from '@/components/titan/admin-titan-hero';
 import { findDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
 import type { PayRow } from '@/lib/revenue-metrics';
 
@@ -316,29 +317,19 @@ export default async function AdminRevenuePage({
   }));
 
   return (
-    <DashboardShell title='Revenue Command Center' subtitle='SaaS-quality transaction analytics and business profit ledger.' role='admin'>
-      <section className='gb-premium-hero mb-8 rounded-3xl px-6 py-8'>
-        <p className='text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Owner 30-Day Revenue</p>
-        <p className='mt-2 font-mono text-4xl font-black text-gold-soft sm:text-5xl'>{money(month.grossCents)}</p>
-        <p className='mt-1 text-sm text-zinc-400'>Collected in the last 30 days · {month.paymentCount} payments</p>
-        <div className='mt-6 flex flex-wrap gap-2'>
-          <Link href='/admin' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>
-            ← Command center
-          </Link>
-          <Link href='/admin/receipts' className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black hover:bg-gold-soft transition'>
-            Receipts
-          </Link>
-          {includeTest ? (
-            <Link href='/admin/revenue' className='rounded-xl border border-amber-500/40 px-4 py-2 text-xs font-black uppercase text-amber-200'>
-              Hide test payments
-            </Link>
-          ) : (
-            <Link href='/admin/revenue?includeTest=1' className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-400'>
-              Include test payments
-            </Link>
-          )}
-        </div>
-      </section>
+    <DashboardShell title="Revenue" subtitle="Transaction analytics and profit ledger." role="admin">
+      <AdminTitanHero
+        title="Revenue"
+        sentence="Today's collections, rolling performance, and outstanding balances in one view."
+        kpi={money(today.grossCents)}
+        kpiHint={`${money(month.grossCents)} last 30 days · ${month.paymentCount} payments · ${money(balanceDueCents)} outstanding`}
+        primaryHref="/admin/receipts"
+        primaryLabel="Receipts"
+        secondaryLinks={[
+          { href: '/admin', label: '← Briefing' },
+          { href: includeTest ? '/admin/revenue' : '/admin/revenue?includeTest=1', label: includeTest ? 'Hide test' : 'Include test' },
+        ]}
+      />
 
       <section className="mb-8 rounded-3xl border border-white/10 bg-black/45 p-5">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-4">

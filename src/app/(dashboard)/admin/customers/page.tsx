@@ -7,6 +7,7 @@ import { createCustomerAction, deleteCustomerAction, archiveCustomerAction } fro
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { backfillAllAppointmentVehicles } from '@/lib/crm-vehicle-sync';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
+import { AdminTitanHero } from '@/components/titan/admin-titan-hero';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { User, Mail, Phone, Calendar, Award, Star } from 'lucide-react';
 
@@ -108,9 +109,22 @@ export default async function AdminCustomersPage() {
   }
 
   const isSuper = session.profile?.role === 'super_admin';
+  const memberCount = rows.filter((r) => (r.customer_memberships ?? []).some((m) => m.status === 'active')).length;
 
   return (
-    <DashboardShell title='Customer CRM' subtitle='Manage customer profiles, loyalty stamp status, and contact directory.' role='admin'>
+    <DashboardShell title="Customers" subtitle="Profiles, loyalty, and contact directory." role="admin">
+      <AdminTitanHero
+        title="Customers"
+        sentence="Every profile, membership, and loyalty stamp in one place — ready for outreach."
+        kpi={rows.length}
+        kpiHint={`${memberCount} active members · search, add, and archive below`}
+        primaryHref="/admin/messages"
+        primaryLabel="Message center"
+        secondaryLinks={[
+          { href: '/admin', label: '← Briefing' },
+          { href: '/book', label: 'New booking' },
+        ]}
+      />
       {qErr ? (
         <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100'>
           Could not load customers: {qErr}

@@ -25,7 +25,7 @@ function str(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
 
-function mapRow(row: Record<string, unknown>): TitanNotificationEvent {
+export function mapTitanNotificationRow(row: Record<string, unknown>): TitanNotificationEvent {
   const payload = row.provider_payload;
   return {
     id: str(row.id),
@@ -118,7 +118,7 @@ export async function loadTitanNotificationEvents(
     if (!isNotificationTableReady(error)) return { events: [], tablesReady: false };
     return { events: [], tablesReady: true };
   }
-  return { events: (data ?? []).map((r) => mapRow(r as Record<string, unknown>)), tablesReady: true };
+  return { events: (data ?? []).map((r) => mapTitanNotificationRow(r as Record<string, unknown>)), tablesReady: true };
 }
 
 export async function countUnreadNotifications(admin: SupabaseClient, workspaceKey = 'default'): Promise<number> {

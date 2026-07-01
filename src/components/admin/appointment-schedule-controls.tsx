@@ -6,6 +6,7 @@ import {
   previewRescheduleAppointmentAction,
 } from '@/app/(dashboard)/admin/appointment-lifecycle-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { useToast } from '@/components/ui/toast-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
 import { useRouter } from 'next/navigation';
 
@@ -17,6 +18,7 @@ export function AppointmentScheduleControls({
   scheduledStart?: string | null;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -35,9 +37,13 @@ export function AppointmentScheduleControls({
     startTransition(async () => {
       setMsg(null);
       const res = await adminRescheduleAppointmentAction(fd);
-      if (res.error) setMsg(res.error);
-      else {
+      if (res.error) {
+        setMsg(res.error);
+        toast.error('Schedule update failed', res.error);
+      } else {
         setMsg(res.message ?? 'Rescheduled.');
+        if (res.tone === 'warning') toast.warning('Rescheduled', res.message ?? 'Updated with warnings.');
+        else toast.success('Rescheduled', res.message ?? 'Appointment rescheduled.');
         router.refresh();
       }
     });
@@ -153,6 +159,9 @@ export function AppointmentScheduleControls({
             const { adminCancelAppointmentAction } = await import('@/app/(dashboard)/admin/appointment-lifecycle-actions');
             const res = await adminCancelAppointmentAction(fd);
             setMsg(res.error ?? res.message ?? 'Cancelled.');
+            if (res.error) toast.error('Cancel failed', res.error);
+            else if (res.tone === 'warning') toast.warning('Cancelled', res.message ?? 'Appointment cancelled.');
+            else toast.success('Cancelled', res.message ?? 'Appointment cancelled.');
             if (!res.error) router.refresh();
           });
         }}

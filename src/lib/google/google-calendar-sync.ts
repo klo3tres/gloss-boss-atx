@@ -260,13 +260,29 @@ export async function deleteGoogleCalendarEvent(
 export function queueGoogleCalendarSync(admin: SupabaseClient, appointmentId: string, action: 'upsert' | 'delete' = 'upsert') {
   void (async () => {
     try {
-      const fn = action === 'delete' ? deleteGoogleCalendarEvent : upsertGoogleCalendarEvent;
-      const result = await fn(admin, appointmentId);
+      const result = await runGoogleCalendarSync(admin, appointmentId, action);
       if (!result.ok) console.warn('[google-calendar]', action, appointmentId, result.error);
     } catch (e) {
       console.warn('[google-calendar]', action, appointmentId, e);
     }
   })();
+}
+
+/** Awaitable push/delete for admin job lifecycle (shows toast on result). */
+export async function runGoogleCalendarSync(
+  admin: SupabaseClient,
+  appointmentId: string,
+  action: 'upsert' | 'delete' = 'upsert',
+): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
+  if (!googleCalendarOAuthConfigured()) {
+    return { ok: false, skipped: true, error: 'Google Calendar not configured' };
+  }
+  const connection = await loadGoogleCalendarConnection(admin);
+  if (!connection) {
+    return { ok: false, skipped: true, error: 'Google Calendar not connected' };
+  }
+  const fn = action === 'delete' ? deleteGoogleCalendarEvent : upsertGoogleCalendarEvent;
+  return fn(admin, appointmentId);
 }
 
 export function buildGoogleOAuthUrl(state: string): string | null {

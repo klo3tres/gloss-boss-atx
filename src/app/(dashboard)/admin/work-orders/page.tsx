@@ -233,8 +233,8 @@ export default async function AdminWorkOrdersPage({
           <Link href='/admin/customers' className='rounded-lg border border-white/15 px-3 py-2 font-bold uppercase text-zinc-300'>
             Customers
           </Link>
-          <Link href='/admin/work-orders/add-past' className='rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-bold uppercase text-gold-soft'>
-            Add past job
+          <Link href='/admin/work-orders/add' className='rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 font-bold uppercase text-gold-soft'>
+            + Add Job
           </Link>
         </div>
         <form action={clearStaleActiveTestRecordsFormAction} className='flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-2 py-1'>

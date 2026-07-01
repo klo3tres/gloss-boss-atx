@@ -84,7 +84,7 @@ export async function GET() {
 
     let reviewsRes: any = await client
       .from('customer_reviews')
-      .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured, sort_order')
+      .select('id, customer_name, rating, testimonial, review_text, created_at, approved_at, published, source, vehicle_label, service_label, featured, sort_order, show_on_homepage')
       .eq('published', true)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
@@ -263,17 +263,18 @@ export async function GET() {
       reviews: reviewsRes.error
         ? []
         : reviewRows
+            .filter((r) => r.show_on_homepage !== false)
             .map((r) => ({
               id: String(r.id ?? ''),
               reviewerName: String(r.customer_name ?? 'Gloss Boss customer'),
               rating: Math.max(1, Math.min(5, Number(r.rating ?? 5))),
-              text: String(r.testimonial ?? r.review_text ?? ''),
+              text: String(r.testimonial ?? r.review_text ?? '').trim() || `${Number(r.rating ?? 5)}-star review from a Gloss Boss client.`,
               date: String(r.approved_at ?? r.created_at ?? ''),
               source: String(r.source ?? 'Manual'),
               vehicleOrService: String(r.vehicle_label ?? r.service_label ?? ''),
               featured: Boolean(r.featured),
             }))
-            .filter((r) => r.id && r.text),
+            .filter((r) => r.id && r.rating >= 1),
       fleetServicesEnabled,
       fleetServicesBlurb,
       fleetPricing,

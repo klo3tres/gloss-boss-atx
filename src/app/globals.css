@@ -297,6 +297,45 @@ table {
   padding-bottom: 4rem;
 }
 
+.gb-sticky-book-cta {
+  animation: gb-slide-up 0.35s var(--gb-ease) forwards;
+}
+
+@keyframes gb-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gb-premium-surface {
+  background:
+    linear-gradient(160deg, rgba(18, 18, 20, 0.92) 0%, rgba(0, 0, 0, 0.96) 50%, rgba(20, 16, 6, 0.4) 100%),
+    radial-gradient(circle at 90% 0%, rgba(241, 210, 138, 0.08), transparent 36%);
+  border: 1px solid rgba(212, 175, 55, 0.14);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.gb-type-display {
+  font-size: clamp(2.25rem, 5vw, 4.5rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.gb-type-lead {
+  font-size: clamp(0.875rem, 1.5vw, 1.0625rem);
+  line-height: 1.65;
+  color: rgb(212 212 216);
+}
+
 @media (min-width: 768px) {
   .gb-marketing-section {
     padding-top: 5.5rem;
@@ -1060,6 +1099,19 @@ input[type="range"]::-moz-range-thumb {
 @keyframes weatherSunPulse { 0%,100%{opacity:.25} 50%{opacity:.45} }
 @keyframes weatherRainDrift { 0%{background-position:0 0} 100%{background-position:0 24px} }
 @keyframes weatherStormFlash { 0%,92%,100%{opacity:.2} 94%{opacity:.5} }
+
+@keyframes heroKenBurns {
+  0% { transform: scale(1) translate(0, 0); }
+  100% { transform: scale(1.08) translate(-1.5%, -1%); }
+}
+
+.titan-page-hero {
+  box-shadow: 0 0 60px rgba(212, 175, 55, 0.06);
+}
+
+.gb-dashboard-content.titan-surface .titan-page-hero {
+  border-color: rgba(201, 162, 39, 0.22);
+}
 
 /* Mobile usability — door-knocking / field use */
 @media (max-width: 640px) {

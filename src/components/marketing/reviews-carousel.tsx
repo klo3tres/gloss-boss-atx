@@ -12,7 +12,7 @@ export function ReviewsCarousel({ reviews }: { reviews: PublicReview[] }) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Filter reviews to only show high-quality ones (e.g. 4 or 5 stars) or show all published reviews
-  const activeReviews = reviews.filter((r) => r.rating >= 4);
+  const activeReviews = reviews.filter((r) => r.rating >= 1);
 
   // Autoplay function
   useEffect(() => {

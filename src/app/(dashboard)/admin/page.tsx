@@ -1,14 +1,14 @@
 import { OwnerCommandCenter } from '@/components/admin/owner-command-center';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { ExecutiveBriefingClient } from '@/components/titan/executive-briefing-client';
 import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { loadOwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
 import { loadOperationsSnapshot, type OperationsSnapshot } from '@/lib/operations-snapshot';
-import { loadOwnerInsights } from '@/lib/titan/owner-insights';
+import { loadExecutiveBriefing } from '@/lib/titan/executive-briefing';
 import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { resolveOwnerFirstName } from '@/lib/owner-identity';
-import { TitanOwnerInsightsPanel } from '@/components/titan/titan-owner-insights-panel';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -21,89 +21,11 @@ export default async function AdminDashboardPage({
   const params = searchParams ? await searchParams : {};
   const session = await getSessionWithProfile();
   let loadErr: string | null = null;
-  let metrics: import('@/lib/owner-dashboard-metrics').OwnerDashboardSnapshot = {
-    revenueToday: '$0.00',
-    revenueWeek: '$0.00',
-    revenueMonth: '$0.00',
-    balanceDue: '$0.00',
-    jobsToday: 0,
-    pipelineCount: 0,
-    activeTechCount: 0,
-    alerts: [] as string[],
-    todayJobs: [] as import('@/lib/owner-dashboard-metrics').TodayJobRow[],
-    paymentMixMonth: {
-      stripeCents: 0,
-      cashCents: 0,
-      zelleCents: 0,
-      otherCents: 0,
-      grossCents: 0,
-      paymentCount: 0,
-    },
-    pendingDeposits: '$0.00',
-    activeJobsCount: 0,
-    bookingHealth: 0,
-    unreadMessageCount: 0,
-    bookingsThisWeek: 0,
-    dispatchUnassignedToday: 0,
-    dispatchCompletedToday: 0,
-    conversionRate: 0,
-    customerRetentionRate: 0,
-    averageTicketSize: '$0.00',
-    membershipRevenueMonth: '$0.00',
-    loyaltyParticipation: 0,
-    jobsTodayCount: 0,
-    recentPayments: [],
-    upcomingAppts: [],
-    jobsTomorrowCount: 0,
-    scheduleMonth: [],
-    calendarEvents: [],
-    liveFeed: [],
-    techActivity: [],
-    leadPipeline: {
-      newCount: 0,
-      contactedCount: 0,
-      convertedCount: 0,
-      totalActive: 0,
-    },
-    techPerformance: [],
-    financial: {
-      grossRevenueCents: 0,
-      netProfitCents: 0,
-      expensesCents: 0,
-      cardSpendCents: 0,
-      stripeRevenueCents: 0,
-      cashRevenueCents: 0,
-      zelleRevenueCents: 0,
-      otherRevenueCents: 0,
-      openBalancesCents: 0,
-      pendingDepositsCents: 0,
-    },
-    openBalanceRows: [],
-    staleBalanceRows: [],
-    staleBalancesCents: 0,
-    pendingDepositRows: [],
-    expenseRows: [],
-    cardSpendRows: [],
-    creditMetrics: {
-      outstandingLiabilityCents: 0,
-      mtdIssuedCents: 0,
-      mtdRedeemedCents: 0,
-      expiringSoon: [],
-    },
-    membershipMetrics: {
-      activeTotal: 0,
-      bronze: 0,
-      silver: 0,
-      gold: 0,
-      renewingThisWeek: 0,
-    },
-    notificationRows: [],
-  };
-
-  let goals: any[] = [];
+  let metrics: import('@/lib/owner-dashboard-metrics').OwnerDashboardSnapshot | null = null;
   let operations: OperationsSnapshot | null = null;
-  let ownerInsights: Awaited<ReturnType<typeof loadOwnerInsights>> | null = null;
-  let ownerFirstName = 'Owner';
+  let goals: any[] = [];
+  let briefing: Awaited<ReturnType<typeof loadExecutiveBriefing>> | null = null;
+  const showFullDashboard = params.overview === '1';
 
   if (session.user && isAdminLevel(session.profile?.role ?? null)) {
     const admin = tryCreateAdminSupabase();
@@ -112,42 +34,45 @@ export default async function AdminDashboardPage({
     } else {
       try {
         const ws = await loadTitanWorkspace(admin);
-        ownerFirstName = resolveOwnerFirstName({
+        const ownerFirstName = resolveOwnerFirstName({
           ownerDisplayName: ws.ownerDisplayName,
           profileFullName: session.profile?.full_name,
           profileEmail: session.user.email,
         });
-        [metrics, operations, ownerInsights] = await Promise.all([
-          loadOwnerDashboardSnapshot(admin),
-          loadOperationsSnapshot(admin),
-          loadOwnerInsights(admin),
-        ]);
 
-        // Fetch live goals for the dashboard summary
-        const { data } = await admin
-          .from('admin_goals')
-          .select('*')
-          .neq('status', 'archived')
-          .order('created_at', { ascending: false })
-          .limit(6);
-        if (data) {
-          goals = data.map((g) => {
-            const row = g as Record<string, unknown>;
-            return {
-              id: String(row.id),
-              title: String(row.title),
-              goal_type: String(row.goal_type),
-              target_value: Number(row.target_value ?? 0),
-              current_value: Number(row.current_value ?? 0),
-              unit: String(row.unit ?? 'cents'),
-              status: String(row.status ?? 'active'),
-              period_end: row.period_end != null ? String(row.period_end) : null,
-              technician_id: row.technician_id != null ? String(row.technician_id) : null,
-            };
-          });
+        if (showFullDashboard) {
+          [metrics, operations] = await Promise.all([
+            loadOwnerDashboardSnapshot(admin),
+            loadOperationsSnapshot(admin),
+          ]);
+          const { data } = await admin
+            .from('admin_goals')
+            .select('*')
+            .neq('status', 'archived')
+            .order('created_at', { ascending: false })
+            .limit(6);
+          if (data) {
+            goals = data.map((g) => {
+              const row = g as Record<string, unknown>;
+              return {
+                id: String(row.id),
+                title: String(row.title),
+                goal_type: String(row.goal_type),
+                target_value: Number(row.target_value ?? 0),
+                current_value: Number(row.current_value ?? 0),
+                unit: String(row.unit ?? 'cents'),
+                status: String(row.status ?? 'active'),
+                period_end: row.period_end != null ? String(row.period_end) : null,
+                technician_id: row.technician_id != null ? String(row.technician_id) : null,
+              };
+            });
+          }
+        } else {
+          briefing = await loadExecutiveBriefing(admin, ownerFirstName);
+          operations = await loadOperationsSnapshot(admin).catch(() => null);
         }
       } catch (e) {
-        loadErr = e instanceof Error ? e.message : 'Could not load owner dashboard';
+        loadErr = e instanceof Error ? e.message : 'Could not load Titan briefing';
       }
     }
   }
@@ -163,24 +88,33 @@ export default async function AdminDashboardPage({
     redirect('/admin/exceptions');
   }
 
+  if (showFullDashboard && metrics) {
+    return (
+      <DashboardShell title="Command center" subtitle="Full metrics and drawers." role="admin">
+        {loadErr ? (
+          <p className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100" role="alert">
+            {loadErr}
+          </p>
+        ) : null}
+        <OwnerCommandCenter
+          metrics={metrics}
+          operations={operations}
+          isSuperAdmin={session.profile?.role === 'super_admin'}
+          goals={goals}
+        />
+      </DashboardShell>
+    );
+  }
+
   return (
-    <DashboardShell title='Command center' subtitle={`Good to see you, ${ownerFirstName} — what needs attention today.`} role='admin'>
+    <DashboardShell title="Today's Business" subtitle="Executive briefing — your operating advantage." role="admin" titanMode>
       {loadErr ? (
-        <p className='mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100' role='alert'>
+        <p className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100" role="alert">
           {loadErr}
         </p>
+      ) : briefing ? (
+        <ExecutiveBriefingClient briefing={briefing} />
       ) : null}
-      {ownerInsights ? (
-        <div className="mb-6">
-          <TitanOwnerInsightsPanel bundle={ownerInsights} />
-        </div>
-      ) : null}
-      <OwnerCommandCenter
-        metrics={metrics}
-        operations={operations}
-        isSuperAdmin={session.profile?.role === 'super_admin'}
-        goals={goals}
-      />
     </DashboardShell>
   );
 }

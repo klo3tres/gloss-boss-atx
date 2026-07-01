@@ -7,6 +7,7 @@ import {
   updateWorkOrderScheduleAction,
 } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
+import { useGoogleCalendarAutoSync } from '@/hooks/use-google-calendar-auto-sync';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 function toLocalInput(iso: string) {
@@ -33,6 +34,7 @@ export function WorkOrderSchedulePanel({
   scheduledStart: string;
   scheduledEnd?: string;
 }) {
+  useGoogleCalendarAutoSync();
   const router = useRouter();
   const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();

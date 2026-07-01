@@ -15,5 +15,7 @@ export default async function AdminWorkOrderDetailPage({
   const source = typeof sp.source === 'string' ? sp.source : '';
   const q = new URLSearchParams({ shell: 'admin' });
   if (source) q.set('source', source);
+  if (typeof sp.created === 'string') q.set('created', sp.created);
+  if (typeof sp.gcal === 'string') q.set('gcal', sp.gcal);
   redirect(`/tech/work-orders/${encodeURIComponent(id)}?${q.toString()}`);
 }

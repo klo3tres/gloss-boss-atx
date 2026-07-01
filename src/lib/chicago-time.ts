@@ -84,3 +84,15 @@ export function formatChicagoDateTime(iso: string | null | undefined) {
     timeStyle: 'short',
   }).format(d);
 }
+
+/** Short time only in Chicago, e.g. "9:30 AM" */
+export function chicagoTimeShort(iso: string | null | undefined) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d);
+}

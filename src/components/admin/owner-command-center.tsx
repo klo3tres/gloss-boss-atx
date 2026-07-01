@@ -723,7 +723,7 @@ export function OwnerCommandCenter({
     { href: '/admin/dispatch', label: 'New Booking', desc: 'Create manual field job', icon: Calendar, color: 'text-gold-soft', drawer: 'bookings' },
     { href: '/admin/dispatch', label: 'Dispatch Board', desc: 'Manage slots & routes', icon: Zap, color: 'text-cyan-400' },
     { href: '/admin/revenue', label: 'Revenue Center', desc: 'Payment details & charts', icon: TrendingUp, color: 'text-emerald-400' },
-    { href: '/admin/work-orders/add-past', label: 'Add Past Job', desc: 'Backfill completed work', icon: ClipboardList, color: 'text-amber-300' },
+    { href: '/admin/work-orders/add', label: 'Add Job', desc: 'Schedule or backfill work', icon: ClipboardList, color: 'text-amber-300' },
     { href: '/admin/reports', label: 'Reports', desc: 'Tax and revenue exports', icon: Activity, color: 'text-emerald-300', drawer: 'goals' },
     { href: '/admin/system-diagnostics', label: 'Diagnostics', desc: 'Find data blockers fast', icon: Wrench, color: 'text-rose-300' },
     { href: '/admin/customers', label: 'Customers', desc: 'Profiles & loyalty records', icon: Users, color: 'text-amber-400' },
@@ -1751,7 +1751,7 @@ export function OwnerCommandCenter({
           <div className="px-6 pb-6 pt-2 border-t border-white/5 space-y-6">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
-                { href: '/admin/work-orders/add-past', label: 'Add Past Job', desc: 'Backfill completed work', icon: ClipboardList, color: 'text-amber-300' },
+                { href: '/admin/work-orders/add', label: 'Add Job', desc: 'Schedule or backfill work', icon: ClipboardList, color: 'text-amber-300' },
                 { href: '/admin/system-diagnostics', label: 'Diagnostics', desc: 'Find data blockers fast', icon: Wrench, color: 'text-rose-300' },
                 { href: '/admin/cms', label: 'Gallery Manager', desc: 'Review & publish showcase', icon: Sparkles, color: 'text-gold' },
                 { href: 'https://dashboard.stripe.com/', label: 'Stripe Dashboard', desc: 'External Stripe Console', icon: ExternalLink, external: true, color: 'text-indigo-400' },

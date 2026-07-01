@@ -244,12 +244,30 @@ export default async function CustomerDashboardRootPage() {
 
 
   const userEmail = session.user?.email?.trim().toLowerCase() ?? '';
+  let referralCode: string | null = null;
+  let referralLink: string | null = null;
+  let referralCompletedCount = 0;
+  let referralFreeDetailThreshold = 5;
 
   if (supabase && session.user && userEmail) {
     let customerId = '';
     if (adminDb) {
       const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
       customerId = cust?.id ? String(cust.id) : '';
+      if (customerId) {
+        const { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } = await import('@/lib/referral/referral-codes');
+        const settings = await loadReferralProgramSettings(adminDb);
+        referralFreeDetailThreshold = settings.freeDetailReferralThreshold;
+        const codeRow = await ensureCustomerReferralCode(adminDb, customerId);
+        referralCode = codeRow.code;
+        referralLink = referralLinkForCode(codeRow.code);
+        const { count } = await adminDb
+          .from('referral_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('referrer_customer_id', customerId)
+          .in('status', ['completed', 'reward_issued']);
+        referralCompletedCount = count ?? 0;
+      }
     }
 
     let query = supabase
@@ -550,6 +568,10 @@ export default async function CustomerDashboardRootPage() {
         activeDeals={activeDeals}
         weatherForecast={weatherForecast}
         weatherLocationLabel={weatherLocationLabel}
+        referralCode={referralCode}
+        referralLink={referralLink}
+        referralCompletedCount={referralCompletedCount}
+        referralFreeDetailThreshold={referralFreeDetailThreshold}
       />
     </DashboardShell>
   );

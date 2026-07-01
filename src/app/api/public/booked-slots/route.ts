@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchBookedBlocks } from '@/lib/booking-slot-blocking';
+import { maybeAutoPullGoogleCalendar } from '@/lib/google/google-calendar-auto-pull';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
+    await maybeAutoPullGoogleCalendar(admin);
     const blocks = await fetchBookedBlocks(admin, from, to);
     return NextResponse.json({ blocks });
   } catch (e) {

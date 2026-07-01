@@ -6,35 +6,14 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Bell, CheckCheck } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { TitanNotificationEvent } from '@/lib/titan/notification-events';
-import { groupNotificationsByDay } from '@/lib/titan/notification-events';
+import { groupNotificationsByDay, mapTitanNotificationRow } from '@/lib/titan/notification-events';
 import {
   markAllNotificationsReadAction,
   markNotificationReadAction,
 } from '@/app/(dashboard)/admin/notifications/titan-notification-actions';
 
 function mapRow(row: Record<string, unknown>): TitanNotificationEvent {
-  const payload = row.provider_payload;
-  return {
-    id: String(row.id ?? ''),
-    workspaceKey: String(row.workspace_key ?? 'default'),
-    title: String(row.title ?? ''),
-    body: String(row.body ?? ''),
-    source: row.source ? String(row.source) : null,
-    priority: (String(row.priority ?? 'normal')) as TitanNotificationEvent['priority'],
-    relatedType: row.related_type ? String(row.related_type) : null,
-    relatedId: row.related_id ? String(row.related_id) : null,
-    relatedUrl: row.related_url ? String(row.related_url) : null,
-    readAt: row.read_at ? String(row.read_at) : null,
-    archivedAt: row.archived_at ? String(row.archived_at) : null,
-    emailStatus: row.email_status ? String(row.email_status) : null,
-    smsStatus: row.sms_status ? String(row.sms_status) : null,
-    pushoverStatus: row.pushover_status ? String(row.pushover_status) : null,
-    providerPayload:
-      payload && typeof payload === 'object' && !Array.isArray(payload)
-        ? (payload as Record<string, unknown>)
-        : {},
-    createdAt: String(row.created_at ?? ''),
-  };
+  return mapTitanNotificationRow(row);
 }
 
 export function NotificationBellDropdown({ className }: { className?: string }) {
