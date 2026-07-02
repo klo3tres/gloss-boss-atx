@@ -79,13 +79,14 @@ function mapsHref(addr: string) {
 }
 
 function statusBucket(r: Row) {
-  const status = str(r.status);
-  const payment = str(r.payment_status);
+  const status = str(r.status).toLowerCase();
+  const payment = str(r.payment_status).toLowerCase();
+  if (status.includes('fallback') || str(r.kind) === 'fallback') return 'Fallback';
   if (status === 'in_progress') return 'Active';
   if (status === 'completed') return 'Completed';
-  if (status.includes('fallback') || str(r.kind) === 'fallback') return 'Fallback / test';
-  if (payment.includes('paid') || status === 'deposit_paid' || status === 'confirmed' || status === 'assigned') return 'Paid bookings';
-  return 'Unpaid bookings';
+  const balance = typeof r.balance_due_cents === 'number' ? r.balance_due_cents : 0;
+  if (balance > 0 && !payment.includes('paid') && payment !== 'test_comped' && status !== 'cancelled') return 'Payment due';
+  return 'Scheduled';
 }
 
 async function assignTechWorkOrderAction(formData: FormData) {
@@ -138,7 +139,7 @@ export default async function AdminWorkOrdersPage({
   }
 
   const sp = searchParams ? await searchParams : {};
-  const activeBucket = String(sp.bucket || 'Active');
+  const activeBucket = String(sp.bucket || 'Upcoming');
 
   const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
@@ -183,7 +184,7 @@ export default async function AdminWorkOrdersPage({
     .map((r) => ({ ...r, kind: 'fallback' }));
   const rows: Row[] = [...appts, ...fallbacks].sort((a, b) => new Date(str(b.scheduled_start || b.created_at)).getTime() - new Date(str(a.scheduled_start || a.created_at)).getTime());
   
-  const buckets = ['Active', 'Paid bookings', 'Unpaid bookings', 'Completed', 'Fallback / test'];
+  const buckets = ['Upcoming', 'Active', 'Scheduled', 'Payment due', 'Completed', 'Fallback'];
 
   const now = new Date();
   const todayKey = chicagoDateKey(now);
@@ -216,11 +217,38 @@ export default async function AdminWorkOrdersPage({
     { label: 'Scheduled this week', value: scheduledThisWeek.length, note: 'Route capacity view', tone: 'text-sky-300', href: '/admin/dispatch' },
   ];
 
-  const bucketRows = rows.filter((r) => statusBucket(r) === activeBucket);
+  const upcomingRows = rows
+    .filter((r) => !['completed', 'cancelled', 'archived'].includes(str(r.status).toLowerCase()))
+    .sort(
+      (a, b) =>
+        new Date(str(a.scheduled_start || a.created_at)).getTime() -
+        new Date(str(b.scheduled_start || b.created_at)).getTime(),
+    );
+
+  const bucketRows =
+    activeBucket === 'Upcoming'
+      ? upcomingRows
+      : rows.filter((r) => statusBucket(r) === activeBucket);
 
   return (
-    <DashboardShell title='Work orders' subtitle='Operational job board connected to payments, dispatch, and customers.' role='admin'>
+    <DashboardShell title='Work orders' subtitle='Track scheduled, active, and completed details.' role='admin'>
       
+      <div className='mb-6 flex flex-wrap items-end justify-between gap-4'>
+        <div>
+          <h1 className='text-2xl font-black text-white'>Work Orders</h1>
+          <p className='mt-1 text-sm text-zinc-400'>Track scheduled, active, and completed details.</p>
+          <p className='mt-2 text-xs font-bold uppercase tracking-wider text-emerald-300'>
+            {upcomingRows.length} upcoming / active jobs
+          </p>
+        </div>
+        <Link
+          href='/admin/work-orders/add'
+          className='rounded-xl border border-gold/40 bg-gold px-4 py-2.5 text-[10px] font-black uppercase text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]'
+        >
+          + Add Job
+        </Link>
+      </div>
+
       {/* QUICK COMMAND NAVIGATION */}
       <div className='mb-4 flex flex-wrap gap-2 text-xs items-center justify-between'>
         <div className="flex flex-wrap gap-2">
@@ -247,60 +275,30 @@ export default async function AdminWorkOrdersPage({
       {appointmentsRes.error ? <p className='mb-3 text-sm text-amber-200'>Appointments: {appointmentsRes.error.message}</p> : null}
       {fallbacksRes.error ? <p className='mb-3 text-sm text-amber-200'>Fallbacks: {fallbacksRes.error.message}</p> : null}
 
-      {/* RECONCILIATION COMMAND CENTER HERO */}
-      <div className="grid gap-4 mb-6 xl:grid-cols-[1fr_2fr]">
-        
-        {/* Work Focus */}
-        <div className="rounded-3xl border border-gold/25 bg-black/65 p-6 shadow-[0_0_30px_rgba(212,175,55,0.06)] relative overflow-hidden group hover:border-gold/40 transition-all duration-300">
-          <div className="absolute -top-12 -left-12 h-40 w-40 bg-gold/5 rounded-full blur-2xl pointer-events-none" />
-          <div className="space-y-4 min-w-0">
-            <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Work Order Cockpit</span>
-            <div>
-              <p className="text-zinc-400 text-xs">Next action queue</p>
-              <h2 className="mt-1 font-mono text-4xl font-black text-white tracking-tight">{activeJobs.length} Active</h2>
-            </div>
-            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
-              Prioritize assignments, live jobs, payment blockers, and completed jobs that still need receipt cleanup.
-            </p>
-          </div>
-        </div>
-
-        {/* Dynamic Summary Cards */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {cockpitMetrics.map((metric) => (
-            <Link key={metric.label} href={metric.href} className="rounded-2xl border border-white/10 bg-black/45 p-4 relative overflow-hidden group hover:-translate-y-0.5 hover:border-gold/25 hover:bg-black/60 transition duration-300">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{metric.label}</span>
-              <p className={`mt-2 font-mono text-3xl font-black ${metric.tone}`}>{metric.value}</p>
-              <p className="text-[9px] text-zinc-500 mt-1">{metric.note}</p>
+      {/* FILTER CHIPS */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {buckets.map((b) => {
+          const count =
+            b === 'Upcoming'
+              ? upcomingRows.length
+              : rows.filter((r) => statusBucket(r) === b).length;
+          return (
+            <Link
+              key={b}
+              href={`/admin/work-orders?bucket=${encodeURIComponent(b)}`}
+              className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                activeBucket === b
+                  ? 'bg-gold text-black'
+                  : 'border border-white/15 bg-black/50 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {b} ({count})
             </Link>
-          ))}
-        </div>
-
+          );
+        })}
       </div>
 
-      {/* BUCKET TABS SELECTOR */}
-      <div className="flex justify-center mb-8">
-        <div className="inline-flex flex-wrap justify-center gap-1.5 rounded-2xl border border-white/10 bg-black/60 p-1.5 backdrop-blur-md shadow-lg">
-          {buckets.map((b) => {
-            const count = rows.filter((r) => statusBucket(r) === b).length;
-            return (
-              <Link
-                key={b}
-                href={`/admin/work-orders?bucket=${encodeURIComponent(b)}`}
-                className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-300 ${
-                  activeBucket === b
-                    ? 'bg-gold text-black shadow-[0_0_15px_rgba(212,175,55,0.3)]'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {b} ({count})
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* DISPLAY SELECTED BUCKET */}
+      {/* JOB LIST */}
       <div className='grid gap-4'>
         <section className='rounded-3xl border border-gold/15 bg-zinc-950/90 p-5 shadow-[0_0_24px_rgba(212,166,77,0.04)]'>
           <div className='flex items-center justify-between gap-3 border-b border-white/5 pb-3 mb-5'>
@@ -469,7 +467,16 @@ export default async function AdminWorkOrdersPage({
                 })}
               </div>
             </section>
-          </div>
+      </div>
+
+      <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {cockpitMetrics.slice(0, 4).map((metric) => (
+          <Link key={metric.label} href={metric.href} className="rounded-xl border border-white/10 bg-black/35 p-3 text-xs hover:border-gold/20">
+            <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{metric.label}</span>
+            <p className={`mt-1 font-mono text-xl font-black ${metric.tone}`}>{metric.value}</p>
+          </Link>
+        ))}
+      </div>
         </DashboardShell>
       );
     }

@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const admin = tryCreateAdminSupabase();
   if (!admin) return NextResponse.json({ ok: false, error: 'Service role unavailable' }, { status: 503 });
 
-  const result = await maybeAutoPullGoogleCalendar(admin, { force: true, daysAhead: 45 });
+  const result = await maybeAutoPullGoogleCalendar(admin, { force: true, daysAhead: 45, emitActivity: true });
   if (result.skipReason === 'not_connected') {
     return NextResponse.json({ ok: false, error: 'Google Calendar not connected' }, { status: 400 });
   }

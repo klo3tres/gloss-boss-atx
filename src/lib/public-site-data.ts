@@ -86,9 +86,14 @@ export type PublicReview = {
   text: string;
   date: string;
   source: string;
+  isGoogle: boolean;
   vehicleOrService: string;
   featured: boolean;
 };
+
+export function isGoogleReviewSource(source: string | null | undefined): boolean {
+  return String(source ?? '').trim().toLowerCase() === 'google';
+}
 
 /** Used when `homepage_content.deal_config` is missing — no fabricated promos. */
 const EMPTY_DEALS: DealConfig = {

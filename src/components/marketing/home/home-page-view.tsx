@@ -22,7 +22,7 @@ import { HomepageHeroBackground } from '@/components/marketing/homepage-hero-bac
 import { MotionFade } from '@/components/marketing/motion-fade';
 import { OffersMarketingBand } from '@/components/marketing/offers-marketing-band';
 import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
-import { ServicePackageShowcase } from '@/components/marketing/service-package-showcase';
+import { HomeServicePackagesGrid } from '@/components/marketing/home/home-service-packages-grid';
 import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { PremiumButton } from '@/components/premium/premium-button';
 import { PremiumCard } from '@/components/premium/premium-card';
@@ -106,8 +106,6 @@ export function HomePageView({
   ].filter((s) => s.href);
 
   const hasHomeOffers = offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, new Date()));
-  const featuredServices = packages.slice(0, 4);
-
   return (
     <main className="gb-page gb-page-pad relative min-h-screen overflow-x-hidden bg-black text-foreground">
       <StickyBookCta bookingHref={bookingHref} />
@@ -230,21 +228,11 @@ export function HomePageView({
       {isSectionVisible(visuals, 'services') ? (
         <PremiumSection
           id="services"
-          eyebrow="Featured services"
-          title="Packages built for Austin drivers"
-          subtitle="From maintenance washes to full correction and ceramic protection."
+          eyebrow="Professional packages"
+          title={(visuals?.services as { title?: string })?.title || 'Packages built for Austin drivers'}
+          subtitle="Austin's standard for paint correction, interior sanitation, and paint protection."
         >
-          <div className="grid gap-8">
-            {featuredServices.map((service, index) => (
-              <ServicePackageShowcase
-                key={service.id}
-                service={service}
-                mediaRegistry={mediaRegistry}
-                index={index}
-                reverse={index % 2 === 1}
-              />
-            ))}
-          </div>
+          <HomeServicePackagesGrid packages={packages} visuals={visuals} />
           <div className="mt-10 text-center">
             <PremiumButton href="/services" variant="ghost">
               View all services
@@ -288,27 +276,20 @@ export function HomePageView({
       ) : null}
 
       <PremiumSection
-        eyebrow="Why Gloss Boss"
-        title="Austin-standard quality, mobile convenience"
-        subtitle="Professional equipment, paint-safe processes, and results you can see in the sun."
-        align="left"
+        id="gallery"
+        eyebrow="Our work"
+        title="Featured gallery"
+        subtitle="Controlled, cropped showcase — full portfolio on the gallery page."
       >
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {whyChoose.map((item) => (
-            <PremiumCard key={item.title} className="bg-black/40">
-              <item.icon className="h-5 w-5 text-gold-soft" />
-              <h3 className="mt-4 text-sm font-black uppercase text-white">{item.title}</h3>
-              <p className="mt-2 text-xs leading-relaxed text-zinc-400">{item.desc}</p>
-            </PremiumCard>
-          ))}
+        <SectionErrorBoundary label="Gallery">
+          <HomeGalleryStrip maxImages={6} />
+        </SectionErrorBoundary>
+        <div className="mt-8 text-center">
+          <PremiumButton href="/gallery" variant="ghost">
+            View full gallery
+          </PremiumButton>
         </div>
       </PremiumSection>
-
-      <section id="gallery" className="border-y border-white/5 bg-black py-4">
-        <SectionErrorBoundary label="Gallery">
-          <HomeGalleryStrip />
-        </SectionErrorBoundary>
-      </section>
 
       {isSectionVisible(visuals, 'transformations') ? (
         <SectionErrorBoundary label="Transformations">
@@ -323,7 +304,7 @@ export function HomePageView({
       <section className="bg-zinc-950 py-16">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <SectionErrorBoundary label="Reviews">
-            <ReviewsCarousel reviews={reviews} />
+            <ReviewsCarousel reviews={reviews} googleReviewUrl={googleReviewUrl} bookingHref={bookingHref} />
           </SectionErrorBoundary>
         </div>
       </section>

@@ -13,6 +13,7 @@ import { usePublicSiteData } from '@/hooks/use-public-site-data';
 import { serviceCategoryFilter } from '@/lib/marketing/service-presentation';
 import { isOfferEligiblePublicSiteData } from '@/lib/public-site-data';
 import { PRICING_DISCLAIMER, PRICING_DISCOUNT_RULES } from '@/lib/site-config';
+import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
 import { MotionFade } from '@/components/marketing/motion-fade';
 
 type ServiceTab = 'all' | 'exterior' | 'interior' | 'full' | 'ceramic';
@@ -27,7 +28,7 @@ const TABS: { id: ServiceTab; label: string }[] = [
 
 export function ServicesPageView() {
   const state = usePublicSiteData();
-  const { packages, offers, loaded, schemaWarnings, mediaRegistry, fleetEnabled, fleetBlurb, fleetPricing } = state;
+  const { packages, offers, loaded, schemaWarnings, mediaRegistry, fleetEnabled, fleetBlurb, fleetPricing, reviews, googleReviewUrl } = state;
 
   const [activeTab, setActiveTab] = useState<ServiceTab>('all');
   const filtered = packages.filter((s) => serviceCategoryFilter(s, activeTab));
@@ -126,6 +127,15 @@ export function ServicesPageView() {
           </p>
         ) : null}
       </section>
+
+      {reviews.length > 0 ? (
+        <section className="border-t border-white/5 px-4 py-16 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl">
+            <PremiumEyebrow>Reviews</PremiumEyebrow>
+            <ReviewsCarousel reviews={reviews} googleReviewUrl={googleReviewUrl} bookingHref="/book" />
+          </div>
+        </section>
+      ) : null}
 
       <section className="border-t border-white/5 bg-zinc-950/80 px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">

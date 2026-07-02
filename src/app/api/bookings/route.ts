@@ -50,6 +50,7 @@ type Body = {
   parkingAccess?: string;
   gateAccessNotes?: string;
   promoCode?: string;
+  referralCode?: string;
   paymentChoice?: 'deposit' | 'full';
   notes?: string;
   smsConsent?: boolean;
@@ -177,6 +178,7 @@ export async function POST(request: Request) {
     const ACCESS_VALUES = new Set(['yes', 'no', 'unsure']);
     const LOCATION_TYPES = new Set(['house', 'apartment', 'business', 'other']);
     const promoCode = String(body.promoCode ?? '').trim().toUpperCase();
+    const referralCode = String(body.referralCode ?? '').trim().toUpperCase();
     const paymentChoice = body.paymentChoice === 'full' ? 'full' : 'deposit';
     const requestedCreditCents = Math.max(0, Math.round(Number(body.requestedCreditCents ?? 0)));
     const smsConsent = body.smsConsent === true;
@@ -312,7 +314,19 @@ export async function POST(request: Request) {
     }
 
     const totalBaseCents = priced.finalTotalCents;
-    const depositAmountCents = priced.depositCents;
+    let referralDiscountCents = 0;
+    let referrerCustomerId: string | null = null;
+    if (referralCode) {
+      const { applyReferralDiscountToQuote } = await import('@/lib/referral/referral-discount');
+      const ref = await applyReferralDiscountToQuote(admin, { referralCode, subtotalCents: totalBaseCents });
+      if (ref.applied) {
+        referralDiscountCents = ref.discountCents;
+        referrerCustomerId = ref.referrerCustomerId;
+        priced.finalTotalCents = Math.max(0, totalBaseCents - referralDiscountCents);
+      }
+    }
+    const adjustedTotalCents = priced.finalTotalCents;
+    const depositAmountCents = paymentChoice === 'full' ? adjustedTotalCents : Math.min(priced.depositCents, adjustedTotalCents);
     const primary = resolved[0]!;
     const offerRowId = claimed?.offerId ?? null;
 
@@ -472,6 +486,9 @@ export async function POST(request: Request) {
     const breakdownWithSnapshot = {
       ...mergeSnapshotIntoBreakdown(priced, orderSnapshot),
       requested_credit_cents: requestedCreditCents,
+      referral_code: referralCode || null,
+      referrer_customer_id: referrerCustomerId,
+      referral_discount_cents: referralDiscountCents,
     };
 
     const insertPayload: Record<string, unknown> = {
@@ -481,7 +498,7 @@ export async function POST(request: Request) {
       vehicle_description: vehicleDescriptionJoined,
       service_slug: primary.serviceSlug,
       vehicle_class: primary.vehicleClass,
-      base_price_cents: totalBaseCents,
+      base_price_cents: adjustedTotalCents,
       deposit_percent: priced.depositPercent,
       deposit_amount_cents: depositAmountCents,
       scheduled_start: scheduled.toISOString(),
@@ -501,7 +518,7 @@ export async function POST(request: Request) {
       status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
       payment_status: freePromoApplied ? 'comped' : 'awaiting_deposit',
       payment_choice: paymentChoice,
-      balance_due_cents: paymentChoice === 'full' || freePromoApplied ? 0 : Math.max(0, totalBaseCents - depositAmountCents),
+      balance_due_cents: paymentChoice === 'full' || freePromoApplied ? 0 : Math.max(0, adjustedTotalCents - depositAmountCents),
       promo_code: promoCode || null,
       comp_reason: freePromoApplied
         ? `${promoCode || 'FREE'} comp applied`
@@ -582,7 +599,7 @@ export async function POST(request: Request) {
       customerId,
       appointmentId: String(appointment.id),
       requestedCents: requestedCreditCents,
-      totalCents: totalBaseCents,
+      totalCents: adjustedTotalCents,
     });
 
     await logSmsConsentChange(admin, {
@@ -597,6 +614,26 @@ export async function POST(request: Request) {
 
     if (promoCode && quote.promo.applied) {
       await incrementPromoUse(admin, promoCode);
+    }
+
+    if (referralCode && referrerCustomerId) {
+      const { recordReferralEvent } = await import('@/lib/referral/referral-events');
+      const { sendReferralNotification } = await import('@/lib/referral/referral-notifications');
+      await recordReferralEvent(admin, {
+        referralCode,
+        referrerCustomerId,
+        status: 'booked',
+        referredEmail: emailNorm,
+        referredCustomerId: customerId,
+        appointmentId: String(appointment.id),
+        metadata: { source: 'public_booking', discount_cents: referralDiscountCents },
+      });
+      void sendReferralNotification(admin, {
+        kind: 'someone_booked',
+        customerId: referrerCustomerId,
+        referralCode,
+        referredName: guestName.trim(),
+      });
     }
 
     if (customerId) {

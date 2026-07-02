@@ -41,6 +41,13 @@ export function referralLinkForCode(code: string): string {
   return `${base}/book?ref=${encodeURIComponent(code)}`;
 }
 
+export type ReferralRewardLadderTier = {
+  threshold: number;
+  rewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
+  rewardValue: number;
+  label: string;
+};
+
 export type ReferralProgramSettings = {
   enabled: boolean;
   referrerRewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
@@ -50,11 +57,15 @@ export type ReferralProgramSettings = {
   minCompletedBookings: number;
   maxRewardsPerCustomer: number;
   stackingAllowed: boolean;
+  maxDiscountCents?: number;
+  rewardExpirationDays?: number;
+  rewardUnlockRule: 'booked' | 'completed_paid';
   reviewRewardEnabled: boolean;
   reviewRewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
   reviewRewardValue: number;
   freeDetailReferralThreshold: number;
   freeDetailServiceSlug: string;
+  rewardLadder: ReferralRewardLadderTier[];
 };
 
 export const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
@@ -66,11 +77,19 @@ export const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   minCompletedBookings: 1,
   maxRewardsPerCustomer: 10,
   stackingAllowed: false,
+  maxDiscountCents: 0,
+  rewardExpirationDays: 0,
+  rewardUnlockRule: 'completed_paid',
   reviewRewardEnabled: true,
   reviewRewardType: 'percent',
   reviewRewardValue: 10,
   freeDetailReferralThreshold: 5,
   freeDetailServiceSlug: 'full-detail',
+  rewardLadder: [
+    { threshold: 1, rewardType: 'percent', rewardValue: 15, label: '15% off next detail' },
+    { threshold: 3, rewardType: 'custom', rewardValue: 0, label: 'Free upgrade' },
+    { threshold: 5, rewardType: 'free_service', rewardValue: 0, label: 'Free full detail' },
+  ],
 };
 
 export async function loadReferralProgramSettings(admin: SupabaseClient): Promise<ReferralProgramSettings> {
@@ -78,7 +97,10 @@ export async function loadReferralProgramSettings(admin: SupabaseClient): Promis
   if (!data?.value) return DEFAULT_REFERRAL_SETTINGS;
   try {
     const raw = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-    return { ...DEFAULT_REFERRAL_SETTINGS, ...(raw as Partial<ReferralProgramSettings>) };
+    const merged = { ...DEFAULT_REFERRAL_SETTINGS, ...(raw as Partial<ReferralProgramSettings>) };
+    if (!merged.rewardLadder?.length) merged.rewardLadder = DEFAULT_REFERRAL_SETTINGS.rewardLadder;
+    if (!merged.rewardUnlockRule) merged.rewardUnlockRule = 'completed_paid';
+    return merged;
   } catch {
     return DEFAULT_REFERRAL_SETTINGS;
   }

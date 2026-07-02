@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
   let googleAutoPull;
   if (role === 'admin') {
-    googleAutoPull = await maybeAutoPullGoogleCalendar(admin);
+    googleAutoPull = await maybeAutoPullGoogleCalendar(admin, { emitActivity: 'failures_only' });
   }
 
   const feed = await loadCalendarFeed(admin, {

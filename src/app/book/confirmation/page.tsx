@@ -207,11 +207,23 @@ function ConfirmationInner() {
         <Link href={signHref} className='rounded-2xl bg-gold px-6 py-4 text-center text-sm font-black uppercase text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'>
           Sign agreement now
         </Link>
-        <Link href='/signup' className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'>
+        <Link
+          href={`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`}
+          className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'
+        >
+          Open customer portal
+        </Link>
+        <Link
+          href={`/signup?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
+          className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300'
+        >
           Create your account
         </Link>
-        <Link href='/login' className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300 sm:col-span-2'>
-          Claim booking in dashboard
+        <Link
+          href={`/login?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
+          className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300 sm:col-span-2'
+        >
+          Sign in to view in dashboard
         </Link>
       </div>
     </div>

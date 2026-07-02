@@ -4,6 +4,7 @@ import {
   dedupePublicOffers,
   defaultFeaturedShowcaseSlides,
   getOfflineMarketingPackages,
+  isGoogleReviewSource,
   isOfferEligiblePublicSiteData,
   mapCatalogToServicePackages,
   mapDbRowToSiteDataOfferCard,
@@ -271,6 +272,7 @@ export async function GET() {
               text: String(r.testimonial ?? r.review_text ?? '').trim() || `${Number(r.rating ?? 5)}-star review from a Gloss Boss client.`,
               date: String(r.approved_at ?? r.created_at ?? ''),
               source: String(r.source ?? 'Manual'),
+              isGoogle: isGoogleReviewSource(String(r.source ?? '')),
               vehicleOrService: String(r.vehicle_label ?? r.service_label ?? ''),
               featured: Boolean(r.featured),
             }))

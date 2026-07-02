@@ -5,10 +5,21 @@ import { usePathname } from 'next/navigation';
 import { Home, Shield, Wrench, User, Zap } from 'lucide-react';
 import type { DashboardShellRole } from '@/components/dashboard/dashboard-shell';
 
+function isNavActive(pathname: string, href: string) {
+  if (href === '/') return pathname === '/';
+  if (href === '/admin') {
+    return pathname === '/admin' || (pathname.startsWith('/admin/') && !pathname.startsWith('/admin/titan'));
+  }
+  if (href.startsWith('/admin/titan')) {
+    return pathname === '/admin/titan' || pathname.startsWith('/admin/titan/');
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 const LINKS: { href: string; label: string; icon: typeof Home; roles: DashboardShellRole[] }[] = [
   { href: '/', label: 'Home', icon: Home, roles: ['super_admin', 'admin', 'technician', 'customer'] },
   { href: '/admin', label: 'Admin', icon: Shield, roles: ['super_admin', 'admin'] },
-  { href: '/admin/titan', label: 'Titan', icon: Zap, roles: ['super_admin', 'admin'] },
+  { href: '/admin/titan?workspace=growth', label: 'Titan', icon: Zap, roles: ['super_admin', 'admin'] },
   { href: '/tech', label: 'Tech', icon: Wrench, roles: ['super_admin', 'admin', 'technician'] },
   { href: '/dashboard', label: 'Customer', icon: User, roles: ['super_admin', 'admin', 'technician', 'customer'] },
 ];
@@ -25,10 +36,7 @@ export function GlobalAppNav({ role }: { role: DashboardShellRole }) {
     >
       <div className="flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visible.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === '/'
-              ? pathname === '/'
-              : pathname === href || pathname.startsWith(`${href}/`);
+          const active = isNavActive(pathname, href);
           return (
             <Link
               key={href}

@@ -37,7 +37,7 @@ function resolveGalleryRows(remote: NormalizedGalleryImage[]): { rows: Normalize
   return { rows: featured, empty: false };
 }
 
-export function HomeGalleryStrip() {
+export function HomeGalleryStrip({ maxImages = 6 }: { maxImages?: number }) {
   const [rows, setRows] = useState<NormalizedGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [emptyGallery, setEmptyGallery] = useState(false);
@@ -46,8 +46,9 @@ export function HomeGalleryStrip() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const settledRef = useRef(false);
 
-  const pageSize = 6;
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const displayRows = rows.slice(0, maxImages);
+  const pageSize = Math.min(6, maxImages);
+  const pageCount = Math.max(1, Math.ceil(displayRows.length / pageSize));
 
   useEffect(() => {
     const watchdog = window.setTimeout(() => {
@@ -162,7 +163,7 @@ export function HomeGalleryStrip() {
   }, [pageCount, rows.length]);
 
   const sliceStart = page * pageSize;
-  const visibleSlice = rows.slice(sliceStart, sliceStart + pageSize);
+  const visibleSlice = displayRows.slice(sliceStart, sliceStart + pageSize);
 
   if (loading && rows.length === 0 && !emptyGallery) {
     return (
@@ -175,7 +176,7 @@ export function HomeGalleryStrip() {
   }
 
   return (
-    <div className='mt-8 space-y-4'>
+    <div className='mx-auto max-w-6xl space-y-4'>
       {emptyGallery ? (
         <p className='text-xs text-zinc-500'>
           Featured gallery photos will appear here once you feature images in Admin → Website CMS.
@@ -212,7 +213,7 @@ export function HomeGalleryStrip() {
       ) : null}
 
       <div className='relative'>
-        {rows.length > pageSize ? (
+        {displayRows.length > pageSize ? (
           <>
             <button
               type='button'
@@ -238,19 +239,19 @@ export function HomeGalleryStrip() {
         <div
           ref={scrollerRef}
           className={
-            rows.length > pageSize
+            displayRows.length > pageSize
               ? 'flex snap-x snap-mandatory overflow-x-auto scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-              : 'grid gap-4 md:grid-cols-2 lg:grid-cols-3'
+              : 'grid gap-3 md:grid-cols-2 lg:grid-cols-3'
           }
-          style={rows.length > pageSize ? { scrollSnapType: 'x mandatory' } : undefined}
+          style={displayRows.length > pageSize ? { scrollSnapType: 'x mandatory' } : undefined}
         >
-          {rows.length > pageSize
+          {displayRows.length > pageSize
             ? Array.from({ length: pageCount }).map((_, pi) => (
                 <div
                   key={`page-${pi}`}
-                  className='grid w-full min-w-full shrink-0 snap-center gap-4 sm:grid-cols-2 lg:grid-cols-3'
+                  className='grid w-full min-w-full shrink-0 snap-center gap-3 sm:grid-cols-2 lg:grid-cols-3'
                 >
-                  {rows.slice(pi * pageSize, pi * pageSize + pageSize).map((row) => {
+                  {displayRows.slice(pi * pageSize, pi * pageSize + pageSize).map((row) => {
                     const imageUrl = row.url || row.image_url;
                     const title = publicGalleryDisplayTitle(row);
                     return (
@@ -261,10 +262,14 @@ export function HomeGalleryStrip() {
                           className='group block w-full text-left'
                         >
                           <article className='overflow-hidden rounded-2xl border border-gold/25 shadow-[0_0_24px_rgba(212,166,77,0.08)] transition hover:border-gold/50 hover:shadow-[0_0_36px_rgba(212,166,77,0.2)]'>
-                            <div
-                              className='h-56 bg-cover bg-center transition duration-500 group-hover:scale-[1.02] sm:h-64'
-                              style={{ backgroundImage: `url(${imageUrl})` }}
-                            />
+                            <div className='relative aspect-[4/3] overflow-hidden bg-zinc-900'>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={imageUrl}
+                                alt={title}
+                                className='h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]'
+                              />
+                            </div>
                             {row.featured ? (
                               <p className='border-t border-white/10 bg-black/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gold-soft'>
                                 Featured
@@ -289,10 +294,14 @@ export function HomeGalleryStrip() {
                       className='group block w-full text-left'
                     >
                       <article className='overflow-hidden rounded-2xl border border-gold/25 shadow-[0_0_24px_rgba(212,166,77,0.08)] transition hover:border-gold/50 hover:shadow-[0_0_36px_rgba(212,166,77,0.2)]'>
-                        <div
-                          className='h-64 bg-cover bg-center transition duration-500 group-hover:scale-105'
-                          style={{ backgroundImage: `url(${imageUrl})` }}
-                        />
+                        <div className='relative aspect-[4/3] overflow-hidden bg-zinc-900'>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imageUrl}
+                            alt={title}
+                            className='h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]'
+                          />
+                        </div>
                         {row.featured ? (
                           <p className='border-t border-white/10 bg-black/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gold-soft'>
                             Featured
@@ -307,7 +316,7 @@ export function HomeGalleryStrip() {
         </div>
       </div>
 
-      {rows.length > pageSize ? (
+      {displayRows.length > pageSize ? (
         <div className='flex flex-wrap items-center justify-center gap-2'>
           {Array.from({ length: pageCount }).map((_, i) => (
             <button

@@ -112,5 +112,17 @@ export async function transitionWorkOrder(
     // Migration may not be deployed yet; the status update remains authoritative.
   }
 
+  const notifyStages = new Set(['scheduled', 'en_route', 'in_progress', 'quality_check', 'payment_due', 'completed']);
+  if (from !== input.to && notifyStages.has(input.to)) {
+    void import('@/lib/customer-portal-status-notify').then(({ notifyCustomerWorkOrderStatusUpdate }) =>
+      notifyCustomerWorkOrderStatusUpdate(db, {
+        appointmentId: input.appointmentId,
+        fromStage: from,
+        toStage: input.to,
+        notifyCustomer: input.to !== 'scheduled',
+      }).catch((e) => console.warn('[work-order-lifecycle] customer status notify', e)),
+    );
+  }
+
   return { ok: true, from, to: input.to };
 }

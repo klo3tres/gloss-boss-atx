@@ -34,6 +34,7 @@ import type { WorkOrderGalleryPhoto } from '../../work-order-gallery';
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { mergePricingBreakdownWithLineItems, readCustomLineItems } from '@/lib/work-order-line-items';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { loadConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import {
   assessBeforePhotoSlots,
   buildPreInspectionRequirements,
@@ -666,6 +667,8 @@ export default async function TechWorkOrderDetailPage({
       ? 'Completed unusually fast. Verify timer start/stop history.'
       : undefined;
 
+  const confirmationStatus = !isFallback ? await loadConfirmationDeliveryStatus(admin, queryId) : null;
+
   const consoleData: any = {
     id,
     canonicalId: queryId,
@@ -728,6 +731,7 @@ export default async function TechWorkOrderDetailPage({
     guestName,
     guestPhone,
     guestEmail,
+    confirmationStatus,
     serviceLabel: displayLabel(row.service_slug, 'Service'),
     statusLabel: displayLabel(row.status, 'In progress'),
     fullAddress,

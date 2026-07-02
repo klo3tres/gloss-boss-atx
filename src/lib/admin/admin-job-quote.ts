@@ -17,7 +17,7 @@ export type AdminJobQuoteInput = {
   customerId?: string | null;
   manualDiscount?: AdminManualDiscount;
   priceOverrideCents?: number | null;
-  paymentChoice?: 'deposit' | 'full';
+  paymentChoice?: 'deposit' | 'full' | 'none';
   skipOnlinePromo?: boolean;
 };
 
@@ -99,7 +99,7 @@ export async function computeAdminJobQuote(
     })),
     addOns: input.addOns,
     promoCode: input.promoCode,
-    paymentChoice: input.paymentChoice ?? 'deposit',
+    paymentChoice: input.paymentChoice === 'none' ? 'deposit' : (input.paymentChoice ?? 'deposit'),
     allowFreeTestPromo: false,
   });
 
@@ -123,9 +123,14 @@ export async function computeAdminJobQuote(
 
   if (input.priceOverrideCents != null && input.priceOverrideCents >= 0) {
     const override = Math.round(input.priceOverrideCents);
-    const depPct = input.paymentChoice === 'full' ? 100 : afterManual.depositPercent ?? 30;
+    const depPct =
+      input.paymentChoice === 'full' ? 100 : input.paymentChoice === 'none' ? 0 : afterManual.depositPercent ?? 30;
     afterManual.finalTotalCents = override;
     afterManual.depositCents = Math.round(override * (depPct / 100));
+  }
+
+  if (input.paymentChoice === 'none') {
+    afterManual.depositCents = 0;
   }
 
   const balanceDue = Math.max(0, afterManual.finalTotalCents - afterManual.depositCents);

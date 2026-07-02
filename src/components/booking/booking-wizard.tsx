@@ -138,6 +138,7 @@ export function BookingWizard() {
   const searchParams = useSearchParams();
   const offerFromUrl = String(searchParams?.get('offer') ?? '').trim();
   const serviceFromUrl = String(searchParams?.get('service') ?? searchParams?.get('package') ?? '').trim();
+  const referralFromUrl = String(searchParams?.get('ref') ?? '').trim().toUpperCase();
   const liveCatalogAppliedRef = useRef(false);
   const serviceFromUrlAppliedRef = useRef('');
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
@@ -175,6 +176,9 @@ export function BookingWizard() {
   const [bookedBlocks, setBookedBlocks] = useState<BookedBlock[]>([]);
   const [notes, setNotes] = useState('');
   const [promoCode, setPromoCode] = useState('');
+  const [referralCode, setReferralCode] = useState(referralFromUrl);
+  const [referralLabel, setReferralLabel] = useState<string | null>(null);
+  const [referralDiscountCents, setReferralDiscountCents] = useState(0);
   const [appliedPromoCode, setAppliedPromoCode] = useState('');
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
   /** From /api/public/site-settings — mirrors FREE row enabled (admin reads promo_codes). */
@@ -711,6 +715,31 @@ export function BookingWizard() {
     return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
   }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents, customerCredits.membershipDiscountPercent]);
 
+  useEffect(() => {
+    const code = referralCode.trim().toUpperCase();
+    if (!code || code.length < 4) {
+      setReferralLabel(null);
+      setReferralDiscountCents(0);
+      return;
+    }
+    const subtotal = priceSummary?.kind === 'ok' ? priceSummary.breakdown.finalTotalCents : 0;
+    void fetch(`/api/public/referral-validate?code=${encodeURIComponent(code)}&subtotal_cents=${subtotal}`)
+      .then((r) => r.json())
+      .then((j: { valid?: boolean; label?: string; discountCents?: number }) => {
+        if (j.valid) {
+          setReferralLabel(j.label ?? 'Referral discount applied');
+          setReferralDiscountCents(j.discountCents ?? 0);
+        } else {
+          setReferralLabel(null);
+          setReferralDiscountCents(0);
+        }
+      })
+      .catch(() => {
+        setReferralLabel(null);
+        setReferralDiscountCents(0);
+      });
+  }, [referralCode, priceSummary]);
+
   const pricePreviewText =
     priceSummary?.kind === 'quote'
       ? 'Quote required for one or more vehicle lines'
@@ -1244,6 +1273,7 @@ export function BookingWizard() {
           powerAccess,
           parkingAccess,
           promoCode: appliedPromoCode || promoCode.trim() || undefined,
+          referralCode: referralCode.trim() || undefined,
           paymentChoice: freePromoEligible ? 'full' : paymentChoice,
           requestedCreditCents: creditAppliedCents,
           notes: notes || undefined,
@@ -1915,6 +1945,21 @@ export function BookingWizard() {
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Notes (optional)</span>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} />
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-zinc-300'>Referral code (optional)</span>
+              <input
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                placeholder='Friend referral code'
+                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
+              />
+              {referralLabel ? (
+                <p className='mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs font-semibold text-emerald-100'>
+                  {referralLabel}
+                  {referralDiscountCents > 0 ? ` · −$${(referralDiscountCents / 100).toFixed(2)}` : ''}
+                </p>
+              ) : null}
             </label>
             <label className='text-sm md:col-span-2'>
               <span className='mb-2 block text-zinc-300'>Promo code (optional)</span>

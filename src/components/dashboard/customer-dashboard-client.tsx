@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
@@ -62,7 +62,14 @@ export type CustomerDashboardProps = {
   referralCode?: string | null;
   referralLink?: string | null;
   referralCompletedCount?: number;
+  referralBookedCount?: number;
+  referralSentCount?: number;
+  referralRewardsEarned?: number;
+  referralRewardsAvailable?: number;
+  referralProgramEnabled?: boolean;
+  referralRewardRules?: string;
   referralFreeDetailThreshold?: number;
+  highlightJobId?: string;
 };
 
 export type CustomerMembershipView = {
@@ -192,6 +199,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     setRotateY(0);
     setIsHovered(false);
   };
+
+  const highlightRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    if (props.highlightJobId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [props.highlightJobId]);
   
   // Extract garage list of unique vehicles
   const uniqueVehicles = useMemo(() => {
@@ -288,7 +302,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           referralCode={props.referralCode}
           referralLink={props.referralLink}
           completedReferrals={props.referralCompletedCount ?? 0}
+          bookedReferrals={props.referralBookedCount}
+          sentReferrals={props.referralSentCount}
+          rewardsEarned={props.referralRewardsEarned}
+          rewardsAvailable={props.referralRewardsAvailable}
           threshold={props.referralFreeDetailThreshold ?? 5}
+          rewardRules={props.referralRewardRules}
+          enabled={props.referralProgramEnabled !== false}
         />
       ) : null}
       <section className={`overflow-hidden rounded-3xl border ${theme.border} bg-[radial-gradient(circle_at_top_left,rgba(212,175,55,0.18),transparent_34%),linear-gradient(135deg,rgba(24,24,27,0.96),rgba(0,0,0,0.96))] p-6 ${theme.glow}`}>
@@ -536,12 +556,21 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               ) : null}
               {appointmentCards.map((raw) => {
                 const a = apptFromSnapshot(raw, props.snapshotByAppt?.[raw.id]);
+                const isHighlighted = props.highlightJobId === a.id;
                 const receipts = props.receiptsByAppt[a.id] ?? [];
                 const addr =
                   a.service_address ||
                   [raw.service_address, raw.service_city, raw.service_state, raw.service_zip].filter(Boolean).join(', ');
                 return (
-                  <li key={a.id} className="gb-premium-card rounded-2xl border border-gold/15 bg-black/40 p-5 hover:border-gold/30 hover:shadow-[0_0_20px_rgba(212,175,55,0.08)] transition duration-300">
+                  <li
+                    key={a.id}
+                    ref={isHighlighted ? highlightRef : undefined}
+                    className={`gb-premium-card rounded-2xl border bg-black/40 p-5 transition duration-300 ${
+                      isHighlighted
+                        ? 'border-gold/60 shadow-[0_0_28px_rgba(212,175,55,0.25)] ring-2 ring-gold/40'
+                        : 'border-gold/15 hover:border-gold/30 hover:shadow-[0_0_20px_rgba(212,175,55,0.08)]'
+                    }`}
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-lg font-black uppercase tracking-tight text-white">{a.service_slug.replace(/-/g, ' ')}</p>

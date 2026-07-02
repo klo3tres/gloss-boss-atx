@@ -1,5 +1,61 @@
 const TZ = 'America/Chicago';
 
+function chicagoLocalParts(d: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '0000';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '00';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '00';
+  let hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  if (hour === '24') hour = '00';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return { ymd: `${year}-${month}-${day}`, hm: `${hour}:${minute}` };
+}
+
+/**
+ * Parse a date + time (or datetime-local value) as America/Chicago local → UTC ISO.
+ * Fixes server-side `new Date("YYYY-MM-DDTHH:mm")` interpreting as UTC on Vercel.
+ */
+export function parseChicagoLocalToIso(dateOrDatetime: string, timeInput?: string): string | null {
+  let ymd: string;
+  let hm: string;
+  const raw = dateOrDatetime.trim();
+  if (raw.includes('T')) {
+    const [d, rest] = raw.split('T');
+    ymd = d;
+    hm = (rest ?? '').slice(0, 5);
+  } else {
+    ymd = raw;
+    hm = (timeInput ?? '').trim().slice(0, 5);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd) || !/^\d{2}:\d{2}$/.test(hm)) return null;
+
+  for (const offset of ['-05:00', '-06:00'] as const) {
+    const candidate = new Date(`${ymd}T${hm}:00${offset}`);
+    if (Number.isNaN(candidate.getTime())) continue;
+    const local = chicagoLocalParts(candidate);
+    if (local.ymd === ymd && local.hm === hm) return candidate.toISOString();
+  }
+  const fallback = new Date(`${ymd}T${hm}:00-06:00`);
+  return Number.isNaN(fallback.getTime()) ? null : fallback.toISOString();
+}
+
+/** Format UTC ISO as `datetime-local` value in America/Chicago. */
+export function toChicagoDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const { ymd, hm } = chicagoLocalParts(d);
+  return `${ymd}T${hm}`;
+}
+
 export function dateKeyChicago(input: string | Date): string {
   const d = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(d.getTime())) return '';

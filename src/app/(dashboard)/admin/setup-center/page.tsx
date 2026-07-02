@@ -3,6 +3,7 @@ import { OwnerProfileSettingsForm } from '@/components/admin/owner-profile-setti
 import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-connect-panel';
 import { PushoverSetupPanel } from '@/components/admin/pushover-setup-panel';
 import { NotificationSettingsPanel } from '@/components/admin/notification-settings-panel';
+import { TwilioTestSmsPanel } from '@/components/admin/twilio-test-sms-panel';
 import { PostDeployQaChecklist, TitanOnboardingChecklistPanel } from '@/components/titan/titan-onboarding-panels';
 import { WebsiteIntelligenceSetupCard } from '@/components/titan/website-intelligence-setup-card';
 import { loadWebsiteIntelligenceBundle, summarizeWebsiteIntelligence } from '@/lib/titan/website-intelligence';
@@ -61,8 +62,9 @@ export default async function OwnerSetupCenterPage() {
   const serviceKeys = MEDIA_REGISTRY_ITEMS.filter((item) => item.group === 'Services').map((item) => item.key);
   const bookingMediaCount = bookingKeys.filter((key) => Boolean(registry[key])).length;
   const serviceMediaCount = serviceKeys.filter((key) => Boolean(registry[key])).length;
-  const twilioConfigured = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim());
   const integrationRows = buildIntegrationStatusRows();
+  const twilioConfigured = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_PHONE_NUMBER?.trim());
+  const twilioTrialLikely = integrationRows.find((r) => r.id === 'twilio')?.level === 'trial';
   const wsSettings = await loadTitanWorkspace(admin);
   const notifyPrefs = await loadOwnerNotificationPreferences(admin);
   const websiteIntelBundle = await loadWebsiteIntelligenceBundle(admin);
@@ -221,6 +223,9 @@ export default async function OwnerSetupCenterPage() {
         <Link href="/admin/integrations" className="mt-4 inline-flex rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft">
           Test integrations →
         </Link>
+        <div className="mt-4">
+          <TwilioTestSmsPanel configured={twilioConfigured} trialLikely={twilioTrialLikely} />
+        </div>
         <p className="mt-3 text-[10px] text-zinc-600">Owner test alerts: use buttons on Admin → Integrations (email/SMS test send).</p>
       </section>
 

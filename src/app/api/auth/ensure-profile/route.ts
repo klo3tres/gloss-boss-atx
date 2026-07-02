@@ -99,6 +99,20 @@ export async function POST() {
       console.error('[ensure-profile] insert', insErr);
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
+
+    if (role === 'customer') {
+      try {
+        const { linkAuthUserToCustomer } = await import('@/lib/customer-portal-access');
+        await linkAuthUserToCustomer(admin, {
+          authUserId: user.id,
+          email: emailNorm,
+          fullName: fullName ?? undefined,
+        });
+      } catch (e) {
+        console.warn('[ensure-profile] customer link on create', e);
+      }
+    }
+
     return NextResponse.json({ ok: true, created: true });
   }
 
@@ -130,6 +144,19 @@ export async function POST() {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
     return NextResponse.json({ ok: true, promoted: true });
+  }
+
+  if (String(existing.role) === 'customer') {
+    try {
+      const { linkAuthUserToCustomer } = await import('@/lib/customer-portal-access');
+      await linkAuthUserToCustomer(admin, {
+        authUserId: user.id,
+        email: emailNorm,
+        fullName: fullName ?? undefined,
+      });
+    } catch (e) {
+      console.warn('[ensure-profile] customer link on login', e);
+    }
   }
 
   return NextResponse.json({ ok: true, noop: true });

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { APPOINTMENT_BUFFER_MINUTES } from '@/lib/booking-buffer';
 import { totalBookingDurationMinutes, type VehicleDurationLine } from '@/lib/booking-service-duration';
 
 function str(v: unknown) {
@@ -48,12 +49,13 @@ export async function upsertAppointmentAvailabilityBlock(
         : totalBookingDurationMinutes(vehicleLinesFromRow(row));
     endIso = new Date(startMs + mins * 60_000).toISOString();
   }
+  const blockEndIso = new Date(new Date(endIso).getTime() + APPOINTMENT_BUFFER_MINUTES * 60_000).toISOString();
 
   const guest = str(row.guest_name) || 'Booking';
   const payload = {
     title: `${guest} — Titan booking`,
     start_at: startIso,
-    end_at: endIso,
+    end_at: blockEndIso,
     blocks_booking: row.schedule_override !== true,
     source: 'titan_appointment',
     appointment_id: appointmentId,

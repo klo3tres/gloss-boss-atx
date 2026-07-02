@@ -13,13 +13,16 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 const DEFAULT_NAV_LOGO = '/brand/glossboss-official-atx.png';
 
-const marketingLinks = [
+const publicNavLinks = [
   { href: '/', label: 'Home' },
   { href: '/services', label: 'Services' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/book', label: 'Book Now' },
+];
+
+const moreNavLinks = [
   { href: '/memberships', label: 'Memberships' },
   { href: '/fleet', label: 'Fleet' },
-  { href: '/gallery', label: 'Gallery' },
-  { href: '/book', label: 'Book' },
   { href: '#about', label: 'About' },
   { href: '/gift-cards', label: 'Gift Cards' },
   { href: '#faq', label: 'FAQ' },
@@ -35,6 +38,7 @@ export function Navbar() {
   const pathname = usePathname() ?? '';
   const [open, setOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [dashboardHref, setDashboardHref] = useState('/login');
   const [navLogoSrc, setNavLogoSrc] = useState(DEFAULT_NAV_LOGO);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -46,13 +50,15 @@ export function Navbar() {
     return pathname === '/' ? section : `/${section}`;
   };
 
-  const primaryMarketingLinks = marketingLinks.filter((l) =>
-    ['Services', 'Memberships', 'Fleet'].includes(l.label)
-  );
+  const dropdownMarketingLinks = moreNavLinks;
+  const dashboardLabel = userRole === 'customer' ? 'Portal' : 'Dashboard';
 
-  const dropdownMarketingLinks = marketingLinks.filter((l) =>
-    ['Gallery', 'About', 'Gift Cards', 'FAQ', 'Contact'].includes(l.label)
-  );
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +103,7 @@ export function Navbar() {
         if (cancelled) return;
         if (!user) {
           setSignedIn(false);
+          setUserRole(null);
           setDashboardHref('/login');
           return;
         }
@@ -104,8 +111,10 @@ export function Navbar() {
         if (cancelled) return;
         setSignedIn(true);
         if (outcome.ok) {
+          setUserRole(outcome.role);
           setDashboardHref(defaultDashboardPathForRole(outcome.role));
         } else {
+          setUserRole(null);
           setDashboardHref('/login');
         }
       } catch (e) {
@@ -118,6 +127,7 @@ export function Navbar() {
             if (user) {
               const outcome = await fetchUserRole(client);
               setSignedIn(true);
+              setUserRole(outcome.ok ? outcome.role : 'customer');
               setDashboardHref(
                 outcome.ok ? defaultDashboardPathForRole(outcome.role) : defaultDashboardPathForRole('customer'),
               );
@@ -148,6 +158,7 @@ export function Navbar() {
       await client.auth.signOut();
     }
     setSignedIn(false);
+    setUserRole(null);
     setDashboardHref('/login');
     router.push('/login');
     router.refresh();
@@ -155,16 +166,19 @@ export function Navbar() {
 
   const coreLinks = (
     <div className='flex flex-wrap items-center gap-3 sm:gap-4'>
-      <Link href='/' className='text-xs font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
-        Home
-      </Link>
-      <Link href='/book' className='text-xs font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
-        Book
-      </Link>
+      {publicNavLinks.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href.startsWith('#') ? toSectionLink(item.href) : item.href}
+          className='text-xs font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'
+        >
+          {item.label === 'Book Now' ? 'Book' : item.label}
+        </Link>
+      ))}
       {signedIn ? (
         <>
           <Link href={dashboardHref} className='text-xs font-bold uppercase tracking-wider text-gold-soft hover:underline'>
-            Dashboard
+            {dashboardLabel}
           </Link>
           <button
             type='button'
@@ -176,7 +190,7 @@ export function Navbar() {
         </>
       ) : (
         <Link href='/login' className='text-xs font-bold uppercase tracking-wider text-gold-soft hover:underline'>
-          Login
+          Sign In
         </Link>
       )}
     </div>
@@ -210,13 +224,7 @@ export function Navbar() {
               </Link>
             ) : null}
             {!isDash ? (
-              <div className='ml-4 flex items-center gap-4 border-l border-white/10 pl-6 text-xs uppercase tracking-widest text-zinc-300'>
-                {primaryMarketingLinks.map((item) => (
-                  <a key={item.label} href={toSectionLink(item.href)} className='transition hover:text-gold-soft'>
-                    {item.label}
-                  </a>
-                ))}
-                
+              <div className='ml-4 border-l border-white/10 pl-6 text-xs uppercase tracking-widest text-zinc-300'>
                 <div className='relative' onMouseLeave={() => setMoreOpen(false)}>
                   <button
                     type='button'
@@ -258,19 +266,42 @@ export function Navbar() {
         </div>
 
         {open ? (
-          <div className='border-t border-white/10 py-4 md:hidden flex flex-col gap-4'>
+          <>
+            <button
+              type='button'
+              aria-label='Close menu'
+              className='fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm md:hidden'
+              onClick={() => setOpen(false)}
+            />
+            <div className='fixed inset-x-0 top-0 z-[80] max-h-[100dvh] overflow-y-auto border-b border-gold/20 bg-zinc-950 py-4 shadow-2xl md:hidden'>
+              <div className='mx-auto flex max-w-7xl items-center justify-between px-4 pb-4 border-b border-white/10'>
+                <span className='text-xs font-black uppercase tracking-widest text-gold-soft'>Menu</span>
+                <button
+                  type='button'
+                  onClick={() => setOpen(false)}
+                  className='rounded-md border border-gold/20 p-2 text-gold-soft'
+                  aria-label='Close menu'
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className='mx-auto max-w-7xl px-4 pt-4 flex flex-col gap-4'>
             {/* Core Links */}
             <div className='flex flex-col gap-3 pb-3 border-b border-white/5'>
-              <Link href='/' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
-                Home
-              </Link>
-              <Link href='/book' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'>
-                Book Detailing
-              </Link>
+              {publicNavLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href.startsWith('#') ? toSectionLink(item.href) : item.href}
+                  onClick={() => setOpen(false)}
+                  className='text-sm font-bold uppercase tracking-wider text-zinc-300 hover:text-gold-soft'
+                >
+                  {item.label}
+                </Link>
+              ))}
               {signedIn ? (
                 <>
                   <Link href={dashboardHref} onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-gold-soft hover:underline'>
-                    Dashboard
+                    {dashboardLabel}
                   </Link>
                   <button
                     type='button'
@@ -284,27 +315,29 @@ export function Navbar() {
                 </>
               ) : (
                 <Link href='/login' onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-gold-soft hover:underline'>
-                  Login / Sign Up
+                  Sign In
                 </Link>
               )}
             </div>
 
-            {/* Marketing Links */}
-            <div className='flex flex-col gap-3'>
+            {/* More links */}
+            <div className='flex flex-col gap-3 pb-6'>
               {!isDash
-                ? marketingLinks.map((item) => (
+                ? dropdownMarketingLinks.map((item) => (
                     <a
                       key={item.label}
                       href={toSectionLink(item.href)}
                       onClick={() => setOpen(false)}
-                      className='text-sm uppercase tracking-widest text-zinc-300 hover:text-gold-soft'
+                      className='text-sm uppercase tracking-widest text-zinc-400 hover:text-gold-soft'
                     >
                       {item.label}
                     </a>
                   ))
                 : null}
             </div>
-          </div>
+              </div>
+            </div>
+          </>
         ) : null}
       </nav>
     </header>

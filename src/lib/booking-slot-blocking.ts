@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { APPOINTMENT_BUFFER_MINUTES } from '@/lib/booking-buffer';
 import { estimatedEndIso, totalBookingDurationMinutes, type VehicleDurationLine } from '@/lib/booking-service-duration';
 import type { DurationCatalog } from '@/lib/booking-duration-catalog';
 
@@ -49,6 +50,7 @@ function pushBlockFromRow(
         : totalBookingDurationMinutes(lines);
     endMs = startMs + mins * 60_000;
   }
+  endMs += APPOINTMENT_BUFFER_MINUTES * 60_000;
   if (endMs <= rangeStart || startMs >= rangeEnd) return;
   if (id) seen.add(id);
   blocks.push({ start: startIso, end: new Date(endMs).toISOString(), appointmentId: id || undefined });
@@ -140,7 +142,7 @@ export function slotConflictsWithBlocks(
   excludeAppointmentId?: string,
 ): boolean {
   const startMs = new Date(scheduledStartIso).getTime();
-  const endMs = startMs + durationMinutes * 60_000;
+  const endMs = startMs + durationMinutes * 60_000 + APPOINTMENT_BUFFER_MINUTES * 60_000;
   if (Number.isNaN(startMs)) return true;
   return blocks.some((b) => {
     if (excludeAppointmentId && b.appointmentId === excludeAppointmentId) return false;

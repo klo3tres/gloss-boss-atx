@@ -21,8 +21,11 @@ import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-for
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
 import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
 import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-panel';
+import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
 import { AppointmentScheduleControls } from '@/components/admin/appointment-schedule-controls';
+import { WorkOrderConfirmationPanel } from '@/components/admin/work-order-confirmation-panel';
 import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs';
+import type { ConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
 import { techSendCustomSmsAction, techSaveJobNotesAction } from '@/app/(dashboard)/tech/tech-actions';
@@ -49,6 +52,7 @@ export type WorkOrderConsoleData = {
   guestName: string;
   guestPhone: string;
   guestEmail: string;
+  confirmationStatus?: ConfirmationDeliveryStatus | null;
   serviceLabel: string;
   statusLabel: string;
   fullAddress: string;
@@ -447,7 +451,7 @@ export function WorkOrderConsoleClient({
   };
 
   return (
-    <div className='gb-page-pad gb-wo-mission-pad space-y-5 pb-32 md:space-y-6'>
+    <div className='gb-page-pad gb-wo-mission-pad mx-auto max-w-5xl space-y-5 pb-32 md:space-y-6'>
       <WorkOrderMissionBar
         activeTab={activeTab}
         onTabChange={(tab: any) => {
@@ -497,6 +501,17 @@ export function WorkOrderConsoleClient({
           </div>
         </div>
       </div>
+
+      {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
+        <WorkOrderConfirmationPanel
+          appointmentId={jobId}
+          guestName={data.guestName}
+          guestEmail={data.guestEmail}
+          guestPhone={data.guestPhone}
+          customerId={data.customerId}
+          initialStatus={data.confirmationStatus}
+        />
+      ) : null}
 
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-6'>
         {[
@@ -818,12 +833,26 @@ export function WorkOrderConsoleClient({
           </div>
 
           {/* Schedule settings */}
-          <div id='wo-schedule-panel' className='space-y-4'>
+          <div id='wo-schedule-panel' className='grid gap-4 lg:grid-cols-2'>
             {canEditPricing && !data.isFallback && data.scheduledStartIso ? (
               <WorkOrderSchedulePanel appointmentId={jobId} scheduledStart={data.scheduledStartIso} scheduledEnd={data.scheduledEnd} />
             ) : null}
+            {canAdminOverride && !data.isFallback ? (
+              <WorkOrderBalanceCheckout
+                appointmentId={jobId}
+                balanceDueCents={data.balanceDueCents}
+                balanceDue={data.balanceDue}
+                finalTotal={data.finalTotal}
+                depositPaid={data.depositPaid}
+                totalPaid={data.totalPaid}
+                paymentComplete={data.paymentComplete}
+                isFallback={data.isFallback}
+              />
+            ) : null}
             {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
-              <AppointmentScheduleControls appointmentId={jobId} scheduledStart={data.scheduledStartIso} />
+              <div className='lg:col-span-2'>
+                <AppointmentScheduleControls appointmentId={jobId} scheduledStart={data.scheduledStartIso} />
+              </div>
             ) : null}
           </div>
 

@@ -223,7 +223,13 @@ async function loadCustomerDeals(adminDb: NonNullable<ReturnType<typeof tryCreat
 
 
 
-export default async function CustomerDashboardRootPage() {
+export default async function CustomerDashboardRootPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ job?: string }>;
+}) {
+  const sp = await searchParams;
+  const highlightJobId = typeof sp.job === 'string' ? sp.job.trim() : '';
 
   const session = await getSessionWithProfile();
 
@@ -247,6 +253,12 @@ export default async function CustomerDashboardRootPage() {
   let referralCode: string | null = null;
   let referralLink: string | null = null;
   let referralCompletedCount = 0;
+  let referralBookedCount = 0;
+  let referralSentCount = 0;
+  let referralRewardsEarned = 0;
+  let referralRewardsAvailable = 0;
+  let referralProgramEnabled = true;
+  let referralRewardRules = '';
   let referralFreeDetailThreshold = 5;
 
   if (supabase && session.user && userEmail) {
@@ -257,16 +269,19 @@ export default async function CustomerDashboardRootPage() {
       if (customerId) {
         const { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } = await import('@/lib/referral/referral-codes');
         const settings = await loadReferralProgramSettings(adminDb);
+        referralProgramEnabled = settings.enabled;
         referralFreeDetailThreshold = settings.freeDetailReferralThreshold;
+        referralRewardRules = `Referred friends save ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : ''}. You earn rewards when they complete.`;
         const codeRow = await ensureCustomerReferralCode(adminDb, customerId);
         referralCode = codeRow.code;
         referralLink = referralLinkForCode(codeRow.code);
-        const { count } = await adminDb
-          .from('referral_events')
-          .select('id', { count: 'exact', head: true })
-          .eq('referrer_customer_id', customerId)
-          .in('status', ['completed', 'reward_issued']);
-        referralCompletedCount = count ?? 0;
+        const { loadReferralStatsForCustomer } = await import('@/lib/referral/referral-events');
+        const stats = await loadReferralStatsForCustomer(adminDb, customerId);
+        referralSentCount = stats.sent;
+        referralBookedCount = stats.booked;
+        referralCompletedCount = stats.completed;
+        referralRewardsEarned = stats.rewardsEarned;
+        referralRewardsAvailable = stats.rewardsAvailable;
       }
     }
 
@@ -571,7 +586,14 @@ export default async function CustomerDashboardRootPage() {
         referralCode={referralCode}
         referralLink={referralLink}
         referralCompletedCount={referralCompletedCount}
+        referralBookedCount={referralBookedCount}
+        referralSentCount={referralSentCount}
+        referralRewardsEarned={referralRewardsEarned}
+        referralRewardsAvailable={referralRewardsAvailable}
+        referralProgramEnabled={referralProgramEnabled}
+        referralRewardRules={referralRewardRules}
         referralFreeDetailThreshold={referralFreeDetailThreshold}
+        highlightJobId={highlightJobId || undefined}
       />
     </DashboardShell>
   );

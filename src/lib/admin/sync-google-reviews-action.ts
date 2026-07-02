@@ -32,6 +32,24 @@ export async function syncGoogleReviewsAction(): Promise<GoogleReviewSyncActionR
     revalidatePath('/admin/reviews');
     revalidatePath('/admin/titan/website-intelligence');
     revalidatePath('/api/public/site-data');
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    void emitOwnerNotification(admin, {
+      eventType: 'new_booking',
+      title: 'Google reviews synced',
+      body: formatMessage(result),
+      source: 'google_reviews',
+      relatedUrl: '/admin/reviews',
+    });
+  } else {
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    void emitOwnerNotification(admin, {
+      eventType: 'delivery_failed',
+      title: 'Google review sync failed',
+      body: result.error ?? 'Could not sync Google reviews.',
+      source: 'google_reviews',
+      relatedUrl: '/admin/titan/website-intelligence',
+      bypassQuietHours: true,
+    });
   }
 
   return { ...result, message: formatMessage(result) };

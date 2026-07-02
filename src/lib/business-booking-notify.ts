@@ -140,9 +140,23 @@ export async function notifyBusinessNewBookingFull(params: {
   const paid = typeof params.paidCents === 'number' ? money(params.paidCents) : null;
   const addr = params.serviceAddress?.trim() || '';
 
+  const guest = params.guestName.trim() || 'Customer';
+  const serviceHint = params.vehicles.replace(/\s+/g, ' ').trim().slice(0, 48);
+  const eventLabel =
+    kind === 'new_booking'
+      ? `Booking created: ${guest}${serviceHint ? ` — ${serviceHint}` : ''}`
+      : kind === 'deposit_paid'
+        ? `Deposit received: ${guest}`
+        : kind === 'paid_full'
+          ? `Paid in full: ${guest}`
+          : kind === 'rescheduled'
+            ? `Booking rescheduled: ${guest}`
+            : kind === 'cancelled'
+              ? `Booking cancelled: ${guest}`
+              : `${copy.headline}: ${guest}`;
+
   const smsBody = [
-    `Gloss Boss ATX — ${copy.smsLead}`,
-    `${params.guestName.trim() || 'Customer'}`,
+    `Gloss Boss ATX — ${eventLabel}`,
     whenLabel,
     paid ? `Paid ${paid} · Total ${total} · Bal ${balance}` : `Total ${total} · Deposit ${deposit} · Bal ${balance}`,
     params.vehicles.slice(0, 60),

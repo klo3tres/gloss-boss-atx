@@ -142,7 +142,7 @@ function defaults(): TitanWorkspace {
 function mapRow(row: Record<string, unknown>): TitanWorkspace {
   const hours = row.operating_hours;
   return {
-    businessName: str(row.business_name) || 'My Business',
+    businessName: str(row.business_name) || 'Gloss Boss ATX',
     ownerDisplayName: str(row.owner_display_name) || null,
     ownerEmail: str(row.owner_email) || null,
     ownerPhone: str(row.owner_phone) || null,

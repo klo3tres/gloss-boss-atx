@@ -36,3 +36,21 @@ export async function saveReferralProgramSettingsAction(formData: FormData) {
   await admin.from('site_settings').upsert({ key: 'referral_program', value: settings });
   revalidatePath('/admin/referrals');
 }
+
+export async function issueReferralRewardAction(rewardId: string) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) return { error: 'Forbidden' };
+  const { error } = await admin.from('referral_rewards').update({ status: 'issued', issued_at: new Date().toISOString() }).eq('id', rewardId);
+  revalidatePath('/admin/referrals');
+  return error ? { error: error.message } : { ok: true };
+}
+
+export async function voidReferralRewardAction(rewardId: string) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) return { error: 'Forbidden' };
+  const { error } = await admin.from('referral_rewards').update({ status: 'expired' }).eq('id', rewardId);
+  revalidatePath('/admin/referrals');
+  return error ? { error: error.message } : { ok: true };
+}

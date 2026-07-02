@@ -8,13 +8,11 @@ import {
 } from '@/app/(dashboard)/tech/work-order-pricing-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { useGoogleCalendarAutoSync } from '@/hooks/use-google-calendar-auto-sync';
+import { toChicagoDatetimeLocalValue, parseChicagoLocalToIso } from '@/lib/chicago-time';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 function toLocalInput(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toChicagoDatetimeLocalValue(iso);
 }
 
 function defaultDurationMinutes(startIso: string, endIso?: string) {
@@ -51,11 +49,12 @@ export function WorkOrderSchedulePanel({
       setMsg(null);
       const res = await updateWorkOrderScheduleAction(fd);
       if (res.ok) {
+        const googleNote = res.googleWarning ? ` Google Calendar: ${res.googleWarning}` : '';
         setMsg({
           tone: 'ok',
           text: res.conflict
-            ? 'Saved with override — calendar & availability updated.'
-            : 'Schedule updated — Titan block, Google Calendar, and availability synced.',
+            ? `Saved with override — calendar & availability updated.${googleNote}`
+            : `Schedule updated — Titan block, Google Calendar, and availability synced.${googleNote}`,
         });
         router.refresh();
       } else {
@@ -81,7 +80,7 @@ export function WorkOrderSchedulePanel({
           fd.set('overrideReason', (e.currentTarget.elements.namedItem('reason') as HTMLInputElement).value);
         }
 
-        const startChanged = new Date(when).toISOString() !== new Date(scheduledStart).toISOString();
+        const startChanged = parseChicagoLocalToIso(when) !== scheduledStart;
         if (notifyCustomer && startChanged) {
           startTransition(async () => {
             const preview = await previewWorkOrderScheduleNotifyAction({

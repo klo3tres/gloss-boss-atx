@@ -9,6 +9,7 @@ import { useOutboundPreview } from '@/components/admin/outbound-message-provider
 import { useToast } from '@/components/ui/toast-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
 import { useRouter } from 'next/navigation';
+import { toChicagoDatetimeLocalValue } from '@/lib/chicago-time';
 
 export function AppointmentScheduleControls({
   appointmentId,
@@ -26,12 +27,9 @@ export function AppointmentScheduleControls({
   const customEmailRef = useRef<HTMLInputElement>(null);
   const customSmsRef = useRef<HTMLInputElement>(null);
 
-  const d = scheduledStart ? new Date(scheduledStart) : null;
-  const dateDefault = d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : '';
-  const timeDefault =
-    d && !Number.isNaN(d.getTime())
-      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      : '09:00';
+  const chicagoLocal = scheduledStart ? toChicagoDatetimeLocalValue(scheduledStart) : '';
+  const dateDefault = chicagoLocal ? chicagoLocal.slice(0, 10) : '';
+  const timeDefault = chicagoLocal ? chicagoLocal.slice(11, 16) : '09:00';
 
   const submitReschedule = (fd: FormData) => {
     startTransition(async () => {

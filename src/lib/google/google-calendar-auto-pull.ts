@@ -90,7 +90,7 @@ function isThrottled(lastPullAt: string | null): boolean {
  */
 export async function maybeAutoPullGoogleCalendar(
   admin: SupabaseClient,
-  opts?: { force?: boolean; daysAhead?: number },
+  opts?: { force?: boolean; daysAhead?: number; emitActivity?: boolean | 'failures_only' },
 ): Promise<GoogleAutoPullResult> {
   if (!googleCalendarOAuthConfigured()) {
     return { ran: false, skipped: true, skipReason: 'not_configured' };
@@ -125,23 +125,58 @@ export async function maybeAutoPullGoogleCalendar(
   try {
     const result = await pullGoogleCalendarEvents(admin, { daysAhead: opts?.daysAhead ?? 45 });
     if (!result.ok) {
-      return {
+      const pullResult = {
         ran: true,
         error: humanizeGoogleSyncError(result.error),
         lastPullAt,
       };
+      if (opts?.emitActivity === true || opts?.emitActivity === 'failures_only') {
+        const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+        void emitOwnerNotification(admin, {
+          eventType: 'calendar_sync_failed',
+          title: 'Google Calendar pull failed',
+          body: pullResult.error ?? 'Could not pull Google Calendar events.',
+          source: 'google_calendar',
+          relatedUrl: '/admin/calendar',
+          bypassQuietHours: true,
+        });
+      }
+      return pullResult;
     }
-    return {
+    const pullResult = {
       ran: true,
       imported: result.imported ?? 0,
       lastPullAt: new Date().toISOString(),
     };
+    if (opts?.emitActivity === true) {
+      const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+      void emitOwnerNotification(admin, {
+        eventType: 'new_booking',
+        title: 'Google Calendar updated',
+        body: `Imported ${pullResult.imported ?? 0} external event(s) from Google Calendar.`,
+        source: 'google_calendar',
+        relatedUrl: '/admin/calendar',
+      });
+    }
+    return pullResult;
   } catch (e) {
-    return {
+    const pullResult = {
       ran: true,
       error: humanizeGoogleSyncError(e instanceof Error ? e.message : 'Google sync failed'),
       lastPullAt,
     };
+    if (opts?.emitActivity === true || opts?.emitActivity === 'failures_only') {
+      const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+      void emitOwnerNotification(admin, {
+        eventType: 'calendar_sync_failed',
+        title: 'Google Calendar pull failed',
+        body: pullResult.error ?? 'Google sync failed',
+        source: 'google_calendar',
+        relatedUrl: '/admin/calendar',
+        bypassQuietHours: true,
+      });
+    }
+    return pullResult;
   } finally {
     await releasePullLock(admin, row.id);
   }

@@ -17,6 +17,8 @@ import type { DealConfig } from '@/lib/site-config';
 import { computeBookingPricing } from '@/lib/booking-pricing';
 import { actionFailure, actionSuccess, type ActionResponse } from '@/lib/action-response';
 import { reloadWorkOrderPricingSnapshot, type WorkOrderPricingSnapshot } from '@/lib/work-order-pricing-snapshot';
+import { parseChicagoLocalToIso } from '@/lib/chicago-time';
+import { displayChicago } from '@/lib/display-format';
 
 function str(v: FormDataEntryValue | unknown | null) {
   return v == null ? '' : String(v).trim();
@@ -487,8 +489,9 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
   const overrideReason = str(formData.get('overrideReason'));
   const notifyCustomer = str(formData.get('notifyCustomer')) === 'true';
   const durationOverrideRaw = str(formData.get('durationMinutes'));
-  const scheduled = new Date(scheduledRaw);
-  if (Number.isNaN(scheduled.getTime())) return { ok: false, error: 'Invalid date/time' };
+  const scheduledIso = parseChicagoLocalToIso(scheduledRaw);
+  if (!scheduledIso) return { ok: false, error: 'Invalid date/time' };
+  const scheduled = new Date(scheduledIso);
 
   const vehicles = vehiclesFromRow(ctx.job);
   const { fetchBookedBlocks, slotConflictsWithBlocks, buildAppointmentScheduleFields } = await import(
@@ -509,7 +512,7 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
   const rangeStart = new Date(scheduled.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
   const blocks = await fetchBookedBlocks(gate.admin, rangeStart, rangeEnd);
-  const conflict = slotConflictsWithBlocks(scheduled.toISOString(), durationMinutes, blocks, ctx.jobId);
+  const conflict = slotConflictsWithBlocks(scheduledIso, durationMinutes, blocks, ctx.jobId);
 
   if (conflict && !allowConflict) {
     return {
@@ -521,18 +524,20 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
 
   const scheduleFields =
     durationMinutes === computedMinutes
-      ? buildAppointmentScheduleFields(scheduled.toISOString(), durationLines)
+      ? buildAppointmentScheduleFields(scheduledIso, durationLines)
       : {
           estimated_duration_minutes: durationMinutes,
           estimated_end: new Date(scheduled.getTime() + durationMinutes * 60_000).toISOString(),
         };
 
   const oldStart = str((ctx.job as Record<string, unknown>).scheduled_start);
+  const guestName = str((ctx.job as Record<string, unknown>).guest_name) || 'Customer';
+  const serviceSlug = str((ctx.job as Record<string, unknown>).service_slug).replace(/-/g, ' ');
 
-  await gate.admin
+  const { error: updateError } = await gate.admin
     .from('appointments')
     .update({
-      scheduled_start: scheduled.toISOString(),
+      scheduled_start: scheduledIso,
       ...scheduleFields,
       schedule_override: conflict && allowConflict ? true : false,
       schedule_override_reason: conflict && allowConflict ? overrideReason || 'Admin override' : null,
@@ -540,13 +545,30 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
     })
     .eq('id', ctx.jobId);
 
-  const { queueGoogleCalendarSync } = await import('@/lib/google/google-calendar-sync');
-  queueGoogleCalendarSync(gate.admin, ctx.jobId, 'upsert');
-  void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
-    upsertAppointmentAvailabilityBlock(gate.admin, ctx.jobId),
-  );
+  if (updateError) return { ok: false, error: updateError.message };
 
-  if (notifyCustomer && oldStart && oldStart !== scheduled.toISOString()) {
+  const { upsertAppointmentAvailabilityBlock } = await import('@/lib/booking-availability-block');
+  await upsertAppointmentAvailabilityBlock(gate.admin, ctx.jobId);
+
+  const { runGoogleCalendarSync } = await import('@/lib/google/google-calendar-sync');
+  const googleResult = await runGoogleCalendarSync(gate.admin, ctx.jobId, 'upsert');
+
+  if (oldStart && oldStart !== scheduledIso) {
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    const endLabel = displayChicago(scheduleFields.estimated_end);
+    void emitOwnerNotification(gate.admin, {
+      eventType: 'work_order_created',
+      title: `Schedule changed: ${guestName} — ${serviceSlug || 'detail'}`,
+      body: `${displayChicago(oldStart)} → ${displayChicago(scheduledIso)}${endLabel ? ` (${endLabel} end)` : ''}`,
+      relatedType: 'appointment',
+      relatedId: ctx.jobId,
+      relatedUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '')}/admin/work-orders/${ctx.jobId}`,
+      emailStatus: 'skipped',
+      smsStatus: 'skipped',
+    });
+  }
+
+  if (notifyCustomer && oldStart && oldStart !== scheduledIso) {
     const row = ctx.job as Record<string, unknown>;
     const email = str(row.guest_email);
     const phone = str(row.guest_phone);
@@ -563,9 +585,9 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
     );
     const plainEmail =
       customEmailBody ||
-      buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart: scheduled.toISOString(), confirmUrl });
+      buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart: scheduledIso, confirmUrl });
     const smsBody =
-      customSmsBody || buildWorkOrderTimeChangeSmsBody({ oldStart, newStart: scheduled.toISOString(), confirmUrl });
+      customSmsBody || buildWorkOrderTimeChangeSmsBody({ oldStart, newStart: scheduledIso, confirmUrl });
     const { logOutboundMessage } = await import('@/app/(dashboard)/admin/outbound-message-actions');
     if (email.includes('@')) {
       const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
@@ -628,7 +650,14 @@ export async function updateWorkOrderScheduleAction(formData: FormData) {
 
   revalidatePath(`/tech/work-orders/${ctx.jobId}`);
   revalidatePath('/admin/dispatch');
-  return { ok: true, conflict: conflict && allowConflict };
+  revalidatePath('/admin/calendar');
+  revalidatePath('/admin/work-orders');
+  return {
+    ok: true,
+    conflict: conflict && allowConflict,
+    googleWarning:
+      googleResult && !googleResult.ok && !googleResult.skipped ? googleResult.error : undefined,
+  };
 }
 
 export async function previewWorkOrderScheduleNotifyAction(input: {
@@ -649,8 +678,9 @@ export async function previewWorkOrderScheduleNotifyAction(input: {
   if (!appt) return { error: 'Appointment not found' };
   const row = appt as Record<string, unknown>;
   const oldStart = str(row.scheduled_start);
-  const newStart = new Date(input.scheduledStart).toISOString();
-  if (oldStart === newStart) return { error: 'Start time unchanged — no notification needed.' };
+  const newStartIso = parseChicagoLocalToIso(input.scheduledStart);
+  if (!newStartIso) return { error: 'Invalid date/time' };
+  if (oldStart === newStartIso) return { error: 'Start time unchanged — no notification needed.' };
   const guest = str(row.guest_name) || 'Customer';
   const email = str(row.guest_email);
   const phone = str(row.guest_phone);
@@ -665,7 +695,7 @@ export async function previewWorkOrderScheduleNotifyAction(input: {
     guestName: guest,
     email: email || undefined,
     phone: phone || undefined,
-    emailBody: buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart, confirmUrl }),
-    smsBody: buildWorkOrderTimeChangeSmsBody({ oldStart, newStart, confirmUrl }),
+    emailBody: buildWorkOrderTimeChangeEmailBody({ guestName: guest, oldStart, newStart: newStartIso, confirmUrl }),
+    smsBody: buildWorkOrderTimeChangeSmsBody({ oldStart, newStart: newStartIso, confirmUrl }),
   };
 }

@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function AdminAddJobPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ mode?: string; error?: string }>;
+  searchParams?: Promise<{ mode?: string; error?: string; date?: string; time?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const session = await getSessionWithProfile();
@@ -56,6 +56,8 @@ export default async function AdminAddJobPage({
         addons={addons}
         technicians={technicians}
         defaultMode={params.mode === 'completed' ? 'completed' : 'scheduled'}
+        prefilledDate={params.date}
+        prefilledTime={params.time}
         errorMessage={params.error ? decodeURIComponent(params.error) : undefined}
       />
     </DashboardShell>

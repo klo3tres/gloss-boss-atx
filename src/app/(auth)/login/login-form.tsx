@@ -64,6 +64,11 @@ export default function LoginForm() {
   }, []);
 
   useEffect(() => {
+    const prefillEmail = searchParams.get('email');
+    if (prefillEmail && !email) setEmail(prefillEmail);
+  }, [searchParams, email]);
+
+  useEffect(() => {
     if (phase !== 'finishing') return;
     const watchdog = window.setTimeout(() => {
       setError('Redirect is taking too long. Try again, or open the site in a fresh tab.');

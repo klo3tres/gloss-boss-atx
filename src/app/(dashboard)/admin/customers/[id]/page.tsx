@@ -285,6 +285,49 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     </form>
   );
 
+  const upcomingAppt = upcoming[0];
+  const authLinked = Boolean(c.auth_user_id);
+  const referralCode = String(c.referral_code ?? '').trim() || null;
+
+  const crmActions = (
+    <div className="flex flex-wrap gap-2 rounded-2xl border border-gold/20 bg-black/45 p-4">
+      {upcomingAppt ? (
+        <Link
+          href={`/tech/work-orders/${upcomingAppt.id}?shell=admin`}
+          className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30 hover:text-gold-soft"
+        >
+          View work order
+        </Link>
+      ) : apptRows[0] ? (
+        <Link
+          href={`/tech/work-orders/${apptRows[0].id}?shell=admin`}
+          className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30 hover:text-gold-soft"
+        >
+          View work order
+        </Link>
+      ) : null}
+      <Link href="/admin/calendar" className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30 hover:text-gold-soft">
+        View calendar
+      </Link>
+      {upcomingAppt ? (
+        <Link
+          href={`/tech/work-orders/${upcomingAppt.id}?shell=admin`}
+          className="rounded-xl border border-gold/30 bg-gold/10 px-3 py-2 text-[10px] font-black uppercase text-gold-soft"
+        >
+          Send confirmation
+        </Link>
+      ) : null}
+      <span className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">
+        Portal: {authLinked ? 'Linked' : 'Not linked'}
+      </span>
+      {referralCode ? (
+        <span className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-mono text-zinc-400">
+          Ref: {referralCode}
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
     <DashboardShell title={String(c.full_name ?? c.email ?? 'Customer')} subtitle="Customer CRM detail console" role="admin">
       <div className="space-y-6">
@@ -294,6 +337,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <ArrowLeft className="h-4 w-4" /> Back to directory
           </Link>
         </div>
+
+        {crmActions}
 
         {/* Top Status Alert if Archived */}
         {isArchived && (

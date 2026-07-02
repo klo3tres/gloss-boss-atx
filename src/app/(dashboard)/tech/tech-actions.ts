@@ -1620,6 +1620,13 @@ export async function techCompleteJobAction(
     createdBy: gate.userId,
   });
 
+  void import('@/lib/referral/referral-completion').then(({ processReferralJobCompletion }) =>
+    processReferralJobCompletion(gate.supabase, appointmentId).catch((e) => console.warn('[tech] referral completion', e)),
+  );
+  void import('@/lib/review-request-send').then(({ sendReviewRequest }) =>
+    sendReviewRequest(gate.supabase, appointmentId).catch((e) => console.warn('[tech] review request', e)),
+  );
+
   const smsOk = await hasSmsConsent(gate.supabase, appointmentId);
   await writeNotificationOutbox(gate.supabase, {
     kind: 'job_completed',

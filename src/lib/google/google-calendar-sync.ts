@@ -282,7 +282,27 @@ export async function runGoogleCalendarSync(
     return { ok: false, skipped: true, error: 'Google Calendar not connected' };
   }
   const fn = action === 'delete' ? deleteGoogleCalendarEvent : upsertGoogleCalendarEvent;
-  return fn(admin, appointmentId);
+  const result = await fn(admin, appointmentId);
+  if (admin) {
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    void emitOwnerNotification(admin, {
+      eventType: result.ok ? 'new_booking' : 'calendar_sync_failed',
+      title: result.ok
+        ? action === 'delete'
+          ? 'Google Calendar event removed'
+          : 'Google Calendar event updated'
+        : 'Google Calendar push failed',
+      body: result.ok
+        ? `Appointment ${appointmentId.slice(0, 8)} synced to Google Calendar.`
+        : result.error ?? 'Google Calendar sync failed.',
+      source: 'google_calendar',
+      relatedType: 'appointment',
+      relatedId: appointmentId,
+      relatedUrl: `/admin/work-orders/${appointmentId}?shell=admin`,
+      bypassQuietHours: !result.ok,
+    });
+  }
+  return result;
 }
 
 export function buildGoogleOAuthUrl(state: string): string | null {

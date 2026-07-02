@@ -436,12 +436,21 @@ export function UnifiedCalendarView({
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Jobs</p>
                     {isAdmin ? (
-                      <Link
-                        href={`/admin/dispatch?date=${selectedDay}`}
-                        className="flex items-center gap-0.5 text-[9px] font-black uppercase text-gold hover:underline"
-                      >
-                        Dispatch <ArrowUpRight className="h-3 w-3" />
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/work-orders/add?date=${selectedDay}&time=09:00`}
+                          className="flex items-center gap-0.5 text-[9px] font-black uppercase text-emerald-300 hover:underline"
+                          onClick={() => setSelectedDay(null)}
+                        >
+                          Add job <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        <Link
+                          href={`/admin/dispatch?date=${selectedDay}`}
+                          className="flex items-center gap-0.5 text-[9px] font-black uppercase text-gold hover:underline"
+                        >
+                          Dispatch <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      </div>
                     ) : null}
                   </div>
                   {selectedJobs.length === 0 ? (

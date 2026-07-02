@@ -22,6 +22,7 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
 import { RevenueIssueCreditPanel } from '@/components/admin/revenue-issue-credit-panel';
+import { StripeFinanceStatusPanel } from '@/components/admin/stripe-finance-status-panel';
 import { AdminTitanHero } from '@/components/titan/admin-titan-hero';
 import { findDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
 import type { PayRow } from '@/lib/revenue-metrics';
@@ -134,22 +135,23 @@ export default async function AdminRevenuePage({
     { label: 'Other/manual', cents: financial.otherRevenueCents, hint: 'Other non-voided payment rows' },
   ].filter((row) => row.cents !== 0 || financial.grossRevenueCents === 0);
   
-  let stripeBalances: { available: number | null; pending: number | null; treasury: number | null } = { available: null, pending: null, treasury: null };
+  let stripeFinanceSnap: Awaited<ReturnType<typeof getStripeFinanceSnapshot>> | null = null;
   const stripeSecrets = await getStripeSecrets(admin);
   const isStripeConnected = Boolean(stripeSecrets.secretKey);
-  
+
   if (isStripeConnected && stripeSecrets.secretKey) {
     try {
-      const snap = await getStripeFinanceSnapshot(new Stripe(stripeSecrets.secretKey));
-      stripeBalances = {
-        available: snap.paymentAvailableCents,
-        pending: snap.paymentPendingCents,
-        treasury: snap.treasuryAvailableCents,
-      };
+      stripeFinanceSnap = await getStripeFinanceSnapshot(new Stripe(stripeSecrets.secretKey));
     } catch {
-      stripeBalances = { available: null, pending: null, treasury: null };
+      stripeFinanceSnap = null;
     }
   }
+
+  const stripeBalances = {
+    available: stripeFinanceSnap?.paymentAvailableCents ?? null,
+    pending: stripeFinanceSnap?.paymentPendingCents ?? null,
+    treasury: stripeFinanceSnap?.treasuryAvailableCents ?? null,
+  };
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
@@ -486,26 +488,9 @@ export default async function AdminRevenuePage({
         </div>
       </section>
 
-      {/* Live Stripe Account Balances */}
-      <section className='mb-8 space-y-3'>
-        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Live Stripe Account Balances</p>
-        {isStripeConnected && (stripeBalances.available !== null || stripeBalances.pending !== null) ? (
-          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-            <StatBlock label='Available Stripe balance' value={stripeBalances.available == null ? 'Unavailable' : money(stripeBalances.available)} hint='Funds ready for instant bank payout' />
-            <StatBlock label='Pending Stripe balance' value={stripeBalances.pending == null ? 'Unavailable' : money(stripeBalances.pending)} hint='Credit card funds clearing' />
-            {stripeBalances.treasury != null ? <StatBlock label='Treasury balance' value={money(stripeBalances.treasury)} hint='Stripe financial storage account' /> : null}
-          </div>
-        ) : (
-          <div className="gb-glass rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 text-xs text-amber-200">
-            <p className="font-bold flex items-center gap-1.5 text-gold-soft">
-              <AlertTriangle className="h-4.5 w-4.5 text-gold-soft" />
-              No Stripe revenue data available yet.
-            </p>
-            <p className="mt-1 text-zinc-400">
-              Stripe API connection is currently inactive or using incomplete credentials. Configure your live API secret key in Settings to sync clearing balances and treasury accounts.
-            </p>
-          </div>
-        )}
+      {/* Live Stripe finance */}
+      <section className='mb-8'>
+        <StripeFinanceStatusPanel stripeConnected={isStripeConnected} snapshot={stripeFinanceSnap} />
       </section>
 
       <section className='mb-8 space-y-3'>

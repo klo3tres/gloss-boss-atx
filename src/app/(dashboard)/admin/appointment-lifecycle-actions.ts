@@ -6,6 +6,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { actionErr, actionOk, actionWarn, type ActionResult } from '@/lib/action-result';
 import { cancelAppointmentLifecycle, rescheduleAppointmentLifecycle } from '@/lib/appointment-lifecycle';
+import { parseChicagoLocalToIso } from '@/lib/chicago-time';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -57,7 +58,8 @@ export async function adminRescheduleAppointmentAction(formData: FormData): Prom
   const customSmsBody = String(formData.get('customSmsBody') ?? '').trim() || undefined;
   const customEmailSubject = String(formData.get('customEmailSubject') ?? '').trim() || undefined;
   if (!date || !time) return actionErr('Date and time required.');
-  const newScheduledStart = new Date(`${date}T${time}`).toISOString();
+  const newScheduledStart = parseChicagoLocalToIso(date, time);
+  if (!newScheduledStart) return actionErr('Invalid date or time.');
   const r = await rescheduleAppointmentLifecycle(admin, {
     appointmentId,
     newScheduledStart,
@@ -100,8 +102,8 @@ export async function previewRescheduleAppointmentAction(input: {
   const date = input.date.trim();
   const time = input.time.trim();
   if (!appointmentId || !date || !time) return { error: 'Date and time required.' };
-  const newScheduledStart = new Date(`${date}T${time}`).toISOString();
-  if (Number.isNaN(new Date(newScheduledStart).getTime())) return { error: 'Invalid date/time' };
+  const newScheduledStart = parseChicagoLocalToIso(date, time);
+  if (!newScheduledStart) return { error: 'Invalid date/time' };
 
   const { data: appt } = await admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
   if (!appt) return { error: 'Appointment not found' };

@@ -35,7 +35,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin', label: 'Briefing' },
       { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/calendar', label: 'Calendar' },
-      { href: '/admin/titan', label: 'Titan workspace' },
+      { href: '/admin/titan?workspace=growth', label: 'Titan workspace' },
     ],
   },
   {
@@ -328,12 +328,22 @@ export function DashboardShell({
       isActive = pathname === pathPart && currentHash === `#${hashPart}`;
     } else if (hasQuery) {
       const urlParams = new URLSearchParams(queryPart);
-      const urlTab = urlParams.get('tab');
-      isActive = pathname === pathPart && (currentTab === urlTab || (!currentTab && urlTab === 'overview'));
+      if (pathPart === '/admin/titan' || pathPart.startsWith('/admin/titan')) {
+        isActive = pathname === '/admin/titan' || pathname.startsWith('/admin/titan/');
+      } else {
+        const urlTab = urlParams.get('tab');
+        isActive = pathname === pathPart && (currentTab === urlTab || (!currentTab && urlTab === 'overview'));
+      }
     } else {
-      isActive =
-        pathname === href ||
-        (href !== '/dashboard' && href !== '/admin' && href !== '/tech' && pathname.startsWith(`${href}/`));
+      if (href === '/admin') {
+        isActive = pathname === '/admin' || (pathname.startsWith('/admin/') && !pathname.startsWith('/admin/titan'));
+      } else if (href.startsWith('/admin/titan')) {
+        isActive = pathname === '/admin/titan' || pathname.startsWith('/admin/titan/');
+      } else {
+        isActive =
+          pathname === href ||
+          (href !== '/dashboard' && href !== '/admin' && href !== '/tech' && pathname.startsWith(`${href}/`));
+      }
     }
     return `block rounded-lg border px-3 py-2 text-sm transition ${
       isActive
