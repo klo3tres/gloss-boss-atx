@@ -22,6 +22,7 @@ export type JobNotificationKind =
   | 'halfway_complete'
   | 'last_touches'
   | 'payment_link'
+  | 'zelle_instructions'
   | 'review_request'
   | 'job_completed'
   | 'technician_assigned'
@@ -36,9 +37,11 @@ export function buildJobNotificationSms(
     dashboardUrl: string;
     reviewUrl: string;
     paymentUrl?: string | null;
+    zelleContact?: string | null;
+    balanceLabel?: string | null;
   },
 ): string {
-  const { vehicle, dashboardUrl, reviewUrl, paymentUrl } = ctx;
+  const { vehicle, dashboardUrl, reviewUrl, paymentUrl, zelleContact, balanceLabel } = ctx;
   switch (kind) {
     case 'technician_on_the_way':
       return `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`;
@@ -47,7 +50,13 @@ export function buildJobNotificationSms(
     case 'last_touches':
       return `Gloss Boss ATX update: We are doing the last touches on ${vehicle}. Track updates here: ${dashboardUrl}`;
     case 'payment_link':
-      return `Gloss Boss ATX update: Your service payment link is ready for ${vehicle}. ${paymentUrl ? `Pay here: ${paymentUrl}` : `Track updates here: ${dashboardUrl}`}`;
+      return paymentUrl
+        ? `Gloss Boss ATX: Your balance${balanceLabel ? ` of ${balanceLabel}` : ''} for ${vehicle} is ready. Pay securely here: ${paymentUrl}`
+        : `Gloss Boss ATX: Your balance for ${vehicle} is ready. View details: ${dashboardUrl}`;
+    case 'zelle_instructions':
+      return zelleContact
+        ? `Gloss Boss ATX: Your balance${balanceLabel ? ` is ${balanceLabel}` : ''}. You can Zelle ${zelleContact}. Please include your name.`
+        : `Gloss Boss ATX: Your balance for ${vehicle} can be paid by Zelle. Contact us for payment details.`;
     case 'job_started':
     case 'work_started':
       return `Gloss Boss ATX update: Work has started on ${vehicle}. Track live progress here: ${dashboardUrl}`;
@@ -71,6 +80,8 @@ export function buildJobNotificationEmailSubject(kind: string): string {
   switch (kind) {
     case 'payment_link':
       return 'Gloss Boss ATX — Payment link';
+    case 'zelle_instructions':
+      return 'Gloss Boss ATX — Zelle payment instructions';
     case 'technician_on_the_way':
       return 'Gloss Boss ATX — Technician on the way';
     case 'halfway_complete':

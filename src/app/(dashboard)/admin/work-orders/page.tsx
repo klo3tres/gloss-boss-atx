@@ -18,6 +18,8 @@ function str(v: unknown) {
   return v == null ? '' : String(v);
 }
 
+import { depositPaidLabel, formatDepositPaidDisplay } from '@/lib/payment-truth';
+
 function money(v: unknown) {
   return typeof v === 'number' ? `$${(v / 100).toFixed(2)}` : '—';
 }
@@ -374,7 +376,14 @@ export default async function AdminWorkOrdersPage({
                       }
                       amountBadge={
                         <p className='rounded-full border border-gold/25 px-2 py-1 text-[10px] font-bold uppercase text-gold-soft'>
-                          {money(r.deposit_amount_cents)} deposit / {money(r.base_price_cents)} total
+                          {depositPaidLabel({
+                            paymentStatus: str(r.payment_status),
+                            depositPaidCents: 0,
+                            depositRequiredCents:
+                              str(r.payment_status) === 'awaiting_deposit' ? (r.deposit_amount_cents as number) : 0,
+                            balanceDueCents: typeof r.balance_due_cents === 'number' ? r.balance_due_cents : undefined,
+                          })}{' '}
+                          / {money(r.base_price_cents)} total
                         </p>
                       }
                     >
@@ -403,7 +412,13 @@ export default async function AdminWorkOrdersPage({
                                 <p>Promo / offer: {str(r.promo_code || b.offerLabel) || (b.offerDiscountCents ? `-${money(b.offerDiscountCents)}` : '—')}</p>
                                 <p>Multi-car discount: {money(b.multiCarDiscountCents)}</p>
                                 <p>Online booking discount: {money(b.onlineDiscountCents ?? b.sitewideDiscountCents)}</p>
-                                <p>Deposit paid: {money(r.deposit_amount_cents)}</p>
+                                <p>{depositPaidLabel({
+                                  paymentStatus: str(r.payment_status),
+                                  depositPaidCents: 0,
+                                  depositRequiredCents:
+                                    str(r.payment_status) === 'awaiting_deposit' ? (r.deposit_amount_cents as number) : 0,
+                                  balanceDueCents: typeof r.balance_due_cents === 'number' ? r.balance_due_cents : undefined,
+                                })}</p>
                                 <p>Remaining balance: {money(r.balance_due_cents)}</p>
                                 {r.comp_reason ? <p className='sm:col-span-2 text-amber-200'>{str(r.comp_reason)}</p> : null}
                               </>

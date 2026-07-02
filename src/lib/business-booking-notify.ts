@@ -156,11 +156,7 @@ export async function notifyBusinessNewBookingFull(params: {
               : `${copy.headline}: ${guest}`;
 
   const smsBody = [
-    `Gloss Boss ATX — ${eventLabel}`,
-    whenLabel,
-    paid ? `Paid ${paid} · Total ${total} · Bal ${balance}` : `Total ${total} · Deposit ${deposit} · Bal ${balance}`,
-    params.vehicles.slice(0, 60),
-    addr ? addr.slice(0, 40) : '',
+    `Gloss Boss ATX: ${eventLabel}${whenLabel ? `, ${whenLabel}` : ''}${paid ? `, paid ${paid}` : `, total ${total}`}${balance && balance !== '$0.00' ? `, balance ${balance}` : ''}.`,
     `View: ${dashUrl}`,
   ]
     .filter(Boolean)

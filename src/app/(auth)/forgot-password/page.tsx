@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
       console.info('[Gloss Boss ATX][forgot-password] request', { email: email.trim() });
 
       const { error: resetError } = await client.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
       if (resetError) {
@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
       }
 
       console.info('[Gloss Boss ATX][forgot-password] email sent (if account exists)');
-      setMessage('Password reset link sent. Check your inbox.');
+      setMessage('If an account exists for that email, a reset link was sent. Check your inbox and SMS.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong. Please try again.';
       console.warn('[Gloss Boss ATX][forgot-password] unexpected error', e);
@@ -57,8 +57,9 @@ export default function ForgotPasswordPage() {
   return (
     <main className='flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground'>
       <form onSubmit={handleReset} className='w-full max-w-md rounded-2xl border border-gold/20 bg-zinc-950 p-6'>
-        <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Customer Portal</p>
-        <h1 className='mt-3 text-3xl font-black uppercase'>Reset Password</h1>
+        <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+        <h1 className='mt-3 text-3xl font-black'>Reset password</h1>
+        <p className='mt-2 text-sm text-zinc-400'>Staff and customers — we will email a secure link to set a new password.</p>
         {!envReady ? (
           <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200'>
             Auth is in setup mode. Add Supabase env keys to activate password reset.

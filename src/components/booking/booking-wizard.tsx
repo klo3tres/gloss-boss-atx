@@ -2249,7 +2249,7 @@ export function BookingWizard() {
 
       {checkoutPhase === 'idle' ? (
         <div
-          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 backdrop-blur-md lg:hidden'
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden'
           role='navigation'
           aria-label='Booking steps'
         >
@@ -2301,7 +2301,7 @@ export function BookingWizard() {
         </div>
       ) : priceSummary?.kind === 'ok' ? (
         <div
-          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 backdrop-blur-md lg:hidden'
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden'
           role='status'
           aria-live='polite'
         >

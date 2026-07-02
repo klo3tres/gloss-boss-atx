@@ -3,6 +3,9 @@
 import { useCallback, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
+import { ToastActionForm } from '@/components/ui/toast-action-form';
+import { SubmitStatusButton } from '@/components/ui/submit-status-button';
+import { recordManualPaymentActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
 
 type CheckoutResponse = {
   ok?: boolean;
@@ -22,25 +25,34 @@ export function WorkOrderBalanceCheckout({
   balanceDue,
   finalTotal,
   depositPaid,
+  depositRequired,
+  paymentStatusLabel: paymentStatusText,
   totalPaid,
   paymentComplete,
   isFallback,
+  workOrderPath,
 }: {
   appointmentId: string;
   balanceDueCents: number;
   balanceDue: string;
   finalTotal?: string;
   depositPaid?: string;
+  depositRequired?: string;
+  paymentStatusLabel?: string;
   totalPaid?: string;
   paymentComplete: boolean;
   isFallback: boolean;
+  workOrderPath?: string;
 }) {
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [sessionAmount, setSessionAmount] = useState<string | null>(null);
   const [status, setStatus] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [loading, setLoading] = useState<'open' | 'copy' | null>(null);
+  const [manualMsg, setManualMsg] = useState<string | null>(null);
 
   const canPay = balanceDueCents > 0 && !isFallback;
+  const depositDisplay = depositPaid && depositPaid !== '—' ? depositPaid : 'No deposit recorded';
+  const requiredDisplay = depositRequired && depositRequired !== '—' ? depositRequired : null;
 
   const createSession = useCallback(async (): Promise<{ url: string; balanceCents: number }> => {
     const res = await fetch('/api/tech/final-balance-checkout', {
@@ -107,7 +119,7 @@ export function WorkOrderBalanceCheckout({
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      setStatus({ tone: 'success', text: 'Balance link copied.' });
+      setStatus({ tone: 'success', text: 'Stripe payment link copied.' });
     } catch (e) {
       setStatus({ tone: 'error', text: e instanceof Error ? e.message : 'Could not copy link.' });
     } finally {
@@ -123,13 +135,19 @@ export function WorkOrderBalanceCheckout({
         : 'border-amber-500/40 bg-amber-500/10 text-amber-100';
 
   return (
-    <div className='space-y-4'>
+    <div className='space-y-4 rounded-2xl border border-gold/20 bg-zinc-950/80 p-4'>
+      <div>
+        <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Collect payment</p>
+        {paymentStatusText ? <p className='mt-1 text-sm text-zinc-300'>{paymentStatusText}</p> : null}
+      </div>
+
       <div className='grid gap-2 rounded-xl border border-white/10 bg-black/40 p-3 text-sm sm:grid-cols-2'>
         <p className='text-zinc-400'>
           Final total <span className='font-mono text-white'>{finalTotal ?? '—'}</span>
         </p>
         <p className='text-zinc-400'>
-          Deposit paid <span className='font-mono text-white'>{depositPaid ?? '—'}</span>
+          Deposit paid <span className='font-mono text-white'>{depositDisplay}</span>
+          {requiredDisplay ? <span className='block text-[10px] text-zinc-500'>Required: {requiredDisplay}</span> : null}
         </p>
         <p className='text-zinc-400'>
           Total paid <span className='font-mono text-emerald-300'>{totalPaid ?? '—'}</span>
@@ -137,39 +155,75 @@ export function WorkOrderBalanceCheckout({
         <p className='text-zinc-400'>
           Balance due <span className='font-mono text-gold-soft'>{balanceDue}</span>
         </p>
-        <p className='text-zinc-400 sm:col-span-2'>
-          Checkout amount{' '}
-          <span className='font-mono text-white'>{sessionAmount ?? balanceDue}</span>
-          {sessionAmount ? ' (session created)' : ''}
-        </p>
       </div>
 
       {canPay ? (
-        <div className='grid gap-2 sm:grid-cols-3'>
-          <button
-            type='button'
-            disabled={loading !== null}
-            onClick={() => void handleOpen()}
-            className='w-full rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black disabled:opacity-50'
+        <>
+          <div className='grid gap-2 sm:grid-cols-2'>
+            <button
+              type='button'
+              disabled={loading !== null}
+              onClick={() => void handleOpen()}
+              className='w-full rounded-2xl bg-gold px-4 py-3 text-xs font-black uppercase text-black disabled:opacity-50'
+            >
+              {loading === 'open' ? 'Creating…' : 'Send / open Stripe link'}
+            </button>
+            <button
+              type='button'
+              disabled={loading !== null}
+              onClick={() => void handleCopy()}
+              className='w-full rounded-2xl border border-gold/40 px-4 py-3 text-xs font-black uppercase text-gold-soft disabled:opacity-50'
+            >
+              {loading === 'copy' ? 'Creating…' : 'Copy Stripe link'}
+            </button>
+            <NotificationSendForm
+              kind='payment_link'
+              appointmentId={appointmentId}
+              buttonClassName='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'
+            >
+              Preview & send payment link
+            </NotificationSendForm>
+            <NotificationSendForm
+              kind='zelle_instructions'
+              appointmentId={appointmentId}
+              buttonClassName='w-full rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100'
+            >
+              Preview & send Zelle instructions
+            </NotificationSendForm>
+          </div>
+
+          <ToastActionForm
+            className='grid gap-2 rounded-xl border border-white/10 bg-black/30 p-3 sm:grid-cols-4'
+            action={async (prev, fd) => {
+              if (workOrderPath) fd.set('workOrderPath', workOrderPath);
+              const r = await recordManualPaymentActionState(prev, fd);
+              setManualMsg(r.ok ? r.message ?? 'Payment recorded.' : r.error ?? 'Failed.');
+              return r;
+            }}
           >
-            {loading === 'open' ? 'Creating…' : 'Open balance checkout'}
-          </button>
-          <button
-            type='button'
-            disabled={loading !== null}
-            onClick={() => void handleCopy()}
-            className='w-full rounded-2xl border border-gold/40 px-4 py-3 text-xs font-black uppercase text-gold-soft disabled:opacity-50'
-          >
-            {loading === 'copy' ? 'Creating…' : 'Copy balance link'}
-          </button>
-          <NotificationSendForm
-            kind='payment_link'
-            appointmentId={appointmentId}
-            buttonClassName='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'
-          >
-            Send balance link
-          </NotificationSendForm>
-        </div>
+            <input type='hidden' name='appointmentId' value={appointmentId} />
+            {workOrderPath ? <input type='hidden' name='workOrderPath' value={workOrderPath} /> : null}
+            <label className='text-xs text-zinc-400 sm:col-span-1'>
+              Amount ($)
+              <input name='amountDollars' type='number' step='0.01' min='0.01' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' required />
+            </label>
+            <label className='text-xs text-zinc-400 sm:col-span-1'>
+              Method
+              <select name='method' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' defaultValue='cash'>
+                <option value='cash'>Cash</option>
+                <option value='zelle'>Zelle</option>
+                <option value='venmo'>Venmo</option>
+                <option value='check'>Check</option>
+              </select>
+            </label>
+            <div className='flex items-end sm:col-span-2'>
+              <SubmitStatusButton pendingText='Saving…' className='w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase text-emerald-200'>
+                Mark paid manually
+              </SubmitStatusButton>
+            </div>
+          </ToastActionForm>
+          {manualMsg ? <p className='text-xs text-zinc-400'>{manualMsg}</p> : null}
+        </>
       ) : (
         <p className='rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-center text-xs text-zinc-500'>
           {paymentComplete

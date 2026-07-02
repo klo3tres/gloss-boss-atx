@@ -74,11 +74,11 @@ function mapAppointmentStatus(jobStatus: AdminJobStatus): string {
 
 function mapPaymentStatus(paymentStatus: AdminPaymentStatus, totalCents: number, depositCents: number, amountPaid: number): string {
   if (paymentStatus === 'comped') return 'test_comped';
-  if (paymentStatus === 'paid' || amountPaid >= totalCents && totalCents > 0) return 'paid';
-  if (paymentStatus === 'deposit_paid' || (amountPaid > 0 && amountPaid < totalCents)) return 'deposit_paid';
+  if (paymentStatus === 'paid' || (amountPaid >= totalCents && totalCents > 0)) return 'paid';
+  if (paymentStatus === 'deposit_paid') return 'deposit_paid';
+  if (paymentStatus === 'custom_manual' && amountPaid > 0 && amountPaid < totalCents) return 'deposit_paid';
   if (paymentStatus === 'deposit_required') return 'awaiting_deposit';
   if (paymentStatus === 'pay_later' || paymentStatus === 'custom_manual') return 'awaiting_payment';
-  if (depositCents >= totalCents && totalCents > 0) return 'paid';
   return 'awaiting_payment';
 }
 
@@ -244,16 +244,25 @@ export async function createAdminJob(admin: SupabaseClient, input: CreateAdminJo
   }
 
   const totalCents = breakdown.finalTotalCents;
+  const suggestedDeposit = breakdown.depositCents;
+  let depositRequiredCents = 0;
   let depositCents = 0;
+
   if (input.paymentStatus === 'paid' || input.paymentStatus === 'comped') {
     depositCents = totalCents;
-  } else if (input.paymentStatus === 'deposit_paid' || input.paymentStatus === 'deposit_required') {
+  } else if (input.paymentStatus === 'deposit_paid') {
     depositCents =
       input.depositAmountCents != null && input.depositAmountCents > 0
         ? Math.min(totalCents, input.depositAmountCents)
-        : breakdown.depositCents;
+        : suggestedDeposit;
+  } else if (input.paymentStatus === 'deposit_required') {
+    depositRequiredCents =
+      input.depositAmountCents != null && input.depositAmountCents > 0
+        ? Math.min(totalCents, input.depositAmountCents)
+        : suggestedDeposit;
+    depositCents = depositRequiredCents;
   } else if (input.paymentStatus === 'custom_manual' && input.depositAmountCents != null && input.depositAmountCents > 0) {
-    depositCents = Math.min(totalCents, input.depositAmountCents);
+    depositRequiredCents = Math.min(totalCents, input.depositAmountCents);
   }
 
   const amountPaidCents =
@@ -285,7 +294,13 @@ export async function createAdminJob(admin: SupabaseClient, input: CreateAdminJo
     vehicle_description: vehicleDescription,
     booking_vehicles: bookingVehicles,
     booking_add_ons: input.addOnSlugs,
-    booking_pricing_breakdown: { ...breakdown, adminManualDiscountReason: input.manualDiscount?.reason ?? null, source: 'admin_manual' },
+    booking_pricing_breakdown: {
+      ...breakdown,
+      adminManualDiscountReason: input.manualDiscount?.reason ?? null,
+      source: 'admin_manual',
+      depositRequiredCents,
+      depositPaidCents: amountPaidCents > 0 && input.paymentStatus === 'deposit_paid' ? amountPaidCents : 0,
+    },
     service_address: input.address,
     service_city: input.city ?? 'Austin',
     service_state: input.state ?? 'TX',

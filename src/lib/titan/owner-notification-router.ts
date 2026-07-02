@@ -99,12 +99,18 @@ export async function emitOwnerNotification(
   }
 
   if (!input.smsStatus && prefs.notifySmsEnabled && ownerPhone && twilioConfigured()) {
+    const smsLead = input.body.trim()
+      ? input.body.slice(0, 300)
+      : input.title.replace(/^Gloss Boss ATX:\s*/i, '');
+    const smsBody = input.title.startsWith('Gloss Boss ATX:')
+      ? `${input.title}${smsLead && !input.title.includes(smsLead) ? ` ${smsLead}` : ''}`
+      : `Gloss Boss ATX: ${input.title}${smsLead ? ` — ${smsLead}` : ''}`;
     const sms = await sendCustomerSms({
       db: admin,
       kind: `owner_${input.eventType}`,
       template_key: `owner_${input.eventType}`,
       to: ownerPhone,
-      body: `${input.title}\n${input.body.slice(0, 280)}`,
+      body: smsBody,
       requireConsent: false,
       extraPayload: { owner_alert: true, event_type: input.eventType },
     });

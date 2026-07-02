@@ -67,6 +67,7 @@ export type WorkOrderConsoleData = {
   balanceDue: string;
   balanceDueCents: number;
   depositPaid?: string;
+  depositRequired?: string;
   depositOnFile?: string;
   finalTotal?: string;
   stripePaid?: string;
@@ -844,9 +845,12 @@ export function WorkOrderConsoleClient({
                 balanceDue={data.balanceDue}
                 finalTotal={data.finalTotal}
                 depositPaid={data.depositPaid}
+                depositRequired={data.depositRequired}
+                paymentStatusLabel={data.paymentStatus}
                 totalPaid={data.totalPaid}
                 paymentComplete={data.paymentComplete}
                 isFallback={data.isFallback}
+                workOrderPath={`/tech/work-orders/${jobId}`}
               />
             ) : null}
             {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (

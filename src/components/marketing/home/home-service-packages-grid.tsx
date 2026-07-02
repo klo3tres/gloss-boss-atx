@@ -34,11 +34,11 @@ export function HomeServicePackagesGrid({
   packages: ServicePackage[];
   visuals: Record<string, unknown> | null;
 }) {
-  const items = packages.slice(0, 4);
+  const items = packages.slice(0, 6);
 
   return (
     <>
-      <div className="mt-12 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 pr-4 [-ms-overflow-style:none] [scrollbar-width:none] md:grid md:snap-none md:grid-cols-2 md:overflow-visible md:pb-0 md:pr-0 lg:grid-cols-4 [&::-webkit-scrollbar]:hidden">
+      <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((service, index) => {
           const visualCover = (visuals?.services as { covers?: Record<string, { image?: string; fit?: string; position?: string }> } | undefined)
             ?.covers?.[service.id];
@@ -46,8 +46,7 @@ export function HomeServicePackagesGrid({
 
           return (
             <MotionFade key={service.id} delay={index * 0.06}>
-              <div className="min-w-[78%] snap-start sm:min-w-[52%] md:min-w-0">
-                <article className="group flex h-full flex-col overflow-hidden rounded-3xl border border-gold/15 bg-zinc-950/80 shadow-lg transition duration-300 hover:-translate-y-1 hover:border-gold/40">
+              <article className="group flex h-full flex-col overflow-hidden rounded-3xl border border-gold/15 bg-zinc-950/80 shadow-lg transition duration-300 hover:-translate-y-1 hover:border-gold/40">
                   <div className="relative aspect-[16/10] overflow-hidden border-b border-white/5 bg-zinc-900">
                     <img
                       src={coverUrl}
@@ -85,7 +84,6 @@ export function HomeServicePackagesGrid({
                     </div>
                   </div>
                 </article>
-              </div>
             </MotionFade>
           );
         })}

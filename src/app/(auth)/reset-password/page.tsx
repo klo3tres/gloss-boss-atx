@@ -1,0 +1,144 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
+import { fetchUserRole } from '@/lib/auth/fetchUserRole';
+import { defaultDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+
+export default function ResetPasswordPage() {
+  const router = useRouter();
+  const envReady = isSupabasePublicReady();
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const client = createSupabaseBrowserClient();
+    setSupabase(client);
+    if (!client) return;
+
+    void client.auth.getSession().then(({ data }) => {
+      if (data.session) setReady(true);
+    });
+
+    const { data: sub } = client.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    const client = supabase ?? createSupabaseBrowserClient();
+    if (!client) {
+      setError('Auth client unavailable.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { error: updateError } = await client.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
+        return;
+      }
+
+      const outcome = await fetchUserRole(client);
+      const destination = outcome.ok ? defaultDashboardPathForRole(outcome.role) : '/login';
+      setMessage('Password updated. Redirecting to your dashboard…');
+      window.setTimeout(() => router.replace(destination), 800);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update password.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className='flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground'>
+      <form onSubmit={handleSubmit} className='w-full max-w-md rounded-2xl border border-gold/20 bg-zinc-950 p-6'>
+        <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
+        <h1 className='mt-3 text-3xl font-black'>Set new password</h1>
+        <p className='mt-2 text-sm text-zinc-400'>Choose a secure password for your staff or customer account.</p>
+
+        {!envReady ? (
+          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200'>
+            Auth is in setup mode. Add Supabase env keys to activate password reset.
+          </p>
+        ) : null}
+
+        {!ready ? (
+          <p className='mt-4 text-sm text-amber-200'>
+            Open the reset link from your email or SMS. If it expired,{' '}
+            <Link href='/forgot-password' className='text-gold-soft underline'>
+              request a new link
+            </Link>
+            .
+          </p>
+        ) : null}
+
+        <label className='mt-6 block text-sm'>
+          <span className='mb-2 block text-zinc-300'>New password</span>
+          <input
+            type='password'
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+            minLength={8}
+            required
+            disabled={!ready || !envReady}
+          />
+        </label>
+
+        <label className='mt-4 block text-sm'>
+          <span className='mb-2 block text-zinc-300'>Confirm password</span>
+          <input
+            type='password'
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+            minLength={8}
+            required
+            disabled={!ready || !envReady}
+          />
+        </label>
+
+        {error ? <p className='mt-4 text-sm text-red-400'>{error}</p> : null}
+        {message ? <p className='mt-4 text-sm text-emerald-400'>{message}</p> : null}
+
+        <button
+          type='submit'
+          disabled={!envReady || !ready || submitting}
+          className='mt-6 w-full rounded-lg bg-gold px-4 py-3 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-60'
+        >
+          {submitting ? 'Saving…' : 'Update password'}
+        </button>
+
+        <p className='mt-4 text-center text-xs text-zinc-400'>
+          <Link href='/login' className='text-gold-soft'>
+            Back to login
+          </Link>
+        </p>
+      </form>
+    </main>
+  );
+}

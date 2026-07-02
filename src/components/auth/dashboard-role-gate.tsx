@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { AppRole } from '@/lib/auth/roles';
+import { isStaffRole } from '@/lib/auth/roles';
 import {
   clearHydratedOnceFlag,
   clearRoleCache,
@@ -28,7 +29,7 @@ function allowedRolesForVariant(variant: RoleGateVariant): readonly AppRole[] {
     case 'tech':
       return ['technician', 'admin', 'super_admin'];
     case 'customer':
-      return ['customer', 'super_admin', 'admin'];
+      return ['customer'];
     default:
       return ['customer'];
   }
@@ -130,6 +131,8 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
         if (allowed.includes(role)) {
           writeHydratedOnceFlag();
           setState('ready');
+        } else if (variant === 'customer' && isStaffRole(role)) {
+          window.location.assign(defaultDashboardPathForRole(role));
         } else {
           logRoleDebug({
             step: 'gate_unauthorized_role',

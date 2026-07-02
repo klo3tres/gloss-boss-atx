@@ -6,7 +6,15 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { Settings, X, Shield, User, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-async function teamApi(body: object): Promise<{ ok: boolean; error?: string; usedInvite?: boolean }> {
+async function teamApi(body: object): Promise<{
+  ok: boolean;
+  error?: string;
+  usedInvite?: boolean;
+  emailStatus?: string;
+  smsStatus?: string;
+  emailError?: string | null;
+  smsError?: string | null;
+}> {
   const res = await fetchWithTimeout('/api/admin/team', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -137,7 +145,7 @@ export function StaffRowSuperClient({
   const [name, setName] = useState(initialDisplayName);
   const [active, setActive] = useState(initialActive);
   const [pwd, setPwd] = useState('');
-  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'active' | 'remove' | null>(null);
+  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'pwd-link' | 'active' | 'remove' | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -290,6 +298,33 @@ export function StaffRowSuperClient({
                       autoComplete="new-password"
                       className="flex-1 text-xs rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-white focus:outline-none focus:border-gold/40"
                     />
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        void (async () => {
+                          setBusy('pwd-link');
+                          setMsg(null);
+                          const r = await teamApi({ intent: 'send_password_reset_link', userId: profileId });
+                          setBusy(null);
+                          if (!r.ok) {
+                            setMsg({ type: 'err', text: r.error ?? 'Could not send reset link' });
+                            return;
+                          }
+                          const parts = [
+                            r.emailStatus === 'sent' ? 'email sent' : `email ${r.emailStatus}`,
+                            r.smsStatus === 'sent' ? 'SMS sent' : r.smsStatus ? `SMS ${r.smsStatus}` : null,
+                          ].filter(Boolean);
+                          setMsg({
+                            type: r.emailStatus === 'failed' && r.smsStatus !== 'sent' ? 'err' : 'ok',
+                            text: `Reset link: ${parts.join(' · ')}${r.emailError ? ` — ${r.emailError}` : ''}${r.smsError ? ` — ${r.smsError}` : ''}`,
+                          });
+                        })();
+                      }}
+                      className="rounded-xl border border-gold/30 bg-gold/10 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20 disabled:opacity-40 transition"
+                    >
+                      Send link
+                    </button>
                     <button
                       type="button"
                       disabled={busy !== null}

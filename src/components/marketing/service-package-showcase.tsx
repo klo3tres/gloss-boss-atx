@@ -11,19 +11,8 @@ import {
   serviceFallbackImage,
   servicePresentation,
 } from '@/lib/marketing/service-presentation';
-import { formatVehiclePrice, PUBLIC_ADDON_PRICING, type ServicePackage } from '@/lib/site-config';
+import { formatVehiclePrice, type ServicePackage } from '@/lib/site-config';
 import { mediaUrl, type MediaRegistry } from '@/lib/media-registry';
-
-function addonChip(label: string) {
-  const l = label.toLowerCase();
-  if (l.includes('shampoo') || l.includes('upholstery')) return 'Upholstery shampoo';
-  if (l.includes('clay')) return 'Clay bar';
-  if (l.includes('pet')) return 'Pet hair';
-  if (l.includes('engine')) return 'Engine bay';
-  if (l.includes('heavy condition')) return 'Heavy condition';
-  if (l.includes('odor')) return 'Odor treatment';
-  return label;
-}
 
 export function ServicePackageShowcase({
   service,
@@ -105,15 +94,16 @@ export function ServicePackageShowcase({
               {!isQuoteOnly ? (
                 <div className="mt-6 grid grid-cols-3 gap-2 sm:max-w-md">
                   {[
-                    { label: 'Sedan', value: formatVehiclePrice(service.sedanPrice) },
-                    { label: 'SUV', value: formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice) },
-                    { label: 'Truck', value: formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice) },
+                    { label: 'Sedan', value: formatVehiclePrice(service.sedanPrice), hint: 'starting at' },
+                    { label: 'SUV', value: formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice), hint: 'starting at' },
+                    { label: 'Truck', value: formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice), hint: 'starting at' },
                   ].map((tier) => (
                     <div
                       key={tier.label}
-                      className="rounded-2xl border border-white/8 bg-black/50 px-3 py-3 text-center"
+                      className="rounded-2xl border border-white/8 bg-gradient-to-b from-zinc-900/80 to-black/60 px-3 py-3 text-center"
                     >
-                      <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{tier.label}</p>
+                      <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{tier.hint}</p>
+                      <p className="text-[9px] font-bold uppercase text-zinc-400">{tier.label}</p>
                       <p className="mt-1 font-mono text-lg font-black text-gold-soft">{tier.value}</p>
                     </div>
                   ))}
@@ -124,43 +114,61 @@ export function ServicePackageShowcase({
                 </p>
               )}
 
-              <div className="mt-8">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Included</p>
-                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {service.includes.map((line) => (
-                    <li key={line} className="flex items-start gap-2.5 rounded-xl border border-white/5 bg-black/40 px-3 py-2.5 text-xs text-zinc-300">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gold/30 bg-gold/10">
-                        <Check className="h-3 w-3 text-gold-soft" strokeWidth={3} />
-                      </span>
-                      {line}
-                    </li>
-                  ))}
-                </ul>
+              <div className="mt-8 grid gap-6 sm:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">What you get</p>
+                  <ul className="mt-3 grid gap-2">
+                    {presentation.whatYouGet.map((line) => (
+                      <li key={line} className="flex items-start gap-2.5 rounded-xl border border-white/5 bg-black/40 px-3 py-2.5 text-xs text-zinc-300">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gold/30 bg-gold/10">
+                          <Check className="h-3 w-3 text-gold-soft" strokeWidth={3} />
+                        </span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Best for</p>
+                  <p className="mt-3 rounded-2xl border border-gold/15 bg-gold/5 px-4 py-3 text-sm leading-relaxed text-zinc-200">
+                    {presentation.bestFor}
+                  </p>
+                  <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Expected results</p>
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {presentation.expectedResults.map((result) => (
+                      <li
+                        key={result}
+                        className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[10px] font-semibold text-emerald-100"
+                      >
+                        {result}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
 
-              <div className="mt-6">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Expected results</p>
-                <ul className="mt-3 flex flex-wrap gap-2">
-                  {presentation.expectedResults.map((result) => (
-                    <li
-                      key={result}
-                      className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[10px] font-semibold text-emerald-100"
-                    >
-                      {result}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {service.includes.length > 0 ? (
+                <div className="mt-6">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Also included</p>
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {service.includes.map((line) => (
+                      <li key={line} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] text-zinc-400">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div className="mt-6">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Recommended add-ons</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {PUBLIC_ADDON_PRICING.slice(0, 5).map((addon) => (
+                  {presentation.recommendedAddons.map((addon) => (
                     <span
-                      key={addon.label}
+                      key={addon}
                       className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] font-medium text-zinc-400"
                     >
-                      {addonChip(addon.label)}
+                      {addon}
                     </span>
                   ))}
                 </div>

@@ -814,6 +814,7 @@ const NOTIFY_LABELS: Record<string, string> = {
   halfway_complete: 'Halfway complete',
   last_touches: 'Last touches',
   payment_link: 'Pay now',
+  zelle_instructions: 'Zelle instructions',
   review_request: 'Review request',
   job_completed: 'Job complete',
   appointment_confirmed: 'Booking confirmation',
@@ -826,6 +827,7 @@ const NOTIFY_KINDS = new Set([
   'halfway_complete',
   'last_touches',
   'payment_link',
+  'zelle_instructions',
   'review_request',
   'job_completed',
   'technician_assigned',
@@ -834,6 +836,16 @@ const NOTIFY_KINDS = new Set([
   'appointment_confirmed',
   'booking_confirmation',
 ]);
+
+function zelleContactLabel() {
+  return (
+    process.env.BUSINESS_ZELLE?.trim() ||
+    process.env.ZELLE_EMAIL?.trim() ||
+    process.env.ZELLE_PHONE?.trim() ||
+    process.env.OWNER_PHONE?.trim() ||
+    null
+  );
+}
 
 async function loadJobNotificationContext(
   db: SupabaseClient,
@@ -889,11 +901,21 @@ export async function previewTechJobNotificationAction(input: {
   const ctx = await loadJobNotificationContext(db, appointmentId, fallbackBookingId);
   const { buildJobNotificationSms, buildJobNotificationEmailSubject } = await import('@/lib/outbound-message-builders');
   const paymentPlaceholder = kind === 'payment_link' ? '[Stripe Checkout URL]' : null;
+  let balanceLabel: string | null = null;
+  if ((kind === 'payment_link' || kind === 'zelle_instructions') && appointmentId) {
+    const { data: apptRow } = await db.from('appointments').select('balance_due_cents, base_price_cents').eq('id', appointmentId).maybeSingle();
+    const bal = typeof (apptRow as { balance_due_cents?: number } | null)?.balance_due_cents === 'number'
+      ? (apptRow as { balance_due_cents: number }).balance_due_cents
+      : null;
+    if (bal != null && bal > 0) balanceLabel = displayMoney(bal);
+  }
   const body = buildJobNotificationSms(kind, {
     vehicle: ctx.vehicle,
     dashboardUrl: ctx.dashboardUrl,
     reviewUrl: ctx.customerReviewUrl,
     paymentUrl: paymentPlaceholder,
+    zelleContact: zelleContactLabel(),
+    balanceLabel,
   });
   const subject = buildJobNotificationEmailSubject(kind);
   const channel: 'sms' | 'email' = ctx.guestPhone ? 'sms' : 'email';
@@ -948,6 +970,14 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
     }
   }
   const { buildJobNotificationSms } = await import('@/lib/outbound-message-builders');
+  let balanceLabel: string | null = null;
+  if (appointmentId) {
+    const { data: apptRow } = await db.from('appointments').select('balance_due_cents').eq('id', appointmentId).maybeSingle();
+    const bal = typeof (apptRow as { balance_due_cents?: number } | null)?.balance_due_cents === 'number'
+      ? (apptRow as { balance_due_cents: number }).balance_due_cents
+      : null;
+    if (bal != null && bal > 0) balanceLabel = displayMoney(bal);
+  }
   const message =
     customBody ||
     buildJobNotificationSms(kind, {
@@ -955,6 +985,8 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       dashboardUrl,
       reviewUrl: customerReviewUrl,
       paymentUrl,
+      zelleContact: zelleContactLabel(),
+      balanceLabel,
     });
   let smsResult: Awaited<ReturnType<typeof sendCustomerSms>> | null = null;
   let emailResult: Awaited<ReturnType<typeof sendResendHtml>> | null = null;

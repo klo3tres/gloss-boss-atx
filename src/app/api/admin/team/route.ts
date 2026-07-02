@@ -11,6 +11,7 @@ const STAFF_ROLES = new Set(['technician', 'admin', 'super_admin']);
 type Body =
   | { intent: 'create'; email: string; password: string; role: string; fullName?: string }
   | { intent: 'reset_password'; userId: string; password: string }
+  | { intent: 'send_password_reset_link'; userId: string }
   | { intent: 'assign_role'; profileId: string; role: string }
   | { intent: 'display_name'; profileId: string; fullName: string }
   | { intent: 'set_staff_active'; profileId: string; active: boolean }
@@ -112,6 +113,97 @@ export async function POST(request: Request) {
     }
     revalidatePath('/admin/team');
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'send_password_reset_link') {
+    const userId = String(body.userId ?? '').trim();
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: 'User id required.' }, { status: 400 });
+    }
+    const { data: profile } = await admin.from('profiles').select('email, full_name, phone').eq('id', userId).maybeSingle();
+    const email = String((profile as { email?: string } | null)?.email ?? '').trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json({ ok: false, error: 'No email on staff profile.' }, { status: 400 });
+    }
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://glossbossatx.com').replace(/\/$/, '');
+    const redirectTo = `${appBase}/reset-password`;
+    const linkRes = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } });
+    if (linkRes.error || !linkRes.data?.properties?.action_link) {
+      return NextResponse.json({ ok: false, error: linkRes.error?.message ?? 'Could not generate reset link.' }, { status: 400 });
+    }
+    const resetUrl = String(linkRes.data.properties.action_link);
+    const displayName = String((profile as { full_name?: string } | null)?.full_name ?? email.split('@')[0] ?? 'Team member');
+    const phone = String((profile as { phone?: string } | null)?.phone ?? '').trim();
+
+    let emailStatus = 'skipped';
+    let smsStatus = 'skipped';
+    let emailError: string | null = null;
+    let smsError: string | null = null;
+
+    try {
+      const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+      if (resendConfigured()) {
+        const sent = await sendResendHtml({
+          to: email,
+          subject: 'Gloss Boss ATX — Reset your password',
+          html: `<p>Hi ${displayName},</p><p>Reset your Gloss Boss ATX password here:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>If you did not request this, contact the owner.</p>`,
+        });
+        emailStatus = sent.ok ? 'sent' : 'failed';
+        emailError = sent.error ?? null;
+      }
+    } catch (e) {
+      emailStatus = 'failed';
+      emailError = e instanceof Error ? e.message : String(e);
+    }
+
+    if (phone) {
+      try {
+        const { twilioConfigured } = await import('@/lib/email-send');
+        const { sendCustomerSms } = await import('@/lib/sms-send');
+        if (twilioConfigured()) {
+          const sms = await sendCustomerSms({
+            db: admin,
+            kind: 'password_reset',
+            template_key: 'password_reset',
+            to: phone,
+            body: `Gloss Boss ATX: Password reset requested for your account. Set a new password here: ${resetUrl}`,
+            requireConsent: false,
+            extraPayload: { staff_user_id: userId, reset_url: resetUrl },
+          });
+          smsStatus = sms.ok ? 'sent' : sms.skipped ? 'skipped' : 'failed';
+          smsError = sms.error ?? null;
+        }
+      } catch (e) {
+        smsStatus = 'failed';
+        smsError = e instanceof Error ? e.message : String(e);
+      }
+    }
+
+    try {
+      const { insertTitanNotificationEvent } = await import('@/lib/titan/notification-events');
+      await insertTitanNotificationEvent(admin, {
+        title: `Password reset sent: ${displayName}`,
+        body: `Gloss Boss ATX: Reset email ${emailStatus}${emailError ? ` (${emailError})` : ''}. SMS ${smsStatus}${smsError ? ` (${smsError})` : ''}.`,
+        source: 'auth',
+        relatedType: 'profile',
+        relatedId: userId,
+        relatedUrl: '/admin/team',
+        emailStatus,
+        smsStatus,
+      });
+    } catch {
+      /* non-blocking */
+    }
+
+    revalidatePath('/admin/team');
+    return NextResponse.json({
+      ok: true,
+      emailStatus,
+      smsStatus,
+      emailError,
+      smsError,
+      resetUrl: process.env.NODE_ENV === 'development' ? resetUrl : undefined,
+    });
   }
 
   if (body.intent === 'assign_role') {

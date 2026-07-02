@@ -204,7 +204,10 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
 
   let depositPaidCents = 0;
   for (const p of succeeded) {
-    if (isRealStripeDeposit(p)) depositPaidCents += num(p.amount_cents);
+    const kind = str(p.payment_kind).toLowerCase();
+    if (isRealStripeDeposit(p) || kind.includes('deposit') || kind === 'booking_deposit') {
+      depositPaidCents += num(p.amount_cents);
+    }
   }
   const depositPayment = findDepositPayment(succeeded);
   if (depositPayment && isRealStripeDeposit(depositPayment)) {

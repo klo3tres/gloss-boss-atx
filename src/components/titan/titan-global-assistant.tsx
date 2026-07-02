@@ -53,7 +53,10 @@ export function TitanGlobalAssistant() {
     };
   }, [pathname]);
 
-  const hide = isAuthRoute(pathname);
+  const hide =
+    isAuthRoute(pathname) ||
+    pathname === '/book' ||
+    pathname.startsWith('/book/');
   const operatorContext =
     pathname.startsWith('/admin') ||
     pathname.startsWith('/tech') ||

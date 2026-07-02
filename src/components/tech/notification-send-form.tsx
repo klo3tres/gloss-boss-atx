@@ -15,7 +15,8 @@ const UPDATE_TEMPLATES = [
   { value: 'halfway_complete', label: 'Halfway complete' },
   { value: 'last_touches', label: 'Final touches' },
   { value: 'job_completed', label: 'Service completed' },
-  { value: 'payment_link', label: 'Payment reminder' },
+  { value: 'payment_link', label: 'Payment reminder (Stripe)' },
+  { value: 'zelle_instructions', label: 'Zelle / cash instructions' },
   { value: 'review_request', label: 'Review request' },
 ];
 

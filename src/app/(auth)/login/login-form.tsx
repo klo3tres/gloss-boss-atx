@@ -6,8 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { clearAuthUxSession, setRoleCache, writeHydratedOnceFlag } from '@/lib/auth/auth-session-ux';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
-import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
-import { resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+import { resolveSafePostLoginRedirect, resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
 import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
@@ -169,7 +168,7 @@ export default function LoginForm() {
 
       const nextRaw = searchParams.get('next');
       const fallback = resolveDashboardPathForRole(outcome.role, null, outcome.email);
-      const destination = nextRaw ? getSafeInternalRedirect(nextRaw, fallback) : fallback;
+      const destination = nextRaw ? resolveSafePostLoginRedirect(outcome.role, nextRaw, outcome.email) : fallback;
 
       console.info(
         '[AUTH_FLOW]',

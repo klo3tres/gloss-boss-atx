@@ -24,6 +24,23 @@ export function BookingStepProgress({
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div className="h-full bg-gradient-to-r from-gold to-gold-soft transition-all duration-500" style={{ width: `${progress}%` }} />
       </div>
+      <ol className="mt-3 flex gap-1 overflow-x-auto pb-1 sm:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {BOOKING_WIZARD_STEPS.map((s, i) => {
+          const done = i < step;
+          const active = i === step;
+          return (
+            <li key={s.id} className="shrink-0">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-bold uppercase ${
+                  active ? 'border-gold bg-gold/15 text-gold-soft' : done ? 'border-emerald-500/30 text-emerald-300' : 'border-white/10 text-zinc-600'
+                }`}
+              >
+                {done ? <Check className="h-3 w-3" /> : i + 1} {s.short}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
       <ol className="mt-4 hidden gap-1 sm:flex">
         {BOOKING_WIZARD_STEPS.map((s, i) => {
           const done = i < step;

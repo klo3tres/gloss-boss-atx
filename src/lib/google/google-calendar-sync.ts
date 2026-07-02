@@ -284,17 +284,44 @@ export async function runGoogleCalendarSync(
   const fn = action === 'delete' ? deleteGoogleCalendarEvent : upsertGoogleCalendarEvent;
   const result = await fn(admin, appointmentId);
   if (admin) {
+    const { data: appt } = await admin
+      .from('appointments')
+      .select('guest_name, service_slug, vehicle_description, scheduled_start, estimated_end')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    const row = (appt ?? {}) as Record<string, unknown>;
+    const guest = str(row.guest_name) || 'Customer';
+    const service =
+      str(row.service_slug).replace(/-/g, ' ') || str(row.vehicle_description).split(',')[0] || 'Detail';
+    const startIso = str(row.scheduled_start);
+    const endIso = str(row.estimated_end);
+    const whenShort = startIso
+      ? new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Chicago',
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }).format(new Date(startIso))
+      : '';
+    const timeRange =
+      startIso && endIso
+        ? `${new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(startIso))}–${new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(endIso))}`
+        : whenShort;
     const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
     void emitOwnerNotification(admin, {
       eventType: result.ok ? 'new_booking' : 'calendar_sync_failed',
       title: result.ok
         ? action === 'delete'
-          ? 'Google Calendar event removed'
-          : 'Google Calendar event updated'
-        : 'Google Calendar push failed',
+          ? `Google Calendar removed: ${guest} — ${service}`
+          : `Google Calendar updated: ${guest} — ${service}`
+        : 'Google Calendar sync failed',
       body: result.ok
-        ? `Appointment ${appointmentId.slice(0, 8)} synced to Google Calendar.`
-        : result.error ?? 'Google Calendar sync failed.',
+        ? action === 'delete'
+          ? `Gloss Boss ATX: Google Calendar event removed for ${guest} — ${service}${whenShort ? `, ${whenShort}` : ''}.`
+          : `Gloss Boss ATX: Google Calendar synced for ${guest} — ${service}${timeRange ? `, ${timeRange}` : whenShort ? `, ${whenShort}` : ''}.`
+        : `Gloss Boss ATX: Google Calendar sync failed for ${guest} — ${result.error ?? 'unknown error'}.`,
       source: 'google_calendar',
       relatedType: 'appointment',
       relatedId: appointmentId,

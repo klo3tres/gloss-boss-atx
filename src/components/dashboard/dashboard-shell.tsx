@@ -10,6 +10,7 @@ import { GlobalAppNav } from '@/components/dashboard/global-app-nav';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 import { NotificationBellDropdown } from '@/components/admin/notification-bell-dropdown';
+import { formatActivityEventLabel } from '@/lib/activity-event-labels';
 
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
 export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
@@ -103,6 +104,7 @@ const techLinks = [
   { href: '/tech?tab=calendar', label: 'Calendar' },
   { href: '/tech?tab=leads', label: 'Leads' },
   { href: '/tech/resources', label: 'Resources' },
+  { href: '/tech/settings', label: 'Account' },
 ];
 
 const customerLinks = [
@@ -197,41 +199,102 @@ export function DashboardShell({
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { count } = await supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'new');
-        setUnreadCount(count ?? 0);
+        const isOwnerView = role === 'admin' || role === 'super_admin';
+        const isTech = role === 'technician';
+        const isCustomer = role === 'customer';
 
-        const { data: events } = await supabase
-          .from('job_timeline_events')
-          .select('event_type, created_at, appointment_id')
-          .order('created_at', { ascending: false })
-          .limit(5);
-        if (events) {
-          setRecentEvents(events);
+        if (isOwnerView) {
+          const { count } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'new');
+          setUnreadCount(count ?? 0);
+
+          const { data: events } = await supabase
+            .from('job_timeline_events')
+            .select('event_type, created_at, appointment_id, meta')
+            .order('created_at', { ascending: false })
+            .limit(5);
+          if (events) setRecentEvents(events);
+
+          const { data: outbox } = await supabase
+            .from('notification_outbox')
+            .select('id, kind, template_key, status, channel, created_at, appointment_id, error_message, payload')
+            .order('created_at', { ascending: false })
+            .limit(10);
+          if (outbox) setOutboxEvents(outbox);
+
+          const alertsList: string[] = [];
+          const { count: unassignedCount } = await supabase
+            .from('appointments')
+            .select('id', { count: 'exact', head: true })
+            .is('assigned_technician_id', null)
+            .in('status', ['assigned', 'confirmed']);
+          if (unassignedCount && unassignedCount > 0) {
+            alertsList.push(`${unassignedCount} unassigned jobs need attention`);
+          }
+          setSystemAlerts(alertsList);
+          return;
         }
 
-        const { data: outbox } = await supabase
-          .from('notification_outbox')
-          .select('id, kind, template_key, status, channel, created_at, appointment_id, error_message, payload')
-          .order('created_at', { ascending: false })
-          .limit(10);
-        if (outbox) {
-          setOutboxEvents(outbox);
+        setOutboxEvents([]);
+        setSystemAlerts([]);
+
+        let appointmentIds: string[] = [];
+        if (isTech) {
+          const { data: appts } = await supabase
+            .from('appointments')
+            .select('id')
+            .eq('assigned_technician_id', user.id)
+            .order('scheduled_start', { ascending: false })
+            .limit(30);
+          appointmentIds = (appts ?? []).map((a) => String(a.id));
+        } else if (isCustomer) {
+          const email = user.email?.trim().toLowerCase() ?? '';
+          const { data: cust } = email
+            ? await supabase.from('customers').select('id').ilike('email', email).maybeSingle()
+            : { data: null };
+          const customerId = (cust as { id?: string } | null)?.id;
+          const queries = [];
+          if (customerId) {
+            queries.push(
+              supabase.from('appointments').select('id').eq('customer_id', customerId).limit(25),
+            );
+          }
+          if (email) {
+            queries.push(
+              supabase.from('appointments').select('id').ilike('guest_email', email).limit(25),
+            );
+          }
+          const results = await Promise.all(queries);
+          const ids = new Set<string>();
+          for (const res of results) {
+            for (const row of res.data ?? []) ids.add(String((row as { id: string }).id));
+          }
+          appointmentIds = [...ids];
         }
 
-        const alertsList: string[] = [];
-        const { count: unassignedCount } = await supabase
-          .from('appointments')
-          .select('id', { count: 'exact', head: true })
-          .is('assigned_technician_id', null)
-          .in('status', ['assigned', 'confirmed']);
-        if (unassignedCount && unassignedCount > 0) {
-          alertsList.push(`${unassignedCount} unassigned jobs need attention`);
+        if (appointmentIds.length > 0) {
+          const { data: events } = await supabase
+            .from('job_timeline_events')
+            .select('event_type, created_at, appointment_id, meta')
+            .in('appointment_id', appointmentIds)
+            .order('created_at', { ascending: false })
+            .limit(8);
+          setRecentEvents(events ?? []);
+        } else {
+          setRecentEvents([]);
         }
 
-        setSystemAlerts(alertsList);
+        if (isCustomer) {
+          const { count } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'new');
+          setUnreadCount(count ?? 0);
+        } else {
+          setUnreadCount(0);
+        }
       } catch (err) {
         console.warn('[Notifications Bell] error fetching data', err);
       }
@@ -240,7 +303,7 @@ export function DashboardShell({
     loadNotifications();
     const interval = setInterval(loadNotifications, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     setCurrentHash(window.location.hash);
@@ -577,7 +640,8 @@ export function DashboardShell({
                   </Link>
                 </div>
 
-                {/* Owner outbox / actionable notifications */}
+                {/* Owner outbox — admin only */}
+                {(role === 'admin' || role === 'super_admin') ? (
                 <div className="space-y-3">
                   <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Owner Notifications</p>
                   
@@ -696,10 +760,13 @@ export function DashboardShell({
                     </div>
                   )}
                 </div>
+                ) : null}
 
                 {/* Timeline activity log */}
                 <div className="space-y-3">
-                  <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Recent Dispatch Activity</p>
+                  <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                    {role === 'customer' ? 'Your appointment updates' : role === 'technician' ? 'Your job activity' : 'Recent dispatch activity'}
+                  </p>
                   {recentEvents.length === 0 ? (
                     <p className="text-xs text-zinc-500">No recent timeline events found.</p>
                   ) : (
@@ -707,7 +774,12 @@ export function DashboardShell({
                       {recentEvents.map((evt, idx) => (
                         <div key={idx} className="relative text-xs">
                           <div className="absolute -left-[13px] top-1.5 h-1.5 w-1.5 rounded-full bg-gold-soft" />
-                          <p className="font-bold text-white capitalize">{evt.event_type.replace(/_/g, ' ')}</p>
+                          <p className="font-bold text-white">
+                            {formatActivityEventLabel({
+                              event_type: evt.event_type,
+                              meta: evt.meta && typeof evt.meta === 'object' ? evt.meta : null,
+                            })}
+                          </p>
                           <p className="text-[9px] text-zinc-500 font-mono mt-0.5">
                             {new Date(evt.created_at).toLocaleString('en-US', {
                               timeZone: 'America/Chicago',

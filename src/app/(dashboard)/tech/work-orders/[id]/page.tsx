@@ -23,6 +23,7 @@ function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 import { displayChicago, displayLabel, displayMoney, displayPhone, displayText, str } from '@/lib/display-format';
+import { formatDepositPaidDisplay, formatDepositRequiredDisplay, paymentStatusLabel } from '@/lib/payment-truth';
 import { techCompleteJobAction, techRecordCashPaymentAction, techSaveJobNotesAction } from '../../tech-actions';
 import { revalidatePath } from 'next/cache';
 import { WorkOrderConsoleClient, type WorkOrderConsoleData } from '@/components/tech/work-order-console-client';
@@ -562,7 +563,18 @@ export default async function TechWorkOrderDetailPage({
       storageBucket: str(p.storage_bucket) || undefined,
     }));
 
-  const depositPaid = displayMoney(pricing.depositPaidCents || pricing.depositCents);
+  const depositPaid = formatDepositPaidDisplay(pricing.depositPaidCents);
+  const depositRequired = formatDepositRequiredDisplay(
+    pricing.depositPaidCents > 0 ? 0 : pricing.depositCents,
+    '—',
+  );
+  const paymentStatusDisplay = paymentStatusLabel({
+    paymentStatus: str(row.payment_status),
+    depositPaidCents: pricing.depositPaidCents,
+    depositRequiredCents: pricing.depositCents,
+    balanceDueCents: pricing.remainingBalanceCents,
+    totalCents: pricing.finalTotalCents,
+  });
   const scheduledStart = displayChicago(row.scheduled_start);
   const scheduledEnd = displayChicago(row.estimated_end);
   const accessLocation = displayLabel(row.service_location_type);
@@ -747,6 +759,7 @@ export default async function TechWorkOrderDetailPage({
     balanceDue: displayMoney(pricing.remainingBalanceCents),
     balanceDueCents: pricing.remainingBalanceCents,
     depositPaid,
+    depositRequired,
     depositOnFile: displayMoney(pricing.depositCents),
     finalTotal: displayMoney(pricing.finalTotalCents),
     multiCarDiscount: pricing.multiCarDiscountCents > 0 ? displayMoney(pricing.multiCarDiscountCents) : undefined,
@@ -758,7 +771,7 @@ export default async function TechWorkOrderDetailPage({
       ? `${displayMoney(pricing.rawTotalPaidCents)} (${displayMoney(pricing.allocatedTotalPaidCents)} applied)`
       : displayMoney(pricing.totalPaidCents),
     paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
-    paymentStatus: displayLabel(row.payment_status, 'Pending'),
+    paymentStatus: paymentStatusDisplay,
     scheduledStart,
     scheduledEnd,
     scheduledStartIso: str(row.scheduled_start),
