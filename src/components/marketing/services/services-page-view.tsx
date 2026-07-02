@@ -14,6 +14,7 @@ import { serviceCategoryFilter } from '@/lib/marketing/service-presentation';
 import { isOfferEligiblePublicSiteData } from '@/lib/public-site-data';
 import { PRICING_DISCLAIMER, PRICING_DISCOUNT_RULES } from '@/lib/site-config';
 import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
+import { HeroReviewTrust } from '@/components/marketing/hero-review-trust';
 import { MotionFade } from '@/components/marketing/motion-fade';
 
 type ServiceTab = 'all' | 'exterior' | 'interior' | 'full' | 'ceramic';
@@ -50,6 +51,11 @@ export function ServicesPageView() {
               Hero imagery, clear inclusions, duration, starting price, recommended add-ons, and member savings — book in
               two taps.
             </p>
+            {loaded && reviews.length > 0 ? (
+              <div className="mt-6 max-w-3xl">
+                <HeroReviewTrust reviews={reviews} googleReviewUrl={googleReviewUrl} bookingHref="/book" compact />
+              </div>
+            ) : null}
             <div className="mt-8 flex flex-wrap gap-3">
               <PremiumButton href="/book">Book now</PremiumButton>
               <PremiumButton href="/memberships" variant="secondary">

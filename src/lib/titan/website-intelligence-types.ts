@@ -33,6 +33,7 @@ export type ReviewIntelRow = {
   source: string;
   published: boolean;
   featured: boolean;
+  show_on_homepage?: boolean;
   created_at: string;
   google_review_id?: string | null;
 };
@@ -73,6 +74,8 @@ export type WebsiteIntelligenceBundle = {
   googleReviewsLastSyncAt: string | null;
   reviews: ReviewIntelRow[];
   publishedReviewCount: number;
+  homepageVisibleReviewCount: number;
+  googleReviewsStoredCount: number;
   averageRating: number | null;
   sitemapPresent: boolean;
   robotsPresent: boolean;

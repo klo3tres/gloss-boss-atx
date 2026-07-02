@@ -16,6 +16,7 @@ import {
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { glossBossEmailLayout, emailParagraph } from '@/lib/email/templates/layout';
+import { emitOwnerNotification } from '@/lib/titan/owner-notification-router';
 
 async function requireAdminSupabase() {
   const session = await getSessionWithProfile();
@@ -119,6 +120,20 @@ export async function replyToMessageAction(formData: FormData) {
       resend_status: emailStatus,
     },
   });
+  if (admin) {
+    const customerName = String(row.from_name ?? row.name ?? 'Customer').trim();
+    void emitOwnerNotification(admin, {
+      eventType: 'customer_replied',
+      title: `Reply sent to ${customerName}`,
+      body: `Your reply to ${customerName}${toEmail ? ` <${toEmail}>` : ''} was saved${emailStatus === 'sent' ? ' and emailed' : ''}.`,
+      source: 'message_center',
+      relatedType: 'message',
+      relatedId: id,
+      relatedUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '')}/admin/messages`,
+      emailStatus: 'skipped',
+      smsStatus: 'skipped',
+    });
+  }
   if (error) console.error('[replyToMessageAction]', error.message);
   revalidatePath('/admin/messages');
   revalidatePath('/dashboard/messages');

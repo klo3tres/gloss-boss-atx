@@ -15,6 +15,7 @@ type ReviewRow = {
   source: string;
   published: boolean;
   featured: boolean;
+  show_on_homepage?: boolean;
   created_at: string;
   sort_order?: number;
 };
@@ -171,6 +172,7 @@ export function CmsReviewsManager({
           </label>
           <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-300 md:col-span-2">
             <label className="flex min-h-10 items-center gap-2"><input name="published" type="checkbox" /> Show publicly</label>
+            <label className="flex min-h-10 items-center gap-2"><input name="show_on_homepage" type="checkbox" defaultChecked /> Show on homepage</label>
             <label className="flex min-h-10 items-center gap-2"><input name="featured" type="checkbox" /> Featured</label>
           </div>
         </div>
@@ -184,7 +186,10 @@ export function CmsReviewsManager({
         {rows.map((row) => (
           <details key={row.id} className="rounded-2xl border border-white/10 bg-black/35 p-4">
             <summary className="cursor-pointer text-sm font-bold text-white">
-              {row.customer_name || 'Customer'} - {row.rating} stars - {row.published ? 'Public' : 'Hidden'} {row.featured ? '- Featured' : ''}
+              {row.customer_name || 'Customer'} - {row.rating} stars - {row.published ? 'Public' : 'Hidden'}
+              {row.show_on_homepage !== false ? ' · Homepage' : ' · Not on homepage'}
+              {row.featured ? ' · Featured' : ''}
+              {row.source ? ` · ${row.source}` : ''}
             </summary>
             <form action={submit} className="mt-4 grid gap-3 md:grid-cols-2">
               <input type="hidden" name="id" value={row.id} />
@@ -203,8 +208,12 @@ export function CmsReviewsManager({
               </label>
               <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-300 md:col-span-2">
                 <label className="flex min-h-10 items-center gap-2"><input name="published" type="checkbox" defaultChecked={row.published} /> Show publicly</label>
+                <label className="flex min-h-10 items-center gap-2"><input name="show_on_homepage" type="checkbox" defaultChecked={row.show_on_homepage !== false} /> Show on homepage</label>
                 <label className="flex min-h-10 items-center gap-2"><input name="featured" type="checkbox" defaultChecked={row.featured} /> Featured</label>
               </div>
+              <p className="text-[10px] text-zinc-500 md:col-span-2">
+                Homepage preview: {row.published && row.show_on_homepage !== false ? 'Visible on homepage when published' : 'Hidden from homepage trust strip'}
+              </p>
               <div className="flex flex-wrap gap-2 md:col-span-2">
                 <button disabled={isPending} className="rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black disabled:opacity-60">Update</button>
               </div>

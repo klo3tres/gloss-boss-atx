@@ -175,7 +175,7 @@ export async function loadWebsiteIntelligenceBundle(admin: SupabaseClient): Prom
     admin.from('site_settings').select('value').eq('key', 'google_reviews_last_sync_at').maybeSingle(),
     admin
       .from('customer_reviews')
-      .select('id, customer_name, rating, testimonial, review_text, source, published, featured, created_at, google_review_id')
+      .select('id, customer_name, rating, testimonial, review_text, source, published, featured, show_on_homepage, created_at, google_review_id')
       .order('created_at', { ascending: false })
       .limit(50),
     admin.from('customer_reviews').select('id', { count: 'exact', head: true }).eq('published', true),
@@ -190,6 +190,8 @@ export async function loadWebsiteIntelligenceBundle(admin: SupabaseClient): Prom
   const googleReviewsLastSyncAt = parseSiteSettingValue(lastSyncRes.data?.value) || null;
   const reviews = (reviewsRes.data ?? []) as ReviewIntelRow[];
   const publishedReviewCount = publishedCountRes.count ?? reviews.filter((r) => r.published).length;
+  const homepageVisibleReviewCount = reviews.filter((r) => r.published && r.show_on_homepage !== false).length;
+  const googleReviewsStoredCount = reviews.filter((r) => /google/i.test(String(r.source ?? '')) || Boolean(r.google_review_id)).length;
   const publishedRatings = reviews.filter((r) => r.published).map((r) => Number(r.rating) || 5);
   const averageRating =
     publishedRatings.length > 0
@@ -360,6 +362,8 @@ export async function loadWebsiteIntelligenceBundle(admin: SupabaseClient): Prom
     googleReviewsLastSyncAt,
     reviews,
     publishedReviewCount,
+    homepageVisibleReviewCount,
+    googleReviewsStoredCount,
     averageRating,
     sitemapPresent,
     robotsPresent,

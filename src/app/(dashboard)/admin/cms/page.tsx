@@ -197,7 +197,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
     let res: { data: unknown[] | null; error: { message: string } | null } = reviewDb
       ? await reviewDb
           .from('customer_reviews')
-          .select('id, customer_name, rating, testimonial, review_text, service_label, vehicle_label, source, published, featured, created_at')
+          .select('id, customer_name, rating, testimonial, review_text, service_label, vehicle_label, source, published, featured, show_on_homepage, sort_order, created_at')
           .order('created_at', { ascending: false })
           .limit(100)
       : { data: [], error: { message: 'Admin database client unavailable.' } };
@@ -219,6 +219,8 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       source: String(r.source ?? 'Manual'),
       published: Boolean(r.published),
       featured: Boolean(r.featured),
+      show_on_homepage: r.show_on_homepage !== false,
+      sort_order: Number(r.sort_order ?? 0),
       created_at: String(r.created_at ?? ''),
     }));
   } catch (e) {

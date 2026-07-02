@@ -18,6 +18,7 @@ import { ContactForm } from '@/components/marketing/contact-form';
 import { FeaturedTransformationsSection } from '@/components/marketing/featured-transformations-section';
 import { HomeGalleryStrip } from '@/components/marketing/home-gallery-strip';
 import { HomeTrustStrip } from '@/components/marketing/home-trust-strip';
+import { HeroReviewTrust } from '@/components/marketing/hero-review-trust';
 import { HomepageHeroBackground } from '@/components/marketing/homepage-hero-background';
 import { MotionFade } from '@/components/marketing/motion-fade';
 import { OffersMarketingBand } from '@/components/marketing/offers-marketing-band';
@@ -98,6 +99,9 @@ export function HomePageView({
   const { visuals, brand, mediaRegistry, reviews, googleReviewUrl, socialLinks, offers, loaded } = state;
   const bookingHref = brand?.publicBookingUrl || '/book';
 
+  const heroImageFromVisuals = (visuals?.hero as { image?: string })?.image?.trim();
+  const heroImageUrl = heroImageFromVisuals || brand?.heroVideoPosterUrl || mediaUrl(mediaRegistry, 'homepage.hero');
+
   const socialButtons = [
     { label: 'Instagram', href: socialLinks.instagramUrl, mark: 'IG' },
     { label: 'TikTok', href: socialLinks.tiktokUrl, mark: 'TT' },
@@ -113,7 +117,7 @@ export function HomePageView({
       {isSectionVisible(visuals, 'hero') ? (
         <section className="relative flex min-h-[100svh] items-center border-b border-white/5 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
           <HomepageHeroBackground
-            imageUrl={(visuals?.hero as { image?: string })?.image || mediaUrl(mediaRegistry, 'homepage.hero')}
+            imageUrl={heroImageUrl}
             brand={brand}
             objectStyle={getObjectStyle(visuals?.hero as { fit?: string; position?: string })}
           />
@@ -154,10 +158,19 @@ export function HomePageView({
 
                 <p className="mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base">
                   {(visuals?.hero as { subtitle?: string })?.subtitle ||
-                    'Book online in minutes. Secure deposit. Showroom results without waiting at a shop.'}
+                    'Luxury mobile detailing in Austin, Texas. Book online in minutes with a secure deposit.'}
                 </p>
 
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                {loaded && reviews.length > 0 ? (
+                  <HeroReviewTrust
+                    reviews={reviews}
+                    googleReviewUrl={googleReviewUrl}
+                    bookingHref={bookingHref}
+                    compact
+                  />
+                ) : null}
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <PremiumButton href={(visuals?.hero as { ctaLink?: string })?.ctaLink || bookingHref}>
                     {(visuals?.hero as { ctaText?: string })?.ctaText || 'Book your detail'}{' '}
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -165,6 +178,23 @@ export function HomePageView({
                   <PremiumButton href="/services" variant="secondary">
                     View packages
                   </PremiumButton>
+                  {socialButtons.length > 0 ? (
+                    <div className="flex items-center gap-2 sm:ml-1">
+                      {socialButtons.map((s) => (
+                        <a
+                          key={s.label}
+                          href={s.href!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={s.label}
+                          title={s.label}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[10px] font-black uppercase text-zinc-300 transition hover:border-gold/30 hover:text-gold-soft"
+                        >
+                          {s.mark}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </PremiumCard>
             </MotionFade>

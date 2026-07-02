@@ -159,25 +159,40 @@ export function Titan10HomeClient({
         </div>
         <nav className="mt-7 flex flex-wrap gap-2 border-t border-white/8 pt-5" aria-label="Titan workspace">
           {[
-            { key: 'today', label: 'Today' },
-            { key: 'growth', label: 'Growth' },
-            { key: 'outreach', label: 'Outreach' },
-            { key: 'reports', label: 'Reports' },
+            { key: 'today', label: 'Today', icon: '📅' },
+            { key: 'growth', label: 'Growth', icon: '📈' },
+            { key: 'outreach', label: 'Outreach', icon: '✉️' },
+            { key: 'reports', label: 'Reports', icon: '📊' },
           ].map((item) => (
-            <Link key={item.key} href={`/admin/titan?workspace=${item.key}`} className={`rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition ${workspace === item.key ? 'bg-emerald-400 text-black shadow-[0_0_28px_rgba(52,211,153,0.2)]' : 'border border-white/8 bg-black/30 text-zinc-500 hover:text-white'}`}>
+            <Link key={item.key} href={`/admin/titan?workspace=${item.key}`} className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] transition ${workspace === item.key ? 'bg-emerald-400 text-black shadow-[0_0_28px_rgba(52,211,153,0.2)]' : 'border border-white/8 bg-black/30 text-zinc-500 hover:text-white'}`}>
+              <span aria-hidden>{item.icon}</span>
               {item.label}
             </Link>
           ))}
-          <Link href="/admin/titan/opportunities" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200 hover:text-white">
-            Opportunity Board
+          <Link href="/admin/titan/opportunities" className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200 hover:text-white">
+            <span aria-hidden>🎯</span>
+            Opportunities
           </Link>
-          <Link href="/admin/titan/lead-radar" className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
+          <Link href="/admin/notifications" className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-amber-200 hover:text-white">
+            <span aria-hidden>🔔</span>
+            Activity
+          </Link>
+          <Link href="/admin/calendar" className="inline-flex items-center gap-1.5 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-sky-200 hover:text-white">
+            <span aria-hidden>🗓️</span>
+            Calendar
+          </Link>
+          <Link href="/admin/titan/lead-radar" className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
+            <span aria-hidden>📡</span>
             Lead Radar
           </Link>
-          <Link href="/admin/titan/website-intelligence" className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-violet-200 hover:text-white">
+          <Link href="/admin/titan/website-intelligence" className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-violet-200 hover:text-white">
+            <span aria-hidden>🌐</span>
             Website Intelligence
           </Link>
-          <Link href="/admin/titan/settings" className="rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">Settings</Link>
+          <Link href="/admin/titan/settings" className="inline-flex items-center gap-1.5 rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">
+            <span aria-hidden>⚙️</span>
+            Settings
+          </Link>
         </nav>
       </header>
 

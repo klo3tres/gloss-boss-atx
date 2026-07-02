@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notifyBusinessOfContactMessage } from '@/lib/email/contact-notify';
+import { emitOwnerNotification } from '@/lib/titan/owner-notification-router';
 
 function cleanPhone(raw: string | undefined): string | null {
   const d = String(raw ?? '').replace(/\D/g, '');
@@ -75,16 +76,29 @@ export async function POST(request: Request) {
     ];
 
     let lastErr: string | null = null;
+    let messageId: string | null = null;
     for (const row of attempts) {
-      const { error } = await admin.from('messages').insert(row);
+      const { data, error } = await admin.from('messages').insert(row).select('id').maybeSingle();
       if (!error) {
+        messageId = data?.id ? String(data.id) : null;
         const notify = await notifyBusinessOfContactMessage({
           fromName: fromName.trim(),
           fromEmail: email,
           subject: subject ?? null,
           body: body.trim(),
         });
-        return NextResponse.json({ ok: true, emailSent: notify.sent, emailError: notify.error ?? null });
+        const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+        void emitOwnerNotification(admin, {
+          eventType: 'high_confidence_lead',
+          title: `New website message: ${fromName.trim()}`,
+          body: `${fromName.trim()} <${email}>${subject?.trim() ? ` — ${subject.trim()}` : ''}\n\n${body.trim()}`,
+          source: 'message_center',
+          relatedType: 'message',
+          relatedId: messageId ?? undefined,
+          relatedUrl: `${appBase}/admin/messages`,
+          emailStatus: notify.sent ? 'sent' : undefined,
+        });
+        return NextResponse.json({ ok: true, emailSent: notify.sent, emailError: notify.error ?? null, messageId });
       }
       lastErr = error.message;
       if (!isSchemaDriftError(error.message)) {

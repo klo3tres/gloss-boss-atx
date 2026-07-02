@@ -181,14 +181,14 @@ export function WorkOrderBalanceCheckout({
               appointmentId={appointmentId}
               buttonClassName='w-full rounded-2xl border border-white/20 px-4 py-3 text-xs font-black uppercase text-zinc-200'
             >
-              Preview & send payment link
+              Preview payment link
             </NotificationSendForm>
             <NotificationSendForm
               kind='zelle_instructions'
               appointmentId={appointmentId}
               buttonClassName='w-full rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs font-black uppercase text-cyan-100'
             >
-              Preview & send Zelle instructions
+              Preview Zelle instructions
             </NotificationSendForm>
           </div>
 

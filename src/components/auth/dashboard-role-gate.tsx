@@ -50,6 +50,18 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
   const [state, setState] = useState<GateState>('resolving');
   const [returningUser] = useState(() => readHydratedOnceFlag());
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [customerPreview, setCustomerPreview] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') === 'customer') {
+      sessionStorage.setItem('gb_customer_preview', '1');
+      setCustomerPreview(true);
+      return;
+    }
+    setCustomerPreview(sessionStorage.getItem('gb_customer_preview') === '1');
+  }, []);
 
   useEffect(() => {
     logRenderDebug({ step: 'dashboard_role_gate_state', gateState: state, variant });
@@ -131,6 +143,9 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
         if (allowed.includes(role)) {
           writeHydratedOnceFlag();
           setState('ready');
+        } else if (variant === 'customer' && isStaffRole(role) && customerPreview) {
+          writeHydratedOnceFlag();
+          setState('ready');
         } else if (variant === 'customer' && isStaffRole(role)) {
           window.location.assign(defaultDashboardPathForRole(role));
         } else {
@@ -157,7 +172,7 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
     return () => {
       cancelled = true;
     };
-  }, [variant, envReady]);
+  }, [variant, envReady, customerPreview]);
 
   if (state === 'setup') {
     return (
@@ -249,7 +264,26 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
   }
 
   if (state === 'ready') {
-    return <div className='min-h-screen bg-background'>{children}</div>;
+    return (
+      <div className="min-h-screen bg-background">
+        {variant === 'customer' && customerPreview ? (
+          <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-100">
+            Staff customer preview — showing your linked customer account data only.{' '}
+            <button
+              type="button"
+              className="font-bold underline"
+              onClick={() => {
+                sessionStorage.removeItem('gb_customer_preview');
+                window.location.href = defaultDashboardPathForRole('admin');
+              }}
+            >
+              Exit preview
+            </button>
+          </div>
+        ) : null}
+        {children}
+      </div>
+    );
   }
 
   return (

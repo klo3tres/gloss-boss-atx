@@ -402,7 +402,21 @@ export function WebsiteIntelligenceClient({ bundle }: { bundle: WebsiteIntellige
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-xl border border-white/8 bg-black/40 p-3 text-xs">
+            <p className="font-black uppercase text-zinc-500">Google stored</p>
+            <p className="mt-1 text-lg font-black text-white">{bundle.googleReviewsStoredCount}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/40 p-3 text-xs">
+            <p className="font-black uppercase text-zinc-500">Published</p>
+            <p className="mt-1 text-lg font-black text-white">{bundle.publishedReviewCount}</p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/40 p-3 text-xs">
+            <p className="font-black uppercase text-zinc-500">Homepage visible</p>
+            <p className={`mt-1 text-lg font-black ${bundle.homepageVisibleReviewCount > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+              {bundle.homepageVisibleReviewCount}
+            </p>
+          </div>
           <div className="rounded-xl border border-white/8 bg-black/40 p-3 text-xs">
             <p className="font-black uppercase text-zinc-500">Review link</p>
             <p className="mt-1 break-all text-zinc-300">{bundle.googleReviewUrl || 'Not set'}</p>

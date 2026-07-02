@@ -33,7 +33,7 @@ function revalidateReviews() {
 }
 
 function isSchemaFallbackError(message: string) {
-  return /column .* does not exist|schema cache|Could not find|review_text|vehicle_label|source|featured|updated_at|sort_order/i.test(message);
+  return /column .* does not exist|schema cache|Could not find|review_text|vehicle_label|source|featured|updated_at|sort_order|show_on_homepage/i.test(message);
 }
 
 async function writeReview(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, id: string, row: Record<string, unknown>) {
@@ -64,6 +64,7 @@ export async function saveManualReviewAction(formData: FormData): Promise<Review
 
   const id = str(formData.get('id'));
   const published = formData.get('published') === 'on' || formData.get('published') === 'true';
+  const showOnHomepage = formData.get('show_on_homepage') === 'on';
   const createdAt = dateIso(formData.get('review_date'));
   const now = new Date().toISOString();
   const row = {
@@ -76,6 +77,7 @@ export async function saveManualReviewAction(formData: FormData): Promise<Review
     source: str(formData.get('source')) || 'Manual',
     published,
     featured: formData.get('featured') === 'on' || formData.get('featured') === 'true',
+    show_on_homepage: showOnHomepage,
     sort_order: Number(formData.get('sort_order') ?? 0),
     approved_at: published ? now : null,
     created_at: createdAt,

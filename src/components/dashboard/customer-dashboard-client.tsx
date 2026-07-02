@@ -92,6 +92,7 @@ function money(cents: number) {
 
 function apptFromSnapshot(appt: CustomerAppt, snap?: CustomerApptSnapshotView): CustomerAppt & { snap?: CustomerApptSnapshotView } {
   if (!snap) return appt;
+  const vehicles = Array.isArray(snap.vehicles) ? snap.vehicles : [];
   return {
     ...appt,
     base_price_cents: snap.finalTotalCents,
@@ -99,14 +100,18 @@ function apptFromSnapshot(appt: CustomerAppt, snap?: CustomerApptSnapshotView): 
     balance_due_cents: snap.balanceDueCents,
     payment_status: snap.paymentStatus,
     service_address: snap.serviceAddress || appt.service_address,
-    booking_vehicles: snap.vehicles.map((v) => ({
-      vehicle_description: v.description,
-      service_slug: v.serviceSlug,
-      vehicle_class: v.vehicleClass,
-      add_on_slugs: v.addOns.map((a) => a.label),
+    booking_vehicles: vehicles.map((v) => ({
+      vehicle_description: v?.description ?? 'Vehicle',
+      service_slug: v?.serviceSlug ?? appt.service_slug ?? 'service',
+      vehicle_class: v?.vehicleClass ?? appt.vehicle_class ?? '',
+      add_on_slugs: Array.isArray(v?.addOns) ? v.addOns.map((a) => a?.label ?? '').filter(Boolean) : [],
     })),
     snap,
   };
+}
+
+function safeSlug(slug: string | null | undefined) {
+  return (slug ?? 'service').replace(/-/g, ' ');
 }
 
 function chicago(value: string) {
@@ -169,7 +174,7 @@ function tierTheme(tier?: string) {
 export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const loyaltyVisits = typeof props.loyaltyStampsCount === 'number'
     ? props.loyaltyStampsCount
-    : props.history.filter((a) => a.status === 'completed').length;
+    : (props.history ?? []).filter((a) => a.status === 'completed').length;
 
   const [rotateX, setRotateX] = useState(0);
   const [rotateY, setRotateY] = useState(0);
@@ -211,7 +216,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const uniqueVehicles = useMemo(() => {
     const seen = new Set<string>();
     const list: Array<{ description: string; vehicleClass: string }> = [];
-    const allAppts = [...props.history, ...(props.inFlight ?? []), ...(props.pending ?? []), ...props.upcoming];
+    const allAppts = [...(props.history ?? []), ...(props.inFlight ?? []), ...(props.pending ?? []), ...(props.upcoming ?? [])];
     for (const raw of allAppts) {
       const a = apptFromSnapshot(raw, props.snapshotByAppt?.[raw.id]);
       const vehicles = a.booking_vehicles;
@@ -237,7 +242,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     const photos: Array<{ url: string; category: string; apptId: string; service: string }> = [];
     for (const [apptId, list] of Object.entries(props.photosByAppt)) {
       const appt = props.history.find(h => h.id === apptId) || props.upcoming.find(u => u.id === apptId);
-      const service = appt ? appt.service_slug.replace(/-/g, ' ') : 'Detail';
+      const service = appt ? safeSlug(appt.service_slug) : 'Detail';
       for (const p of list) {
         photos.push({ url: p.file_url, category: p.category, apptId, service });
       }
@@ -248,7 +253,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
   const appointmentCards = useMemo(() => {
     const seen = new Set<string>();
     const out: CustomerAppt[] = [];
-    for (const a of [...(props.inFlight ?? []), ...(props.pending ?? []), ...props.upcoming]) {
+    for (const a of [...(props.inFlight ?? []), ...(props.pending ?? []), ...(props.upcoming ?? [])]) {
       if (seen.has(a.id)) continue;
       seen.add(a.id);
       out.push(a);
@@ -266,7 +271,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
       return {
         id: a.id,
         scheduledStart: a.scheduled_start,
-        title: a.service_slug.replace(/-/g, ' '),
+        title: safeSlug(a.service_slug),
         subtitle: vehiclesFrom(merged).join(' · '),
         address: addr || undefined,
         status: a.status,
@@ -358,7 +363,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 {nextRecommended ? `Recommended ${nextRecommended.toLocaleDateString()}` : 'Start your shine schedule'}
               </p>
               <p className="mt-1 text-xs text-zinc-500">
-                {lastCompleted ? `Based on your last ${lastCompleted.service_slug.replace(/-/g, ' ')}.` : 'Book your first member detail and start earning stamps.'}
+                {lastCompleted ? `Based on your last ${safeSlug(lastCompleted.service_slug)}.` : 'Book your first member detail and start earning stamps.'}
               </p>
             </div>
             <div className="mt-5 grid gap-2">
@@ -498,7 +503,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           </div>
           <p className="mt-3 text-2xl font-black text-white uppercase tracking-tight">Your detail is in progress</p>
           <p className="mt-1 text-zinc-400">
-            {liveJob.service_slug.replace(/-/g, ' ')} · {chicago(liveJob.scheduled_start)}
+            {safeSlug(liveJob.service_slug)} · {chicago(liveJob.scheduled_start)}
           </p>
           {liveJob.balance_due_cents != null && liveJob.balance_due_cents > 0 ? (
             <p className="mt-2 text-sm text-amber-200 font-bold">Balance due {money(liveJob.balance_due_cents)}</p>
@@ -573,7 +578,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-lg font-black uppercase tracking-tight text-white">{a.service_slug.replace(/-/g, ' ')}</p>
+                        <p className="text-lg font-black uppercase tracking-tight text-white">{safeSlug(a.service_slug)}</p>
                         <p className="text-sm text-gold-soft font-medium mt-0.5">{chicago(a.scheduled_start)}</p>
                         {a.balance_due_cents != null && a.balance_due_cents > 0 ? (
                           <p className="mt-1.5 text-xs font-bold text-amber-200 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded inline-block">Balance due {money(a.balance_due_cents)}</p>
@@ -741,7 +746,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             const payments = props.paymentsByAppt[a.id] ?? [];
             return (
               <li key={a.id} className="rounded-2xl border border-white/5 bg-black/40 p-5 hover:border-gold/20 transition">
-                <p className="font-black uppercase text-white tracking-tight">{a.service_slug.replace(/-/g, ' ')}</p>
+                <p className="font-black uppercase text-white tracking-tight">{safeSlug(a.service_slug)}</p>
                 <p className="text-xs text-zinc-500 font-medium mt-0.5">{chicago(a.scheduled_start)}</p>
                 <p className="mt-2 text-xs text-zinc-400 font-mono">Total {money(a.base_price_cents)}</p>
                 {payments[0] ? (

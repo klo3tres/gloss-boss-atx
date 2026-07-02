@@ -482,12 +482,12 @@ export function DashboardShell({
         </div>
 
         {navOpen ? (
-          <div className='gb-no-print fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden' onClick={() => setNavOpen(false)} aria-hidden />
+          <div className='gb-no-print fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm lg:hidden' onClick={() => setNavOpen(false)} aria-hidden />
         ) : null}
 
         <aside
-          className={`gb-no-print order-2 z-50 rounded-3xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 via-black/95 to-zinc-950/95 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
-            navOpen ? 'fixed left-4 right-4 top-20 max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:max-h-none' : 'hidden lg:block'
+          className={`gb-no-print order-2 rounded-3xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 via-black/95 to-zinc-950/95 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
+            navOpen ? 'fixed left-4 right-4 top-20 z-[80] max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:z-50 lg:max-h-none' : 'z-50 hidden lg:block'
           }`}
         >
           <div className="flex flex-col items-center mb-5 border-b border-white/5 pb-4">
@@ -499,7 +499,7 @@ export function DashboardShell({
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-6 overflow-x-hidden lg:order-2'>
-          <GlobalAppNav role={navRole} />
+          <GlobalAppNav role={navRole} overlayActive={navOpen || showNotifications} />
           {!isTitanSurface ? (
           <header className='gb-premium-hero gb-no-print overflow-hidden rounded-3xl p-5 sm:p-6 flex items-center justify-between gap-4'>
             <div className="min-w-0 flex-1 flex items-center gap-4">

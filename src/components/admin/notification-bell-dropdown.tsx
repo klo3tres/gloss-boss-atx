@@ -26,17 +26,24 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
   const load = async () => {
     const supabase = createSupabaseBrowserClient();
     if (!supabase) return;
-    const { data } = await supabase
-      .from('titan_notification_events')
-      .select('*')
-      .is('archived_at', null)
-      .order('created_at', { ascending: false })
-      .limit(12);
+    const [{ data }, { count }] = await Promise.all([
+      supabase
+        .from('titan_notification_events')
+        .select('*')
+        .is('archived_at', null)
+        .order('created_at', { ascending: false })
+        .limit(12),
+      supabase
+        .from('titan_notification_events')
+        .select('id', { count: 'exact', head: true })
+        .is('archived_at', null)
+        .is('read_at', null),
+    ]);
     if (data) {
       const mapped = data.map((r) => mapRow(r as Record<string, unknown>));
       setEvents(mapped);
-      setUnread(mapped.filter((e) => !e.readAt).length);
     }
+    setUnread(count ?? 0);
   };
 
   useEffect(() => {
