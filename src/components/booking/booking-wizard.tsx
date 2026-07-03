@@ -208,6 +208,7 @@ export function BookingWizard() {
     credits: [],
   });
   const [requestedCreditCents, setRequestedCreditCents] = useState(0);
+  const creditAutoAppliedRef = useRef(false);
   const CHECKOUT_TIMEOUT_MS = 10000;
   const CHECKOUT_FAIL_COPY =
     "We're having trouble opening secure checkout. Your booking can still be saved, and we'll send payment instructions separately.";
@@ -759,6 +760,14 @@ export function BookingWizard() {
     priceSummary?.kind === 'ok'
       ? Math.max(0, (paymentChoice === 'full' ? priceSummary.breakdown.finalTotalCents : priceSummary.breakdown.depositCents) - creditAppliedCents)
       : 0;
+
+  useEffect(() => {
+    if (creditAutoAppliedRef.current) return;
+    if (!customerCredits.signedIn || customerCredits.availableCents <= 0) return;
+    if (priceSummary?.kind !== 'ok') return;
+    creditAutoAppliedRef.current = true;
+    setRequestedCreditCents(Math.min(customerCredits.availableCents, priceSummary.breakdown.finalTotalCents));
+  }, [customerCredits.signedIn, customerCredits.availableCents, priceSummary]);
 
   useEffect(() => {
     if (requestedCreditCents <= 0) return;

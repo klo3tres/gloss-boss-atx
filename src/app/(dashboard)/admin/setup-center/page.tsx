@@ -20,6 +20,8 @@ import { isStaffRole } from '@/lib/auth/roles';
 import { MEDIA_REGISTRY_ITEMS, normalizeMediaRegistry } from '@/lib/media-registry';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { computeLaunchReadinessAggregate } from '@/lib/setup-readiness';
+import { SetupAggregateProgress } from '@/components/admin/setup-aggregate-progress';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,11 +40,13 @@ export default async function OwnerSetupCenterPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
-  const [stripe, mediaRes, serviceRes, reviewRes, lifecycleProbe, exceptionProbe, syncRunsProbe, closeoutProbe, estimatesProbe, followUpsProbe, titanProbe, growthProbe, discoveryProbe, productProbe, widgetProbe, opportunityProbe] = await Promise.all([
+  const [stripe, mediaRes, serviceRes, reviewRes, socialRes, hoursRes, lifecycleProbe, exceptionProbe, syncRunsProbe, closeoutProbe, estimatesProbe, followUpsProbe, titanProbe, growthProbe, discoveryProbe, productProbe, widgetProbe, opportunityProbe] = await Promise.all([
     getStripeSecrets(admin),
     admin.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle(),
     admin.from('services').select('id', { count: 'exact', head: true }).eq('active', true),
     admin.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
+    admin.from('site_settings').select('value').eq('key', 'social_instagram_url').maybeSingle(),
+    admin.from('site_settings').select('value').eq('key', 'booking_availability').maybeSingle(),
     admin.from('appointments').select('lifecycle_stage').limit(1),
     admin.from('business_exceptions').select('id', { count: 'exact', head: true }),
     admin.from('exception_sync_runs').select('id', { count: 'exact', head: true }),
@@ -73,6 +77,8 @@ export default async function OwnerSetupCenterPage() {
   const resendConfigured = Boolean(process.env.RESEND_API_KEY?.trim());
   const weatherConfigured = Boolean(process.env.OPENWEATHER_API_KEY?.trim() && (process.env.BUSINESS_HOME_BASE_ADDRESS?.trim() || (process.env.BUSINESS_LAT?.trim() && process.env.BUSINESS_LNG?.trim())));
   const reviewConfigured = Boolean(String(reviewRes.data?.value ?? '').trim());
+  const socialConfigured = Boolean(String(socialRes.data?.value ?? '').trim());
+  const hoursConfigured = Boolean(hoursRes.data?.value);
   const financialMigrationsReady = !exceptionProbe.error && !lifecycleProbe.error && !syncRunsProbe.error && !closeoutProbe.error && !estimatesProbe.error && !followUpsProbe.error && !titanProbe.error && !growthProbe.error && !discoveryProbe.error && !productProbe.error && !widgetProbe.error && !opportunityProbe.error;
 
   const checks: Readiness[] = [
@@ -149,6 +155,33 @@ export default async function OwnerSetupCenterPage() {
       href: '/admin/integrations#weather',
     },
     {
+      area: 'Booking',
+      title: 'Business hours & booking windows',
+      ok: hoursConfigured,
+      important: true,
+      detail: hoursConfigured ? 'Booking availability windows are configured in CMS.' : 'Set Friday/Saturday/Sunday windows and blackout dates so customers only see real slots.',
+      action: 'Configure hours',
+      href: '/admin/cms?tab=hours',
+    },
+    {
+      area: 'Branding',
+      title: 'Social profile links',
+      ok: socialConfigured,
+      important: false,
+      detail: socialConfigured ? 'At least one social URL is saved for homepage icons.' : 'Add Instagram or other social URLs in CMS so homepage icons link correctly.',
+      action: 'Configure social links',
+      href: '/admin/cms?tab=hours',
+    },
+    {
+      area: 'Growth',
+      title: 'Business Academy & Titan',
+      ok: true,
+      important: false,
+      detail: 'Curated videos, business models, and Titan powerstone actions live in Admin → Academy.',
+      action: 'Open Business Academy',
+      href: '/admin/academy',
+    },
+    {
       area: 'Reputation',
       title: 'Google review collection',
       ok: reviewConfigured,
@@ -163,9 +196,25 @@ export default async function OwnerSetupCenterPage() {
   const requiredDone = required.filter((check) => check.ok).length;
   const percentage = Math.round((requiredDone / required.length) * 100);
 
+  const { data: goalRows } = await admin
+    .from('admin_goals')
+    .select('status, target_value, current_value')
+    .neq('status', 'archived')
+    .limit(50);
+  const launchAggregate = computeLaunchReadinessAggregate(
+    checks,
+    (goalRows ?? []).map((g) => ({
+      status: String((g as { status?: string }).status ?? 'active'),
+      target_value: Number((g as { target_value?: number }).target_value ?? 0),
+      current_value: Number((g as { current_value?: number }).current_value ?? 0),
+    })),
+  );
+
   return (
     <DashboardShell title='Owner Setup Center' subtitle='Plain-language business readiness, prioritized for a safe customer launch.' role='admin'>
-      <section className='rounded-3xl border border-gold/25 bg-black/55 p-6'>
+      <SetupAggregateProgress aggregate={launchAggregate} />
+
+      <section className='mt-6 rounded-3xl border border-gold/25 bg-black/55 p-6'>
         <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>Required launch systems</p>
         <div className='mt-3 flex items-end justify-between gap-4'><p className='text-4xl font-black text-white'>{percentage}% ready</p><p className='text-xs text-zinc-400'>{requiredDone} of {required.length} required systems</p></div>
         <div className='mt-4 h-2 overflow-hidden rounded-full bg-white/10'><div className='h-full bg-gold' style={{ width: `${percentage}%` }} /></div>

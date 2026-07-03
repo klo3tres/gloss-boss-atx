@@ -34,6 +34,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'Overview',
     links: [
       { href: '/admin', label: 'Briefing' },
+      { href: '/admin/goals', label: 'Goals & awards' },
+      { href: '/admin/academy', label: 'Business Academy' },
       { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/calendar', label: 'Calendar' },
       { href: '/admin/titan?workspace=growth', label: 'Titan workspace' },
@@ -100,6 +102,7 @@ const superNavGroups: NavGroup[] = adminNavGroups;
 
 const techLinks = [
   { href: '/tech?tab=overview', label: 'Overview' },
+  { href: '/tech?tab=goals', label: 'Goals & awards' },
   { href: '/tech?tab=jobs', label: 'My Jobs' },
   { href: '/tech?tab=calendar', label: 'Calendar' },
   { href: '/tech?tab=leads', label: 'Leads' },

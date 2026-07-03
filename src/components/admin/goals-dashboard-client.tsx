@@ -7,10 +7,14 @@ import {
   archiveAdminGoalAction,
   completeAdminGoalAction,
   deleteAdminGoalAction,
+  markAchievementsSeenAction,
   saveAdminGoalAction,
+  seedStarterGoalsAction,
 } from '@/app/(dashboard)/admin/goals/goals-actions';
 import { GlassCard, PremiumBadge, SectionEyebrow } from '@/components/ui/premium';
-import { Target, Calendar, User, CheckCircle2, Archive, Trash2, Edit3, Plus, X } from 'lucide-react';
+import { TeamGoalsScoreboard } from '@/components/goals/team-goals-scoreboard';
+import type { StaffAchievement } from '@/lib/goals-achievements';
+import { Target, Calendar, User, CheckCircle2, Archive, Trash2, Edit3, Plus, X, Trophy, Rocket, Zap } from 'lucide-react';
 
 export type GoalRow = {
   id: string;
@@ -153,20 +157,74 @@ export function GoalsDashboardClient({
   goals,
   technicians,
   canEdit = true,
+  profileId,
+  myAchievements = [],
+  teamAchievements = [],
 }: {
   goals: GoalRow[];
   technicians: Array<{ id: string; name: string }>;
   canEdit?: boolean;
+  profileId?: string;
+  myAchievements?: StaffAchievement[];
+  teamAchievements?: StaffAchievement[];
 }) {
   const router = useRouter();
   const [editId, setEditId] = useState<string | null>(null);
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [pending, start] = useTransition();
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
 
   const refresh = () => router.refresh();
+  const completedCount = goals.filter((g) => g.status === 'completed').length;
+  const activeGoals = goals.filter((g) => g.status !== 'completed');
+  const overallPct =
+    activeGoals.length > 0
+      ? Math.round(
+          activeGoals.reduce((sum, g) => {
+            const pct = g.target_value > 0 ? Math.min(100, (g.current_value / g.target_value) * 100) : 0;
+            return sum + pct;
+          }, 0) / activeGoals.length,
+        )
+      : 0;
 
   return (
     <div className='space-y-8'>
+      {goals.length > 0 ? (
+        <GlassCard className='border-gold/25 bg-gradient-to-br from-gold/5 via-black to-zinc-950'>
+          <div className='flex flex-wrap items-center justify-between gap-4'>
+            <div>
+              <SectionEyebrow>Team scoreboard</SectionEyebrow>
+              <p className='mt-2 text-sm text-zinc-400'>Live progress across active targets — visible to every employee.</p>
+            </div>
+            <div className='flex items-center gap-4'>
+              {completedCount > 0 ? (
+                <span className='inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase text-emerald-300'>
+                  <Trophy className='h-3.5 w-3.5' /> {completedCount} won
+                </span>
+              ) : null}
+              <div className='text-right'>
+                <p className='text-[10px] font-black uppercase text-zinc-500'>Overall</p>
+                <p className='font-mono text-2xl font-black text-gold-soft'>{overallPct}%</p>
+              </div>
+            </div>
+          </div>
+          <div className='mt-4 h-3 overflow-hidden rounded-full bg-zinc-950 border border-white/10'>
+            <div
+              className='h-full rounded-full bg-gradient-to-r from-gold via-amber-300 to-emerald-400 transition-all duration-700'
+              style={{ width: `${overallPct}%` }}
+            />
+          </div>
+        </GlassCard>
+      ) : null}
+
+      <TeamGoalsScoreboard
+        goals={goals}
+        myAchievements={myAchievements}
+        teamAchievements={teamAchievements}
+        profileId={profileId}
+        showGoalCards={false}
+      />
+
       {/* ACTIVE & SYNCED TARGETS SECTION */}
       <div>
         <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-6">
@@ -187,8 +245,43 @@ export function GoalsDashboardClient({
 
         <div className='grid gap-6 lg:grid-cols-2'>
           {goals.length === 0 ? (
-            <GlassCard className='text-center py-12 border border-dashed border-white/10 bg-black/20 lg:col-span-2'>
-              <p className='text-xs text-zinc-500 italic'>No goals currently set. Click &quot;Create Goal&quot; above to track progress.</p>
+            <GlassCard className='text-center py-12 border border-dashed border-gold/25 bg-gradient-to-b from-gold/5 to-black/20 lg:col-span-2'>
+              <div className='mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-gold/30 bg-gold/10'>
+                <Rocket className='h-7 w-7 text-gold-soft' />
+              </div>
+              <h3 className='mt-4 text-lg font-black uppercase text-white'>No goals yet — can&apos;t score the game</h3>
+              <p className='mx-auto mt-2 max-w-md text-sm text-zinc-400'>
+                Launch the starter pack to give every employee real progress bars, or create custom targets. Titan Briefing uses these numbers daily.
+              </p>
+              {canEdit ? (
+                <div className='mt-6 flex flex-wrap items-center justify-center gap-3'>
+                  <button
+                    type='button'
+                    disabled={pending}
+                    onClick={() =>
+                      start(async () => {
+                        setSeedMsg(null);
+                        const res = await seedStarterGoalsAction();
+                        setSeedMsg(res.error ?? `Launched ${res.created ?? 5} starter goals!`);
+                        if (res.ok) refresh();
+                      })
+                    }
+                    className='inline-flex items-center gap-2 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black hover:brightness-110 disabled:opacity-50'
+                  >
+                    <Zap className='h-4 w-4' /> Launch starter goals
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setShowCreateDrawer(true)}
+                    className='rounded-xl border border-white/15 px-5 py-3 text-[10px] font-black uppercase text-zinc-300 hover:border-gold/30 hover:text-white'
+                  >
+                    Create custom goal
+                  </button>
+                </div>
+              ) : (
+                <p className='mt-4 text-xs text-zinc-500'>Ask your owner to set goals at Admin → Goals.</p>
+              )}
+              {seedMsg ? <p className='mt-4 text-xs font-bold text-emerald-300'>{seedMsg}</p> : null}
             </GlassCard>
           ) : (
             goals.map((g) => {

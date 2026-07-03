@@ -6,6 +6,16 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { normalizeSmsConsentStatus } from '@/lib/sms-consent';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import type { ThemePreference } from '@/components/theme/theme-provider';
+
+export async function updateThemePreferenceAction(preference: ThemePreference) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user?.id || !admin) return;
+  if (!['light', 'dark', 'system'].includes(preference)) return;
+  await admin.from('profiles').update({ theme_preference: preference }).eq('id', session.user.id);
+  revalidatePath('/dashboard/settings');
+}
 
 export async function updateCustomerSmsPreferencesAction(formData: FormData) {
   const session = await getSessionWithProfile();

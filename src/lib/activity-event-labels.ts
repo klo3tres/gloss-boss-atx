@@ -56,23 +56,30 @@ export function formatActivityEventLabel(input: TimelineEventLabelInput): string
     return `Owner SMS sent: ${guest}${servicePart}`;
   }
   if (type.includes('confirmation') && type.includes('email')) {
-    return `Customer confirmation email sent: ${guest}`;
+    return `📧 ${guest} — Confirmation email sent`;
   }
   if (type.includes('confirmation') && type.includes('sms')) {
-    return `Customer confirmation SMS sent: ${guest}`;
+    return `📱 ${guest} — SMS delivered`;
+  }
+  if (type.includes('customer_confirmation_sent')) {
+    const total = str(input.meta?.total_cents || input.payload?.total_cents);
+    return total ? `📧 ${guest} — Confirmation sent (${money(Number(total))} total)` : `📧 ${guest} — Confirmation sent`;
   }
   if (type.includes('google_calendar') || type.includes('calendar_sync') || type.includes('gcal')) {
     const when = str(input.meta?.when_label || input.payload?.when_label);
-    return `Google Calendar updated: ${guest}${when ? ` — ${when}` : servicePart}`;
+    return `📅 ${guest} — Google Calendar updated${when ? ` (${when})` : servicePart}`;
   }
   if (type.includes('payment_link')) {
-    return `Payment link sent: ${guest}${amount ? ` — ${amount} balance` : ''}`;
+    return `💵 ${guest} — Payment link${amount ? ` (${amount})` : ''}`;
   }
   if (type.includes('deposit_paid')) {
-    return `Deposit received: ${guest}${amount ? ` — ${amount}` : ''}`;
+    return `💵 ${guest} — Deposit received${amount ? ` (${amount})` : ''}`;
   }
   if (type.includes('paid_full') || type.includes('payment_received')) {
-    return `Payment received: ${guest}${amount ? ` — ${amount}` : ''}`;
+    return `💵 ${guest} — Payment received${amount ? ` (${amount})` : ''}`;
+  }
+  if (type.includes('review')) {
+    return `⭐ ${guest} — Review submitted`;
   }
   if (type.includes('password_reset')) {
     return type.includes('failed') ? `Password reset failed: ${guest}` : `Password reset sent: ${guest}`;
@@ -87,10 +94,10 @@ export function formatActivityEventLabel(input: TimelineEventLabelInput): string
     return `Email sent: ${guest} — ${type.replace(/_/g, ' ')}`;
   }
   if (channel === 'sms') {
-    return `SMS sent: ${guest} — ${type.replace(/_/g, ' ')}`;
+    return `📱 ${guest} — SMS${servicePart}${amount ? ` · ${amount}` : ''}`;
   }
   if (channel === 'email') {
-    return `Email sent: ${guest} — ${type.replace(/_/g, ' ')}`;
+    return `📧 ${guest} — Email${servicePart}${amount ? ` · ${amount}` : ''}`;
   }
 
   const human = type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

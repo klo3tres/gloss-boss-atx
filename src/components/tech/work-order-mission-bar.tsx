@@ -43,17 +43,24 @@ export function WorkOrderMissionBar({
   activeTab,
   onTabChange,
   timerRunning,
+  timerLabel,
+  timerWarning,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   timerRunning?: boolean;
+  timerLabel?: string | null;
+  timerWarning?: string | null;
   hasPreInspection?: boolean;
 }) {
   return (
     <div className='gb-mission-top fixed left-0 right-0 top-16 z-40 border-b border-gold/25 bg-black/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl lg:top-14'>
+      {timerWarning ? (
+        <p className='border-b border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-center text-[10px] font-bold text-amber-200'>{timerWarning}</p>
+      ) : null}
       <div className='mx-auto flex max-w-7xl gap-2 overflow-x-auto px-3 py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden justify-start md:justify-center'>
         <MissionBtn
-          label={timerRunning ? 'Timer on' : 'Overview'}
+          label={timerRunning ? (timerLabel ? `Timer ${timerLabel}` : 'Timer on') : 'Overview'}
           icon={<Clock className='h-4 w-4' />}
           onClick={() => onTabChange('overview')}
           active={activeTab === 'overview'}

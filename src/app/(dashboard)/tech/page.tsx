@@ -9,6 +9,15 @@ import {
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { loadAdminGoalsMetrics, loadTechnicianGoalsMetrics, syncAdminGoalsCurrentValues } from '@/lib/admin-goals-metrics';
+import {
+  loadAchievementsForProfile,
+  loadRecentTeamAchievements,
+  processTeamGoalAchievements,
+  processWeeklyRevenueMilestones,
+} from '@/lib/goals-achievements';
+import type { TeamGoalRow } from '@/components/goals/team-goals-scoreboard';
+import type { StaffAchievement } from '@/lib/goals-achievements';
 import { isActiveFieldStatus, isArchivedOrDeletedRow, isRealTimerId, isStaleTimerStart, isTestLikeJob } from '@/lib/tech-job-filters';
 import { fetchWeatherForAddress } from '@/lib/weather-forecast';
 
@@ -119,6 +128,9 @@ export default async function TechnicianDashboardPage({
   };
   let goalLabel: string | null = null;
   let goalTargetCents: number | null = null;
+  let teamGoals: TeamGoalRow[] = [];
+  let myAchievements: StaffAchievement[] = [];
+  let teamAchievements: StaffAchievement[] = [];
 
   const techName = session.profile?.full_name?.trim() || session.user?.email?.split('@')[0] || 'Technician';
   const roleLabel = session.profile?.role ?? null;
@@ -772,6 +784,48 @@ export default async function TechnicianDashboardPage({
     completedTodayCount = count ?? 0;
   }
 
+  if (admin && session.user) {
+    const uid = session.user.id;
+    const metrics = await loadAdminGoalsMetrics(admin);
+    await syncAdminGoalsCurrentValues(admin, metrics);
+    const { data: goalData } = await admin
+      .from('admin_goals')
+      .select('*')
+      .neq('status', 'archived')
+      .or(`technician_id.is.null,technician_id.eq.${uid},assigned_to.eq.${uid}`)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    teamGoals = (goalData ?? []).map((g) => {
+      const row = g as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        title: String(row.title),
+        goal_type: String(row.goal_type),
+        target_value: Number(row.target_value ?? 0),
+        current_value: Number(row.current_value ?? 0),
+        unit: String(row.unit ?? 'cents'),
+        status: String(row.status ?? 'active'),
+        period_end: row.period_end != null ? String(row.period_end) : null,
+        technician_id: row.technician_id != null ? String(row.technician_id) : null,
+      };
+    });
+
+    const personalWeekly = teamGoals.find((g) => g.goal_type === 'revenue_weekly' && g.technician_id === uid);
+    if (personalWeekly) {
+      goalTargetCents = personalWeekly.target_value;
+      goalLabel = personalWeekly.title;
+    }
+
+    const weekPct =
+      goalTargetCents != null && goalTargetCents > 0
+        ? Math.min(100, Math.round((revenueWeekCents / goalTargetCents) * 100))
+        : 0;
+    await processWeeklyRevenueMilestones(admin, uid, weekPct, goalLabel ?? 'Weekly revenue');
+    await processTeamGoalAchievements(admin, teamGoals);
+    myAchievements = await loadAchievementsForProfile(admin, uid, 20);
+    teamAchievements = await loadRecentTeamAchievements(admin, 8);
+  }
+
   return (
     <DashboardShell title='Technician overview' subtitle='Live jobs, revenue, leads, goals, customers, and route work from real CRM data.' role='technician'>
       <TechPremiumShell
@@ -787,6 +841,10 @@ export default async function TechnicianDashboardPage({
         performance={performance}
         goalLabel={goalLabel}
         goalTargetCents={goalTargetCents}
+        teamGoals={teamGoals}
+        myAchievements={myAchievements}
+        teamAchievements={teamAchievements}
+        profileId={session.user?.id}
         justStarted={justStarted}
         activeDebug={activeDebug}
         isSuperAdmin={session.profile?.role === 'super_admin'}

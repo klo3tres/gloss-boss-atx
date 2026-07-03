@@ -40,7 +40,17 @@ function emptyLead(): LeadForm {
   return { name: '', email: '', phone: '', vehicle: '', serviceNeeded: '', city: '', preferredDate: '' };
 }
 
-export function TitanPublicAssistant({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function TitanPublicAssistant({
+  open,
+  onClose,
+  initialPrompt = null,
+  onInitialPromptConsumed,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialPrompt?: string | null;
+  onInitialPromptConsumed?: () => void;
+}) {
   const [sessionId, setSessionId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -49,6 +59,7 @@ export function TitanPublicAssistant({ open, onClose }: { open: boolean; onClose
   const [lead, setLead] = useState<LeadForm>(emptyLead());
   const [err, setErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialPromptSent = useRef(false);
 
   const track = useCallback(
     async (eventType: string, extra?: { questionKey?: string; metadata?: Record<string, unknown> }) => {
@@ -107,35 +118,50 @@ export function TitanPublicAssistant({ open, onClose }: { open: boolean; onClose
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, leadMode]);
 
-  const ask = async (question: string) => {
-    const q = question.trim();
-    if (!q || busy) return;
-    setErr(null);
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'user', text: q }]);
-    setInput('');
-    setBusy(true);
-    try {
-      const res = await fetch('/api/public/titan-guide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ask', question: q, sessionId }),
-      });
-      if (!res.ok) {
+  const ask = useCallback(
+    async (question: string) => {
+      const q = question.trim();
+      if (!q || busy) return;
+      setErr(null);
+      setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'user', text: q }]);
+      setInput('');
+      setBusy(true);
+      try {
+        const res = await fetch('/api/public/titan-guide', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'ask', question: q, sessionId }),
+        });
+        if (!res.ok) {
+          showApiFallback();
+          return;
+        }
+        const j = (await res.json()) as {
+          reply: { message: string; links: GuideLink[]; suggestLeadCapture?: 'quote' | 'handoff' | null };
+          error?: string;
+        };
+        pushTitan(j.reply.message, j.reply.links);
+        if (j.reply.suggestLeadCapture) setLeadMode(j.reply.suggestLeadCapture);
+      } catch {
         showApiFallback();
-        return;
+      } finally {
+        setBusy(false);
       }
-      const j = (await res.json()) as {
-        reply: { message: string; links: GuideLink[]; suggestLeadCapture?: 'quote' | 'handoff' | null };
-        error?: string;
-      };
-      pushTitan(j.reply.message, j.reply.links);
-      if (j.reply.suggestLeadCapture) setLeadMode(j.reply.suggestLeadCapture);
-    } catch {
-      showApiFallback();
-    } finally {
-      setBusy(false);
+    },
+    [busy, sessionId, showApiFallback, pushTitan],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      initialPromptSent.current = false;
+      return;
     }
-  };
+    const prompt = initialPrompt?.trim();
+    if (!prompt || !sessionId || initialPromptSent.current || messages.length === 0) return;
+    initialPromptSent.current = true;
+    void ask(prompt);
+    onInitialPromptConsumed?.();
+  }, [open, initialPrompt, sessionId, messages.length, ask, onInitialPromptConsumed]);
 
   const submitLead = async (highPriority: boolean) => {
     setErr(null);

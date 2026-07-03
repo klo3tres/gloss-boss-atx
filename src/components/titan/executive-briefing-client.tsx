@@ -4,11 +4,9 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Activity, Calendar, ChevronRight, TrendingUp, Users } from 'lucide-react';
 import type { ExecutiveBriefingSnapshot } from '@/lib/titan/executive-briefing';
-import {
-  TitanHealthPill,
-  TitanOpportunityCard,
-  TitanPageShell,
-} from '@/components/titan/titan-page-shell';
+import { TitanHealthPill, TitanPageShell } from '@/components/titan/titan-page-shell';
+import { BriefingOpportunityCard } from '@/components/titan/briefing-opportunity-card';
+import { TitanPowerstonePanel } from '@/components/titan/titan-powerstone-panel';
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 
 export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBriefingSnapshot }) {
@@ -134,15 +132,7 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 + i * 0.05 }}
                   >
-                    <TitanOpportunityCard
-                      title={opp.title}
-                      body={opp.body}
-                      confidence={opp.confidence}
-                      confidenceLabel={opp.confidenceLabel}
-                      revenueLabel={opp.revenueLabel}
-                      href={opp.href}
-                      autoRunLabel={opp.autoRunLabel}
-                    />
+                    <BriefingOpportunityCard opp={opp} />
                   </motion.div>
                 ))
               )}
@@ -156,11 +146,13 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
           transition={{ delay: 0.1 }}
           className="space-y-4"
         >
+          <TitanPowerstonePanel briefing={briefing} />
           <GlassCard>
             <SectionEyebrow>Quick links</SectionEyebrow>
             <nav className="mt-3 space-y-1">
               {[
                 ['Today\'s Business', '/admin'],
+                ['Business Academy', '/admin/academy'],
                 ['Activity', '/admin/notifications'],
                 ['Calendar', '/admin/calendar'],
                 ['Customers', '/admin/customers'],

@@ -1,5 +1,7 @@
 'use client';
 
+import { TITAN_VERSION_LABEL, TITAN_PRODUCT_STAGE } from '@/lib/titan/branding';
+
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import {
@@ -151,7 +153,11 @@ export function Titan10HomeClient({
       <header className="overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_35%),linear-gradient(135deg,rgba(9,9,11,0.98),rgba(0,0,0,0.98))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Titan AI Business Operator</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">
+              Titan · {TITAN_VERSION_LABEL}
+              <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[8px] text-amber-200">{TITAN_PRODUCT_STAGE}</span>
+            </p>
+            <p className="mt-1 text-[10px] text-zinc-500">AI business operations layer — in active development, not a shipped product yet.</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{snapshot.ownerGreeting}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{snapshot.mission}</p>
           </div>

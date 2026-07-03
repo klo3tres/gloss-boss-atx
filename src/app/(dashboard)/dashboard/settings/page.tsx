@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Bell, LockKeyhole, Mail, MessageSquare } from 'lucide-react';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
+import { ThemeSettingsPanel } from '@/components/theme/theme-settings-panel';
+import type { ThemePreference } from '@/components/theme/theme-provider';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
@@ -26,6 +28,13 @@ export default async function CustomerSettingsPage() {
   const row = customer as
     | { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null; sms_consent?: boolean | null; sms_status?: string | null }
     | null;
+
+  const { data: profileRow } = session.user?.id && admin
+    ? await admin.from('profiles').select('theme_preference').eq('id', session.user.id).maybeSingle()
+    : { data: null };
+  const themePreference = (profileRow as { theme_preference?: string } | null)?.theme_preference;
+  const savedTheme: ThemePreference | null =
+    themePreference === 'light' || themePreference === 'dark' || themePreference === 'system' ? themePreference : null;
   const { data: membershipRows } =
     admin && row?.id
       ? await admin
@@ -80,6 +89,7 @@ export default async function CustomerSettingsPage() {
       </section>
 
       <section className='grid gap-4 md:grid-cols-2'>
+        <ThemeSettingsPanel savedPreference={savedTheme} />
         <div className='rounded-3xl border border-gold/20 bg-zinc-950 p-5'>
           <p className='flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>
             <Mail className='h-4 w-4' /> Email preferences

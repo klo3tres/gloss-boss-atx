@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { bookingConfirmationEmailHtml } from '@/lib/email/templates/booking';
 import { resolveJobPricing } from '@/lib/job-pricing-display';
+import { resolveOrderLedger } from '@/lib/order-ledger';
 import { sendCustomerSms } from '@/lib/sms-send';
 import { notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
 import { emitOwnerNotification } from '@/lib/titan/owner-notification-router';
@@ -81,6 +82,7 @@ export type BookingConfirmationContext = {
   portalUrl: string;
   workOrderId: string;
   customerId: string | null;
+  priceSource: string;
 };
 
 export async function loadBookingConfirmationContext(
@@ -100,7 +102,14 @@ export async function loadBookingConfirmationContext(
     .eq('appointment_id', id)
     .order('paid_at', { ascending: false })
     .limit(20);
-  const pricing = resolveJobPricing(row, (payments ?? []) as Row[]);
+
+  const ledger = await resolveOrderLedger(admin, { appointmentId: id });
+  const pricing = ledger?._pricing ?? resolveJobPricing(row, (payments ?? []) as Row[]);
+  const totalCents = ledger?.totals.finalTotalCents ?? pricing.finalTotalCents;
+  const balanceCents = ledger?.totals.balanceDueCents ?? pricing.remainingBalanceCents;
+  const depositPaidCents = ledger?.totals.depositPaidCents ?? pricing.depositPaidCents;
+  const depositRequiredCents = pricing.depositCents;
+  const priceSource = pricing.priceSource ?? 'engine_recompute';
 
   const whenIso = str(row.scheduled_start) || new Date().toISOString();
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
@@ -125,9 +134,10 @@ export async function loadBookingConfirmationContext(
     whenIso,
     address: fullAddress(row),
     duration: durationLabel(row),
-    totalCents: pricing.finalTotalCents,
-    depositCents: pricing.depositCents,
-    balanceCents: pricing.remainingBalanceCents,
+    totalCents,
+    depositCents: depositPaidCents > 0 ? depositPaidCents : depositRequiredCents,
+    balanceCents,
+    priceSource,
     calendarUrl: `${base}/api/calendar/appointment/${id}`,
     confirmationUrl,
     portalUrl,
@@ -136,11 +146,11 @@ export async function loadBookingConfirmationContext(
       guestName: str(row.guest_name) || 'Customer',
       whenLabel: whenChicago(whenIso),
       service: serviceLabel(row),
-      total: money(pricing.finalTotalCents),
-      deposit: money(pricing.depositCents),
+      total: money(totalCents),
+      deposit: money(depositPaidCents > 0 ? depositPaidCents : depositRequiredCents),
       vehicles: vehicleSummary(row),
       serviceAddress: fullAddress(row),
-      remainingBalance: money(pricing.remainingBalanceCents),
+      remainingBalance: money(balanceCents),
       duration: durationLabel(row),
       calendarUrl: `${base}/api/calendar/appointment/${id}`,
       confirmationUrl,
@@ -152,9 +162,9 @@ export async function loadBookingConfirmationContext(
       service: serviceLabel(row),
       vehicles: vehicleSummary(row),
       address: fullAddress(row),
-      totalCents: pricing.finalTotalCents,
-      depositCents: pricing.depositCents,
-      balanceCents: pricing.remainingBalanceCents,
+      totalCents,
+      depositCents: depositPaidCents > 0 ? depositPaidCents : depositRequiredCents,
+      balanceCents,
       portalUrl,
     }),
   };
@@ -249,6 +259,8 @@ export async function sendBookingConfirmation(
           subject,
           body_html: html.slice(0, 8000),
           body_preview: html.replace(/<[^>]+>/g, ' ').slice(0, 500),
+          total_cents: ctx.totalCents,
+          price_source: ctx.priceSource,
         },
       });
     } else {
@@ -344,10 +356,11 @@ export async function sendBookingConfirmation(
   const activityTitle = anyFailed
     ? 'Customer confirmation failed'
     : anySent
-      ? 'Customer confirmation sent'
+      ? `Customer confirmation sent — ${money(ctx.totalCents)} total`
       : 'Customer confirmation skipped';
   const activityBody = [
     `${ctx.guestName} · ${ctx.whenLabel}`,
+    `Total: ${money(ctx.totalCents)} · Balance: ${money(ctx.balanceCents)} · Source: ${ctx.priceSource}`,
     ctx.guestEmail ? `Email: ${emailStatus}${emailError ? ` — ${emailError}` : ''}` : 'Email: no address',
     ctx.guestPhone ? `SMS: ${smsStatus}${smsError ? ` — ${smsError}` : smsSkipped ? ` — ${smsSkipped}` : ''}` : 'SMS: no phone',
     twilioDetail ? `Twilio: ${twilioDetail}` : '',

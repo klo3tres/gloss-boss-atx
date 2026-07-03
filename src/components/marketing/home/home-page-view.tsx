@@ -35,6 +35,7 @@ import { isOfferEligiblePublicSiteData } from '@/lib/public-site-data';
 import { mediaUrl } from '@/lib/media-registry';
 import type { DealConfig, ServicePackage } from '@/lib/site-config';
 import { SectionErrorBoundary } from '@/components/site/section-error-boundary';
+import { MembershipComparisonSlim } from '@/components/marketing/membership-comparison-slim';
 
 const faqs = [
   {
@@ -300,6 +301,7 @@ export function HomePageView({
                   Calculate savings
                 </PremiumButton>
               </div>
+              <MembershipComparisonSlim className="mt-10 max-w-4xl" />
             </div>
           </div>
         </section>

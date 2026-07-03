@@ -25,6 +25,7 @@ import { HomepageVisualsManager } from '@/components/admin/homepage-visuals-mana
 import { resolvePhotoPhase, resolvePhotoSlot } from '@/lib/photo-phase';
 import { CmsMediaManager } from '@/components/admin/cms-media-manager';
 import { CmsReviewsManager } from '@/components/admin/cms-reviews-manager';
+import { CmsAcademyArticlesClient, type CmsAcademyArticle } from '@/components/admin/cms-academy-articles-client';
 import { normalizeMediaRegistry } from '@/lib/media-registry';
 
 export const dynamic = 'force-dynamic';
@@ -98,11 +99,12 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
   let socialLinks = { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' };
   let bookingAvail = parseBookingAvailabilityConfig(DEFAULT_BOOKING_AVAILABILITY);
   let homepageVisualsJson = '';
+  let academyArticles: CmsAcademyArticle[] = [];
   try {
     const settingsRes = await supabase
       .from('site_settings')
       .select('key, value')
-      .in('key', ['navbar_logo', 'homepage_logo', 'booking_availability', 'homepage_visuals', 'social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']);
+      .in('key', ['navbar_logo', 'homepage_logo', 'booking_availability', 'homepage_visuals', 'social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url', 'business_academy_articles']);
     for (const row of settingsRes.data ?? []) {
       const key = typeof row?.key === 'string' ? row.key : '';
       const val = typeof row?.value === 'string' ? row.value.trim() : '';
@@ -118,6 +120,18 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           bookingAvail = parseBookingAvailabilityConfig(JSON.parse(val));
         } catch {
           /* keep default */
+        }
+      }
+      if (key === 'business_academy_articles') {
+        const raw = row?.value;
+        if (Array.isArray(raw)) academyArticles = raw as CmsAcademyArticle[];
+        else if (typeof raw === 'string' && raw.trim()) {
+          try {
+            const parsed = JSON.parse(raw) as unknown;
+            if (Array.isArray(parsed)) academyArticles = parsed as CmsAcademyArticle[];
+          } catch {
+            /* ignore */
+          }
         }
       }
     }
@@ -363,6 +377,7 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
           { id: 'featured', label: 'Featured transformations' },
           { id: 'gallery', label: 'Gallery manager' },
           { id: 'reviews', label: 'Reviews / testimonials' },
+          { id: 'academy', label: 'Business Academy' },
           { id: 'hours', label: 'Hours / contact' },
           { id: 'advanced', label: 'Advanced' },
         ].map((tab) => {
@@ -549,6 +564,18 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
             googleApiConfigured={googleApiConfigured}
             googlePlaceConfigured={googlePlaceConfigured}
           />
+        </section>
+      )}
+
+      {currentTab === 'academy' && (
+        <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md'>
+          <h2 className='text-lg font-black uppercase tracking-tight text-white'>Business Academy articles</h2>
+          <p className='mt-2 text-sm text-zinc-400'>
+            Owner-edited resources merge with Titan&apos;s curated library on <Link href='/admin/academy' className='text-gold-soft underline'>Admin → Business Academy</Link>.
+          </p>
+          <div className='mt-6'>
+            <CmsAcademyArticlesClient initial={academyArticles} />
+          </div>
         </section>
       )}
 

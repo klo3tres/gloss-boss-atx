@@ -1,7 +1,11 @@
 /** Titan™ product branding — AI Business Operator, not a CRM. */
 
 export const TITAN_PRODUCT_NAME = 'Titan';
-export const TITAN_PRODUCT_TAGLINE = 'AI Business Operator';
+/** Pre-release platform — expandable AI business operations layer for Gloss Boss. */
+export const TITAN_VERSION = '0.5.0';
+export const TITAN_VERSION_LABEL = 'Beta v0.5';
+export const TITAN_PRODUCT_STAGE = 'beta' as const;
+export const TITAN_PRODUCT_TAGLINE = 'AI Business Operations Platform (beta)';
 export const TITAN_TAGLINE = 'Business Development Department';
 export const TITAN_MISSION =
   'Create revenue. Recover revenue. Increase revenue. Everything else is secondary.';

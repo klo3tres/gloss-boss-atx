@@ -6,6 +6,8 @@ import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, C
 import { useMemo, useState, useTransition } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
+import { WorkOrderAssigneeChip } from '@/components/tech/work-order-assignee-chip';
+import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
 import { WorkOrderLedgerPanel, type LedgerDiscountRow, type LedgerPaymentRow } from '@/components/tech/work-order-ledger-panel';
 import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
@@ -114,6 +116,8 @@ export type WorkOrderConsoleData = {
   promoDiscount?: string;
   totalPaid?: string;
   technicianName: string;
+  assignedTechnicianId?: string | null;
+  technicians?: Array<{ id: string; name: string }>;
   jobStartedAt: string;
   jobCompletedAt: string;
   jobStartedAtIso?: string;
@@ -463,6 +467,8 @@ export function WorkOrderConsoleClient({
           }
         }}
         timerRunning={Boolean(data.openTimerId)}
+        timerLabel={data.timerSummary?.label ?? null}
+        timerWarning={data.timerSummary?.warning ?? null}
         hasPreInspection={Boolean(data.preInspection)}
       />
 
@@ -499,6 +505,13 @@ export function WorkOrderConsoleClient({
                 {data.balanceDue}
               </p>
             </div>
+            <WorkOrderAssigneeChip
+              appointmentId={jobId}
+              technicianName={data.technicianName}
+              assignedTechnicianId={data.assignedTechnicianId}
+              technicians={data.technicians}
+              canReassign={canAdminOverride && !data.isFallback && data.source === 'appointment'}
+            />
           </div>
         </div>
       </div>
@@ -1522,12 +1535,19 @@ export function WorkOrderConsoleClient({
                       Active loyalty stamps recorded for this customer:
                     </p>
                     <div className='mt-2.5 flex items-center gap-2'>
-                      <span className='text-2xl font-black text-white'>
-                        {(data.loyaltyStampsCount ?? 0) % 6} / 6
-                      </span>
-                      <span className='text-xs text-zinc-500 uppercase tracking-widest'>
-                        stamps on current card ({(data.loyaltyStampsCount ?? 0)} total)
-                      </span>
+                      {(() => {
+                        const loyalty = calculateLoyaltyStatus(data.loyaltyStamps ?? []);
+                        return (
+                          <>
+                            <span className='text-2xl font-black text-white'>
+                              {loyalty.progressStamps} / {loyalty.rewardThreshold}
+                            </span>
+                            <span className='text-xs text-zinc-500 uppercase tracking-widest'>
+                              stamps on current card ({data.loyaltyStampsCount ?? 0} total)
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Stamp award form */}

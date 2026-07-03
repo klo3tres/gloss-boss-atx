@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Check, ChevronDown, Zap, HelpCircle } from 'lucide-react';
 import { MembershipJoinButton } from './membership-join-button';
+import { MembershipComparisonTable } from '@/components/marketing/membership-comparison-table';
+import { tierMetaForPlan } from '@/lib/membership-tier-catalog';
 
 interface Plan {
   id: string;
@@ -153,6 +155,7 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
           const currentPrice = getPrice(p);
           const benefits = p.benefits || [];
           const included = p.included_services || [];
+          const meta = tierMetaForPlan(p);
 
           return (
             <article
@@ -172,7 +175,11 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
                 <h3 className="mt-3 text-2.5xl font-black uppercase text-white tracking-tight">
                   {p.name}
                 </h3>
-                <p className="mt-1 text-xs text-zinc-400">Precision gloss maintenance</p>
+                {meta ? (
+                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">{meta.bestFor}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-zinc-400">Precision gloss maintenance</p>
+                )}
               </div>
 
               <div className="mb-6 border-t border-white/5 pt-6">
@@ -229,75 +236,9 @@ export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
         })}
       </div>
 
-      {/* Comparison Table Section */}
-      <section className="max-w-5xl mx-auto mb-24">
-        <div className="text-center mb-12">
-          <p className="text-xs font-black uppercase tracking-[0.25em] text-gold-soft">Side-by-Side Comparison</p>
-          <h3 className="mt-2 text-3xl font-black uppercase text-white tracking-tight">Compare Membership Inclusions</h3>
-          <p className="mt-2 text-sm text-zinc-400">Every value below comes from the active admin membership plans.</p>
-        </div>
-
-        <div className="overflow-x-auto rounded-3xl border border-white/10 bg-black/40 backdrop-blur-sm shadow-[0_0_40px_rgba(0,0,0,0.6)]">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/10 bg-zinc-950/60">
-                <th className="p-5 text-[10px] font-black uppercase tracking-wider text-zinc-400">Membership Features</th>
-                {plans.map((plan) => (
-                  <th key={plan.id} className="p-5 text-center text-[10px] font-black uppercase tracking-wider text-gold-soft">
-                    {plan.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 text-xs text-zinc-300">
-              <tr>
-                <td className="p-5 font-bold text-white">Available Billing</td>
-                {plans.map((plan) => {
-                  const intervals = [
-                    biweeklyEnabled && plan.price_biweekly_cents > 0 ? 'Bi-weekly' : '',
-                    (plan.price_monthly_cents || plan.price_cents) > 0 ? 'Monthly' : '',
-                    plan.price_yearly_cents > 0 ? 'Yearly' : '',
-                  ].filter(Boolean);
-                  return <td key={plan.id} className="p-5 text-center">{intervals.join(' / ') || 'Contact us'}</td>;
-                })}
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Member Discount on Packages</td>
-                {plans.map((plan) => (
-                  <td key={plan.id} className="p-5 text-center font-mono">
-                    {plan.discount_percent > 0 ? String(plan.discount_percent) + '%' : 'Configured in admin'}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Included Services</td>
-                {plans.map((plan) => (
-                  <td key={plan.id} className="p-5 text-center">
-                    {plan.included_services?.slice(0, 3).join(', ') || 'Configured in admin'}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Priority Scheduling</td>
-                {plans.map((plan) => (
-                  <td key={plan.id} className="p-5 text-center">
-                    {(plan.benefits ?? []).some((benefit) => benefit.toLowerCase().includes('priority'))
-                      ? <Check className="h-4 w-4 mx-auto text-gold-soft" />
-                      : 'Configured in admin'}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td className="p-5 font-bold text-white">Loyalty Rewards</td>
-                {plans.map((plan) => (
-                  <td key={plan.id} className="p-5 text-center">
-                    {(plan.benefits ?? []).find((benefit) => /loyalty|stamp|punch/i.test(benefit)) ?? 'Digital punch card eligible'}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      {/* Comparison */}
+      <section className="max-w-5xl mx-auto mb-24 px-2">
+        <MembershipComparisonTable plans={plans} biweeklyEnabled={biweeklyEnabled} />
       </section>
 
       {/* FAQ Section */}

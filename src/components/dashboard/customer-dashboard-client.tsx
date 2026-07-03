@@ -13,6 +13,7 @@ import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-w
 import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
 import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
 import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
+import { LoyaltyClaimButton } from '@/components/dashboard/loyalty-claim-button';
 
 export type CustomerAppt = {
   id: string;
@@ -53,6 +54,9 @@ export type CustomerDashboardProps = {
   appointmentCount: number;
   snapshotByAppt?: Record<string, CustomerApptSnapshotView>;
   loyaltyStampsCount?: number;
+  loyaltyCanClaim?: boolean;
+  loyaltyClaimableCount?: number;
+  loyaltyRewardDescription?: string;
   activeCardDesign?: any;
   membership?: CustomerMembershipView | null;
   accountCreditBalanceCents?: number;
@@ -69,6 +73,10 @@ export type CustomerDashboardProps = {
   referralProgramEnabled?: boolean;
   referralRewardRules?: string;
   referralFreeDetailThreshold?: number;
+  referralPendingCount?: number;
+  referralGivePercent?: number;
+  referralGetPercent?: number;
+  referralRewardLadder?: import('@/lib/referral/referral-codes').ReferralRewardLadderTier[];
   highlightJobId?: string;
 };
 
@@ -308,11 +316,15 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           referralLink={props.referralLink}
           completedReferrals={props.referralCompletedCount ?? 0}
           bookedReferrals={props.referralBookedCount}
+          pendingReferrals={props.referralPendingCount}
           sentReferrals={props.referralSentCount}
           rewardsEarned={props.referralRewardsEarned}
           rewardsAvailable={props.referralRewardsAvailable}
           threshold={props.referralFreeDetailThreshold ?? 5}
           rewardRules={props.referralRewardRules}
+          givePercent={props.referralGivePercent}
+          getPercent={props.referralGetPercent}
+          rewardLadder={props.referralRewardLadder}
           enabled={props.referralProgramEnabled !== false}
         />
       ) : null}
@@ -660,9 +672,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           <GlassCard className="border-zinc-900 bg-black/30 mt-2">
             <p className="text-xs text-zinc-500 text-center leading-relaxed">
               {isRewardReady
-                ? 'Your punch reward is ready. Book your next visit and ask the team to redeem it.'
+                ? props.loyaltyCanClaim
+                  ? `Your punch reward is ready — claim ${props.loyaltyClaimableCount ?? 1} credit${(props.loyaltyClaimableCount ?? 1) === 1 ? '' : 's'} now. It auto-applies when you book.`
+                  : props.accountCreditBalanceCents && props.accountCreditBalanceCents > 0
+                    ? 'Your punch reward credit is on your account and will auto-apply at checkout.'
+                    : 'Your punch reward is ready. Claim it below, then book your next visit.'
                 : `Complete ${loyalty.stampsUntilReward} more service${loyalty.stampsUntilReward === 1 ? '' : 's'} to unlock your next luxury detailing reward.`}
             </p>
+            {props.loyaltyCanClaim ? <LoyaltyClaimButton count={props.loyaltyClaimableCount} /> : null}
             <Link
               href="/book"
               className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold py-3 text-xs font-black uppercase tracking-widest text-black shadow-[0_0_24px_rgba(212,175,55,0.15)] hover:brightness-110 transition duration-300"

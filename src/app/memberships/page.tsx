@@ -65,7 +65,7 @@ export default async function MembershipsPage() {
   return (
     <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">
       {/* Premium Driveway Hero Banner */}
-      <section className="relative w-full h-[60vh] min-h-[480px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-16">
+      <section className="relative w-full min-h-[52vh] sm:h-[60vh] sm:min-h-[480px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-12 sm:mb-16">
         <Image
           src={DRIVEWAY_HERO}
           alt="Luxury car detailing driveway"

@@ -31,6 +31,16 @@ export async function saveReferralProgramSettingsAction(formData: FormData) {
     reviewRewardValue: num(formData.get('review_reward_value'), 10),
     freeDetailReferralThreshold: num(formData.get('free_detail_threshold'), 5),
     freeDetailServiceSlug: String(formData.get('free_detail_service_slug') ?? 'full-detail'),
+    rewardLadder: (() => {
+      try {
+        const raw = String(formData.get('reward_ladder_json') ?? '').trim();
+        if (!raw) return DEFAULT_REFERRAL_SETTINGS.rewardLadder;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : DEFAULT_REFERRAL_SETTINGS.rewardLadder;
+      } catch {
+        return DEFAULT_REFERRAL_SETTINGS.rewardLadder;
+      }
+    })(),
   };
 
   await admin.from('site_settings').upsert({ key: 'referral_program', value: settings });

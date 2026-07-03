@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { ThemeProvider } from '@/components/theme/theme-provider';
 import { SiteAnalytics } from '@/components/analytics/site-analytics';
 import { getAppOrigin } from '@/lib/env/app-origin';
 import { CANONICAL_ORIGIN } from '@/lib/env/canonical-domain';
@@ -89,7 +90,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en' className={`${inter.variable} h-full`} suppressHydrationWarning>
+    <html lang='en' className={`${inter.variable} h-full`} data-theme='dark' suppressHydrationWarning>
       {/*
         Do not render a manual <head> here. Next.js App Router merges metadata and injects
         `/_next/static/css/*.css` into the document head automatically. A custom <head> sibling
@@ -134,7 +135,9 @@ export default function RootLayout({
             </p>
           </div>
         </noscript>
-        {children}
+        <ThemeProvider initialPreference='system' websiteDefault='dark'>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

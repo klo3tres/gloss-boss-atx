@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+html[data-theme='dark'] {
   color-scheme: dark;
   --gb-bg: #000000;
   --gb-fg: #ffffff;
@@ -18,6 +19,23 @@
   --titan-gold: #c9a227;
   --titan-gold-soft: #e8c547;
   --titan-glow: rgba(201, 162, 39, 0.35);
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --gb-bg: #f8f7f4;
+  --gb-fg: #0a0a0b;
+  --gb-gold: #a67c00;
+  --gb-gold-soft: #c9a227;
+  --gb-platinum: #1a1a1c;
+  --gb-carbon: #ffffff;
+  --gb-carbon-2: #f0eeea;
+  --gb-glass-line: rgba(166, 124, 0, 0.22);
+  --titan-void: #f5f4f1;
+  --titan-carbon: #eceae6;
+  --titan-gold: #a67c00;
+  --titan-gold-soft: #c9a227;
+  --titan-glow: rgba(166, 124, 0, 0.2);
 }
 
 .titan-surface {

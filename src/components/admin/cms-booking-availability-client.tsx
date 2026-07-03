@@ -70,15 +70,18 @@ export function CmsBookingAvailabilityClient({ initial }: { initial: BookingAvai
         Allow Mon–Thu and Fri before cutoff (override)
       </label>
       <label className='block text-xs text-zinc-400'>
-        Friday — allow bookings after hour (24h, default 17 = 5pm)
-        <input
-          type='number'
-          min={0}
-          max={23}
+        Friday — allow bookings after hour
+        <select
           value={fridayHour}
           onChange={(e) => setFridayHour(Number(e.target.value))}
-          className='mt-1 w-24 rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white'
-        />
+          className='mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white sm:w-48'
+        >
+          {Array.from({ length: 24 }, (_, h) => (
+            <option key={h} value={h}>
+              {h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`} ({String(h).padStart(2, '0')}:00)
+            </option>
+          ))}
+        </select>
       </label>
       <label className='block text-xs text-zinc-400'>
         Slot interval (minutes between start times)

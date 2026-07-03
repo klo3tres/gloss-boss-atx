@@ -1,10 +1,117 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { MediaAsset } from '@/lib/media-studio';
-import { MEDIA_PLACEMENTS } from '@/lib/media-studio';
+import { MEDIA_PLACEMENTS, groupMediaByPlacement } from '@/lib/media-studio';
+
+function cropStyle(settings: Record<string, unknown> | null | undefined) {
+  const x = Number(settings?.focalX ?? 50);
+  const y = Number(settings?.focalY ?? 50);
+  const zoom = Math.max(1, Number(settings?.zoom ?? 1));
+  return {
+    objectPosition: `${x}% ${y}%`,
+    transform: zoom > 1 ? `scale(${zoom})` : undefined,
+  };
+}
+
+function MediaAssetCard({
+  item,
+  onRefresh,
+}: {
+  item: MediaAsset;
+  onRefresh: () => void;
+}) {
+  const [focalX, setFocalX] = useState(Number(item.cropSettings?.focalX ?? 50));
+  const [focalY, setFocalY] = useState(Number(item.cropSettings?.focalY ?? 50));
+  const [zoom, setZoom] = useState(Number(item.cropSettings?.zoom ?? 1));
+  const [busy, setBusy] = useState(false);
+  const url = item.publicUrl || item.externalUrl;
+
+  return (
+    <li className="rounded-2xl border border-white/10 bg-black/40 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold text-white">{item.title ?? item.placement}</p>
+          <p className="text-[10px] uppercase text-zinc-500">{item.placement} · {item.mediaType}</p>
+        </div>
+        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${item.isActive ? 'bg-emerald-500/15 text-emerald-200' : 'bg-zinc-800 text-zinc-500'}`}>
+          {item.isActive ? 'Active' : 'Off'}
+        </span>
+      </div>
+      {url && item.mediaType === 'video' ? (
+        <video src={url} controls muted className="mt-3 max-h-40 w-full rounded-xl bg-black object-cover" poster={item.posterUrl ?? undefined} />
+      ) : url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={item.altText ?? ''} className="mt-3 max-h-40 w-full rounded-xl object-cover" style={cropStyle({ focalX, focalY, zoom })} />
+      ) : null}
+      {url && item.mediaType === 'image' ? (
+        <div className="mt-3 space-y-2 rounded-xl border border-white/5 bg-black/30 p-3">
+          <p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Crop / focal</p>
+          <label className="block text-[10px] text-zinc-400">
+            Horizontal focal ({focalX}%)
+            <input type="range" min={0} max={100} value={focalX} onChange={(e) => setFocalX(Number(e.target.value))} className="mt-1 w-full accent-gold" />
+          </label>
+          <label className="block text-[10px] text-zinc-400">
+            Vertical focal ({focalY}%)
+            <input type="range" min={0} max={100} value={focalY} onChange={(e) => setFocalY(Number(e.target.value))} className="mt-1 w-full accent-gold" />
+          </label>
+          <label className="block text-[10px] text-zinc-400">
+            Zoom ({zoom.toFixed(1)}x)
+            <input type="range" min={1} max={2} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="mt-1 w-full accent-gold" />
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-lg border border-gold/30 px-3 py-1.5 text-[9px] font-black uppercase text-gold-soft disabled:opacity-50"
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                await fetchWithTimeout('/api/admin/media-studio', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: item.id, cropSettings: { focalX, focalY, zoom } }),
+                  credentials: 'same-origin',
+                  timeoutMs: 15000,
+                });
+                setBusy(false);
+                onRefresh();
+              })();
+            }}
+          >
+            {busy ? 'Saving…' : 'Save crop'}
+          </button>
+        </div>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:text-white">
+            Preview
+          </a>
+        ) : null}
+        <button
+          type="button"
+          className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white"
+          onClick={() => {
+            void (async () => {
+              await fetchWithTimeout('/api/admin/media-studio', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: item.id, isActive: !item.isActive }),
+                credentials: 'same-origin',
+                timeoutMs: 15000,
+              });
+              onRefresh();
+            })();
+          }}
+        >
+          {item.isActive ? 'Deactivate' : 'Activate'}
+        </button>
+      </div>
+    </li>
+  );
+}
 
 export function MediaStudioClient({ initialItems, tablesReady }: { initialItems: MediaAsset[]; tablesReady: boolean }) {
   const router = useRouter();
@@ -13,6 +120,8 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
   const [msg, setMsg] = useState<string | null>(null);
   const [placement, setPlacement] = useState('homepage_hero_video');
   const [externalUrl, setExternalUrl] = useState('');
+  const grouped = useMemo(() => groupMediaByPlacement(items), [items]);
+  const refresh = () => router.refresh();
 
   if (!tablesReady) {
     return (
@@ -66,7 +175,7 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
                     return;
                   }
                   setMsg('Uploaded.');
-                  router.refresh();
+                  refresh();
                 })();
               }}
             />
@@ -85,7 +194,7 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
                   const data = (await res.json()) as { ok?: boolean; error?: string };
                   setBusy(false);
                   setMsg(data.ok ? 'Saved URL.' : data.error ?? 'Failed');
-                  if (data.ok) router.refresh();
+                  if (data.ok) refresh();
                 })();
               }}
               className="rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
@@ -97,49 +206,17 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
         {msg ? <p className="mt-2 text-xs text-emerald-300">{msg}</p> : null}
       </section>
 
-      <ul className="grid gap-4 md:grid-cols-2">
-        {items.map((item) => {
-          const url = item.publicUrl || item.externalUrl;
-          return (
-            <li key={item.id} className="rounded-2xl border border-white/10 bg-black/40 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-bold text-white">{item.title ?? item.placement}</p>
-                  <p className="text-[10px] uppercase text-zinc-500">{item.placement} · {item.mediaType}</p>
-                </div>
-                <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${item.isActive ? 'bg-emerald-500/15 text-emerald-200' : 'bg-zinc-800 text-zinc-500'}`}>
-                  {item.isActive ? 'Active' : 'Off'}
-                </span>
-              </div>
-              {url && item.mediaType === 'video' ? (
-                <video src={url} controls muted className="mt-3 max-h-40 w-full rounded-xl bg-black object-cover" poster={item.posterUrl ?? undefined} />
-              ) : url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={url} alt={item.altText ?? ''} className="mt-3 max-h-40 w-full rounded-xl object-cover" />
-              ) : null}
-              <button
-                type="button"
-                className="mt-3 rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white"
-                onClick={() => {
-                  void (async () => {
-                    await fetchWithTimeout('/api/admin/media-studio', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id: item.id, isActive: !item.isActive }),
-                      credentials: 'same-origin',
-                      timeoutMs: 15000,
-                    });
-                    setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, isActive: !x.isActive } : x)));
-                    router.refresh();
-                  })();
-                }}
-              >
-                {item.isActive ? 'Deactivate' : 'Activate'}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {grouped.map(([group, groupItems]) => (
+        <section key={group}>
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">{group} ({groupItems.length})</p>
+          <ul className="grid gap-4 md:grid-cols-2">
+            {groupItems.map((item) => (
+              <MediaAssetCard key={item.id} item={item} onRefresh={refresh} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {items.length === 0 ? <p className="text-sm text-zinc-500">No media assets yet. Upload your first file above.</p> : null}
     </div>
   );
 }

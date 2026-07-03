@@ -83,6 +83,13 @@ export type JobPricingDisplay = {
   remainingBalanceCents: number;
   customLineItemsCents: number;
   promoCode: string;
+  /** Internal debug — which field supplied the customer-facing total. */
+  priceSource:
+    | 'admin_override'
+    | 'saved_base_price'
+    | 'breakdown_final'
+    | 'engine_recompute'
+    | 'deposit_inferred';
 };
 
 export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDisplay {
@@ -146,28 +153,30 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
   );
 
   const adminOverrideFinal = pick('adminOverrideFinalTotalCents');
-  let serviceFinalCents = adminOverrideFinal > 0 ? adminOverrideFinal : 0;
-  if (serviceFinalCents <= 0 && engineServiceFinalCents > 0) serviceFinalCents = engineServiceFinalCents;
-  if (serviceFinalCents <= 0) serviceFinalCents = pick('finalTotalCents');
-  if (serviceFinalCents <= 0 && prePromoCents > 0) serviceFinalCents = engineServiceFinalCents;
-  if (serviceFinalCents <= 0) {
-    const baseStored = num(job.base_price_cents);
-    if (baseStored > 0 && Math.abs(baseStored - customLineItemsCents) > 100) {
-      serviceFinalCents = baseStored - customLineItemsCents;
-    } else if (baseStored > 0) {
-      serviceFinalCents = baseStored;
-    }
+  const breakdownFinalTotal = pick('finalTotalCents');
+  const baseStored = num(job.base_price_cents);
+
+  let finalTotalCents = 0;
+  let priceSource: JobPricingDisplay['priceSource'] = 'engine_recompute';
+
+  if (adminOverrideFinal > 0) {
+    finalTotalCents = adminOverrideFinal;
+    priceSource = 'admin_override';
+  } else if (baseStored > 0) {
+    finalTotalCents = baseStored;
+    priceSource = 'saved_base_price';
+  } else if (breakdownFinalTotal > 0) {
+    finalTotalCents = breakdownFinalTotal;
+    priceSource = 'breakdown_final';
+  } else if (engineServiceFinalCents > 0) {
+    finalTotalCents = Math.max(0, engineServiceFinalCents + customLineItemsCents);
+    priceSource = 'engine_recompute';
+  } else if (num(job.deposit_amount_cents) > 0) {
+    finalTotalCents = Math.round(num(job.deposit_amount_cents) / 0.3);
+    priceSource = 'deposit_inferred';
   }
 
-  let finalTotalCents = Math.max(0, serviceFinalCents + customLineItemsCents);
-  if (finalTotalCents < engineServiceFinalCents * 0.25 && engineServiceFinalCents > 0) {
-    finalTotalCents = Math.max(0, engineServiceFinalCents + customLineItemsCents);
-  }
-  if (finalTotalCents <= 0 && engineServiceFinalCents > 0) finalTotalCents = engineServiceFinalCents;
-  if (finalTotalCents <= 0 && num(job.deposit_amount_cents) > 0) {
-    const dep = num(job.deposit_amount_cents);
-    finalTotalCents = Math.round(dep / 0.3);
-  }
+  const serviceFinalCents = Math.max(0, finalTotalCents - customLineItemsCents);
 
   const depositOnFile = num(job.deposit_amount_cents) || pick('depositCents');
 
@@ -253,6 +262,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     remainingBalanceCents,
     customLineItemsCents,
     promoCode,
+    priceSource,
   };
 }
 

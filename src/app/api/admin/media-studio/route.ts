@@ -117,6 +117,7 @@ export async function PATCH(request: Request) {
     title?: string;
     altText?: string;
     posterUrl?: string;
+    cropSettings?: { focalX?: number; focalY?: number; zoom?: number };
   };
   const id = String(body.id ?? '').trim();
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
@@ -127,6 +128,13 @@ export async function PATCH(request: Request) {
   if (typeof body.title === 'string') patch.title = body.title.slice(0, 160);
   if (typeof body.altText === 'string') patch.alt_text = body.altText.slice(0, 200);
   if (typeof body.posterUrl === 'string') patch.poster_url = body.posterUrl.slice(0, 500);
+  if (body.cropSettings && typeof body.cropSettings === 'object') {
+    patch.crop_settings = {
+      focalX: Math.min(100, Math.max(0, Number(body.cropSettings.focalX ?? 50))),
+      focalY: Math.min(100, Math.max(0, Number(body.cropSettings.focalY ?? 50))),
+      zoom: Math.min(3, Math.max(1, Number(body.cropSettings.zoom ?? 1))),
+    };
+  }
 
   const { error } = await admin.from('site_media_assets').update(patch).eq('id', id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

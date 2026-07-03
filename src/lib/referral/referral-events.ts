@@ -62,6 +62,7 @@ export async function loadReferralStatsForCustomer(
   sent: number;
   booked: number;
   completed: number;
+  pending: number;
   rewardsEarned: number;
   rewardsAvailable: number;
 }> {
@@ -74,9 +75,10 @@ export async function loadReferralStatsForCustomer(
   const rows = events ?? [];
   const booked = rows.filter((e) => ['booked', 'completed', 'reward_issued'].includes(String(e.status))).length;
   const completed = rows.filter((e) => ['completed', 'reward_issued'].includes(String(e.status))).length;
+  const pending = rows.filter((e) => String(e.status) === 'booked').length;
   const rewardRows = rewards ?? [];
   const rewardsEarned = rewardRows.length;
   const rewardsAvailable = rewardRows.filter((r) => r.status === 'pending' || r.status === 'issued').length;
 
-  return { sent: sent ?? rows.length, booked, completed, rewardsEarned, rewardsAvailable };
+  return { sent: sent ?? rows.length, booked, completed, pending, rewardsEarned, rewardsAvailable };
 }

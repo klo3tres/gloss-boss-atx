@@ -681,6 +681,19 @@ export default async function TechWorkOrderDetailPage({
 
   const confirmationStatus = !isFallback ? await loadConfirmationDeliveryStatus(admin, queryId) : null;
 
+  let technicians: Array<{ id: string; name: string }> = [];
+  if (isAdminLevel(session.profile?.role ?? null) && !isFallback) {
+    const { data: techRows } = await admin
+      .from('profiles')
+      .select('id, full_name, email')
+      .in('role', ['technician', 'admin', 'super_admin'])
+      .order('full_name', { ascending: true });
+    technicians = (techRows ?? []).map((t) => ({
+      id: String((t as Row).id),
+      name: str((t as Row).full_name || (t as Row).email) || 'Technician',
+    }));
+  }
+
   const consoleData: any = {
     id,
     canonicalId: queryId,
@@ -797,6 +810,8 @@ export default async function TechWorkOrderDetailPage({
     agreementPhotoConsent: Boolean(agreementRow?.photo_consent || agreementRow?.photos_consent || agreementRow?.before_after_photo_consent),
     agreementMediaConsent: Boolean(agreementRow?.media_consent || agreementRow?.marketing_photo_consent || agreementRow?.social_media_consent),
     technicianName: resolved.technicianName ?? '',
+    assignedTechnicianId: str(row.assigned_technician_id) || null,
+    technicians,
     jobStartedAt: displayChicago(row.job_started_at, ''),
     jobCompletedAt: displayChicago(row.job_completed_at || row.completed_at, ''),
     jobStartedAtIso,

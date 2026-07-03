@@ -16,12 +16,12 @@ const DEFAULT_NAV_LOGO = '/brand/glossboss-official-atx.png';
 const publicNavLinks = [
   { href: '/', label: 'Home' },
   { href: '/services', label: 'Services' },
+  { href: '/memberships', label: 'Memberships' },
   { href: '/gallery', label: 'Gallery' },
   { href: '/book', label: 'Book Now' },
 ];
 
 const moreNavLinks = [
-  { href: '/memberships', label: 'Memberships' },
   { href: '/fleet', label: 'Fleet' },
   { href: '#about', label: 'About' },
   { href: '/gift-cards', label: 'Gift Cards' },

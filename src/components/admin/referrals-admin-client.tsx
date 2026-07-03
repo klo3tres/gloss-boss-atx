@@ -31,7 +31,16 @@ export function ReferralsAdminClient({
           <label className="text-xs text-zinc-400">Free detail at N referrals<input name="free_detail_threshold" type="number" defaultValue={settings.freeDetailReferralThreshold} className={inputClass} /></label>
           <label className="text-xs text-zinc-400">Free detail service slug<input name="free_detail_service_slug" defaultValue={settings.freeDetailServiceSlug} className={inputClass} /></label>
         </div>
-        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gold)]" /> Allow stacking with promos</label>
+        <label className="text-xs text-zinc-400 md:col-span-2">
+          Reward ladder (JSON array: threshold, label, rewardType, rewardValue)
+          <textarea
+            name="reward_ladder_json"
+            rows={5}
+            defaultValue={JSON.stringify(settings.rewardLadder ?? [], null, 2)}
+            className={`${inputClass} font-mono text-[11px]`}
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2"><input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gold)]" /> Allow stacking with promos</label>
         <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gold)]" /> Review reward enabled</label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-zinc-400">Review reward type<select name="review_reward_type" defaultValue={settings.reviewRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option></select></label>

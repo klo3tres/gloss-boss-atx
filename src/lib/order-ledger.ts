@@ -421,13 +421,17 @@ export async function resolveOrderLedger(
   let pricing = resolveJobPricing(job, paymentRows);
   const bLedger = obj(job.booking_pricing_breakdown);
   const storedFinal = num(bLedger.finalTotalCents);
+  const adminOverride = num(bLedger.adminOverrideFinalTotalCents);
+  const baseStored = num(job.base_price_cents);
+  const authoritativeFinal =
+    adminOverride > 0 ? adminOverride : baseStored > 0 ? baseStored : storedFinal > 0 ? storedFinal : pricing.finalTotalCents;
   const storedOnline = num(bLedger.websitePromoDiscountCents) || num(bLedger.onlineDiscountCents);
   const storedMulti = num(bLedger.multiCarDiscountCents);
-  if (storedFinal > 0) {
+  if (authoritativeFinal > 0) {
     const online = storedOnline > 0 ? storedOnline : pricing.onlineDiscountCents;
     const multi = storedMulti > 0 ? storedMulti : pricing.multiCarDiscountCents;
     const needsHeal =
-      pricing.finalTotalCents !== storedFinal ||
+      pricing.finalTotalCents !== authoritativeFinal ||
       pricing.onlineDiscountCents !== online ||
       pricing.multiCarDiscountCents !== multi;
     if (needsHeal) {
@@ -435,13 +439,21 @@ export async function resolveOrderLedger(
         ...pricing,
         onlineDiscountCents: online,
         multiCarDiscountCents: multi,
-        serviceFinalCents: storedFinal,
-        finalTotalCents: storedFinal,
-        remainingBalanceCents: Math.max(0, storedFinal - pricing.rawTotalPaidCents),
-        overpaymentCents: Math.max(0, pricing.rawTotalPaidCents - storedFinal),
-        hasOverpayment: pricing.rawTotalPaidCents > storedFinal,
-        allocatedTotalPaidCents: Math.min(pricing.rawTotalPaidCents, storedFinal),
+        serviceFinalCents: Math.max(0, authoritativeFinal - pricing.customLineItemsCents),
+        finalTotalCents: authoritativeFinal,
+        remainingBalanceCents: Math.max(0, authoritativeFinal - pricing.rawTotalPaidCents),
+        overpaymentCents: Math.max(0, pricing.rawTotalPaidCents - authoritativeFinal),
+        hasOverpayment: pricing.rawTotalPaidCents > authoritativeFinal,
+        allocatedTotalPaidCents: Math.min(pricing.rawTotalPaidCents, authoritativeFinal),
         totalPaidCents: pricing.rawTotalPaidCents,
+        priceSource:
+          adminOverride > 0
+            ? 'admin_override'
+            : baseStored > 0
+              ? 'saved_base_price'
+              : storedFinal > 0
+                ? 'breakdown_final'
+                : pricing.priceSource,
       };
     }
   }

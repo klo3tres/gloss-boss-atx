@@ -21,6 +21,10 @@ export type BriefingOpportunity = {
   href: string;
   autoRunLabel?: string;
   canAutoRun: boolean;
+  contactPhone?: string;
+  script?: string;
+  entityType?: string;
+  entityId?: string;
 };
 
 export type OperationalAdvantageFactor = {
@@ -74,6 +78,10 @@ function missionToOpportunity(m: MoneyMission): BriefingOpportunity {
     href: m.href,
     autoRunLabel: m.contactPhone ? 'Send outreach' : undefined,
     canAutoRun: Boolean(m.contactPhone || m.contactEmail),
+    contactPhone: m.contactPhone ?? undefined,
+    script: m.script,
+    entityType: m.entityType,
+    entityId: m.entityId,
   };
 }
 
@@ -103,14 +111,20 @@ export async function loadExecutiveBriefing(
     .from('admin_goals')
     .select('target_value, unit, goal_type')
     .eq('status', 'active')
-    .in('goal_type', ['revenue_daily', 'revenue', 'daily_revenue'])
+    .in('goal_type', ['revenue_daily', 'revenue', 'daily_revenue', 'revenue_monthly'])
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (goalRow?.target_value) {
     const unit = String(goalRow.unit ?? 'cents');
-    revenueTargetCents =
-      unit === 'cents' ? Number(goalRow.target_value) : Math.round(Number(goalRow.target_value) * 100);
+    const raw = unit === 'cents' ? Number(goalRow.target_value) : Math.round(Number(goalRow.target_value) * 100);
+    const goalType = String(goalRow.goal_type ?? '');
+    if (goalType === 'revenue_monthly') {
+      const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+      revenueTargetCents = Math.round(raw / daysInMonth);
+    } else {
+      revenueTargetCents = raw;
+    }
   }
 
   const revenueGapCents = Math.max(0, revenueTargetCents - revenueToday);

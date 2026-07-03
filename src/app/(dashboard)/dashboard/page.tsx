@@ -8,6 +8,7 @@ import {
   type CustomerApptSnapshotView,
 } from '@/lib/customer-dashboard-snapshot';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
+import { buildLoyaltyRewardView, countRedeemedLoyaltyRewards, loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
 
 
 
@@ -260,6 +261,10 @@ export default async function CustomerDashboardRootPage({
   let referralProgramEnabled = true;
   let referralRewardRules = '';
   let referralFreeDetailThreshold = 5;
+  let referralPendingCount = 0;
+  let referralGivePercent = 10;
+  let referralGetPercent = 20;
+  let referralRewardLadder: import('@/lib/referral/referral-codes').ReferralRewardLadderTier[] = [];
 
   if (supabase && session.user && userEmail) {
     let customerId = '';
@@ -271,7 +276,10 @@ export default async function CustomerDashboardRootPage({
         const settings = await loadReferralProgramSettings(adminDb);
         referralProgramEnabled = settings.enabled;
         referralFreeDetailThreshold = settings.freeDetailReferralThreshold;
-        referralRewardRules = `Referred friends save ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : ''}. You earn rewards when they complete.`;
+        referralGivePercent = settings.referredRewardValue;
+        referralGetPercent = settings.referrerRewardValue;
+        referralRewardLadder = settings.rewardLadder ?? [];
+        referralRewardRules = `Give ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : ''}, get ${settings.referrerRewardValue}${settings.referrerRewardType === 'percent' ? '%' : ''} when friends complete their detail.`;
         const codeRow = await ensureCustomerReferralCode(adminDb, customerId);
         referralCode = codeRow.code;
         referralLink = referralLinkForCode(codeRow.code);
@@ -280,6 +288,7 @@ export default async function CustomerDashboardRootPage({
         referralSentCount = stats.sent;
         referralBookedCount = stats.booked;
         referralCompletedCount = stats.completed;
+        referralPendingCount = stats.pending;
         referralRewardsEarned = stats.rewardsEarned;
         referralRewardsAvailable = stats.rewardsAvailable;
       }
@@ -425,6 +434,9 @@ export default async function CustomerDashboardRootPage({
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
   let loyaltyStampsCount = 0;
+  let loyaltyCanClaim = false;
+  let loyaltyClaimableCount = 0;
+  let loyaltyRewardDescription = '';
   let customerMembership: CustomerMembershipView | null = null;
   let accountCreditBalanceCents = 0;
   let activeDeals: ActiveDealView[] = [];
@@ -438,6 +450,12 @@ export default async function CustomerDashboardRootPage({
       ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
       loyaltyStampsCount = calculateLoyaltyStatus(stamps ?? []).totalStamps;
+      const redeemedRewards = await countRedeemedLoyaltyRewards(adminDb, String(cust.id));
+      const rewardConfig = await loadLoyaltyRewardConfig(adminDb);
+      const loyaltyView = buildLoyaltyRewardView(stamps ?? [], redeemedRewards, { rewardThreshold: rewardConfig.rewardThreshold });
+      loyaltyCanClaim = loyaltyView.canClaim;
+      loyaltyClaimableCount = loyaltyView.claimableRewards;
+      loyaltyRewardDescription = rewardConfig.rewardDescription;
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
       const creditRes = await adminDb
         .from('customer_credits')
@@ -577,6 +595,9 @@ export default async function CustomerDashboardRootPage({
         appointmentCount={appointments.length}
         snapshotByAppt={snapshotByAppt}
         loyaltyStampsCount={loyaltyStampsCount}
+        loyaltyCanClaim={loyaltyCanClaim}
+        loyaltyClaimableCount={loyaltyClaimableCount}
+        loyaltyRewardDescription={loyaltyRewardDescription}
         activeCardDesign={activeCardDesign}
         membership={customerMembership}
         accountCreditBalanceCents={accountCreditBalanceCents}
@@ -593,6 +614,10 @@ export default async function CustomerDashboardRootPage({
         referralProgramEnabled={referralProgramEnabled}
         referralRewardRules={referralRewardRules}
         referralFreeDetailThreshold={referralFreeDetailThreshold}
+        referralPendingCount={referralPendingCount}
+        referralGivePercent={referralGivePercent}
+        referralGetPercent={referralGetPercent}
+        referralRewardLadder={referralRewardLadder}
         highlightJobId={highlightJobId || undefined}
       />
     </DashboardShell>

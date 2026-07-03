@@ -34,7 +34,23 @@ export function WeatherReadinessWidget({
 }: Props) {
   const [snapshot, setSnapshot] = useState<WeatherSnapshot | null>(initialSnapshot);
   const [loading, setLoading] = useState(autoFetch && !initialSnapshot);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = sessionStorage.getItem('gb_weather_forecast_expanded');
+    return saved === null ? true : saved === '1';
+  });
+
+  const toggleExpanded = () => {
+    setExpanded((v) => {
+      const next = !v;
+      try {
+        sessionStorage.setItem('gb_weather_forecast_expanded', next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const refresh = (signal?: AbortSignal) => {
     if (!autoFetch) return;
@@ -261,10 +277,10 @@ export function WeatherReadinessWidget({
             {snapshot.dailyForecasts && snapshot.dailyForecasts.length > 0 && (
               <button
                 type="button"
-                onClick={() => setExpanded(!expanded)}
+                onClick={toggleExpanded}
                 className="w-full flex items-center justify-center gap-1.5 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition duration-200"
               >
-                <span>{expanded ? 'Hide 5-Day Forecast' : 'View 5-Day Forecast'}</span>
+                <span>{expanded ? 'Hide Forecast' : 'View 5-Day Forecast'}</span>
                 {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
             )}

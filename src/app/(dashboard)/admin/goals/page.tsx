@@ -6,6 +6,11 @@ import type { AppRole } from '@/lib/auth/roles';
 import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { loadAdminGoalsMetrics, syncAdminGoalsCurrentValues } from '@/lib/admin-goals-metrics';
+import {
+  loadAchievementsForProfile,
+  loadRecentTeamAchievements,
+  processTeamGoalAchievements,
+} from '@/lib/goals-achievements';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +37,8 @@ export default async function AdminGoalsPage() {
   let monthJobs = 0;
   let avgTicketCents = 0;
   let technicians: Array<{ id: string; name: string }> = [];
+  let myAchievements: Awaited<ReturnType<typeof loadAchievementsForProfile>> = [];
+  let teamAchievements: Awaited<ReturnType<typeof loadRecentTeamAchievements>> = [];
 
   if (admin) {
     const metrics = await loadAdminGoalsMetrics(admin);
@@ -59,6 +66,11 @@ export default async function AdminGoalsPage() {
         technician_id: row.technician_id != null ? String(row.technician_id) : null,
       };
     });
+    await processTeamGoalAchievements(admin, goals);
+    if (session.user?.id) {
+      myAchievements = await loadAchievementsForProfile(admin, session.user.id, 16);
+      teamAchievements = await loadRecentTeamAchievements(admin, 10);
+    }
     const { data: techs } = await admin.from('profiles').select('id, full_name, email').eq('role', 'technician').limit(50);
     technicians =
       techs?.map((t) => {
@@ -84,7 +96,14 @@ export default async function AdminGoalsPage() {
         </div>
       </section>
 
-      <GoalsDashboardClient goals={goals} technicians={technicians} canEdit={canEdit} />
+      <GoalsDashboardClient
+        goals={goals}
+        technicians={technicians}
+        canEdit={canEdit}
+        profileId={session.user?.id}
+        myAchievements={myAchievements}
+        teamAchievements={teamAchievements}
+      />
 
       <Link href='/admin' className='mt-6 inline-block text-xs font-bold uppercase text-gold-soft underline'>
         ← Admin

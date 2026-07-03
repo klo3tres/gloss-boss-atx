@@ -23,15 +23,20 @@ type VisualSection = {
   ctaLink?: string;
 };
 
+type ImageAlign = { x: number; y: number; zoom: number };
+
 type Transformation = {
   id: string;
   before: string;
   after: string;
   title: string;
   caption: string;
-  tags: string; // Comma-separated
+  tags: string;
   layoutSize: 'normal' | 'wide' | 'tall';
   published: boolean;
+  beforeAlign?: ImageAlign;
+  afterAlign?: ImageAlign;
+  previewDevice?: 'desktop' | 'tablet' | 'mobile';
 };
 
 type ProcessStep = {
@@ -738,6 +743,45 @@ export function HomepageVisualsManager({ initialJson }: { initialJson?: any }) {
                             className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-1.5 text-xs text-white"
                           />
                           <UploadControl slot={`featured-${item.id}-after`} onUploaded={(url) => updateTransformation(idx, 'after', url)} />
+                        </div>
+
+                        {/* Alignment editor + device preview */}
+                        <div className="space-y-3 border border-gold/15 p-3 bg-black/40 rounded-xl">
+                          <div className="flex gap-2">
+                            {(['desktop', 'tablet', 'mobile'] as const).map((device) => (
+                              <button
+                                key={device}
+                                type="button"
+                                onClick={() => updateTransformation(idx, 'previewDevice', device)}
+                                className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase ${item.previewDevice === device || (!item.previewDevice && device === 'desktop') ? 'bg-gold/20 text-gold-soft' : 'text-zinc-500'}`}
+                              >
+                                {device}
+                              </button>
+                            ))}
+                          </div>
+                          {(['before', 'after'] as const).map((side) => {
+                            const align = (side === 'before' ? item.beforeAlign : item.afterAlign) ?? { x: 50, y: 50, zoom: 1 };
+                            const url = side === 'before' ? item.before : item.after;
+                            const previewWidth = item.previewDevice === 'mobile' ? 'max-w-[140px]' : item.previewDevice === 'tablet' ? 'max-w-[200px]' : 'max-w-full';
+                            return (
+                              <div key={side}>
+                                <p className="text-[8px] font-bold text-zinc-500 uppercase mb-1">{side} alignment</p>
+                                <div className={`grid gap-2 ${previewWidth}`}>
+                                  <div className="relative rounded overflow-hidden aspect-[4/3] border border-white/10">
+                                    <img
+                                      src={url}
+                                      alt={side}
+                                      className="w-full h-full object-cover"
+                                      style={{ objectPosition: `${align.x}% ${align.y}%`, transform: `scale(${align.zoom})` }}
+                                    />
+                                  </div>
+                                  <input type="range" min={0} max={100} value={align.x} onChange={(e) => updateTransformation(idx, side === 'before' ? 'beforeAlign' : 'afterAlign', { ...align, x: Number(e.target.value) })} className="w-full accent-gold" />
+                                  <input type="range" min={0} max={100} value={align.y} onChange={(e) => updateTransformation(idx, side === 'before' ? 'beforeAlign' : 'afterAlign', { ...align, y: Number(e.target.value) })} className="w-full accent-gold" />
+                                  <input type="range" min={1} max={2} step={0.1} value={align.zoom} onChange={(e) => updateTransformation(idx, side === 'before' ? 'beforeAlign' : 'afterAlign', { ...align, zoom: Number(e.target.value) })} className="w-full accent-gold" />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Staggered aspect ratio tester */}

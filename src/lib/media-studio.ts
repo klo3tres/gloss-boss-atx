@@ -15,6 +15,7 @@ export type MediaAsset = {
   isActive: boolean;
   fileSizeBytes: number | null;
   mimeType: string | null;
+  cropSettings: Record<string, unknown> | null;
   updatedAt: string;
 };
 
@@ -56,6 +57,8 @@ export async function loadMediaAssets(admin: SupabaseClient, workspaceKey = DEFA
       isActive: r.is_active !== false,
       fileSizeBytes: typeof r.file_size_bytes === 'number' ? r.file_size_bytes : null,
       mimeType: r.mime_type == null ? null : String(r.mime_type),
+      cropSettings:
+        r.crop_settings && typeof r.crop_settings === 'object' ? (r.crop_settings as Record<string, unknown>) : null,
       updatedAt: String(r.updated_at ?? ''),
     };
   });
@@ -66,3 +69,15 @@ export async function loadMediaAssets(admin: SupabaseClient, workspaceKey = DEFA
 export function resolveMediaUrl(asset: Pick<MediaAsset, 'publicUrl' | 'externalUrl'>): string | null {
   return asset.publicUrl || asset.externalUrl || null;
 }
+
+export function groupMediaByPlacement(items: MediaAsset[]) {
+  const groups = new Map<string, MediaAsset[]>();
+  for (const item of items) {
+    const key = item.placement.split('_')[0] || 'general';
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+}
+
