@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Gift, Link2, Mail, MessageSquare, Share2, Trophy } from 'lucide-react';
+import { Copy, Gift, Link2, Mail, MessageSquare, QrCode, Share2, Trophy } from 'lucide-react';
 import type { ReferralRewardLadderTier } from '@/lib/referral/referral-codes';
 
 export function CustomerReferralCard({
@@ -60,6 +60,23 @@ export function CustomerReferralCard({
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
+  const shareFacebook = () => {
+    const u = encodeURIComponent(referralLink);
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${u}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const shareInstagram = async () => {
+    try {
+      await navigator.clipboard.writeText(`${referralLink}\nCode: ${referralCode}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(referralLink)}`;
+
   const ladder = rewardLadder.length > 0 ? rewardLadder : [
     { threshold: 1, rewardType: 'percent' as const, rewardValue: getPercent ?? 20, label: `${getPercent ?? 20}% off` },
     { threshold: threshold, rewardType: 'free_service' as const, rewardValue: 0, label: 'Free detail reward' },
@@ -81,7 +98,16 @@ export function CustomerReferralCard({
         {rewardRules ?? 'Share your link. When friends book and complete, you unlock Gloss Boss rewards automatically.'}
       </p>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="shrink-0 rounded-2xl border border-white/10 bg-white p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qrUrl} alt="Referral QR code" width={140} height={140} className="rounded-lg" />
+          <p className="mt-1 flex items-center justify-center gap-1 text-[9px] font-black uppercase text-zinc-600">
+            <QrCode className="h-3 w-3" /> Scan to book
+          </p>
+        </div>
+        <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-center gap-2">
         <code className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-mono text-gold-soft">{referralCode}</code>
         <button type="button" onClick={copy} className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
           <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied' : 'Copy link'}
@@ -92,6 +118,12 @@ export function CustomerReferralCard({
         <button type="button" onClick={shareEmail} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
           <Mail className="h-3.5 w-3.5" /> Email
         </button>
+        <button type="button" onClick={shareInstagram} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+          IG copy
+        </button>
+        <button type="button" onClick={shareFacebook} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+          Facebook
+        </button>
         <button type="button" onClick={copy} className="inline-flex items-center gap-1.5 rounded-xl border border-gold/25 px-3 py-2 text-[10px] font-bold uppercase text-gold-soft">
           <Share2 className="h-3.5 w-3.5" /> Share
         </button>
@@ -99,6 +131,8 @@ export function CustomerReferralCard({
       <p className="mt-3 flex items-center gap-1.5 truncate text-[11px] text-zinc-500">
         <Link2 className="h-3.5 w-3.5 shrink-0" /> {referralLink}
       </p>
+        </div>
+      </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-[10px] uppercase text-zinc-500 sm:grid-cols-5">
         <div className="rounded-xl border border-white/5 p-2"><p>Invites</p><p className="text-lg font-black text-white">{sentReferrals ?? 0}</p></div>

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Sparkles, Trophy, ShieldCheck, type LucideIcon } from 'lucide-react';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { MembershipsPricingClient } from './memberships-pricing-client';
+import { MembershipRoiCalculator } from '@/components/marketing/membership-roi-calculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +134,16 @@ export default async function MembershipsPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-6 mb-16">
+        <MembershipRoiCalculator
+          plans={plans.map((p) => ({
+            tier: p.tier,
+            price_monthly_cents: p.price_monthly_cents || p.price_cents,
+            discount_percent: p.discount_percent,
+          }))}
+        />
       </section>
 
       {/* Pricing Calculator Section */}

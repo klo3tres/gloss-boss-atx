@@ -267,6 +267,35 @@ export function WeatherReadinessWidget({
               </div>
             </div>
 
+            {/* Hourly strip */}
+            {snapshot.hourlyForecasts && snapshot.hourlyForecasts.length > 0 ? (
+              <div className="overflow-x-auto pb-1">
+                <div className="flex min-w-max gap-2">
+                  {snapshot.hourlyForecasts.map((h, i) => (
+                    <div key={`${h.hourLabel}-${i}`} className="w-14 rounded-lg border border-white/5 bg-black/35 px-2 py-2 text-center">
+                      <p className="text-[8px] font-black uppercase text-zinc-500">{h.hourLabel}</p>
+                      <p className="mt-1 font-mono text-xs font-black text-white">{h.temperatureF}°</p>
+                      <p className={`mt-0.5 text-[8px] font-bold ${h.rainChancePct >= 40 ? 'text-rose-300' : 'text-zinc-500'}`}>{h.rainChancePct}%</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {snapshot.heatWarning ? (
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-100">
+                <span className="font-black uppercase tracking-wider">Heat warning</span>
+                <span className="ml-2">High temps — work in shade or garage when possible.</span>
+              </div>
+            ) : null}
+
+            {snapshot.garageRecommended ? (
+              <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[10px] text-blue-100">
+                <span className="font-black uppercase tracking-wider">Garage recommended</span>
+                <span className="ml-2">Rain, heat, or severe risk — covered bay protects finish quality.</span>
+              </div>
+            ) : null}
+
             {/* Safety Detailing Bar */}
             <div className={`rounded-xl border p-2.5 text-xs ${safetyStatus.color} border-dashed`}>
               <span className="font-black uppercase tracking-wider block text-[9px] mb-0.5">{safetyStatus.title}</span>
@@ -316,6 +345,13 @@ export function WeatherReadinessWidget({
                     </div>
                   ))}
                 </div>
+
+                {!compact && snapshot.bestDayReason ? (
+                  <div className="mt-2.5 rounded-lg border border-gold/20 bg-gold/5 p-2.5 text-[10px] leading-relaxed text-zinc-200">
+                    <span className="font-black uppercase tracking-wider text-gold-soft">Why this matters: </span>
+                    {snapshot.bestDayReason}
+                  </div>
+                ) : null}
 
                 {!compact && snapshot.bestDetailingDays && snapshot.bestDetailingDays.length > 0 && (
                   <div className="mt-2.5 text-[10px] text-zinc-300 bg-black/20 p-2 rounded-lg border border-white/5">

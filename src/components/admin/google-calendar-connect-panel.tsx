@@ -26,6 +26,24 @@ function fmt(iso?: string | null) {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
 }
 
+function connectionState(status: Status): 'connected' | 'expired' | 'needs_reconnect' | 'disconnected' | 'unconfigured' {
+  if (!status.configured) return 'unconfigured';
+  if (!status.connected) return 'disconnected';
+  if (status.lastError && /refresh|expired|invalid_grant|401|403/i.test(status.lastError)) return 'needs_reconnect';
+  if (status.tokenExpiresAt) {
+    const exp = new Date(status.tokenExpiresAt).getTime();
+    if (!Number.isNaN(exp) && exp < Date.now()) return 'expired';
+  }
+  return 'connected';
+}
+
+function nextSyncLabel(lastPullAt?: string | null) {
+  if (!lastPullAt) return 'On next admin visit (every ~10 min)';
+  const next = new Date(lastPullAt).getTime() + 10 * 60 * 1000;
+  if (Number.isNaN(next)) return '—';
+  return new Date(next).toLocaleString();
+}
+
 export function GoogleCalendarConnectPanel() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status | null>(null);
@@ -96,10 +114,21 @@ export function GoogleCalendarConnectPanel() {
           <code className='text-gold-soft'>GOOGLE_CALENDAR_REDIRECT_URI</code> in Vercel, then connect below.
         </p>
       ) : status.connected ? (
+        (() => {
+          const state = connectionState(status);
+          const stateLabel =
+            state === 'expired'
+              ? 'Expired'
+              : state === 'needs_reconnect'
+                ? 'Needs reconnect'
+                : 'Connected';
+          const stateColor =
+            state === 'connected' ? 'text-emerald-300' : state === 'expired' ? 'text-amber-300' : 'text-rose-300';
+          return (
         <dl className='mt-3 grid gap-1 text-xs sm:grid-cols-2'>
           <div>
             <dt className='text-zinc-500'>Status</dt>
-            <dd className='font-semibold text-emerald-300'>Connected</dd>
+            <dd className={`font-semibold ${stateColor}`}>{stateLabel}</dd>
           </div>
           <div>
             <dt className='text-zinc-500'>Google account</dt>
@@ -114,12 +143,12 @@ export function GoogleCalendarConnectPanel() {
             <dd className='text-zinc-300'>{fmt(status.tokenExpiresAt)}</dd>
           </div>
           <div>
-            <dt className='text-zinc-500'>Last push</dt>
-            <dd className='text-zinc-300'>{fmt(status.lastPushAt ?? status.lastSyncAt)}</dd>
+            <dt className='text-zinc-500'>Last sync</dt>
+            <dd className='text-zinc-300'>{fmt(status.lastPullAt ?? status.lastSyncAt)}</dd>
           </div>
           <div>
-            <dt className='text-zinc-500'>Last pull</dt>
-            <dd className='text-zinc-300'>{fmt(status.lastPullAt)}</dd>
+            <dt className='text-zinc-500'>Next sync</dt>
+            <dd className='text-zinc-300'>{nextSyncLabel(status.lastPullAt ?? status.lastSyncAt)}</dd>
           </div>
           {status.lastError ? (
             <div className='sm:col-span-2'>
@@ -127,7 +156,14 @@ export function GoogleCalendarConnectPanel() {
               <dd className='text-rose-300'>{status.lastError}</dd>
             </div>
           ) : null}
+          {state !== 'connected' ? (
+            <div className='sm:col-span-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-amber-100'>
+              Google Calendar will not sync silently — reconnect to restore push/pull.
+            </div>
+          ) : null}
         </dl>
+          );
+        })()
       ) : (
         <p className='mt-3 text-xs text-zinc-400'>Not connected — connect to sync Titan with Google Calendar.</p>
       )}

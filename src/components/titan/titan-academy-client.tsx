@@ -2,62 +2,86 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, ExternalLink, Play, Sparkles, Wrench } from 'lucide-react';
+import { Play, Sparkles, TrendingUp } from 'lucide-react';
 import {
   ACADEMY_CATEGORIES,
   ACADEMY_RESOURCES,
   BUSINESS_MODELS,
   type AcademyResource,
 } from '@/lib/titan/business-academy';
+import type { AcademyRecommendation } from '@/lib/titan/academy-recommendations';
 import type { CmsAcademyArticle } from '@/components/admin/cms-academy-articles-client';
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 
-const TYPE_ICON = {
-  video: Play,
-  article: BookOpen,
-  model: Sparkles,
-  tool: Wrench,
-} as const;
+const TYPE_ICON = { video: Play, article: Sparkles, model: TrendingUp, tool: Sparkles } as const;
 
-function ResourceCard({ item }: { item: AcademyResource }) {
+function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?: number }) {
   const Icon = TYPE_ICON[item.type];
   const external = item.href.startsWith('http');
+  const isVideo = item.type === 'video';
   const className =
-    'group flex flex-col rounded-2xl border border-white/10 bg-black/45 p-4 transition hover:border-gold/30 hover:bg-black/60 h-full';
+    'group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/45 transition hover:border-gold/35 hover:shadow-[0_8px_30px_rgba(212,175,55,0.08)] h-full';
 
-  const inner = (
+  const thumb = (
+    <div className="relative aspect-video bg-gradient-to-br from-zinc-900 via-black to-gold/10">
+      {isVideo ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border border-gold/40 bg-black/60 text-gold-soft transition group-hover:scale-110">
+            <Play className="h-5 w-5 fill-current" />
+          </span>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center opacity-40">
+          <Icon className="h-10 w-10 text-gold-soft" />
+        </div>
+      )}
+      {progress > 0 ? (
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+          <div className="h-full bg-gold" style={{ width: `${Math.min(100, progress)}%` }} />
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase text-zinc-400">
-          <Icon className="h-3 w-3" /> {item.type}
-        </span>
-        {item.duration ? <span className="text-[9px] text-zinc-600">{item.duration}</span> : null}
+      {thumb}
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase text-zinc-400">
+            <Icon className="h-3 w-3" /> {item.type}
+          </span>
+          {item.duration ? <span className="text-[9px] text-zinc-600">{item.duration}</span> : null}
+        </div>
+        <h3 className="mt-2 text-sm font-black text-white group-hover:text-gold-soft">{item.title}</h3>
+        <p className="mt-2 flex-1 text-xs leading-relaxed text-zinc-400">{item.summary}</p>
       </div>
-      <h3 className="mt-3 text-sm font-black text-white group-hover:text-gold-soft transition">{item.title}</h3>
-      <p className="mt-2 flex-1 text-xs leading-relaxed text-zinc-400">{item.summary}</p>
-      <p className="mt-3 flex items-center gap-1 text-[10px] font-bold uppercase text-gold-soft">
-        {external ? 'Open resource' : 'Open in Gloss Boss'}
-        <ExternalLink className="h-3 w-3" />
-      </p>
     </>
   );
 
   if (external) {
     return (
       <a href={item.href} target="_blank" rel="noreferrer" className={className}>
-        {inner}
+        {body}
       </a>
     );
   }
   return (
     <Link href={item.href} className={className}>
-      {inner}
+      {body}
     </Link>
   );
 }
 
-export function TitanAcademyClient({ cmsArticles = [] }: { cmsArticles?: CmsAcademyArticle[] }) {
+export function TitanAcademyClient({
+  cmsArticles = [],
+  recommendations = [],
+}: {
+  cmsArticles?: CmsAcademyArticle[];
+  recommendations?: AcademyRecommendation[];
+}) {
   const [category, setCategory] = useState<string>('all');
+
   const resources = useMemo(() => {
     const fromCms: AcademyResource[] = cmsArticles.map((a) => ({
       id: `cms-${a.id}`,
@@ -73,17 +97,50 @@ export function TitanAcademyClient({ cmsArticles = [] }: { cmsArticles?: CmsAcad
     const curated = ACADEMY_RESOURCES.filter((r) => !cmsIds.has(r.href));
     return [...fromCms, ...curated];
   }, [cmsArticles]);
+
   const filtered = useMemo(
     () => (category === 'all' ? resources : resources.filter((r) => r.category === category)),
     [category, resources],
   );
 
+  const continueWatching = resources.filter((r) => r.type === 'video').slice(0, 3);
+  const popular = resources.slice(0, 4);
+
   return (
     <div className="space-y-8">
+      {recommendations.length > 0 ? (
+        <GlassCard glow className="border-gold/25">
+          <SectionEyebrow>Titan recommends for you</SectionEyebrow>
+          <div className="mt-4 space-y-4">
+            {recommendations.map((rec) => (
+              <div key={rec.id} className="rounded-2xl border border-gold/20 bg-gold/5 p-4">
+                <p className="text-sm font-bold text-gold-soft">{rec.reason}</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {rec.resources.map((r) => (
+                    <ResourceCard key={r.id} item={r} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      ) : null}
+
+      {continueWatching.length > 0 ? (
+        <section>
+          <SectionEyebrow>Continue watching</SectionEyebrow>
+          <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            {continueWatching.map((r, i) => (
+              <ResourceCard key={r.id} item={r} progress={i === 0 ? 45 : i === 1 ? 20 : 0} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <GlassCard glow className="border-gold/20">
         <SectionEyebrow>Titan Business Academy</SectionEyebrow>
         <p className="mt-3 text-sm leading-relaxed text-zinc-300 max-w-3xl">
-          Curated models, videos, and playbooks to sharpen operations, pricing, and AI-assisted growth — without leaving your command center.
+          Models, videos, and playbooks — sharpen operations, pricing, and AI-assisted growth.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {ACADEMY_CATEGORIES.map((c) => (
@@ -101,31 +158,30 @@ export function TitanAcademyClient({ cmsArticles = [] }: { cmsArticles?: CmsAcad
         </div>
       </GlassCard>
 
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filtered.map((item) => (
+          <ResourceCard key={item.id} item={item} />
+        ))}
+      </div>
+
       <section>
-        <h2 className="text-sm font-black uppercase tracking-wider text-white mb-4">Business models for Gloss Boss</h2>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {BUSINESS_MODELS.map((model) => (
-            <article key={model.id} className="rounded-2xl border border-white/10 bg-zinc-950/60 p-5">
-              <p className="text-[10px] font-black uppercase text-gold-soft">{model.name}</p>
-              <p className="mt-2 text-xs text-zinc-400 leading-relaxed">{model.description}</p>
-              <ul className="mt-3 space-y-1 text-[11px] text-zinc-500">
-                {model.metrics.map((m) => (
-                  <li key={m}>· {m}</li>
-                ))}
-              </ul>
-              <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-100 leading-relaxed">
-                <strong className="text-emerald-300">Gloss Boss fit:</strong> {model.glossBossFit}
-              </p>
-            </article>
+        <SectionEyebrow>Popular this week</SectionEyebrow>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {popular.map((item) => (
+            <ResourceCard key={`pop-${item.id}`} item={item} />
           ))}
         </div>
       </section>
 
       <section>
-        <h2 className="text-sm font-black uppercase tracking-wider text-white mb-4">Learn & apply</h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((item) => (
-            <ResourceCard key={item.id} item={item} />
+        <SectionEyebrow>Business models</SectionEyebrow>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          {BUSINESS_MODELS.map((m) => (
+            <GlassCard key={m.id}>
+              <h3 className="text-sm font-black text-white">{m.name}</h3>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">{m.description}</p>
+              <p className="mt-3 text-[10px] font-bold uppercase text-gold-soft">{m.glossBossFit}</p>
+            </GlassCard>
           ))}
         </div>
       </section>

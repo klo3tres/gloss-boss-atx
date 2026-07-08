@@ -134,8 +134,8 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-white/10 bg-black/45 p-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">Upload or link media</p>
-        <p className="mt-1 text-xs text-zinc-500">Upload images/videos to Supabase gallery storage, or paste an external URL.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">Upload asset</p>
+        <p className="mt-1 text-xs text-zinc-500">Primary method: choose a file — uploads go directly to Supabase storage. URL is optional.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block text-xs text-zinc-400">
             Placement

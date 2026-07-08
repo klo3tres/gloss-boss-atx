@@ -5,6 +5,7 @@ import { RootClientBoundary } from '@/components/layout/root-client-boundary';
 import { SiteChrome } from '@/components/layout/site-chrome';
 import { TitanGlobalAssistant } from '@/components/titan/titan-global-assistant';
 import { StabilityDiagnosticsClient } from '@/components/layout/stability-diagnostics-client';
+import { ThemeBootstrap } from '@/components/theme/theme-bootstrap';
 
 /**
  * All client chrome + error boundary + diagnostics live here so `app/layout.tsx`
@@ -16,11 +17,12 @@ export default function AppTemplate({ children }: { children: React.ReactNode })
       id='gb-app-shell'
       style={{
         minHeight: '100vh',
-        backgroundColor: '#000000',
-        color: '#e4e4e7',
+        backgroundColor: 'var(--gb-bg, #000000)',
+        color: 'var(--gb-fg, #e4e4e7)',
       }}
     >
       <GlobalRuntimeGuard />
+      <ThemeBootstrap />
       <StabilityDiagnosticsClient />
       <RootClientBoundary>
         <SiteChrome>{children}</SiteChrome>

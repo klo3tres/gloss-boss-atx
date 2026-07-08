@@ -1,5 +1,12 @@
 import { appleAdvancedApiStatus, businessCoordinates } from '@/lib/weather-config';
 
+export type HourlyForecast = {
+  hourLabel: string;
+  temperatureF: number;
+  rainChancePct: number;
+  condition: string;
+};
+
 export type DailyForecast = {
   date: string;
   dayName: string;
@@ -26,6 +33,10 @@ export type WeatherSnapshot = {
   dailyForecasts?: DailyForecast[];
   bestDetailingDays?: string[];
   rainWarningDays?: string[];
+  hourlyForecasts?: HourlyForecast[];
+  bestDayReason?: string;
+  heatWarning?: boolean;
+  garageRecommended?: boolean;
   appleAdvancedApi?: {
     configured: boolean;
     message: string;
@@ -227,6 +238,28 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
 
     const matchedDay = targetDateKey ? dailyForecasts.find((d) => d.date === targetDateKey) : undefined;
 
+    const hourlyForecasts: HourlyForecast[] = data.list.slice(0, 8).map((slot) => {
+      const date = new Date(slot.dt * 1000);
+      const hourLabel = date.toLocaleTimeString('en-US', { timeZone: BUSINESS_TZ, hour: 'numeric' });
+      return {
+        hourLabel,
+        temperatureF: Math.round(slot.main?.temp ?? 0),
+        rainChancePct: Math.round((slot.pop ?? 0) * 100),
+        condition: slot.weather?.[0]?.main ?? '',
+      };
+    });
+
+    const bestDay = dailyForecasts.find((d) => d.isBest);
+    const bestDayReason = bestDay
+      ? `${bestDay.dayName} is ideal because temperatures stay around ${bestDay.tempMaxF}°F and rain chance is only ${bestDay.rainChancePct}%.`
+      : dailyForecasts[0]
+        ? `Today shows ${dailyForecasts[0].rainChancePct}% rain risk — consider garage cover if showers develop.`
+        : undefined;
+
+    const currentTemp = Math.round(best.main?.temp ?? 0);
+    const heatWarning = currentTemp >= 95 || dailyForecasts.some((d) => d.tempMaxF >= 98);
+    const garageRecommended = rainPct >= 35 || severe || heatWarning;
+
     return {
       ok: true,
       provider: 'openweather',
@@ -239,6 +272,10 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
       dailyForecasts,
       bestDetailingDays,
       rainWarningDays,
+      hourlyForecasts,
+      bestDayReason,
+      heatWarning,
+      garageRecommended,
       appleAdvancedApi,
     };
   } catch (e) {

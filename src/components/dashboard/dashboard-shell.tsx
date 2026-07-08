@@ -67,8 +67,8 @@ const adminNavGroups: NavGroup[] = [
   {
     title: 'Marketing',
     links: [
-      { href: '/admin/cms', label: 'Website & gallery' },
-      { href: '/admin/media', label: 'Vehicle & service images' },
+      { href: '/admin/cms', label: 'Website content' },
+      { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/promotions', label: 'Promotions' },
       { href: '/admin/referrals', label: 'Referrals' },
       { href: '/admin/fleet', label: 'Fleet growth' },
@@ -86,8 +86,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'System',
     links: [
       { href: '/admin/setup-center', label: 'Setup center' },
+      { href: '/admin/settings', label: 'Settings' },
       { href: '/admin/brand-settings', label: 'Brand settings' },
-      { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/launch-readiness', label: 'Launch readiness' },
       { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/integrations', label: 'Integrations' },

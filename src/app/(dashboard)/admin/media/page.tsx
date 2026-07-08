@@ -1,27 +1,11 @@
-import { notFound } from 'next/navigation';
-import { CmsMediaManager } from '@/components/admin/cms-media-manager';
-import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { getSessionWithProfile } from '@/lib/auth/session';
-import { isStaffRole } from '@/lib/auth/roles';
-import { normalizeMediaRegistry } from '@/lib/media-registry';
-import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { redirect } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
-
-export default async function AdminMediaPage() {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
-
-  const media = await admin.from('site_settings').select('value').eq('key', 'media_registry').maybeSingle();
-
-  return (
-    <DashboardShell
-      title='Vehicle & Service Images'
-      subtitle='Replace the exact images customers see in booking, service cards, fleet pages, memberships, and gift cards.'
-      role='admin'
-    >
-      <CmsMediaManager registry={normalizeMediaRegistry(media.data?.value ?? null)} />
-    </DashboardShell>
-  );
+export default async function AdminMediaRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const tab = typeof sp.tab === 'string' ? sp.tab : 'registry';
+  redirect(`/admin/media-studio?tab=${tab}`);
 }
