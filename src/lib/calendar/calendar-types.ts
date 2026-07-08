@@ -28,6 +28,7 @@ export type CalendarFeedResponse = {
   items: CalendarFeedItem[];
   googleSync?: {
     connected: boolean;
+    connectionStatus?: 'connected' | 'syncing' | 'needs_reconnect' | 'error' | 'disconnected' | 'unconfigured';
     accountEmail?: string | null;
     lastPullAt: string | null;
     lastPushAt: string | null;

@@ -17,7 +17,7 @@ export function GlassCard({
   return (
     <div
       className={clsx(
-        'gb-glass rounded-3xl border border-white/10 p-5 sm:p-6',
+        'gb-glass rounded-3xl border border-border bg-card p-5 sm:p-6 text-card-foreground',
         glow && 'shadow-[0_0_40px_rgba(212,175,55,0.12)]',
         className,
       )}

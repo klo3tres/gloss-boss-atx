@@ -1,0 +1,220 @@
+/* Light mode — dashboard app shell + shared surfaces */
+
+html[data-theme='light'] .gb-dashboard-shell.gb-luxury-page {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content {
+  background: transparent;
+  color: var(--foreground);
+}
+
+/* Sidebar + mobile nav */
+html[data-theme='light'] .gb-dashboard-sidebar,
+html[data-theme='light'] .gb-dashboard-shell aside {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-md);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-mobile-bar {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside h2,
+html[data-theme='light'] .gb-dashboard-shell aside .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside .text-zinc-600,
+html[data-theme='light'] .gb-dashboard-shell aside .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside a.border-transparent {
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside a.border-transparent:hover {
+  background: var(--accent) !important;
+  color: var(--accent-foreground) !important;
+}
+
+/* Page hero header */
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--gb-shadow-md);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero h1,
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}
+
+/* Cards & glass */
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass {
+  background: var(--card) !important;
+  color: var(--card-foreground);
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-sm);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-card::before,
+html[data-theme='light'] .gb-dashboard-shell .gb-card::before,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass-card::before {
+  opacity: 0.08;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > section:not([class*='gb-']),
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > form:not([class*='gb-']),
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > div:not([class*='gb-']) > section:not([class*='gb-']) {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-sm);
+  color: var(--foreground);
+}
+
+/* Typography inside dashboard */
+html[data-theme='light'] .gb-dashboard-shell .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-200,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-300,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-400 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-500,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-600 {
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent) !important;
+}
+
+/* Surfaces: black/zinc backgrounds → card/muted */
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-black'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-950'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-900'] {
+  background-color: var(--card) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-black/'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-950/'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-900/'] {
+  background-color: color-mix(in srgb, var(--card) 92%, var(--muted)) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .border-white\/5,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/8,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/10,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/12,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/15 {
+  border-color: var(--border) !important;
+}
+
+/* Forms */
+html[data-theme='light'] .gb-dashboard-shell input,
+html[data-theme='light'] .gb-dashboard-shell select,
+html[data-theme='light'] .gb-dashboard-shell textarea {
+  background: var(--input) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell input::placeholder,
+html[data-theme='light'] .gb-dashboard-shell textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content tbody tr {
+  background: var(--card) !important;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content thead th {
+  color: var(--accent-foreground) !important;
+}
+
+/* Drawer / modal */
+html[data-theme='light'] .gb-dashboard-shell .gb-notification-drawer {
+  background: var(--card) !important;
+  color: var(--foreground);
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-notification-backdrop {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+/* Tables admin wrap */
+html[data-theme='light'] .gb-dashboard-shell .gb-admin-table-wrap th {
+  color: var(--muted-foreground);
+  border-bottom-color: var(--border);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-admin-table-wrap td {
+  border-bottom-color: var(--border);
+}
+
+/* Stat / platform KPI */
+html[data-theme='light'] .gb-dashboard-shell .gb-platform-kpi,
+html[data-theme='light'] .gb-dashboard-shell .gb-stat-card {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Calendar cells */
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-day {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-day-muted {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-chip-job {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Scrollbar */
+html[data-theme='light'] ::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c4c4c0;
+  border-color: var(--muted);
+}
+html[data-theme='light'] * {
+  scrollbar-color: #c4c4c0 var(--muted);
+}
+
+/* Public marketing site when site default is light (not user dashboard pref) */
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) {
+  background: linear-gradient(180deg, #f7f6f3 0%, #eceae6 55%, #f5f5f3 100%);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-400,
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}

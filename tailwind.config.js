@@ -7,10 +7,33 @@ module.exports = {
         sans: ['var(--font-inter)', 'Inter', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
       },
       colors: {
-        background: '#000000',
-        foreground: '#ffffff',
-        gold: '#d4af37',
-        'gold-soft': '#f1d28a',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)',
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        ring: 'var(--ring)',
+        gold: 'var(--gb-gold)',
+        'gold-soft': 'var(--gb-gold-soft)',
       },
       boxShadow: {
         gold: '0 0 30px rgba(212,166,77,0.25)',

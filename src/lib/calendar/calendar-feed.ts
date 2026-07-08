@@ -5,6 +5,7 @@ import { chicagoTimeShort, dateKeyChicago } from '@/lib/chicago-time';
 import { dayKeyInRange } from '@/lib/calendar/calendar-utils';
 import { displayMoney } from '@/lib/display-format';
 import { loadGoogleCalendarConnection } from '@/lib/google/google-calendar-sync';
+import { resolveGoogleCalendarConnectionStatus } from '@/lib/google/google-calendar-status';
 import type { CalendarFeedItem, CalendarFeedRole, CalendarFeedResponse } from '@/lib/calendar/calendar-types';
 import { workOrderPath } from '@/lib/work-order-links';
 
@@ -220,19 +221,27 @@ export async function loadCalendarFeed(
     const connection = await loadGoogleCalendarConnection(admin);
     const { data: connRow } = await admin
       .from('google_calendar_connections')
-      .select('last_pull_at, last_push_at, last_sync_at, last_error')
-      .eq('sync_enabled', true)
+      .select('last_pull_at, last_push_at, last_sync_at, last_error, token_expires_at, refresh_token, sync_enabled')
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     const row = connRow as Record<string, unknown> | null;
+    const connectionStatus = resolveGoogleCalendarConnectionStatus({
+      configured: true,
+      hasConnectionRow: Boolean(connection && row?.sync_enabled !== false),
+      refreshToken: connection?.refresh_token ?? (row?.refresh_token as string | undefined) ?? null,
+      tokenExpiresAt: connection?.token_expires_at ?? (row?.token_expires_at as string | undefined) ?? null,
+      lastError: str(row?.last_error) || null,
+    });
+    const isHealthy = connectionStatus === 'connected' || connectionStatus === 'syncing';
     googleSync = {
-      connected: Boolean(connection),
+      connected: isHealthy,
+      connectionStatus,
       accountEmail: connection?.google_account_email ?? null,
       lastPullAt: str(row?.last_pull_at) || null,
       lastPushAt: str(row?.last_push_at) || null,
       lastSyncAt: str(row?.last_sync_at) || null,
-      lastError: str(row?.last_error) || null,
+      lastError: isHealthy ? null : str(row?.last_error) || null,
     };
   }
 

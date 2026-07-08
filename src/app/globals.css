@@ -2,11 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ——— Semantic theme tokens (dark default) ——— */
 :root,
 html[data-theme='dark'] {
   color-scheme: dark;
-  --gb-bg: #000000;
-  --gb-fg: #ffffff;
+  --background: #000000;
+  --foreground: #fafafa;
+  --card: #111113;
+  --card-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(0, 0, 0, 0.62);
+  --primary: #d4af37;
+  --primary-foreground: #0a0a0a;
+  --accent: rgba(212, 175, 55, 0.12);
+  --accent-foreground: #f1d28a;
+  --popover: #111113;
+  --popover-foreground: #fafafa;
+  --ring: rgba(212, 175, 55, 0.45);
+  --gb-bg: var(--background);
+  --gb-fg: var(--foreground);
   --gb-gold: #d4af37;
   --gb-gold-soft: #f1d28a;
   --gb-platinum: #f8f5ea;
@@ -19,12 +35,29 @@ html[data-theme='dark'] {
   --titan-gold: #c9a227;
   --titan-gold-soft: #e8c547;
   --titan-glow: rgba(201, 162, 39, 0.35);
+  --gb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --gb-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 html[data-theme='light'] {
   color-scheme: light;
-  --gb-bg: #f4f4f1;
-  --gb-fg: #111113;
+  --background: #f5f5f3;
+  --foreground: #111113;
+  --card: #ffffff;
+  --card-foreground: #111113;
+  --muted: #eceae6;
+  --muted-foreground: #52525b;
+  --border: rgba(15, 23, 42, 0.1);
+  --input: #ffffff;
+  --primary: #9a7209;
+  --primary-foreground: #ffffff;
+  --accent: rgba(154, 114, 9, 0.1);
+  --accent-foreground: #7a5907;
+  --popover: #ffffff;
+  --popover-foreground: #111113;
+  --ring: rgba(154, 114, 9, 0.35);
+  --gb-bg: var(--background);
+  --gb-fg: var(--foreground);
   --gb-gold: #9a7209;
   --gb-gold-soft: #b8860b;
   --gb-platinum: #1a1a1c;
@@ -36,17 +69,8 @@ html[data-theme='light'] {
   --titan-gold: #9a7209;
   --titan-gold-soft: #b8860b;
   --titan-glow: rgba(154, 114, 9, 0.15);
-}
-
-html[data-theme='light'] .gb-premium-card,
-html[data-theme='light'] .gb-glass,
-html[data-theme='light'] [class*='bg-zinc-950'],
-html[data-theme='light'] [class*='bg-black/'] {
-  --tw-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.04);
-}
-
-html[data-theme='light'] .gb-dashboard-content {
-  background: linear-gradient(180deg, #f4f4f1 0%, #eceae6 100%);
+  --gb-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --gb-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
 }
 
 html[data-sidebar-density='compact'] .gb-dashboard-sidebar nav a {
@@ -277,7 +301,7 @@ table {
 }
 
 * {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--border);
 }
 
 .tech-workflow-form input,
@@ -290,11 +314,11 @@ table {
 .gb-input {
   width: 100%;
   border-radius: 0.75rem;
-  border: 1px solid rgb(63 63 70);
-  background: #000;
+  border: 1px solid var(--border);
+  background: var(--input);
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
-  color: #fff;
+  color: var(--foreground);
 }
 
 /* Premium luxury surface — dashboards, work orders, marketing */
@@ -1185,5 +1209,227 @@ input[type="range"]::-moz-range-thumb {
   .gb-mobile-full {
     width: 100% !important;
   }
+}
+
+/* === Light theme dashboard overrides (globals-theme-light.css) === */
+html[data-theme='light'] .gb-dashboard-shell.gb-luxury-page {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content {
+  background: transparent;
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-sidebar,
+html[data-theme='light'] .gb-dashboard-shell aside {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-md);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-mobile-bar {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside h2,
+html[data-theme='light'] .gb-dashboard-shell aside .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside .text-zinc-600,
+html[data-theme='light'] .gb-dashboard-shell aside .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside a.border-transparent {
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell aside a.border-transparent:hover {
+  background: var(--accent) !important;
+  color: var(--accent-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: var(--gb-shadow-md);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero h1,
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-hero .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-card,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass {
+  background: var(--card) !important;
+  color: var(--card-foreground);
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-sm);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-premium-card::before,
+html[data-theme='light'] .gb-dashboard-shell .gb-card::before,
+html[data-theme='light'] .gb-dashboard-shell .gb-glass-card::before {
+  opacity: 0.08;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > section:not([class*='gb-']),
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > form:not([class*='gb-']),
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content > div:not([class*='gb-']) > section:not([class*='gb-']) {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--gb-shadow-sm);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-200,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-300,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-400 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-500,
+html[data-theme='light'] .gb-dashboard-shell .text-zinc-600 {
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-black'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-950'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-900'] {
+  background-color: var(--card) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-black/'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-950/'],
+html[data-theme='light'] .gb-dashboard-shell [class*='bg-zinc-900/'] {
+  background-color: color-mix(in srgb, var(--card) 92%, var(--muted)) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .border-white\/5,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/8,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/10,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/12,
+html[data-theme='light'] .gb-dashboard-shell .border-white\/15 {
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell input,
+html[data-theme='light'] .gb-dashboard-shell select,
+html[data-theme='light'] .gb-dashboard-shell textarea {
+  background: var(--input) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell input::placeholder,
+html[data-theme='light'] .gb-dashboard-shell textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content tbody tr {
+  background: var(--card) !important;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content thead th {
+  color: var(--accent-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-notification-drawer {
+  background: var(--card) !important;
+  color: var(--foreground);
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-notification-backdrop {
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-admin-table-wrap th {
+  color: var(--muted-foreground);
+  border-bottom-color: var(--border);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-admin-table-wrap td {
+  border-bottom-color: var(--border);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-platform-kpi,
+html[data-theme='light'] .gb-dashboard-shell .gb-stat-card {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-day {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-day-muted {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-calendar-chip-job {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c4c4c0;
+  border-color: var(--muted);
+}
+
+html[data-theme='light'] * {
+  scrollbar-color: #c4c4c0 var(--muted);
+}
+
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) {
+  background: linear-gradient(180deg, #f7f6f3 0%, #eceae6 55%, #f5f5f3 100%);
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-400,
+html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-300 {
+  color: var(--muted-foreground) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content input,
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content select,
+html[data-theme='light'] .gb-dashboard-shell .gb-dashboard-content textarea {
+  background: var(--input) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='light'] .gb-dashboard-shell .gb-luxury-page {
+  background: var(--background) !important;
 }
 

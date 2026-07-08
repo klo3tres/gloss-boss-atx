@@ -45,9 +45,9 @@ export function ThemeProvider({
   });
 
   const resolved = useMemo(() => {
-    if (preference === 'system') return websiteDefault === 'light' ? systemTheme() : systemTheme();
+    if (preference === 'system') return systemTheme();
     return preference;
-  }, [preference, websiteDefault]);
+  }, [preference]);
 
   useEffect(() => {
     applyTheme(resolved);

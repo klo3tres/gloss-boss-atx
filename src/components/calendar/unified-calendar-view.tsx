@@ -22,19 +22,19 @@ import { CalendarDayWeatherDetail } from '@/components/calendar/calendar-day-wea
 import { dateKeyChicago } from '@/lib/chicago-time';
 import { monthFeedBounds } from '@/lib/calendar/calendar-utils';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
-import { googleSyncStripMessage } from '@/lib/google/google-calendar-status';
+import { googleSyncStripMessage, resolveGoogleCalendarConnectionStatus } from '@/lib/google/google-calendar-status';
 
 const TZ = 'America/Chicago';
 
 function itemChipClass(item: CalendarFeedItem) {
   if (item.kind === 'appointment' || item.kind === 'fallback') {
-    return 'bg-zinc-950/80 text-zinc-300 border-white/5';
+    return 'gb-calendar-chip-job bg-muted text-foreground border-border';
   }
   if (item.kind === 'block') {
-    if (item.source === 'google_calendar') return 'bg-violet-950/50 text-violet-200 border-violet-500/20';
-    return 'bg-rose-950/40 text-rose-200 border-rose-500/20';
+    if (item.source === 'google_calendar') return 'bg-violet-100 text-violet-900 border-violet-200 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-500/20';
+    return 'bg-rose-100 text-rose-900 border-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-500/20';
   }
-  return 'bg-indigo-950/40 text-indigo-200 border-indigo-500/20';
+  return 'bg-indigo-100 text-indigo-900 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-200 dark:border-indigo-500/20';
 }
 
 function fmtSync(iso?: string | null) {
@@ -49,6 +49,11 @@ function syncStatusFromFeed(
   checking: boolean,
 ): string {
   return googleSyncStripMessage({
+    connectionStatus: googleSync?.connectionStatus ?? resolveGoogleCalendarConnectionStatus({
+      configured: true,
+      hasConnectionRow: Boolean(googleSync?.connected),
+      lastError: googleAutoPull?.error ?? googleSync?.lastError,
+    }),
     connected: Boolean(googleSync?.connected),
     checking,
     lastPullAt: googleAutoPull?.lastPullAt ?? googleSync?.lastPullAt,
@@ -210,7 +215,7 @@ export function UnifiedCalendarView({
   return (
     <div className="space-y-4 pb-8 sm:space-y-6">
       {/* Header */}
-      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gold/15 bg-black/45 p-4 backdrop-blur sm:rounded-3xl sm:p-6 ${isCompact ? '' : 'shadow-2xl'}`}>
+      <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 backdrop-blur sm:rounded-3xl sm:p-6 ${isCompact ? '' : 'shadow-md'}`}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="rounded-xl border border-gold/25 bg-black/60 p-2.5 sm:rounded-2xl sm:p-3">
             <Calendar className="h-5 w-5 text-gold sm:h-6 sm:w-6" />
@@ -258,22 +263,23 @@ export function UnifiedCalendarView({
 
       {/* Google sync strip — admin full only */}
       {isAdmin && !isCompact ? (
-        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 text-xs">
             <p className="font-black uppercase tracking-wider text-gold-soft">Google Calendar</p>
             {googleSync?.connected ? (
               <>
-                <p className="mt-1 text-zinc-300">{googleSync.accountEmail ?? 'Connected account'}</p>
-                <p
-                  className={`mt-0.5 text-[11px] ${
-                    googleAutoPull?.error || googleSync.lastError ? 'text-rose-300' : 'text-zinc-500'
-                  }`}
-                >
-                  {syncStatusLabel}
-                </p>
+                <p className="mt-1 text-muted-foreground">{googleSync.accountEmail ?? 'Connected account'}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{syncStatusLabel}</p>
+              </>
+            ) : googleSync?.connectionStatus === 'needs_reconnect' || googleSync?.connectionStatus === 'error' ? (
+              <>
+                <p className="mt-1 text-amber-700 dark:text-amber-200">{syncStatusLabel}</p>
+                {googleSync.accountEmail ? (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{googleSync.accountEmail}</p>
+                ) : null}
               </>
             ) : (
-              <p className="mt-1 text-zinc-400">Connect Google Calendar to block booking slots from your personal calendar.</p>
+              <p className="mt-1 text-muted-foreground">Connect Google Calendar to block booking slots from your personal calendar.</p>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -282,18 +288,20 @@ export function UnifiedCalendarView({
                 href="/api/admin/google-calendar/connect"
                 className="rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase text-black"
               >
-                Connect Google Calendar
+                {googleSync?.connectionStatus === 'needs_reconnect' || googleSync?.connectionStatus === 'error'
+                  ? 'Reconnect Google Calendar'
+                  : 'Connect Google Calendar'}
               </a>
             ) : (
               <>
-                <span className="rounded-lg border border-emerald-500/25 bg-emerald-950/30 px-2 py-1 text-[10px] font-bold uppercase text-emerald-200">
+                <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-200">
                   Connected
                 </span>
                 <button
                   type="button"
                   disabled={syncBusy || loadingFeed}
                   onClick={runGooglePull}
-                  className="text-[10px] font-medium uppercase text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline disabled:opacity-50"
+                  className="text-[10px] font-medium uppercase text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
                   title={`Last pull: ${fmtSync(lastSynced)}`}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -307,12 +315,12 @@ export function UnifiedCalendarView({
               type="button"
               disabled={loadingFeed}
               onClick={() => void loadFeed()}
-              className="rounded-xl border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 disabled:opacity-50"
+              className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50"
             >
               Refresh view
             </button>
           </div>
-          {syncMsg ? <p className="text-[10px] text-zinc-500 sm:col-span-2">{syncMsg}</p> : null}
+          {syncMsg ? <p className="text-[10px] text-muted-foreground sm:col-span-2">{syncMsg}</p> : null}
         </div>
       ) : null}
 

@@ -80,7 +80,7 @@ export function AppearanceSettingsPanel({
                     setPreference(opt.id);
                   }}
                   className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-[10px] font-black uppercase transition ${
-                    activeTheme === opt.id ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/10 bg-black/35 text-zinc-400 hover:border-gold/30'
+                    activeTheme === opt.id ? 'border-gold bg-gold/15 text-gold-soft' : 'border-border bg-card text-muted-foreground hover:border-gold/30'
                   }`}
                 >
                   {opt.icon}

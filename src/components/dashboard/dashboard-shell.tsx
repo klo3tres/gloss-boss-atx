@@ -450,7 +450,7 @@ export function DashboardShell({
     outboxEvents.some((evt) => ['failed', 'error'].includes(String(evt.status ?? '').toLowerCase()));
 
   return (
-    <main className={`gb-luxury-page min-h-screen overflow-x-hidden bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
+    <main className={`gb-dashboard-shell gb-luxury-page min-h-screen overflow-x-hidden bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
       {role === 'super_admin' ? (
         <label className="gb-no-print fixed right-4 top-4 z-[80] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-gold/30 bg-black/95 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-2xl backdrop-blur-xl">
           View as
@@ -468,7 +468,7 @@ export function DashboardShell({
       ) : null}
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
-        <div className='gb-no-print flex items-center justify-between lg:hidden w-full bg-zinc-950/85 border border-gold/15 rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-[0_0_15px_rgba(212,175,55,0.08)]'>
+        <div className='gb-dashboard-mobile-bar gb-no-print flex items-center justify-between lg:hidden w-full border border-border bg-card rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-sm'>
           <div className="flex items-center gap-2">
             <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-7 w-auto object-contain filter brightness-110" />
             <span className='text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>{brand.businessDisplayName}</span>
@@ -489,7 +489,7 @@ export function DashboardShell({
         ) : null}
 
         <aside
-          className={`gb-no-print order-2 rounded-3xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 via-black/95 to-zinc-950/95 p-5 shadow-[0_0_42px_rgba(212,166,77,0.10)] backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
+          className={`gb-dashboard-sidebar gb-no-print order-2 rounded-3xl border border-border bg-card p-5 shadow-md backdrop-blur lg:sticky lg:top-6 lg:order-1 lg:block lg:max-w-[280px] lg:shrink-0 ${
             navOpen ? 'fixed left-4 right-4 top-20 z-[80] max-h-[80vh] overflow-y-auto shadow-2xl lg:relative lg:left-auto lg:right-auto lg:top-auto lg:z-50 lg:max-h-none' : 'z-50 hidden lg:block'
           }`}
         >
@@ -497,7 +497,7 @@ export function DashboardShell({
             <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-16 w-auto object-contain filter brightness-110 mb-2" />
             <p className='text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft'>{brand.brandShortName}</p>
           </div>
-          <h2 className='text-base font-black uppercase text-center text-white mb-2'>{panelTitle}</h2>
+          <h2 className='text-base font-black uppercase text-center text-foreground mb-2'>{panelTitle}</h2>
           {NavLinks}
         </aside>
 
@@ -591,7 +591,7 @@ export function DashboardShell({
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowNotifications(false)}
-              className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm"
+              className="gb-notification-backdrop fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm"
             />
             
             {/* Drawer */}
@@ -600,7 +600,7 @@ export function DashboardShell({
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-              className="fixed inset-y-0 right-0 z-[110] w-full md:max-w-[480px] border-l border-gold/20 bg-zinc-950/95 p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-white"
+              className="gb-notification-drawer fixed inset-y-0 right-0 z-[110] w-full md:max-w-[480px] border-l border-border bg-card p-5 shadow-2xl backdrop-blur-md overflow-y-auto text-foreground"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3.5 mb-5">
                 <div className="flex items-center gap-2">
