@@ -15,7 +15,7 @@ const VALUE_PROPS = [
 
 export function MembershipRoiCalculator({ plans }: { plans: Array<{ tier: string; price_monthly_cents: number; discount_percent: number }> }) {
   const [visits, setVisits] = useState(6);
-  const [avgTicket, setAvgTicket] = useState(275);
+  const [avgTicket, setAvgTicket] = useState(225);
   const [tier, setTier] = useState<MembershipTierKey>('silver');
 
   const plan = plans.find((p) => p.tier.toLowerCase().includes(tier));
@@ -23,16 +23,33 @@ export function MembershipRoiCalculator({ plans }: { plans: Array<{ tier: string
   const monthly = (plan?.price_monthly_cents ?? meta.monthlyAnchorCents) / 100;
   const discount = plan?.discount_percent ?? meta.discountPercent;
 
+  const fmt = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
   const result = useMemo(() => {
-    const annualVisits = visits * 12;
-    const grossSpend = annualVisits * avgTicket;
+    const visitsPerYear = Math.min(24, Math.max(1, visits));
+    const ticket = Math.min(2000, Math.max(50, avgTicket));
+    const grossSpend = visitsPerYear * ticket;
     const memberDiscount = Math.round(grossSpend * (discount / 100));
     const annualDues = monthly * 12;
-    const credits = (meta.quarterlyCreditCents ? (meta.quarterlyCreditCents / 100) * 4 : 0) + (meta.annualCreditCents / 100);
-    const timeSavedHrs = tier === 'gold' ? annualVisits * 0.5 : tier === 'silver' ? annualVisits * 0.25 : 0;
+    const credits =
+      (meta.quarterlyCreditCents ? (meta.quarterlyCreditCents / 100) * 4 : 0) +
+      (meta.annualCreditCents ? meta.annualCreditCents / 100 : 0);
+    const timeSavedHrs =
+      tier === 'gold' ? visitsPerYear * 0.5 : tier === 'silver' ? visitsPerYear * 0.25 : 0;
     const priorityValue = tier === 'gold' ? 150 : tier === 'silver' ? 75 : 25;
     const netSavings = memberDiscount + credits + priorityValue - annualDues;
-    return { grossSpend, memberDiscount, annualDues, credits, timeSavedHrs, priorityValue, netSavings, annualVisits };
+    return {
+      grossSpend,
+      memberDiscount,
+      annualDues,
+      credits,
+      timeSavedHrs,
+      priorityValue,
+      netSavings,
+      visitsPerYear,
+      ticket,
+    };
   }, [visits, avgTicket, tier, monthly, discount, meta]);
 
   return (
@@ -47,12 +64,12 @@ export function MembershipRoiCalculator({ plans }: { plans: Array<{ tier: string
         <div className="space-y-4">
           <label className="block text-xs text-zinc-500">
             Visits per year
-            <input type="range" min={2} max={24} value={visits} onChange={(e) => setVisits(Number(e.target.value))} className="mt-2 w-full accent-[var(--gb-gold)]" />
+            <input type="range" min={1} max={24} value={visits} onChange={(e) => setVisits(Number(e.target.value))} className="mt-2 w-full accent-[var(--gb-gold)]" />
             <span className="mt-1 block font-mono text-white">{visits}× / year</span>
           </label>
           <label className="block text-xs text-zinc-500">
             Avg detail ticket ($)
-            <input type="number" value={avgTicket} onChange={(e) => setAvgTicket(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-white" />
+            <input type="number" min={50} max={2000} step={5} value={avgTicket} onChange={(e) => setAvgTicket(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-white" />
           </label>
           <div className="flex flex-wrap gap-2">
             {(['bronze', 'silver', 'gold'] as const).map((t) => (
@@ -70,15 +87,16 @@ export function MembershipRoiCalculator({ plans }: { plans: Array<{ tier: string
 
         <div className="rounded-2xl border border-white/10 bg-black/50 p-5">
           <dl className="space-y-3 text-sm">
-            <div className="flex justify-between"><dt className="text-zinc-500">Annual spend (non-member)</dt><dd className="font-mono text-white">${result.grossSpend.toLocaleString()}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Member discount ({discount}%)</dt><dd className="font-mono text-emerald-300">−${result.memberDiscount.toLocaleString()}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Credits earned</dt><dd className="font-mono text-emerald-300">+${result.credits.toLocaleString()}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Priority value est.</dt><dd className="font-mono text-emerald-300">+${result.priorityValue}</dd></div>
-            <div className="flex justify-between"><dt className="text-zinc-500">Annual dues</dt><dd className="font-mono text-zinc-400">−${result.annualDues.toLocaleString()}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Annual spend (non-member)</dt><dd className="font-mono text-white">{fmt(result.grossSpend)}</dd></div>
+            <p className="text-[10px] text-zinc-600">{result.visitsPerYear} visits × {fmt(result.ticket)} avg ticket</p>
+            <div className="flex justify-between"><dt className="text-zinc-500">Member discount ({discount}%)</dt><dd className="font-mono text-emerald-300">−{fmt(result.memberDiscount)}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Credits earned</dt><dd className="font-mono text-emerald-300">+{fmt(result.credits)}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Priority value est.</dt><dd className="font-mono text-emerald-300">+{fmt(result.priorityValue)}</dd></div>
+            <div className="flex justify-between"><dt className="text-zinc-500">Annual dues (monthly × 12)</dt><dd className="font-mono text-zinc-400">−{fmt(result.annualDues)}</dd></div>
             <div className="border-t border-white/10 pt-3 flex justify-between">
               <dt className="font-black text-gold-soft">Net annual value</dt>
               <dd className={`font-mono text-xl font-black ${result.netSavings >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                {result.netSavings >= 0 ? '+' : ''}${result.netSavings.toLocaleString()}
+                {result.netSavings >= 0 ? '+' : ''}{fmt(result.netSavings)}
               </dd>
             </div>
           </dl>

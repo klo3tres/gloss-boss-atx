@@ -1433,3 +1433,109 @@ html[data-theme='light'] .gb-dashboard-shell .gb-luxury-page {
   background: var(--background) !important;
 }
 
+/* ── Public marketing light theme (site default light) ── */
+html[data-theme='light'] .gb-luxury-nav {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .gb-luxury-nav a,
+html[data-theme='light'] .gb-luxury-nav button {
+  color: #3f3f46;
+}
+
+html[data-theme='light'] .gb-luxury-nav a:hover,
+html[data-theme='light'] .gb-luxury-nav button:hover {
+  color: #92700a;
+}
+
+html[data-theme='light'] .gb-marketing-page {
+  background: linear-gradient(180deg, #f7f6f3 0%, #eceae6 55%, #f5f5f3 100%) !important;
+  color: #0a0a0a;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero {
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-panel {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(212, 175, 55, 0.28) !important;
+  backdrop-filter: blur(16px);
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-title,
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-panel h1,
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-panel h3 {
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-sub,
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero .gb-hero-panel p {
+  color: #52525b !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-dark {
+  opacity: 0.15;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-light {
+  opacity: 1;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-service-card {
+  background: #ffffff !important;
+  border-color: rgba(212, 175, 55, 0.22) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-service-card h3 {
+  color: #92700a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-service-card .gb-service-body,
+html[data-theme='light'] .gb-marketing-page .gb-service-card li span {
+  color: #3f3f46 !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-service-card .gb-service-price {
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-band {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-band .gb-band-title {
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-marketing-band .gb-band-desc {
+  color: #71717a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-gallery-caption {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72)) !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-before-after-label {
+  background: rgba(0, 0, 0, 0.72) !important;
+  color: #fafafa !important;
+  border-color: rgba(212, 175, 55, 0.35) !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-referral-section {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(255, 255, 255, 0.95));
+  border-color: rgba(212, 175, 55, 0.25);
+}
+
+html[data-theme='dark'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-light {
+  opacity: 0;
+}
+
+html[data-theme='dark'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-dark {
+  opacity: 1;
+}
+

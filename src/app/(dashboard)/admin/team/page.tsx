@@ -4,7 +4,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
-import { CreateStaffClient, StaffRowSuperClient } from './team-super-client';
+import { CreateStaffClient, StaffInviteClient, PendingInvitesClient, StaffRowSuperClient } from './team-super-client';
+import { listStaffInvites } from '@/lib/staff-invites';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,16 +54,20 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
   const roleErr = firstParam(sp.roleErr);
   const session = await getSessionWithProfile();
   const supabase = await createSupabaseServerClient();
+  const isSuper = session.profile?.role === 'super_admin';
 
   let staff: ProfileRow[] = [];
   let err: string | null = null;
+  let pendingInvites: Awaited<ReturnType<typeof listStaffInvites>> = [];
+
+  const staffRoles = ['super_admin', 'admin', 'dispatcher', 'technician', 'viewer'];
 
   if (supabase && session.user && isAdminLevel(session.profile?.role ?? null)) {
     const db = tryCreateAdminSupabase() ?? supabase;
     const full = await db
       .from('profiles')
       .select('*')
-      .in('role', ['super_admin', 'admin', 'technician'])
+      .in('role', staffRoles)
       .order('role', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(200);
@@ -71,7 +76,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
       const lean = await db
         .from('profiles')
         .select('id, role, created_at, full_name, display_name, email')
-        .in('role', ['super_admin', 'admin', 'technician'])
+        .in('role', staffRoles)
         .order('role', { ascending: true })
         .order('created_at', { ascending: true })
         .limit(200);
@@ -95,7 +100,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
         const svc = await adminClient
           .from('profiles')
           .select('*')
-          .in('role', ['super_admin', 'admin', 'technician'])
+          .in('role', staffRoles)
           .order('role', { ascending: true })
           .limit(200);
         if (!svc.error && (svc.data?.length ?? 0) > staff.length) {
@@ -105,9 +110,18 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
         }
       }
     }
+
+    if (isSuper) {
+      const adminClient = tryCreateAdminSupabase();
+      if (adminClient) pendingInvites = await listStaffInvites(adminClient);
+    }
   }
 
-  const isSuper = session.profile?.role === 'super_admin';
+  const pendingByEmail = new Map(
+    pendingInvites
+      .filter((i) => i.status === 'pending' && i.email)
+      .map((i) => [i.email!.trim().toLowerCase(), i.id] as const),
+  );
 
   return (
     <DashboardShell title='Team roster' subtitle='Staff profiles, roles, and technician accounts.' role='admin'>
@@ -212,6 +226,8 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                         initialDisplayName={displayName(p)}
                         initialActive={p.active}
                         currentUserId={session.user?.id ?? ''}
+                        profileEmail={p.email}
+                        pendingInviteId={p.email ? pendingByEmail.get(p.email.trim().toLowerCase()) ?? null : null}
                       />
                     </div>
                   </details>
@@ -229,19 +245,37 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
 
         {/* Collapsible creation drawer */}
         {isSuper && (
-          <details className='rounded-3xl border border-gold/15 bg-black/45 p-6 group'>
-            <summary className='cursor-pointer font-bold text-xs uppercase tracking-[0.25em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between'>
-              <span>Create New Staff Profile</span>
-              <span className='text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900 transition'>Toggle Form</span>
-            </summary>
-            <div className='mt-5 pt-5 border-t border-white/5'>
-              <p className='text-xs text-zinc-500 mb-4'>
-                Creates a Supabase auth user credentials block, assigns specified authorization role on profile, and allows immediate login. 
-                Password must be at least 8 characters.
+          <>
+            <details open className="rounded-3xl border border-gold/20 bg-black/45 p-6 group">
+              <summary className="cursor-pointer font-bold text-xs uppercase tracking-[0.25em] text-gold-soft select-none">
+                Invite employee (recommended)
+              </summary>
+              <p className="mt-3 text-xs text-zinc-500">
+                Send a secure link by SMS and/or email. They choose their password and land in the right portal.
               </p>
-              <CreateStaffClient />
+              <StaffInviteClient />
+            </details>
+
+            <div className="rounded-3xl border border-white/10 bg-zinc-950/40 p-6">
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-zinc-400">Pending invites</p>
+              <div className="mt-4">
+                <PendingInvitesClient initialInvites={pendingInvites} />
+              </div>
             </div>
-          </details>
+
+            <details className="rounded-3xl border border-gold/15 bg-black/45 p-6 group">
+              <summary className='cursor-pointer font-bold text-xs uppercase tracking-[0.25em] text-zinc-400 hover:text-gold-soft transition select-none flex items-center justify-between'>
+                <span>Create New Staff Profile (legacy)</span>
+                <span className='text-[10px] text-zinc-500 font-normal py-1 px-3 border border-white/10 rounded-lg bg-zinc-950/40 hover:bg-zinc-900 transition'>Toggle Form</span>
+              </summary>
+              <div className='mt-5 pt-5 border-t border-white/5'>
+                <p className='text-xs text-zinc-500 mb-4'>
+                  Manual account creation with temporary password. Prefer team invite above for SMS/email onboarding.
+                </p>
+                <CreateStaffClient />
+              </div>
+            </details>
+          </>
         )}
       </div>
 

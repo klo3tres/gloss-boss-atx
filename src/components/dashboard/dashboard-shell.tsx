@@ -15,7 +15,7 @@ import { formatActivityEventLabel } from '@/lib/activity-event-labels';
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
 export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
 
-export type DashboardShellRole = 'super_admin' | 'admin' | 'technician' | 'customer';
+export type DashboardShellRole = 'super_admin' | 'admin' | 'dispatcher' | 'viewer' | 'technician' | 'customer';
 
 type NavLink = { href: string; label: string };
 type NavGroup = { title: string; links: NavLink[] };
@@ -28,6 +28,18 @@ const TITAN_ADMIN_SURFACES = new Set([
   '/admin/revenue',
   '/admin/calendar',
 ]);
+
+const viewerNavGroups: NavGroup[] = [
+  {
+    title: 'Overview',
+    links: [
+      { href: '/admin', label: 'Briefing' },
+      { href: '/admin/calendar', label: 'Calendar' },
+      { href: '/admin/notifications', label: 'Activity' },
+      { href: '/admin/reports', label: 'Reports' },
+    ],
+  },
+];
 
 const adminNavGroups: NavGroup[] = [
   {
@@ -202,7 +214,7 @@ export function DashboardShell({
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const isOwnerView = role === 'admin' || role === 'super_admin';
+        const isOwnerView = role === 'admin' || role === 'super_admin' || role === 'dispatcher';
         const isTech = role === 'technician';
         const isCustomer = role === 'customer';
 
@@ -325,7 +337,7 @@ export function DashboardShell({
       }
       try {
         const raw = sessionStorage.getItem(GB_NAV_SIM_KEY)?.trim();
-        const allowed: DashboardShellRole[] = ['super_admin', 'admin', 'technician', 'customer'];
+        const allowed: DashboardShellRole[] = ['super_admin', 'admin', 'dispatcher', 'viewer', 'technician', 'customer'];
         if (raw && (allowed as string[]).includes(raw)) setSimNav(raw as DashboardShellRole);
         else setSimNav(null);
       } catch {
@@ -346,8 +358,10 @@ export function DashboardShell({
   const links =
     navRole === 'super_admin'
       ? superNavGroups.flatMap((g) => g.links)
-      : navRole === 'admin'
+      : navRole === 'admin' || navRole === 'dispatcher'
         ? adminLinks
+        : navRole === 'viewer'
+          ? viewerNavGroups.flatMap((g) => g.links)
         : navRole === 'technician'
           ? techLinks
           : customerLinks;
@@ -355,6 +369,8 @@ export function DashboardShell({
   const panelLabel: Record<DashboardShellRole, string> = {
     super_admin: 'Super admin',
     admin: 'Admin',
+    dispatcher: 'Dispatcher',
+    viewer: 'Viewer',
     technician: 'Technician',
     customer: 'Customer',
   };
@@ -419,9 +435,14 @@ export function DashboardShell({
   };
 
   const NavLinks =
-    navRole === 'admin' || navRole === 'super_admin' ? (
+    navRole === 'admin' || navRole === 'super_admin' || navRole === 'dispatcher' || navRole === 'viewer' ? (
       <nav className='mt-6 space-y-5'>
-        {(navRole === 'super_admin' ? superNavGroups : adminNavGroups).map((group) => (
+        {(navRole === 'super_admin'
+          ? superNavGroups
+          : navRole === 'viewer'
+            ? viewerNavGroups
+            : adminNavGroups
+        ).map((group) => (
           <div key={group.title}>
             <p className='px-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600'>{group.title}</p>
             <div className='mt-2 space-y-1'>
@@ -467,7 +488,7 @@ export function DashboardShell({
         </label>
       ) : null}
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
-      <div className='relative mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
+      <div className='relative mx-auto flex w-full max-w-[min(1680px,calc(100vw-1.5rem))] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-dashboard-mobile-bar gb-no-print flex items-center justify-between lg:hidden w-full border border-border bg-card rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-sm'>
           <div className="flex items-center gap-2">
             <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-7 w-auto object-contain filter brightness-110" />

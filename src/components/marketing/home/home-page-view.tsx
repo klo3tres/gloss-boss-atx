@@ -35,6 +35,7 @@ import { isOfferEligiblePublicSiteData } from '@/lib/public-site-data';
 import { mediaUrl } from '@/lib/media-registry';
 import type { DealConfig, ServicePackage } from '@/lib/site-config';
 import { SectionErrorBoundary } from '@/components/site/section-error-boundary';
+import { HomeReferralCta } from '@/components/marketing/home-referral-cta';
 import { MembershipComparisonSlim } from '@/components/marketing/membership-comparison-slim';
 
 const faqs = [
@@ -111,12 +112,15 @@ export function HomePageView({
   ].filter((s) => s.href);
 
   const hasHomeOffers = offers.some((o) => o.showOnHomepage && isOfferEligiblePublicSiteData(o, new Date()));
+  const showMembershipSection =
+    isSectionVisible(visuals, 'membership') &&
+    (packages.some((p) => /member|bronze|silver|gold/i.test(`${p.id} ${p.title}`)) || deals.websitePromoActive);
   return (
-    <main className="gb-page gb-page-pad relative min-h-screen overflow-x-hidden bg-black text-foreground">
+    <main className="gb-page gb-marketing-page gb-page-pad relative min-h-screen overflow-x-hidden bg-black text-foreground">
       <StickyBookCta bookingHref={bookingHref} />
 
       {isSectionVisible(visuals, 'hero') ? (
-        <section className="relative flex min-h-[100svh] items-center border-b border-white/5 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
+        <section className="gb-marketing-hero relative flex min-h-[100svh] items-center border-b border-white/5 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
           <HomepageHeroBackground
             imageUrl={heroImageUrl}
             brand={brand}
@@ -125,7 +129,7 @@ export function HomePageView({
 
           <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-10 xl:grid-cols-[1.15fr_0.85fr]">
             <MotionFade>
-              <PremiumCard className="border-gold/15 bg-black/50 backdrop-blur-2xl">
+              <PremiumCard className="gb-hero-panel border-gold/15 bg-black/50 backdrop-blur-2xl">
                 <PremiumEyebrow>Premium mobile auto detailing</PremiumEyebrow>
                 <div className="mt-6 flex items-center gap-4">
                   <img
@@ -143,7 +147,7 @@ export function HomePageView({
                   </div>
                 </div>
 
-                <h1 className="mt-8 text-4xl font-black uppercase leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">
+                <h1 className="gb-hero-title mt-8 text-4xl font-black uppercase leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">
                   {(visuals?.hero as { title?: string })?.title ? (
                     (visuals?.hero as { title: string }).title
                   ) : (
@@ -157,7 +161,7 @@ export function HomePageView({
                   )}
                 </h1>
 
-                <p className="mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base">
+                <p className="gb-hero-sub mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base">
                   {(visuals?.hero as { subtitle?: string })?.subtitle ||
                     'Luxury mobile detailing in Austin, Texas. Book online in minutes with a secure deposit.'}
                 </p>
@@ -210,7 +214,9 @@ export function HomePageView({
                     autoFetch
                     variant="customer"
                     locationLabel="Austin service area"
-                    className="border-gold/20 bg-black/70 backdrop-blur-xl"
+                    compact
+                    homepageCompact
+                    className="border-gold/20 bg-black/60 backdrop-blur-md"
                   />
                 </SectionErrorBoundary>
                 <PremiumCard hover={false} className="space-y-4 border-gold/20 bg-black/70">
@@ -240,7 +246,17 @@ export function HomePageView({
         </section>
       ) : null}
 
-      <section className="border-y border-white/5 bg-zinc-950/80 py-10">
+      {loaded && reviews.length > 0 ? (
+        <section className="border-b border-white/5 bg-zinc-950/90 py-10">
+          <div className="mx-auto max-w-4xl px-4 sm:px-6">
+            <SectionErrorBoundary label="Reviews">
+              <ReviewsCarousel reviews={reviews} googleReviewUrl={googleReviewUrl} bookingHref={bookingHref} />
+            </SectionErrorBoundary>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="gb-marketing-band border-y border-white/5 bg-zinc-950/80 py-10">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 md:grid-cols-4 sm:px-6 lg:px-8">
           {whyChoose.map((item, i) => (
             <MotionFade key={item.title} delay={i * 0.05}>
@@ -248,7 +264,7 @@ export function HomePageView({
                 <div className="mb-3 rounded-2xl border border-gold/20 bg-gold/5 p-3">
                   <item.icon className="h-5 w-5 text-gold-soft" />
                 </div>
-                <p className="text-xs font-black uppercase tracking-wider text-white">{item.title}</p>
+                <p className="gb-band-title text-xs font-black uppercase tracking-wider text-white">{item.title}</p>
                 <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{item.desc}</p>
               </div>
             </MotionFade>
@@ -274,7 +290,11 @@ export function HomePageView({
 
       {hasHomeOffers ? <OffersMarketingBand offers={offers} placement="homepage" /> : null}
 
-      {isSectionVisible(visuals, 'membership') ? (
+      <section className="px-4 py-12 sm:px-6">
+        <HomeReferralCta />
+      </section>
+
+      {showMembershipSection ? (
         <section className="relative overflow-hidden border-y border-white/5 py-0">
           <div className="relative min-h-[420px]">
             <img

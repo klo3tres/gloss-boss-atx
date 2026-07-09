@@ -6,6 +6,7 @@ import { loadOperationsSnapshot } from '@/lib/operations-snapshot';
 import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import { loadLeadRadarItems } from '@/lib/titan/lead-radar-engine';
 import { buildTodaysMoneyPlan, type MoneyMission } from '@/lib/titan/todays-money-plan';
+import { buildDailyActionPlan, type DailyActionPlan } from '@/lib/titan/daily-action-plan';
 import { countUnreadNotifications } from '@/lib/titan/notification-events';
 import { loadGoogleCalendarConnection } from '@/lib/google/google-calendar-sync';
 import { displayMoney } from '@/lib/display-format';
@@ -33,6 +34,14 @@ export type OperationalAdvantageFactor = {
   detail?: string;
 };
 
+export type BriefingJobPreview = {
+  id: string;
+  guestName: string;
+  when: string;
+  service: string;
+  href: string;
+};
+
 export type ExecutiveBriefingSnapshot = {
   ownerName: string;
   revenueTodayCents: number;
@@ -54,6 +63,9 @@ export type ExecutiveBriefingSnapshot = {
   balanceDueLabel: string;
   weatherRisk?: string;
   calendarConflict?: string;
+  todayJobs: BriefingJobPreview[];
+  upcomingJobs: BriefingJobPreview[];
+  dailyActionPlan: DailyActionPlan;
 };
 
 function parseMoneyLabel(label: string): number {
@@ -102,6 +114,8 @@ export async function loadExecutiveBriefing(
     opportunities: revenueHunt.opportunities,
     leadRadar: leadRadar.items,
   });
+
+  const dailyActionPlan = await buildDailyActionPlan(admin, moneyPlan.goalTarget > 0 ? Math.round(moneyPlan.goalTarget / 4) : 17500);
 
   const todayPay = summarizePayments(await fetchPaymentsSince(admin, startOfTodayIso(), new Date().toISOString()));
   const revenueToday = todayPay.grossCents;
@@ -233,5 +247,20 @@ export async function loadExecutiveBriefing(
     balanceDueLabel: metrics.balanceDue,
     weatherRisk: weatherRisk || undefined,
     calendarConflict: critical > 0 ? `${critical} scheduling or ops conflicts` : undefined,
+    todayJobs: (metrics.todayJobs ?? []).slice(0, 5).map((j) => ({
+      id: j.id,
+      guestName: j.guestName,
+      when: j.when,
+      service: j.service,
+      href: j.href,
+    })),
+    upcomingJobs: (metrics.upcomingAppts ?? []).slice(0, 5).map((j) => ({
+      id: j.id,
+      guestName: j.guestName,
+      when: j.time,
+      service: j.service,
+      href: j.href,
+    })),
+    dailyActionPlan,
   };
 }

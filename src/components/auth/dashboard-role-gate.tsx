@@ -23,7 +23,7 @@ export type RoleGateVariant = 'admin' | 'super_admin_only' | 'tech' | 'customer'
 function allowedRolesForVariant(variant: RoleGateVariant): readonly AppRole[] {
   switch (variant) {
     case 'admin':
-      return ['admin', 'super_admin'];
+      return ['admin', 'super_admin', 'dispatcher', 'viewer'];
     case 'super_admin_only':
       return ['super_admin'];
     case 'tech':

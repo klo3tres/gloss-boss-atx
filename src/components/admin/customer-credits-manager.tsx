@@ -190,19 +190,39 @@ export function CustomerCreditsManager({ customerId, credits, redemptions, admin
         </div>
 
         {/* Action Button Card */}
-        <div className="bg-black/20 border border-dashed border-gold/30 rounded-2xl p-4 flex flex-col justify-center items-center">
+        <div className="bg-black/20 border border-dashed border-gold/30 rounded-2xl p-4 flex flex-col justify-center gap-3">
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition"
+            className="flex items-center justify-center gap-2 rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black hover:bg-gold-soft transition"
           >
-            <PlusCircle className="h-4 w-4" /> Issue Customer Credit
+            <PlusCircle className="h-4 w-4" /> Issue Credit
           </button>
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {[
+              { label: 'Bronze credit', reason: 'Bronze membership welcome credit' },
+              { label: 'Silver quarterly', reason: 'Silver quarterly upgrade credit' },
+              { label: 'Gold 60-day', reason: 'Gold 60-day upgrade credit' },
+              { label: 'Gold annual', reason: 'Gold annual membership credit' },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  setIsOpen(true);
+                  setSuccessMsg(`Use issue form — preset: ${preset.label}`);
+                }}
+                className="rounded-lg border border-white/10 px-2 py-1 text-[9px] font-black uppercase text-zinc-400 hover:border-gold/30 hover:text-gold-soft"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={handleClearTestCredits}
             disabled={isPending}
-            className="mt-3 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2 text-[10px] font-black uppercase text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2 text-[10px] font-black uppercase text-red-300 hover:bg-red-500/10 disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" /> Clear Test Credits
           </button>

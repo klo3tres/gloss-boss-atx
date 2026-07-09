@@ -17,11 +17,14 @@ export function HomepageHeroBackground({
   const [mediaReady, setMediaReady] = useState(false);
 
   return (
-    <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+    <div className="gb-marketing-hero-bg absolute inset-0 z-0 overflow-hidden bg-black">
       <div
-        className={`absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(212,175,55,0.12),transparent_45%),linear-gradient(to_bottom,rgba(9,9,11,0.4),rgba(0,0,0,0.95))] transition-opacity duration-500 ${
-          mediaReady ? 'opacity-40' : 'opacity-100'
-        }`}
+        className="gb-hero-scrim-dark absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(212,175,55,0.12),transparent_45%),linear-gradient(to_bottom,rgba(9,9,11,0.4),rgba(0,0,0,0.95))] transition-opacity duration-500"
+        style={{ opacity: mediaReady ? 0.4 : 1 }}
+        aria-hidden
+      />
+      <div
+        className="gb-hero-scrim-light absolute inset-0 bg-[linear-gradient(to_bottom,rgba(247,246,243,0.55),rgba(255,255,255,0.88))] transition-opacity duration-500"
         aria-hidden
       />
       {videoUrl ? (

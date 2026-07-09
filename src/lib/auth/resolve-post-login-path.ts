@@ -8,6 +8,9 @@ export function defaultDashboardPathForRole(role: AppRole): string {
     case 'super_admin':
       return '/admin/super';
     case 'admin':
+    case 'dispatcher':
+      return '/admin';
+    case 'viewer':
       return '/admin';
     case 'technician':
       return '/tech';

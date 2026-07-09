@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { ExecutiveBriefingClient } from '@/components/titan/executive-briefing-client';
 import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isAdminLevel } from '@/lib/auth/roles';
+import { isAdminLevel, canAccessAdminPortal, dashboardShellRoleForProfile } from '@/lib/auth/roles';
 import { loadOwnerDashboardSnapshot } from '@/lib/owner-dashboard-metrics';
 import { loadOperationsSnapshot, type OperationsSnapshot } from '@/lib/operations-snapshot';
 import { loadExecutiveBriefing } from '@/lib/titan/executive-briefing';
@@ -27,7 +27,7 @@ export default async function AdminDashboardPage({
   let briefing: Awaited<ReturnType<typeof loadExecutiveBriefing>> | null = null;
   const showFullDashboard = params.overview === '1';
 
-  if (session.user && isAdminLevel(session.profile?.role ?? null)) {
+  if (session.user && canAccessAdminPortal(session.profile?.role ?? null)) {
     const admin = tryCreateAdminSupabase();
     if (!admin) {
       loadErr = 'Service role key missing — set SUPABASE_SERVICE_ROLE_KEY to load live operations data.';
@@ -88,9 +88,11 @@ export default async function AdminDashboardPage({
     redirect('/admin/exceptions');
   }
 
+  const shellRole = dashboardShellRoleForProfile(session.profile?.role ?? null);
+
   if (showFullDashboard && metrics) {
     return (
-      <DashboardShell title="Command center" subtitle="Full metrics and drawers." role="admin">
+      <DashboardShell title="Command center" subtitle="Full metrics and drawers." role={shellRole}>
         {loadErr ? (
           <p className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100" role="alert">
             {loadErr}
@@ -107,7 +109,7 @@ export default async function AdminDashboardPage({
   }
 
   return (
-    <DashboardShell title="Today's Business" subtitle="Executive briefing — your operating advantage." role="admin" titanMode>
+    <DashboardShell title="Today's Business" subtitle="Executive briefing — your operating advantage." role={shellRole} titanMode>
       {loadErr ? (
         <p className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100" role="alert">
           {loadErr}

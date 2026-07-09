@@ -80,7 +80,7 @@ export function BeforeAfterSlider({
     >
       <div className="absolute inset-0 overflow-hidden">
         <img src={afterUrl} alt="After Detailing" draggable={false} className="h-full w-full select-none object-cover pointer-events-none" />
-        <span className="absolute right-3 top-3 z-10 rounded bg-gold px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-black shadow-md">
+        <span className="gb-before-after-label absolute right-3 top-3 z-10 rounded bg-gold px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-black shadow-md">
           After
         </span>
         {watermark && (
@@ -95,7 +95,7 @@ export function BeforeAfterSlider({
 
       <div className="absolute inset-0 overflow-hidden select-none pointer-events-none" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
         <img src={beforeUrl} alt="Before Detailing" draggable={false} className="h-full w-full select-none object-cover pointer-events-none" />
-        <span className="absolute left-3 top-3 z-10 rounded border border-white/10 bg-black/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-300">
+        <span className="gb-before-after-label absolute left-3 top-3 z-10 rounded border border-gold/30 bg-black/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-gold-soft shadow-md">
           Before
         </span>
         {watermark && (

@@ -372,8 +372,8 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
       {/* Tabs Selector */}
       <div className="flex overflow-x-auto gap-1 border-b border-white/10 pb-1 mb-6">
         {[
-          { id: 'visuals', label: 'Homepage visuals' },
-          { id: 'media', label: 'Media manager' },
+          { id: 'visuals', label: 'Homepage content' },
+          { id: 'media', label: 'Asset placement' },
           { id: 'featured', label: 'Featured transformations' },
           { id: 'gallery', label: 'Gallery manager' },
           { id: 'reviews', label: 'Reviews / testimonials' },
@@ -430,12 +430,22 @@ export default async function AdminCmsPage({ searchParams }: { searchParams: Pro
 
       {currentTab === 'visuals' && (
         <section className='mb-6 gb-premium-card rounded-2xl border border-gold/15 p-6 backdrop-blur shadow-md bg-black/40'>
+          <p className="mb-4 text-xs text-zinc-400">
+            Place homepage content here. For uploads and cropping, use{' '}
+            <Link href="/admin/media-studio" className="font-bold text-gold-soft hover:underline">Media Studio</Link>
+            {' '}— image fields can reference assets from the registry.
+          </p>
           <HomepageVisualsManager initialJson={homepageVisualsJson} />
         </section>
       )}
 
       {currentTab === 'media' && (
         <section className='mb-6'>
+          <p className="mb-4 rounded-xl border border-gold/20 bg-gold/5 p-4 text-xs text-zinc-300">
+            Asset uploads and editing live in{' '}
+            <Link href="/admin/media-studio" className="font-bold text-gold-soft hover:underline">Media Studio</Link>.
+            This tab shows where registry assets are placed on the public site.
+          </p>
           <CmsMediaManager registry={normalizeMediaRegistry(mediaRes.data?.value ?? null)} />
         </section>
       )}

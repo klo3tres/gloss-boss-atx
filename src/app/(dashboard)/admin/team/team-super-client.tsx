@@ -3,13 +3,15 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
-import { Settings, X, Shield, User, Lock } from 'lucide-react';
+import { Settings, X, Shield, User, Lock, Mail, Phone, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { StaffInviteRow } from '@/lib/staff-invites';
 
 async function teamApi(body: object): Promise<{
   ok: boolean;
   error?: string;
   usedInvite?: boolean;
+  invitePending?: boolean;
   emailStatus?: string;
   smsStatus?: string;
   emailError?: string | null;
@@ -22,11 +24,261 @@ async function teamApi(body: object): Promise<{
     credentials: 'same-origin',
     timeoutMs: 120000,
   });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; usedInvite?: boolean };
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    usedInvite?: boolean;
+    invitePending?: boolean;
+    emailStatus?: string;
+    smsStatus?: string;
+    emailError?: string | null;
+    smsError?: string | null;
+  };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Request failed (${res.status})` };
+    return { ok: false, error: data.error ?? `Request failed (${res.status})`, invitePending: data.invitePending };
   }
-  return { ok: true, usedInvite: data.usedInvite };
+  return {
+    ok: true,
+    usedInvite: data.usedInvite,
+    invitePending: data.invitePending,
+    emailStatus: data.emailStatus,
+    smsStatus: data.smsStatus,
+    emailError: data.emailError,
+    smsError: data.smsError,
+  };
+}
+
+async function inviteApi(body: object) {
+  const res = await fetchWithTimeout('/api/admin/staff-invites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+    timeoutMs: 120000,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    sent?: { emailStatus?: string; smsStatus?: string; emailError?: string; smsError?: string };
+  };
+  if (!res.ok || !data.ok) return { ok: false as const, error: data.error ?? `Request failed (${res.status})` };
+  return { ok: true as const, sent: data.sent };
+}
+
+export function StaffInviteClient() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  return (
+    <form
+      className="mt-4 grid gap-3 sm:grid-cols-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        const channel = String(fd.get('channel') ?? 'both') as 'sms' | 'email' | 'both';
+        const email = String(fd.get('email') ?? '').trim();
+        const phone = String(fd.get('phone') ?? '').trim();
+        if (!email && !phone) {
+          setMsg({ type: 'err', text: 'Enter email and/or phone for the invite.' });
+          return;
+        }
+        void (async () => {
+          setBusy(true);
+          setMsg(null);
+          const r = await inviteApi({
+            intent: 'create',
+            fullName: String(fd.get('fullName') ?? ''),
+            email: email || undefined,
+            phone: phone || undefined,
+            role: String(fd.get('role') ?? 'technician'),
+            channel,
+          });
+          setBusy(false);
+          if (!r.ok) {
+            setMsg({ type: 'err', text: r.error ?? 'Invite failed' });
+            return;
+          }
+          const parts = [
+            r.sent?.emailStatus === 'sent' ? 'email sent' : r.sent?.emailStatus ? `email ${r.sent.emailStatus}` : null,
+            r.sent?.smsStatus === 'sent' ? 'SMS sent' : r.sent?.smsStatus ? `SMS ${r.sent.smsStatus}` : null,
+          ].filter(Boolean);
+          setMsg({
+            type: r.sent?.emailStatus === 'failed' && r.sent?.smsStatus !== 'sent' ? 'err' : 'ok',
+            text: `Invite sent · ${parts.join(' · ')}${r.sent?.emailError ? ` — ${r.sent.emailError}` : ''}${r.sent?.smsError ? ` — ${r.sent.smsError}` : ''}`,
+          });
+          e.currentTarget.reset();
+          router.refresh();
+        })();
+      }}
+    >
+      <label className="block text-xs text-zinc-400 sm:col-span-2">
+        Full name
+        <input name="fullName" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+      </label>
+      <label className="block text-xs text-zinc-400">
+        <Mail className="inline h-3 w-3" /> Email (optional if SMS)
+        <input name="email" type="email" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+      </label>
+      <label className="block text-xs text-zinc-400">
+        <Phone className="inline h-3 w-3" /> Phone (optional if email)
+        <input name="phone" type="tel" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+      </label>
+      <label className="block text-xs text-zinc-400">
+        Role
+        <select name="role" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white">
+          <option value="technician">Technician</option>
+          <option value="dispatcher">Dispatcher</option>
+          <option value="admin">Admin</option>
+          <option value="viewer">Viewer</option>
+          <option value="super_admin">Super admin</option>
+        </select>
+      </label>
+      <label className="block text-xs text-zinc-400">
+        Send via
+        <select name="channel" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white">
+          <option value="both">SMS + email</option>
+          <option value="sms">SMS only</option>
+          <option value="email">Email only</option>
+        </select>
+      </label>
+      <button type="submit" disabled={busy} className="sm:col-span-2 rounded-lg bg-gold px-4 py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-50">
+        <Send className="inline h-3.5 w-3.5 mr-1" />
+        {busy ? 'Sending…' : 'Send team invite'}
+      </button>
+      {msg ? (
+        <p className={`sm:col-span-2 rounded-lg border p-3 text-sm ${msg.type === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/40 bg-rose-500/10 text-rose-100'}`}>
+          {msg.text}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+export function PendingInvitesClient({ initialInvites }: { initialInvites: StaffInviteRow[] }) {
+  const router = useRouter();
+  const [invites, setInvites] = useState(initialInvites);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => setInvites(initialInvites), [initialInvites]);
+
+  const pending = invites.filter((i) => i.status === 'pending');
+
+  if (pending.length === 0) {
+    return <p className="text-xs text-zinc-500">No pending invites.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {msg ? <p className="text-xs text-emerald-300">{msg}</p> : null}
+      {pending.map((inv) => (
+        <div key={inv.id} className="rounded-xl border border-white/10 bg-black/40 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-bold text-white">{inv.fullName}</p>
+              <p className="text-xs text-zinc-500">{inv.role.replace('_', ' ')} · {inv.email ?? '—'} · {inv.phone ?? '—'}</p>
+              <p className="mt-1 text-[10px] text-zinc-600">
+                {inv.lastSentAt ? `Last sent ${new Date(inv.lastSentAt).toLocaleString()} (${inv.lastSentChannel})` : 'Not sent yet'}
+                {' · '}Expires {new Date(inv.expiresAt).toLocaleDateString()}
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[8px] font-black uppercase text-amber-200">Pending</span>
+          </div>
+
+          {editingId === inv.id ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <input
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="Email"
+                className="rounded-lg border border-white/10 bg-black px-3 py-2 text-xs text-white"
+              />
+              <input
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="Phone"
+                className="rounded-lg border border-white/10 bg-black px-3 py-2 text-xs text-white"
+              />
+              <button
+                type="button"
+                disabled={busyId === inv.id}
+                onClick={() => {
+                  void (async () => {
+                    setBusyId(inv.id);
+                    const r = await inviteApi({
+                      intent: 'update',
+                      inviteId: inv.id,
+                      email: editEmail.trim() || undefined,
+                      phone: editPhone.trim() || undefined,
+                    });
+                    setBusyId(null);
+                    if (!r.ok) {
+                      setMsg(r.error ?? 'Update failed');
+                      return;
+                    }
+                    setEditingId(null);
+                    setMsg('Invite contact updated.');
+                    router.refresh();
+                  })();
+                }}
+                className="rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft sm:col-span-2"
+              >
+                Save contact
+              </button>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(editingId === inv.id ? null : inv.id);
+                setEditEmail(inv.email ?? '');
+                setEditPhone(inv.phone ?? '');
+              }}
+              className="rounded-lg border border-white/15 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+            >
+              Edit contact
+            </button>
+            <button
+              type="button"
+              disabled={busyId === inv.id}
+              onClick={() => {
+                void (async () => {
+                  setBusyId(inv.id);
+                  await inviteApi({ intent: 'resend', inviteId: inv.id, channel: 'both' });
+                  setBusyId(null);
+                  router.refresh();
+                })();
+              }}
+              className="rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft"
+            >
+              Resend
+            </button>
+            <button
+              type="button"
+              disabled={busyId === inv.id}
+              onClick={() => {
+                void (async () => {
+                  setBusyId(inv.id);
+                  await inviteApi({ intent: 'revoke', inviteId: inv.id });
+                  setBusyId(null);
+                  router.refresh();
+                })();
+              }}
+              className="rounded-lg border border-rose-500/30 px-3 py-1.5 text-[10px] font-black uppercase text-rose-300"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function CreateStaffClient() {
@@ -133,12 +385,16 @@ export function StaffRowSuperClient({
   initialDisplayName,
   initialActive,
   currentUserId,
+  profileEmail,
+  pendingInviteId,
 }: {
   profileId: string;
   initialRole: string;
   initialDisplayName: string;
   initialActive: boolean;
   currentUserId: string;
+  profileEmail?: string | null;
+  pendingInviteId?: string | null;
 }) {
   const router = useRouter();
   const [role, setRole] = useState(initialRole);
@@ -255,9 +511,10 @@ export function StaffRowSuperClient({
                       className="flex-1 text-xs rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-white focus:outline-none focus:border-gold/40"
                     >
                       <option value="technician">technician</option>
+                      <option value="dispatcher">dispatcher</option>
                       <option value="admin">admin</option>
+                      <option value="viewer">viewer</option>
                       <option value="super_admin">super_admin</option>
-                      <option value="customer">customer</option>
                     </select>
                     <button
                       type="button"
@@ -283,8 +540,41 @@ export function StaffRowSuperClient({
                   </div>
                 </div>
 
-                {/* 3. Password Reset */}
+                {/* 3. Password / invite */}
                 <div className="space-y-2 bg-black/30 border border-white/5 p-4 rounded-2xl">
+                  {pendingInviteId ? (
+                    <>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                        <Lock className="h-3.5 w-3.5" /> Invite pending
+                      </label>
+                      <p className="text-xs text-zinc-400">
+                        {profileEmail ? `${profileEmail} has not accepted the team invite yet.` : 'Team invite not accepted yet.'}
+                        {' '}Use resend — not password reset.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => {
+                          void (async () => {
+                            setBusy('pwd-link');
+                            setMsg(null);
+                            const r = await inviteApi({ intent: 'resend', inviteId: pendingInviteId, channel: 'both' });
+                            setBusy(null);
+                            if (!r.ok) {
+                              setMsg({ type: 'err', text: r.error ?? 'Could not resend invite' });
+                              return;
+                            }
+                            setMsg({ type: 'ok', text: 'Team invite resent (SMS + email).' });
+                            router.refresh();
+                          })();
+                        }}
+                        className="rounded-xl border border-gold/30 bg-gold/10 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20 disabled:opacity-40 transition"
+                      >
+                        Resend team invite
+                      </button>
+                    </>
+                  ) : (
+                    <>
                   <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1">
                     <Lock className="h-3.5 w-3.5" /> Reset Password
                   </label>
@@ -308,7 +598,10 @@ export function StaffRowSuperClient({
                           const r = await teamApi({ intent: 'send_password_reset_link', userId: profileId });
                           setBusy(null);
                           if (!r.ok) {
-                            setMsg({ type: 'err', text: r.error ?? 'Could not send reset link' });
+                            const errText = (r as { invitePending?: boolean }).invitePending
+                              ? (r.error ?? 'Invite pending — resend team invite instead.')
+                              : (r.error ?? 'Could not send reset link');
+                            setMsg({ type: 'err', text: errText });
                             return;
                           }
                           const parts = [
@@ -352,6 +645,8 @@ export function StaffRowSuperClient({
                       Reset
                     </button>
                   </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Inline status messages */}

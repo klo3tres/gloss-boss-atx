@@ -69,14 +69,23 @@ export function LoyaltyCard3D({
   const currentStep = loyalty.progressStamps;
   const isRewardReady = forceRewardReady || loyalty.rewardReady;
 
-  // We have 6 slots total: 5 standard stamps + 1 free reward slot.
+  // Slot positions align with standard Gloss Boss loyalty card artwork (5 punches + reward).
+  const PUNCH_SLOTS = [
+    { left: '7.5%', top: '46%', width: '11%' },
+    { left: '22%', top: '46%', width: '11%' },
+    { left: '36.5%', top: '46%', width: '11%' },
+    { left: '51%', top: '46%', width: '11%' },
+    { left: '65.5%', top: '46%', width: '11%' },
+    { left: '80%', top: '46%', width: '11%' },
+  ] as const;
+
   const slots = Array.from({ length: loyaltyTarget + 1 }, (_, i) => {
     const isRewardSlot = i === loyaltyTarget;
     let isPunched = false;
     if (isRewardSlot) {
-      isPunched = false; // Keep reward slot unpunched, rendering as pulsing Gift icon when ready
+      isPunched = false;
     } else {
-      isPunched = isRewardReady || (currentStep > i);
+      isPunched = isRewardReady || currentStep > i;
     }
     return { index: i, isRewardSlot, isPunched };
   });
@@ -189,20 +198,27 @@ export function LoyaltyCard3D({
             </span>
           </div>
 
-          {/* Overlay Punch Grid */}
-          <div className="relative z-10 grid grid-cols-6 gap-2 my-auto px-2">
+          {/* Overlay Punch Grid — absolute positions align with card artwork */}
+          <div className="relative z-10 my-auto h-[28%] min-h-[52px] w-full">
             {slots.map((slot, idx) => {
+              const pos = PUNCH_SLOTS[idx] ?? PUNCH_SLOTS[PUNCH_SLOTS.length - 1];
               return (
                 <div
                   key={idx}
-                  className={`relative flex aspect-square flex-col items-center justify-center rounded-xl border transition-all duration-300 ${
+                  style={{
+                    left: pos.left,
+                    top: pos.top,
+                    width: pos.width,
+                    aspectRatio: '1',
+                  }}
+                  className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border transition-all duration-300 ${
                     slot.isPunched
-                      ? 'border-gold bg-black/85 shadow-[0_0_15px_rgba(212,175,55,0.45)]'
+                      ? 'border-gold bg-black/90 shadow-[0_0_12px_rgba(212,175,55,0.45)]'
                       : slot.isRewardSlot
                       ? isRewardReady || currentStep === loyaltyTarget
-                        ? 'border-emerald-500/50 bg-emerald-500/25 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                        : 'border-white/10 bg-black/80 hover:border-gold/20'
-                      : 'border-white/10 bg-black/80 hover:border-gold/20'
+                        ? 'border-emerald-500/50 bg-emerald-500/30 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                        : 'border-white/15 bg-black/75'
+                      : 'border-white/15 bg-black/75'
                   }`}
                 >
                   {slot.isPunched ? (
@@ -222,31 +238,26 @@ export function LoyaltyCard3D({
                         src="/brand/glossboss-clean-logo.png" 
                         alt="Stamp"
                         onError={(e) => {
-                          // Fallback if brand logo is missing
                           (e.target as HTMLElement).style.display = 'none';
                         }}
-                        className="h-6 w-6 object-contain filter drop-shadow-[0_0_2px_rgba(212,175,55,0.8)]"
+                        className="h-[55%] w-[55%] object-contain filter drop-shadow-[0_0_2px_rgba(212,175,55,0.8)]"
                       />
-                      {/* Sub gold star fallback/overlay */}
-                      <Sparkles className="absolute h-4 w-4 text-gold fill-gold/20 animate-pulse" />
+                      <Sparkles className="absolute h-[35%] w-[35%] text-gold fill-gold/20 animate-pulse" />
                     </motion.div>
                   ) : slot.isRewardSlot ? (
                     <div className="flex flex-col items-center justify-center">
-                      <Gift className={`h-4 w-4 ${isRewardReady || currentStep === loyaltyTarget ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                      <Gift className={`h-[40%] w-[40%] max-h-4 ${isRewardReady || currentStep === loyaltyTarget ? 'text-emerald-400' : 'text-zinc-600'}`} />
                       <span className={`text-[6px] font-black uppercase mt-0.5 tracking-tighter ${isRewardReady || currentStep === loyaltyTarget ? 'text-emerald-300' : 'text-zinc-500'}`}>
                         FREE
                       </span>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center">
-                      <span className="text-zinc-500 text-xs font-black font-mono">{idx + 1}</span>
-                    </div>
+                    <span className="text-[10px] font-black font-mono text-zinc-400">{idx + 1}</span>
                   )}
 
-                  {/* Little physical hole shadow if punched */}
-                  {slot.isPunched && (
-                    <div className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-zinc-950 border border-gold/30 shadow-inner" />
-                  )}
+                  {slot.isPunched ? (
+                    <div className="absolute top-0.5 right-0.5 h-1 w-1 rounded-full bg-zinc-950 border border-gold/30 shadow-inner" />
+                  ) : null}
                 </div>
               );
             })}

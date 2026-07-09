@@ -3,10 +3,12 @@ import { revalidatePath } from 'next/cache';
 import { requireSuperAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { parseAppRole } from '@/lib/auth/role-resolution';
+import { findPendingInviteByProfileEmail } from '@/lib/staff-invites';
+import { logTitanActivity } from '@/lib/titan/activity-feed';
 
 export const runtime = 'nodejs';
 
-const STAFF_ROLES = new Set(['technician', 'admin', 'super_admin']);
+const STAFF_ROLES = new Set(['technician', 'admin', 'super_admin', 'dispatcher', 'viewer']);
 
 type Body =
   | { intent: 'create'; email: string; password: string; role: string; fullName?: string }
@@ -125,6 +127,19 @@ export async function POST(request: Request) {
     if (!email) {
       return NextResponse.json({ ok: false, error: 'No email on staff profile.' }, { status: 400 });
     }
+
+    const pendingInvite = await findPendingInviteByProfileEmail(admin, email);
+    if (pendingInvite) {
+      return NextResponse.json(
+        {
+          ok: false,
+          invitePending: true,
+          inviteId: pendingInvite.id,
+          error: 'Invite pending — this person has not finished setup. Resend the team invite instead of a password reset.',
+        },
+        { status: 400 },
+      );
+    }
     const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://glossbossatx.com').replace(/\/$/, '');
     const redirectTo = `${appBase}/reset-password`;
     const linkRes = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } });
@@ -195,6 +210,13 @@ export async function POST(request: Request) {
       /* non-blocking */
     }
 
+    await logTitanActivity(admin, {
+      kind: 'staff_reset_link_sent',
+      title: `Password reset sent: ${displayName}`,
+      detail: `email:${emailStatus} sms:${smsStatus}`,
+      href: '/admin/team',
+    });
+
     revalidatePath('/admin/team');
     return NextResponse.json({
       ok: true,
@@ -215,6 +237,7 @@ export async function POST(request: Request) {
     if (targetId === gate.userId && nextRole !== 'super_admin') {
       return NextResponse.json({ ok: false, error: 'You cannot demote your own super_admin account from this panel.' }, { status: 400 });
     }
+    const { data: before } = await admin.from('profiles').select('role, full_name').eq('id', targetId).maybeSingle();
     const now = new Date().toISOString();
     let { error } = await admin.from('profiles').update({ role: nextRole, updated_at: now }).eq('id', targetId);
     if (error && /updated_at|column .* does not exist|schema cache/i.test(error.message)) {
@@ -224,6 +247,14 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
     }
+    const prevRole = String((before as { role?: string } | null)?.role ?? '');
+    const name = String((before as { full_name?: string } | null)?.full_name ?? 'Staff');
+    await logTitanActivity(admin, {
+      kind: 'staff_role_changed',
+      title: `Role changed: ${name}`,
+      detail: `${prevRole || 'unknown'} → ${nextRole}`,
+      href: '/admin/team',
+    });
     revalidatePath('/admin/super');
     revalidatePath('/admin/team');
     revalidatePath('/');

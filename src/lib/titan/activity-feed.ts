@@ -10,7 +10,16 @@ export type TitanActivityKind =
   | 'command_executed'
   | 'review_generated'
   | 'opportunity_queued'
-  | 'revenue_leak_scan';
+  | 'revenue_leak_scan'
+  | 'daily_action_dismissed'
+  | 'daily_action_sent'
+  | 'staff_invite_created'
+  | 'staff_invite_sent'
+  | 'staff_invite_resent'
+  | 'staff_invite_revoked'
+  | 'staff_invite_accepted'
+  | 'staff_role_changed'
+  | 'staff_reset_link_sent';
 
 export type TitanActivityEvent = {
   id: string;

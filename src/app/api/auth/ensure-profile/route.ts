@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { OWNER_LOGIN_EMAIL } from '@/lib/auth/role-resolution';
+import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
+import { isStaffRole } from '@/lib/auth/roles';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
@@ -114,6 +115,11 @@ export async function POST() {
     }
 
     return NextResponse.json({ ok: true, created: true });
+  }
+
+  const existingRole = parseAppRole(existing.role);
+  if (existingRole && isStaffRole(existingRole)) {
+    return NextResponse.json({ ok: true, noop: true, staff: true });
   }
 
   if (isOwner && String(existing.role) !== 'super_admin') {

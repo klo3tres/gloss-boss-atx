@@ -15,24 +15,45 @@ import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 
 const TYPE_ICON = { video: Play, article: Sparkles, model: TrendingUp, tool: Sparkles } as const;
 
+function isRealVideoUrl(href: string) {
+  return /youtube\.com\/watch|youtu\.be\/|vimeo\.com\//i.test(href);
+}
+
+function isYouTubeSearch(href: string) {
+  return /youtube\.com\/results\?search_query/i.test(href);
+}
+
+function resourceDisplayType(item: AcademyResource) {
+  if (item.type === 'video' && isYouTubeSearch(item.href)) return 'recommended search';
+  if (item.type === 'video' && !isRealVideoUrl(item.href)) return 'playbook';
+  return item.type;
+}
+
 function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?: number }) {
+  const displayType = resourceDisplayType(item);
   const Icon = TYPE_ICON[item.type];
   const external = item.href.startsWith('http');
-  const isVideo = item.type === 'video';
+  const isPlayableVideo = item.type === 'video' && isRealVideoUrl(item.href);
+  const isSearchLink = item.type === 'video' && isYouTubeSearch(item.href);
   const className =
     'group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/45 transition hover:border-gold/35 hover:shadow-[0_8px_30px_rgba(212,175,55,0.08)] h-full';
 
   const thumb = (
     <div className="relative aspect-video bg-gradient-to-br from-zinc-900 via-black to-gold/10">
-      {isVideo ? (
+      {isPlayableVideo ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full border border-gold/40 bg-black/60 text-gold-soft transition group-hover:scale-110">
             <Play className="h-5 w-5 fill-current" />
           </span>
         </div>
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center opacity-40">
+        <div className="absolute inset-0 flex flex-col items-center justify-center opacity-50 gap-1">
           <Icon className="h-10 w-10 text-gold-soft" />
+          {isSearchLink ? (
+            <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Search YouTube</span>
+          ) : displayType === 'playbook' ? (
+            <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Recommended topic</span>
+          ) : null}
         </div>
       )}
       {progress > 0 ? (
@@ -49,12 +70,15 @@ function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase text-zinc-400">
-            <Icon className="h-3 w-3" /> {item.type}
+            <Icon className="h-3 w-3" /> {displayType}
           </span>
           {item.duration ? <span className="text-[9px] text-zinc-600">{item.duration}</span> : null}
         </div>
         <h3 className="mt-2 text-sm font-black text-white group-hover:text-gold-soft">{item.title}</h3>
         <p className="mt-2 flex-1 text-xs leading-relaxed text-zinc-400">{item.summary}</p>
+        {isSearchLink ? (
+          <p className="mt-2 text-[9px] font-black uppercase tracking-wider text-gold-soft">Search YouTube →</p>
+        ) : null}
       </div>
     </>
   );
@@ -128,7 +152,7 @@ export function TitanAcademyClient({
 
       {continueWatching.length > 0 ? (
         <section>
-          <SectionEyebrow>Continue watching</SectionEyebrow>
+          <SectionEyebrow>Curated topics</SectionEyebrow>
           <div className="mt-3 grid gap-4 sm:grid-cols-3">
             {continueWatching.map((r, i) => (
               <ResourceCard key={r.id} item={r} progress={i === 0 ? 45 : i === 1 ? 20 : 0} />

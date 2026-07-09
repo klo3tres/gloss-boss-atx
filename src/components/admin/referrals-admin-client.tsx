@@ -40,7 +40,10 @@ export function ReferralsAdminClient({
             className={`${inputClass} font-mono text-[11px]`}
           />
         </label>
-        <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2"><input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gold)]" /> Allow stacking with promos</label>
+        <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2">
+          <input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gold)]" />
+          Allow referred discount to stack with larger public promos (default: off)
+        </label>
         <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gold)]" /> Review reward enabled</label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-zinc-400">Review reward type<select name="review_reward_type" defaultValue={settings.reviewRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option></select></label>
@@ -48,6 +51,28 @@ export function ReferralsAdminClient({
         </div>
         <button className="rounded-xl bg-gold px-5 py-2.5 text-[10px] font-black uppercase text-black">Save settings</button>
       </form>
+
+      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Program summary</p>
+        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-white/5 px-3 py-2">
+            <dt className="text-zinc-500">Referred discount</dt>
+            <dd className="font-black text-gold-soft">{settings.referredRewardValue}% off first detail</dd>
+          </div>
+          <div className="rounded-xl border border-white/5 px-3 py-2">
+            <dt className="text-zinc-500">Referrer reward</dt>
+            <dd className="font-black text-white">{settings.referrerRewardValue}% after completion</dd>
+          </div>
+          <div className="rounded-xl border border-white/5 px-3 py-2">
+            <dt className="text-zinc-500">Stacking</dt>
+            <dd className="font-black text-white">{settings.stackingAllowed ? 'Allowed' : 'Blocked (default)'}</dd>
+          </div>
+          <div className="rounded-xl border border-white/5 px-3 py-2">
+            <dt className="text-zinc-500">Reward ladder</dt>
+            <dd className="text-zinc-300">{(settings.rewardLadder ?? []).map((t) => t.label).join(' · ')}</dd>
+          </div>
+        </dl>
+      </section>
 
       <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Recent referrals</p>

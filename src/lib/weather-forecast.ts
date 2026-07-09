@@ -37,6 +37,7 @@ export type WeatherSnapshot = {
   bestDayReason?: string;
   heatWarning?: boolean;
   garageRecommended?: boolean;
+  fetchedAt?: string;
   appleAdvancedApi?: {
     configured: boolean;
     message: string;
@@ -263,6 +264,7 @@ export async function fetchWeatherForAddress(address: string, whenIso?: string):
     return {
       ok: true,
       provider: 'openweather',
+      fetchedAt: new Date().toISOString(),
       selectedDateKey: targetDateKey ?? matchedDay?.date,
       temperatureF: matchedDay ? Math.round((matchedDay.tempMinF + matchedDay.tempMaxF) / 2) : Math.round(best.main?.temp ?? 0),
       rainChancePct: matchedDay?.rainChancePct ?? rainPct,

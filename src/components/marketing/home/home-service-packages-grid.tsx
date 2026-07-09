@@ -46,11 +46,14 @@ export function HomeServicePackagesGrid({
 
           return (
             <MotionFade key={service.id} delay={index * 0.06}>
-              <article className="group flex h-full flex-col overflow-hidden rounded-3xl border border-gold/15 bg-zinc-950/80 shadow-lg transition duration-300 hover:-translate-y-1 hover:border-gold/40">
+              <article className="gb-service-card group flex h-full flex-col overflow-hidden rounded-3xl border border-gold/15 bg-zinc-950/80 shadow-lg transition duration-300 hover:-translate-y-1 hover:border-gold/40">
                   <div className="relative aspect-[16/10] overflow-hidden border-b border-white/5 bg-zinc-900">
                     <img
                       src={coverUrl}
                       alt={service.title}
+                      loading="lazy"
+                      decoding="async"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                       style={objectStyle(visualCover)}
                       className="h-full w-full transition duration-500 group-hover:scale-105"
                     />
@@ -59,7 +62,7 @@ export function HomeServicePackagesGrid({
                     <div>
                       <h3 className="text-lg font-black uppercase tracking-tight text-gold-soft">{service.title}</h3>
                       {service.subtitle ? (
-                        <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-zinc-400">{service.subtitle}</p>
+                        <p className="gb-service-body mt-2 line-clamp-3 text-xs leading-relaxed text-zinc-400">{service.subtitle}</p>
                       ) : null}
                       <ul className="mt-4 space-y-1.5 border-t border-white/5 pt-3">
                         {(service.includes || []).slice(0, 4).map((inc) => (
@@ -73,7 +76,7 @@ export function HomeServicePackagesGrid({
                     <div className="mt-6 flex items-center justify-between border-t border-white/5 pt-3">
                       <div>
                         <p className="text-[9px] uppercase tracking-wider text-zinc-500">Starting price</p>
-                        <p className="text-2xl font-black text-white">{formatStartingPrice(service.sedanPrice)}</p>
+                        <p className="gb-service-price text-2xl font-black text-white">{formatStartingPrice(service.sedanPrice)}</p>
                       </div>
                       <Link
                         href={`/book?service=${service.id}&package=${service.id}`}

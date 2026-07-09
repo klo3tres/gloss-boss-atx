@@ -1,6 +1,6 @@
 import type { AppRole } from '@/lib/auth/roles';
 
-export const VALID_APP_ROLES: readonly AppRole[] = ['super_admin', 'admin', 'technician', 'customer'];
+export const VALID_APP_ROLES: readonly AppRole[] = ['super_admin', 'admin', 'dispatcher', 'technician', 'viewer', 'customer'];
 
 /** Normalize Postgres enum / odd client encodings to a snake_case key. */
 export function normalizeRoleRaw(raw: unknown): string {
@@ -29,6 +29,10 @@ const ROLE_SYNONYMS: Record<string, AppRole> = {
   super_administrator: 'super_admin',
   admin: 'admin',
   administrator: 'admin',
+  dispatcher: 'dispatcher',
+  dispatch: 'dispatcher',
+  viewer: 'viewer',
+  read_only: 'viewer',
   technician: 'technician',
   tech: 'technician',
   technologist: 'technician',

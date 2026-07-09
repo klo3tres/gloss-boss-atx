@@ -12,6 +12,7 @@ type Props = {
   locationLabel?: string;
   variant?: Variant;
   compact?: boolean;
+  homepageCompact?: boolean;
   autoFetch?: boolean;
   settingsHref?: string;
   className?: string;
@@ -28,6 +29,7 @@ export function WeatherReadinessWidget({
   locationLabel = 'Austin service area',
   variant = 'customer',
   compact = false,
+  homepageCompact = false,
   autoFetch = false,
   settingsHref = '/admin/integrations#weather',
   className = '',
@@ -35,9 +37,10 @@ export function WeatherReadinessWidget({
   const [snapshot, setSnapshot] = useState<WeatherSnapshot | null>(initialSnapshot);
   const [loading, setLoading] = useState(autoFetch && !initialSnapshot);
   const [expanded, setExpanded] = useState(() => {
-    if (typeof window === 'undefined') return true;
+    if (homepageCompact) return false;
+    if (typeof window === 'undefined') return !compact;
     const saved = sessionStorage.getItem('gb_weather_forecast_expanded');
-    return saved === null ? true : saved === '1';
+    return saved === null ? !compact : saved === '1';
   });
 
   const toggleExpanded = () => {
@@ -82,7 +85,11 @@ export function WeatherReadinessWidget({
   const severe = snapshot?.severe || highRain;
 
   const desc = (snapshot?.description || snapshot?.condition || '').toLowerCase();
-  const isRainy = desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower') || desc.includes('storm');
+  const isHeavyRain = desc.includes('heavy rain') || desc.includes('thunderstorm') || desc.includes('storm');
+  const isLightRain =
+    !isHeavyRain &&
+    (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower'));
+  const isRainy = isHeavyRain || isLightRain;
   const isCloudy = desc.includes('cloud') || desc.includes('overcast') || desc.includes('fog') || desc.includes('mist');
   const isSunny = !isRainy && !isCloudy && (desc.includes('clear') || desc.includes('sun') || desc.includes('sky') || desc === '');
 
@@ -137,6 +144,49 @@ export function WeatherReadinessWidget({
       description: 'Minor rain risk. Have towels ready or schedule in a covered bay.',
       color: 'text-amber-400 border-amber-500/20 bg-amber-500/5',
     };
+  }
+
+  const conditionLabel = (() => {
+    if (!snapshot?.ok) return 'Forecast pending';
+    if (isHeavyRain) return snapshot.description || snapshot.condition || 'Rain reported';
+    if (isLightRain) return 'Nearby / light rain reported';
+    return snapshot.description || snapshot.condition || 'Clear';
+  })();
+
+  const sourceLabel = snapshot?.provider === 'openweather' ? 'OpenWeather' : 'Weather service';
+  const refreshedAt = snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleString() : null;
+
+  if (homepageCompact && snapshot?.ok) {
+    return (
+      <section
+        className={`relative overflow-hidden rounded-2xl border p-3 bg-gradient-to-b ${weatherTheme.gradient} ${borderAccent[variant]} ${className}`}
+        aria-label="Weather snapshot"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Detailing weather</p>
+            <p className="truncate text-sm font-black text-white">
+              {snapshot.temperatureF ?? '—'}°F · {conditionLabel}
+            </p>
+            <p className="text-[9px] text-zinc-500">
+              Rain risk {rain}% · {sourceLabel}
+              {refreshedAt ? ` · ${refreshedAt}` : ''}
+            </p>
+          </div>
+          {autoFetch ? (
+            <button
+              type="button"
+              onClick={() => refresh()}
+              disabled={loading}
+              className="shrink-0 rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white"
+              aria-label="Refresh weather"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -257,7 +307,7 @@ export function WeatherReadinessWidget({
                     <span className="text-sm font-bold text-zinc-400">°F</span>
                   </div>
                   <p className="text-xs capitalize text-zinc-400 mt-0.5">
-                    {snapshot.description || snapshot.condition}
+                    {conditionLabel}
                   </p>
                 </div>
               </div>
@@ -267,8 +317,15 @@ export function WeatherReadinessWidget({
               </div>
             </div>
 
+            {/* Source / freshness */}
+            <p className="text-[9px] text-zinc-600">
+              Source: {sourceLabel}
+              {refreshedAt ? ` · Updated ${refreshedAt}` : ''}
+              {isLightRain && rain < 40 ? ' · Use rain risk % for scheduling decisions' : ''}
+            </p>
+
             {/* Hourly strip */}
-            {snapshot.hourlyForecasts && snapshot.hourlyForecasts.length > 0 ? (
+            {!homepageCompact && snapshot.hourlyForecasts && snapshot.hourlyForecasts.length > 0 ? (
               <div className="overflow-x-auto pb-1">
                 <div className="flex min-w-max gap-2">
                   {snapshot.hourlyForecasts.map((h, i) => (

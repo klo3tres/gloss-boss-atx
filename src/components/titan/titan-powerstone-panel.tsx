@@ -3,14 +3,17 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { Calendar, GraduationCap, Radar, Send, Sparkles, Target, Zap } from 'lucide-react';
+import { Calendar, GraduationCap, Radar, RefreshCw, Send, Sparkles, Target, Zap } from 'lucide-react';
 import type { ExecutiveBriefingSnapshot } from '@/lib/titan/executive-briefing';
 import { runAcquisitionHuntAction } from '@/app/(dashboard)/admin/titan/titan-1-actions';
+import { syncFollowUpsNowAction } from '@/app/(dashboard)/admin/follow-ups/follow-up-actions';
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 
 export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefingSnapshot }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+
+  const topMoneyAction = briefing.dailyActionPlan.fastestMoneyMoves[0];
 
   const actions = [
     {
@@ -24,7 +27,6 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
       icon: Target,
       label: 'Run revenue hunt',
       detail: 'Scan opportunities now',
-      href: '/admin/titan?workspace=growth',
       onClick: () => {
         startTransition(async () => {
           await runAcquisitionHuntAction();
@@ -32,6 +34,18 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
         });
       },
       tone: 'text-emerald-300',
+    },
+    {
+      icon: RefreshCw,
+      label: 'Sync follow-ups',
+      detail: 'Queue stale customer texts',
+      onClick: () => {
+        startTransition(async () => {
+          await syncFollowUpsNowAction();
+          router.refresh();
+        });
+      },
+      tone: 'text-sky-300',
     },
     {
       icon: Radar,
@@ -42,10 +56,19 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
     },
     {
       icon: Calendar,
-      label: 'Today\'s calendar',
+      label: "Today's calendar",
       detail: briefing.scheduleLabel,
       href: '/admin/calendar',
       tone: 'text-gold-soft',
+    },
+    {
+      icon: Zap,
+      label: 'Close the gap',
+      detail: topMoneyAction ? topMoneyAction.title.slice(0, 42) : briefing.revenueGapLabel,
+      onClick: () => {
+        document.getElementById('daily-action-plan')?.scrollIntoView({ behavior: 'smooth' });
+      },
+      tone: 'text-rose-300',
     },
     {
       icon: GraduationCap,
@@ -53,13 +76,6 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
       detail: 'Videos, models, playbooks',
       href: '/admin/academy',
       tone: 'text-amber-200',
-    },
-    {
-      icon: Zap,
-      label: 'Close the gap',
-      detail: `${briefing.revenueGapLabel} to target`,
-      href: '/admin/revenue',
-      tone: 'text-rose-300',
     },
   ];
 
@@ -70,7 +86,7 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
         <SectionEyebrow>Titan Powerstone</SectionEyebrow>
       </div>
       <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
-        One-tap loops — every card opens a real workflow or runs a live Titan action.
+        One-tap loops — hunt, sync follow-ups, or jump to today&apos;s top money action.
       </p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {actions.map((action) => {
@@ -95,7 +111,7 @@ export function TitanPowerstonePanel({ briefing }: { briefing: ExecutiveBriefing
           return (
             <Link
               key={action.label}
-              href={action.href}
+              href={action.href!}
               className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/50 p-3 transition hover:border-gold/35 hover:bg-black/70"
             >
               <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${action.tone}`} />

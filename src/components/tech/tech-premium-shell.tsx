@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { TechWelcomeBanner } from '@/components/tech/tech-welcome-banner';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -305,6 +306,8 @@ export function TechPremiumShell({
           </span>
         </div>
       </header>
+
+      <TechWelcomeBanner techName={techName} roleLabel={roleLabel} jobCount={todayJobs.length} />
 
       {/* Premium Field Terminal Tab Switcher Pill Rail */}
       <div className='mb-6 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-white/5'>
