@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { requireSuperAdminApiUser } from '@/lib/admin/api-guard';
+import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import {
@@ -22,7 +22,7 @@ type Body =
   | { intent: 'update'; inviteId: string; email?: string; phone?: string; fullName?: string };
 
 export async function POST(request: Request) {
-  const gate = await requireSuperAdminApiUser();
+  const gate = await requireAdminApiUser();
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
 
   const session = await getSessionWithProfile();
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const gate = await requireSuperAdminApiUser();
+  const gate = await requireAdminApiUser();
   if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
   const admin = tryCreateAdminSupabase();
   if (!admin) return NextResponse.json({ ok: false, error: 'Service unavailable' }, { status: 503 });

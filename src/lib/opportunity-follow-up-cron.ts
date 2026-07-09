@@ -51,6 +51,7 @@ export async function processOpportunityFollowUps(admin: SupabaseClient): Promis
     .from('titan_opportunities')
     .select('*')
     .eq('follow_up_cadence_paused', false)
+    .not('business_id', 'is', null)
     .limit(50);
 
   if (error) return { sent: 0, skipped: 0, failed: 0 };

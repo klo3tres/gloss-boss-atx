@@ -22,3 +22,14 @@ export function googleCalendarClientId(): string | null {
 export function googleCalendarClientSecret(): string | null {
   return process.env.GOOGLE_CALENDAR_CLIENT_SECRET?.trim() || null;
 }
+
+export function titanGoogleRedirectUri(): string {
+  const explicit = process.env.TITAN_GOOGLE_REDIRECT_URI?.trim();
+  if (explicit) return explicit;
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+  return `${base}/api/titan/integrations/google/callback`;
+}
+
+export function titanGoogleOAuthConfigured(): boolean {
+  return Boolean(googleCalendarClientId() && googleCalendarClientSecret());
+}

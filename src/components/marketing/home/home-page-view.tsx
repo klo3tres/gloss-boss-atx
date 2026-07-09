@@ -116,7 +116,7 @@ export function HomePageView({
     isSectionVisible(visuals, 'membership') &&
     (packages.some((p) => /member|bronze|silver|gold/i.test(`${p.id} ${p.title}`)) || deals.websitePromoActive);
   return (
-    <main className="gb-page gb-marketing-page gb-page-pad relative min-h-screen overflow-x-hidden bg-black text-foreground">
+    <main className="gb-page gb-marketing-page gb-page-pad relative min-h-screen overflow-x-hidden bg-background text-foreground">
       <StickyBookCta bookingHref={bookingHref} />
 
       {isSectionVisible(visuals, 'hero') ? (
@@ -295,15 +295,15 @@ export function HomePageView({
       </section>
 
       {showMembershipSection ? (
-        <section className="relative overflow-hidden border-y border-white/5 py-0">
+        <section className="gb-membership-band relative overflow-hidden border-y border-white/5 py-0">
           <div className="relative min-h-[420px]">
             <img
               src={(visuals?.membership as { image?: string })?.image || mediaUrl(mediaRegistry, 'homepage.membershipCover')}
               alt=""
               style={getObjectStyle(visuals?.membership as { fit?: string; position?: string })}
-              className="absolute inset-0 h-full w-full object-cover opacity-30"
+              className="absolute inset-0 h-full w-full object-cover opacity-20"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/40" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/92 to-black/55" />
             <div className="relative mx-auto flex max-w-7xl flex-col justify-center px-4 py-20 sm:px-6 lg:min-h-[420px] lg:px-8">
               <PremiumEyebrow>Memberships</PremiumEyebrow>
               <h2 className="mt-4 max-w-xl text-3xl font-black uppercase tracking-tight text-white sm:text-5xl">
@@ -361,15 +361,15 @@ export function HomePageView({
         </div>
       </section>
 
-      <section id="faq" className="border-t border-white/5 bg-black py-20">
+      <section id="faq" className="border-t border-border bg-muted/20 py-20">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <PremiumEyebrow>FAQ</PremiumEyebrow>
-          <h2 className="mt-4 text-3xl font-black uppercase text-white">Before you book</h2>
+          <h2 className="mt-4 text-3xl font-black uppercase text-foreground">Before you book</h2>
           <dl className="mt-8 space-y-4">
             {faqs.map((item) => (
-              <PremiumCard key={item.q} className="bg-zinc-950/50 p-5" hover={false}>
-                <dt className="text-sm font-bold text-white">{item.q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-zinc-400">{item.a}</dd>
+              <PremiumCard key={item.q} className="p-5" hover={false}>
+                <dt className="text-sm font-bold text-foreground">{item.q}</dt>
+                <dd className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.a}</dd>
               </PremiumCard>
             ))}
           </dl>

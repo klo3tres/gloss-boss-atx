@@ -110,6 +110,19 @@ export async function assignTechnicianAction(formData: FormData) {
   });
   if (ev.error) console.warn('[crm] assignment_events', ev.error);
 
+  if (technicianId && technicianId !== prevTech) {
+    try {
+      const { notifyTechnicianJobAssigned } = await import('@/lib/tech-notifications');
+      await notifyTechnicianJobAssigned(gate.supabase, {
+        technicianId,
+        appointmentId,
+        actorId: gate.userId,
+      });
+    } catch (e) {
+      console.warn('[crm] tech notification', e);
+    }
+  }
+
   revalidatePath('/admin');
   revalidatePath('/admin/customers');
   revalidatePath('/tech');

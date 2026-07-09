@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useActionState, useState, useTransition } from 'react';
 import type { ReferralProgramSettings } from '@/lib/referral/referral-codes';
-import { saveReferralProgramSettingsAction } from '@/app/(dashboard)/admin/referrals/actions';
+import { saveReferralProgramSettingsAction, type ReferralSaveResult } from '@/app/(dashboard)/admin/referrals/actions';
 import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
 
 const inputClass = 'mt-1 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-sm text-white';
@@ -16,12 +16,25 @@ export function ReferralsAdminClient({
   events: Record<string, unknown>[];
   rewards: Record<string, unknown>[];
 }) {
+  const [saveState, saveAction, savePending] = useActionState<ReferralSaveResult | null, FormData>(
+    saveReferralProgramSettingsAction,
+    null,
+  );
+
   return (
     <div className="space-y-6">
-      <form action={saveReferralProgramSettingsAction} className="rounded-3xl border border-white/10 bg-black/50 p-5 space-y-4">
+      <form action={saveAction} className="rounded-3xl border border-white/10 bg-black/50 p-5 space-y-4">
         <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Program settings</p>
+        {saveState?.ok === false ? (
+          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{saveState.error}</p>
+        ) : null}
+        {saveState?.ok === true ? (
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            Settings saved. Booking and rewards will use these values on the next checkout.
+          </p>
+        ) : null}
         <label className="flex items-center gap-2 text-sm text-zinc-300">
-          <input type="checkbox" name="enabled" defaultChecked={settings.enabled} className="accent-[var(--gold)]" /> Enable referral program
+          <input type="checkbox" name="enabled" defaultChecked={settings.enabled} className="accent-[var(--gb-gold)]" /> Enable referral program
         </label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-zinc-400">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
@@ -43,15 +56,21 @@ export function ReferralsAdminClient({
           />
         </label>
         <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2">
-          <input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gold)]" />
+          <input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gb-gold)]" />
           Allow referred discount to stack with larger public promos (default: off)
         </label>
-        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gold)]" /> Review reward enabled</label>
+        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gb-gold)]" /> Review reward enabled</label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-zinc-400">Review reward type<select name="review_reward_type" defaultValue={settings.reviewRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option></select></label>
           <label className="text-xs text-zinc-400">Review reward value<input name="review_reward_value" type="number" defaultValue={settings.reviewRewardValue} className={inputClass} /></label>
         </div>
-        <button className="rounded-xl bg-gold px-5 py-2.5 text-[10px] font-black uppercase text-black">Save settings</button>
+        <button
+          type="submit"
+          disabled={savePending}
+          className="rounded-xl bg-gold px-5 py-2.5 text-[10px] font-black uppercase text-black disabled:opacity-60"
+        >
+          {savePending ? 'Saving…' : 'Save settings'}
+        </button>
       </form>
 
       <section className="rounded-3xl border border-white/10 bg-black/50 p-5">

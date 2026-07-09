@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 
-const PROTECTED = ['/dashboard', '/admin', '/tech', '/customer'];
+const PROTECTED = ['/dashboard', '/admin', '/tech', '/customer', '/titan'];
 
 function needsAuth(pathname: string): boolean {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));

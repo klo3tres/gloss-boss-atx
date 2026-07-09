@@ -332,17 +332,22 @@ export async function runGoogleCalendarSync(
   return result;
 }
 
-export function buildGoogleOAuthUrl(state: string): string | null {
+export function buildGoogleOAuthUrl(
+  state: string,
+  opts?: { redirectUri?: string; extraScopes?: string[] },
+): string | null {
   const clientId = googleCalendarClientId();
   if (!clientId) return null;
+  const scopes = [
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/userinfo.email',
+    ...(opts?.extraScopes ?? []),
+  ];
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: googleCalendarRedirectUri(),
+    redirect_uri: opts?.redirectUri ?? googleCalendarRedirectUri(),
     response_type: 'code',
-    scope: [
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ].join(' '),
+    scope: [...new Set(scopes)].join(' '),
     access_type: 'offline',
     prompt: 'consent',
     state,
@@ -369,7 +374,10 @@ async function safeJson<T>(res: Response): Promise<T | null> {
   }
 }
 
-export async function exchangeGoogleOAuthCode(code: string): Promise<GoogleOAuthExchangeResult> {
+export async function exchangeGoogleOAuthCode(
+  code: string,
+  redirectUri?: string,
+): Promise<GoogleOAuthExchangeResult> {
   const clientId = googleCalendarClientId();
   const clientSecret = googleCalendarClientSecret();
   if (!clientId) return { ok: false, code: 'missing_client_id' };
@@ -384,7 +392,7 @@ export async function exchangeGoogleOAuthCode(code: string): Promise<GoogleOAuth
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: googleCalendarRedirectUri(),
+        redirect_uri: redirectUri ?? googleCalendarRedirectUri(),
         grant_type: 'authorization_code',
       }),
     });

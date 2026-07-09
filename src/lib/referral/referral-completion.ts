@@ -7,6 +7,11 @@ function str(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
 
+function isPaidStatus(paymentStatus: string) {
+  const p = paymentStatus.toLowerCase();
+  return ['paid', 'succeeded', 'deposit_paid'].includes(p) || p.includes('paid');
+}
+
 export async function processReferralJobCompletion(
   admin: SupabaseClient,
   appointmentId: string,
@@ -16,10 +21,22 @@ export async function processReferralJobCompletion(
 
   const { data: appt } = await admin
     .from('appointments')
-    .select('id, customer_id, guest_email, booking_pricing_breakdown, payment_status, status')
+    .select('id, customer_id, guest_email, booking_pricing_breakdown, payment_status, status, job_completed_at')
     .eq('id', appointmentId)
     .maybeSingle();
   if (!appt) return { ok: false, error: 'Appointment not found' };
+
+  const apptStatus = str(appt.status);
+  const paymentStatus = str((appt as { payment_status?: string }).payment_status);
+  const isCompleted = apptStatus === 'completed' || Boolean(str((appt as { job_completed_at?: string }).job_completed_at));
+  const isPaid = isPaidStatus(paymentStatus);
+
+  if (settings.rewardUnlockRule === 'completed_paid' && (!isCompleted || !isPaid)) {
+    return { ok: true, rewardIssued: false };
+  }
+  if (settings.rewardUnlockRule === 'booked') {
+    return { ok: true, rewardIssued: false };
+  }
 
   const breakdown = (appt as { booking_pricing_breakdown?: Record<string, unknown> }).booking_pricing_breakdown ?? {};
   const referralCode = str(breakdown.referral_code);
@@ -29,15 +46,20 @@ export async function processReferralJobCompletion(
     if (!ev?.referral_code) return { ok: true, rewardIssued: false };
   }
 
-  const code = referralCode || str((await admin.from('referral_events').select('referral_code, referrer_customer_id').eq('appointment_id', appointmentId).maybeSingle()).data?.referral_code);
+  const code =
+    referralCode ||
+    str(
+      (await admin.from('referral_events').select('referral_code, referrer_customer_id').eq('appointment_id', appointmentId).maybeSingle())
+        .data?.referral_code,
+    );
   const referrerId =
     referrerCustomerId ||
-    str((await admin.from('referral_events').select('referrer_customer_id').eq('appointment_id', appointmentId).maybeSingle()).data?.referrer_customer_id);
+    str(
+      (await admin.from('referral_events').select('referrer_customer_id').eq('appointment_id', appointmentId).maybeSingle()).data
+        ?.referrer_customer_id,
+    );
 
   if (!code || !referrerId) return { ok: true, rewardIssued: false };
-
-  const unlockOnBook = settings.rewardUnlockRule === 'booked';
-  if (unlockOnBook) return { ok: true, rewardIssued: false };
 
   await recordReferralEvent(admin, {
     referralCode: code,

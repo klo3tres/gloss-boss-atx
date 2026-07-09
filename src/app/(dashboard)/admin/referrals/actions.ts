@@ -11,10 +11,17 @@ function num(v: FormDataEntryValue | null, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export async function saveReferralProgramSettingsAction(formData: FormData) {
+export type ReferralSaveResult = { ok: true } | { ok: false; error: string };
+
+export async function saveReferralProgramSettingsAction(
+  _prev: ReferralSaveResult | null,
+  formData: FormData,
+): Promise<ReferralSaveResult> {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
-  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) return;
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) {
+    return { ok: false, error: 'Unauthorized or database unavailable.' };
+  }
 
   const settings = {
     ...DEFAULT_REFERRAL_SETTINGS,
@@ -53,7 +60,7 @@ export async function saveReferralProgramSettingsAction(formData: FormData) {
   );
   if (error) {
     console.error('[referrals] save failed', error.message);
-    return;
+    return { ok: false, error: error.message };
   }
 
   try {
@@ -69,6 +76,8 @@ export async function saveReferralProgramSettingsAction(formData: FormData) {
   }
 
   revalidatePath('/admin/referrals');
+  revalidatePath('/book');
+  return { ok: true };
 }
 
 export async function issueReferralRewardAction(rewardId: string) {

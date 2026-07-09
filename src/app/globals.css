@@ -1531,6 +1531,49 @@ html[data-theme='light'] .gb-marketing-page .gb-referral-section {
   border-color: rgba(212, 175, 55, 0.25);
 }
 
+/* Marketing pages: remap hardcoded dark utilities in light mode */
+html[data-theme='light'] .gb-marketing-page.bg-black,
+html[data-theme='light'] .gb-marketing-page [class*='bg-black'],
+html[data-theme='light'] .gb-marketing-page [class*='bg-zinc-950'] {
+  background-color: transparent !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .text-white {
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .text-zinc-300,
+html[data-theme='light'] .gb-marketing-page .text-zinc-400,
+html[data-theme='light'] .gb-marketing-page .text-zinc-500 {
+  color: #52525b !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .border-white\/5,
+html[data-theme='light'] .gb-marketing-page .border-white\/10,
+html[data-theme='light'] .gb-marketing-page .border-white\/8 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html[data-theme='light'] .gb-marketing-page .gb-premium-card,
+html[data-theme='light'] .gb-marketing-page article.rounded-3xl {
+  background: #ffffff !important;
+  border-color: rgba(212, 175, 55, 0.18) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme='light'] .gb-luxury-nav .gb-premium-btn {
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-membership-band {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2a24 100%) !important;
+}
+
+html[data-theme='light'] .gb-membership-band .text-white,
+html[data-theme='light'] .gb-membership-band h2 {
+  color: #fafafa !important;
+}
+
 html[data-theme='dark'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-light {
   opacity: 0;
 }

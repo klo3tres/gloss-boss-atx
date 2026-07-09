@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
-import { Star, ChevronLeft, ChevronRight, MessageSquare, Quote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare, Quote } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { PublicReview } from '@/lib/public-site-data';
+import { StarRating } from '@/components/ui/star-rating';
 
 function formatReviewDate(iso: string) {
   if (!iso) return '';
@@ -122,15 +123,7 @@ export function ReviewsCarousel({
           >
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-3">
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={14}
-                      className={i < currentReview.rating ? 'fill-gold text-gold' : 'text-zinc-600'}
-                    />
-                  ))}
-                </div>
+                <StarRating rating={currentReview.rating} size="sm" />
                 {currentReview.isGoogle ? (
                   <span className="rounded-md border border-blue-500/30 bg-blue-950/40 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-blue-200">
                     Google

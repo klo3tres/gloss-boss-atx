@@ -177,7 +177,10 @@ export function Navbar() {
       ))}
       {signedIn ? (
         <>
-          <Link href={dashboardHref} className='text-xs font-bold uppercase tracking-wider text-gold-soft hover:underline'>
+          <Link
+            href={dashboardHref}
+            className='gb-premium-btn inline-flex items-center rounded-xl bg-gradient-to-r from-gold to-gold-soft px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-black shadow-[0_0_16px_rgba(212,175,55,0.2)] hover:brightness-110'
+          >
             {dashboardLabel}
           </Link>
           <button
@@ -300,7 +303,11 @@ export function Navbar() {
               ))}
               {signedIn ? (
                 <>
-                  <Link href={dashboardHref} onClick={() => setOpen(false)} className='text-sm font-bold uppercase tracking-wider text-gold-soft hover:underline'>
+                  <Link
+                    href={dashboardHref}
+                    onClick={() => setOpen(false)}
+                    className='gb-premium-btn inline-flex w-fit items-center rounded-xl bg-gradient-to-r from-gold to-gold-soft px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black'
+                  >
                     {dashboardLabel}
                   </Link>
                   <button

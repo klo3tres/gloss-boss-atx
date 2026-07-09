@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-cron';
+import { GLOSS_BOSS_BUSINESS_ID } from '@/lib/titan/business-ids';
 
 export type RevenueOpportunityType =
   | 'warm_lead'
@@ -341,13 +342,19 @@ export function whyTitanPicked(opp: RevenueOpportunity): string {
 export async function loadRevenueOpportunities(
   admin: SupabaseClient,
   workspaceKey = 'default',
+  businessId?: string,
 ): Promise<{ opportunities: RevenueOpportunity[]; tablesReady: boolean; error?: string }> {
-  const { data, error } = await admin
-    .from('titan_opportunities')
-    .select('*')
-    .eq('workspace_key', workspaceKey)
-    .order('created_at', { ascending: false })
-    .limit(200);
+  let query = admin.from('titan_opportunities').select('*').eq('workspace_key', workspaceKey);
+  let resolvedBusinessId = businessId;
+  if (!resolvedBusinessId && workspaceKey === 'default') {
+    resolvedBusinessId = GLOSS_BOSS_BUSINESS_ID;
+  } else if (!resolvedBusinessId) {
+    const { data: biz } = await admin.from('businesses').select('id').eq('workspace_key', workspaceKey).maybeSingle();
+    resolvedBusinessId = biz?.id ? String(biz.id) : undefined;
+  }
+  if (resolvedBusinessId) query = query.eq('business_id', resolvedBusinessId);
+
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
 
   if (error) {
     if (isMissingTable(error.message)) return { opportunities: [], tablesReady: false, error: error.message };
@@ -464,6 +471,11 @@ export async function createRevenueOpportunity(
   };
   const message = generateRecommendedMessage(draft);
   const created = new Date(now);
+  let businessId: string | null = workspaceKey === 'default' ? GLOSS_BOSS_BUSINESS_ID : null;
+  if (!businessId) {
+    const { data: biz } = await admin.from('businesses').select('id').eq('workspace_key', workspaceKey).maybeSingle();
+    businessId = biz?.id ? String(biz.id) : null;
+  }
 
   const row = {
     title: input.title,
@@ -486,6 +498,7 @@ export async function createRevenueOpportunity(
     suggested_dm: message,
     notes: input.notes ?? null,
     workspace_key: workspaceKey,
+    business_id: businessId,
     created_at: now,
     updated_at: now,
     follow_up_step: 0,

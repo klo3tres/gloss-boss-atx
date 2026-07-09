@@ -249,7 +249,9 @@ export function GoogleCalendarConnectPanel({ returnTo = '/admin/setup-center' }:
         </p>
         <p>
           Authorized redirect URI must exactly be:{' '}
-          <code className='break-all text-gold-soft'>https://www.glossbossatx.com/api/admin/google-calendar/callback</code>
+          <code className='break-all text-gold-soft'>
+            {status?.debug?.redirectUriExpected ?? '/api/admin/google-calendar/callback (set GOOGLE_CALENDAR_REDIRECT_URI)'}
+          </code>
         </p>
         <p>Google OAuth redirect URIs must match exactly — this is required by Google OAuth.</p>
       </div>

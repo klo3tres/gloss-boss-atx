@@ -37,167 +37,86 @@ export default async function FleetPage() {
   ];
 
   return (
-    <main className='gb-luxury-page min-h-screen bg-black text-white'>
-      <section className='relative overflow-hidden border-b border-gold/20'>
+    <main className="gb-marketing-page gb-luxury-page min-h-screen bg-background text-foreground">
+      <section className="relative overflow-hidden border-b border-border">
         <Image
           src={mediaUrl(registry, 'fleet.hero')}
           alt="Gloss Boss ATX fleet detailing"
           fill
           priority
           unoptimized={mediaUrl(registry, 'fleet.hero').startsWith('http')}
-          className="object-cover opacity-35"
+          className="object-cover opacity-25"
         />
-        <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(0,0,0,0.96),rgba(0,0,0,0.62),rgba(0,0,0,0.94))]' />
-        <div className='relative mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[1.05fr_0.95fr] lg:px-8'>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/70" />
+        <div className="relative mx-auto grid max-w-5xl gap-10 px-5 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
           <div>
-            <p className='text-xs font-black uppercase tracking-[0.3em] text-gold-soft'>Gloss Boss ATX Fleet Care</p>
-            <h1 className='mt-4 text-4xl font-black uppercase leading-none sm:text-6xl'>Premium mobile detailing for business fleets</h1>
-            <p className='mt-5 max-w-2xl text-base leading-7 text-zinc-300'>{blurb}</p>
+            <p className="text-xs font-black uppercase tracking-[0.3em] text-gold-soft">Fleet & commercial</p>
+            <h1 className="mt-4 text-4xl font-black uppercase leading-tight sm:text-5xl">
+              Premium mobile detailing for business fleets
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">{blurb}</p>
             <div className="mt-7 grid max-w-2xl gap-3 sm:grid-cols-3">
               {['Work trucks', 'Company vehicles', 'Executive fleets'].map((item) => (
-                <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur">
-                  <p className="text-sm font-black text-white">{item}</p>
-                  <p className="mt-1 text-xs text-zinc-400">Recurring on-site care</p>
+                <div key={item} className="gb-premium-card rounded-2xl border border-border p-4">
+                  <p className="text-sm font-black text-foreground">{item}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Recurring on-site care</p>
                 </div>
               ))}
             </div>
-            <div className='mt-8 flex flex-wrap gap-3'>
-              <a href='#fleet-inquiry' className='rounded-xl bg-gold px-6 py-3 text-sm font-black uppercase text-black shadow-[0_0_24px_rgba(212,166,77,0.25)] transition hover:bg-gold-soft'>Request fleet quote</a>
-              <Link href='/book' className='rounded-xl border border-white/15 bg-black/35 px-6 py-3 text-sm font-black uppercase text-white transition hover:border-gold/35'>Book one vehicle</Link>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a href="#fleet-inquiry" className="rounded-xl bg-gold px-6 py-3 text-sm font-black uppercase text-black shadow-[0_0_24px_rgba(212,166,77,0.25)] transition hover:brightness-110">
+                Request fleet quote
+              </a>
+              <Link href="/book" className="rounded-xl border border-border bg-card px-6 py-3 text-sm font-black uppercase text-foreground transition hover:border-gold/35">
+                Book one vehicle
+              </Link>
             </div>
           </div>
-          <div className='rounded-3xl border border-gold/20 bg-zinc-950/80 p-6 shadow-[0_0_42px_rgba(212,166,77,0.14)]'>
-            <Building2 className='h-9 w-9 text-gold-soft' />
-            <h2 className='mt-4 text-2xl font-black uppercase'>Designed for operators</h2>
-            <div className='mt-5 grid gap-3'>
-              {[
-                ['Scheduled routes', 'Weekly, bi-weekly, monthly, or custom recurring service windows.'],
-                ['Documented work', 'Photos, notes, and service records stay tied to each vehicle.'],
-                ['On-site efficiency', 'We come to offices, lots, warehouses, and managed properties.'],
-              ].map(([title, copy]) => (
-                <div key={title} className='rounded-2xl border border-white/10 bg-black/45 p-4'>
-                  <p className='font-black text-white'>{title}</p>
-                  <p className='mt-1 text-sm text-zinc-400'>{copy}</p>
-                </div>
-              ))}
-            </div>
+          <div className="gb-premium-card rounded-3xl border border-gold/20 p-6">
+            <Building2 className="h-8 w-8 text-gold-soft" />
+            <h2 className="mt-4 text-xl font-black uppercase">Built for operators</h2>
+            <ul className="mt-5 space-y-3 text-sm text-muted-foreground">
+              <li><strong className="text-foreground">Scheduled routes</strong> — weekly, bi-weekly, or custom cadence.</li>
+              <li><strong className="text-foreground">Documented work</strong> — photos and records per vehicle.</li>
+              <li><strong className="text-foreground">On-site efficiency</strong> — offices, lots, and managed properties.</li>
+            </ul>
           </div>
         </div>
       </section>
 
-      <section className='mx-auto max-w-7xl px-5 py-14 lg:px-8'>
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
-          {[
-            ['Maintenance plans', 'Exterior refreshes, interior resets, and cadence-based care.'],
-            ['Multi-vehicle discounts', 'Simple tiers for small, mid-size, and large fleets.'],
-            ['On-site service', 'Office lots, warehouses, dealerships, and managed properties.'],
-            ['Recurring schedules', 'Weekly, bi-weekly, monthly, or custom routes.'],
-          ].map(([title, copy]) => (
-            <div key={title} className="rounded-3xl border border-white/10 bg-zinc-950/70 p-5 transition hover:-translate-y-1 hover:border-gold/30">
-              <p className="text-sm font-black uppercase text-white">{title}</p>
-              <p className="mt-2 text-xs leading-5 text-zinc-400">{copy}</p>
-            </div>
-          ))}
-        </div>
-        <div className='grid gap-4 md:grid-cols-3'>
+      <section className="mx-auto max-w-5xl px-5 py-14 lg:px-8">
+        <div className="mb-10 grid gap-4 md:grid-cols-3">
           {tiers.map((tier) => (
-            <div key={tier.label} className='rounded-3xl border border-gold/20 bg-zinc-950 p-6 transition hover:-translate-y-1 hover:border-gold/45'>
-              <Truck className='h-7 w-7 text-gold-soft' />
-              <p className='mt-4 text-xl font-black text-white'>{tier.label}</p>
-              <p className='mt-2 text-sm text-zinc-400'>{tier.detail}</p>
+            <div key={tier.label} className="gb-premium-card rounded-3xl border border-border p-6">
+              <Truck className="h-6 w-6 text-gold-soft" />
+              <p className="mt-4 text-lg font-black text-foreground">{tier.label}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{tier.detail}</p>
             </div>
           ))}
         </div>
-        <div className='mt-5 grid gap-4 md:grid-cols-3'>
+        <div className="grid gap-4 md:grid-cols-3">
           {[
             ['Recurring savings', `Weekly ${pricing.weeklyDiscount} · bi-weekly ${pricing.biweeklyDiscount} · monthly ${pricing.monthlyDiscount}`],
             ['Insured mobile service', 'Premium products, on-site documentation, and careful access notes.'],
-            ['Fast quote flow', 'Tell us fleet size, locations, and service cadence. We follow up with a usable plan.'],
+            ['Fast quote flow', 'Tell us fleet size, locations, and cadence — we follow up with a usable plan.'],
           ].map(([title, copy], i) => {
             const Icon = i === 0 ? Sparkles : i === 1 ? ShieldCheck : CalendarCheck;
             return (
-              <div key={title} className='rounded-2xl border border-white/10 bg-black/35 p-5'>
-                <Icon className='h-5 w-5 text-gold-soft' />
-                <p className='mt-3 font-black text-white'>{title}</p>
-                <p className='mt-1 text-sm text-zinc-400'>{copy}</p>
+              <div key={title} className="rounded-2xl border border-border bg-card p-5">
+                <Icon className="h-5 w-5 text-gold-soft" />
+                <p className="mt-3 font-black text-foreground">{title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{copy}</p>
               </div>
             );
           })}
         </div>
-        <div className="mt-8 rounded-3xl border border-gold/20 bg-gradient-to-br from-gold/10 via-zinc-950 to-black p-6">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Example operating plan</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            {[
-              ['5 vehicles', pricing.smallDetail],
-              ['12 vehicles', pricing.mediumDetail],
-              ['15+ vehicles', pricing.largeDetail],
-            ].map(([label, detail]) => (
-              <div key={label} className="rounded-2xl border border-white/10 bg-black/45 p-4">
-                <p className="text-lg font-black text-white">{label}</p>
-                <p className="mt-1 text-sm text-zinc-400">{detail}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          <div className="rounded-3xl border border-white/10 bg-black/40 p-5 lg:col-span-2">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Fleet success stories</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {[
-                ['Property management', 'Cleaner resident-facing lots and fewer vendor visits.', 'fleet.property'],
-                ['Dealerships', 'Inventory stays photo-ready before weekend traffic.', 'fleet.dealership'],
-                ['Medical offices', 'Executive and staff vehicles handled on-site between shifts.', 'fleet.medical'],
-                ['Construction companies', 'Work trucks cleaned on cadence without leaving the job rhythm.', 'fleet.construction'],
-                ['Executive fleets', 'Premium recurring care for client-facing leadership vehicles.', 'fleet.corporate'],
-                ['Company vehicles', 'Consistent brand presentation across daily drivers and route vehicles.', 'fleet.industries'],
-              ].map(([title, copy, imageKey]) => (
-                <div key={title} className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/60">
-                  <div className="relative h-32">
-                    <Image
-                      src={mediaUrl(registry, imageKey)}
-                      alt={`${title} fleet detailing`}
-                      fill
-                      unoptimized={mediaUrl(registry, imageKey).startsWith('http')}
-                      className="object-cover opacity-75"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
-                  </div>
-                  <div className="p-4">
-                    <p className="font-black text-white">{title}</p>
-                    <p className="mt-2 text-sm leading-6 text-zinc-400">{copy}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-3xl border border-gold/20 bg-black/40 p-5">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Cost savings example</p>
-            <p className="mt-4 text-3xl font-black text-white">One vendor. One route. One invoice.</p>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">Volume discounts reduce per-vehicle spend as fleet size and service frequency increase.</p>
-          </div>
-        </div>
-        <div className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/70 p-6">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-gold-soft">Commercial testimonials</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            {[
-              ['Executive assistant', 'The team shows up prepared and keeps our vehicles client-ready.'],
-              ['Fleet manager', 'Recurring service made vehicle care predictable instead of reactive.'],
-              ['Dealership operator', 'The photo documentation and scheduling discipline are what sold us.'],
-            ].map(([role, quote]) => (
-              <blockquote key={role} className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <p className="text-sm leading-6 text-zinc-300">"{quote}"</p>
-                <footer className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-gold-soft">{role}</footer>
-              </blockquote>
-            ))}
-          </div>
-        </div>
       </section>
 
-      <section id='fleet-inquiry' className='mx-auto max-w-4xl px-5 pb-20 lg:px-8'>
-        <div className='rounded-3xl border border-gold/20 bg-zinc-950 p-6 shadow-[0_0_42px_rgba(212,166,77,0.10)]'>
-          <p className='text-xs font-black uppercase tracking-[0.24em] text-gold-soft'>Fleet quote request</p>
-          <h2 className='mt-3 text-3xl font-black uppercase text-white'>Build a recurring care plan</h2>
-          <p className='mt-2 text-sm text-zinc-400'>{pricing.commercialNotes}</p>
+      <section id="fleet-inquiry" className="mx-auto max-w-3xl px-5 pb-20 lg:px-8">
+        <div className="gb-premium-card rounded-3xl border border-gold/20 p-6">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-gold-soft">Fleet quote request</p>
+          <h2 className="mt-3 text-2xl font-black uppercase text-foreground">Build a recurring care plan</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{pricing.commercialNotes}</p>
           <FleetInquiryForm />
         </div>
       </section>
