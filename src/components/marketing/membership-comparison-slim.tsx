@@ -74,8 +74,8 @@ export function MembershipComparisonSlim({ className = '' }: { className?: strin
                 </li>
                 {meta ? (
                   <li className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-gold-soft shrink-0" />
-                    {meta.punchMultiplier}× loyalty stamps
+                    <Check className="h-3 w-3 shrink-0 text-gold-soft" />
+                    Digital punch card
                   </li>
                 ) : null}
                 <li className="flex items-center gap-1.5">

@@ -23,7 +23,7 @@ const publicNavLinks = [
 
 const moreNavLinks = [
   { href: '/fleet', label: 'Fleet' },
-  { href: '#about', label: 'About' },
+  { href: '/about', label: 'About' },
   { href: '/gift-cards', label: 'Gift Cards' },
   { href: '#faq', label: 'FAQ' },
   { href: '#contact', label: 'Contact' },

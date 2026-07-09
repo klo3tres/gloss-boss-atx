@@ -43,7 +43,31 @@ export async function saveReferralProgramSettingsAction(formData: FormData) {
     })(),
   };
 
-  await admin.from('site_settings').upsert({ key: 'referral_program', value: settings });
+  const { error } = await admin.from('site_settings').upsert(
+    {
+      key: 'referral_program',
+      value: JSON.stringify(settings),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  );
+  if (error) {
+    console.error('[referrals] save failed', error.message);
+    return;
+  }
+
+  try {
+    const { logTitanActivity } = await import('@/lib/titan/activity-feed');
+    await logTitanActivity(admin, {
+      kind: 'referral_settings_changed',
+      title: 'Referral program settings updated',
+      detail: `Stacking ${settings.stackingAllowed ? 'on' : 'off'} · referrer ${settings.referrerRewardValue}${settings.referrerRewardType === 'percent' ? '%' : '¢'} · referred ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : '¢'}`,
+      metadata: { actor_user_id: session.user.id },
+    });
+  } catch {
+    /* non-blocking */
+  }
+
   revalidatePath('/admin/referrals');
 }
 

@@ -72,7 +72,7 @@ type BookingCreditState = {
   signedIn: boolean;
   availableCents: number;
   membershipDiscountPercent: number;
-  credits: Array<{ id: string; remainingCents: number; reason: string; expiresAt: string | null }>;
+  credits: Array<{ id: string; remainingCents: number; reason: string; type?: string; expiresAt: string | null }>;
   setupNeeded?: boolean;
 };
 
@@ -1465,6 +1465,18 @@ export function BookingWizard() {
           )}
           <a href='/memberships' className='rounded-lg border border-white/15 px-3 py-2 text-xs font-black uppercase text-zinc-200'>View memberships</a>
         </div>
+        {customerCredits.signedIn && customerCredits.credits.some((c) => c.type === 'loyalty_reward') ? (
+          <div className='mt-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-100'>
+            <p className='font-black uppercase tracking-wider text-emerald-300'>Loyalty reward applied</p>
+            {customerCredits.credits
+              .filter((c) => c.type === 'loyalty_reward')
+              .map((c) => (
+                <p key={c.id} className='mt-1'>
+                  {c.reason} · ${(c.remainingCents / 100).toFixed(2)}
+                </p>
+              ))}
+          </div>
+        ) : null}
       </div>
       {claimedOfferSnap ? (
         <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>

@@ -156,3 +156,74 @@ export async function sendOpportunitySmsAction(
   revalidate();
   return { ok: true };
 }
+
+export async function seedOpportunityAction(id: string): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  const now = new Date().toISOString();
+  const { error } = await g.admin
+    .from('titan_opportunities')
+    .update({ status: 'seeded', seeded_at: now, last_touched_at: now, updated_at: now })
+    .eq('id', id);
+  if (error) return { error: error.message };
+  const { logTitanActivity } = await import('@/lib/titan/activity-feed');
+  await g.admin.from('titan_opportunity_events').insert({
+    opportunity_id: id,
+    event_type: 'seeded',
+    notes: 'Marked as seeded warm lead',
+    workspace_key: 'default',
+  });
+  await logTitanActivity(g.admin, { kind: 'opportunity_queued', title: 'Opportunity seeded', detail: id, href: '/admin/titan/opportunities' });
+  revalidate();
+  return { ok: true };
+}
+
+export async function snoozeOpportunityAction(id: string, days = 60): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  const until = new Date();
+  until.setDate(until.getDate() + days);
+  const { error } = await g.admin
+    .from('titan_opportunities')
+    .update({
+      status: 'snoozed',
+      snoozed_until: until.toISOString(),
+      next_follow_up_at: until.toISOString(),
+      last_touched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return { error: error.message };
+  await g.admin.from('titan_opportunity_events').insert({
+    opportunity_id: id,
+    event_type: 'snoozed',
+    notes: `Snoozed ${days} days`,
+    workspace_key: 'default',
+  });
+  revalidate();
+  return { ok: true };
+}
+
+export async function addOpportunityNoteAction(id: string, note: string): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  if (!note.trim()) return { error: 'Note is empty.' };
+  const { data: row } = await g.admin.from('titan_opportunities').select('notes').eq('id', id).maybeSingle();
+  const existing = row?.notes ? String(row.notes) : '';
+  const merged = existing ? `${existing}\n\n[${new Date().toLocaleString()}] ${note.trim()}` : note.trim();
+  const { error } = await g.admin
+    .from('titan_opportunities')
+    .update({ notes: merged, last_touched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return { error: error.message };
+  await g.admin.from('titan_opportunity_events').insert({
+    opportunity_id: id,
+    event_type: 'note',
+    notes: note.trim(),
+    workspace_key: 'default',
+  });
+  const { logTitanActivity } = await import('@/lib/titan/activity-feed');
+  await logTitanActivity(g.admin, { kind: 'command_executed', title: 'Opportunity note added', detail: note.slice(0, 120), href: '/admin/titan/opportunities' });
+  revalidate();
+  return { ok: true };
+}

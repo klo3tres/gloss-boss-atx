@@ -16,7 +16,6 @@ import { PRICING_DISCLAIMER, PRICING_DISCOUNT_RULES } from '@/lib/site-config';
 import { ReviewsCarousel } from '@/components/marketing/reviews-carousel';
 import { HeroReviewTrust } from '@/components/marketing/hero-review-trust';
 import { MotionFade } from '@/components/marketing/motion-fade';
-import { MembershipComparisonSlim } from '@/components/marketing/membership-comparison-slim';
 import { TitanServicesQuickActions } from '@/components/marketing/titan-services-quick-actions';
 
 type ServiceTab = 'all' | 'exterior' | 'interior' | 'full' | 'ceramic';
@@ -95,13 +94,6 @@ export function ServicesPageView() {
       ) : null}
 
       {hasOffers ? <OffersMarketingBand offers={offers} placement="services" /> : null}
-
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <PremiumEyebrow>Member plans</PremiumEyebrow>
-        <h2 className="mt-3 text-2xl font-black uppercase text-white sm:text-3xl">Compare Bronze, Silver & Gold</h2>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-400">Same tiers as checkout — discounts, loyalty multipliers, and scheduling perks at a glance.</p>
-        <MembershipComparisonSlim className="mt-6" />
-      </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
         <TitanServicesQuickActions />

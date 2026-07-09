@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { NotificationCenterClient } from '@/components/admin/notification-center-client';
+import { NotificationCadenceSettingsPanel } from '@/components/admin/notification-cadence-settings-panel';
+import { BulkOutboundPanel } from '@/components/admin/bulk-outbound-panel';
+import { loadCadenceRules } from '@/lib/customer-notification-cadence';
 import { TitanNotificationHub } from '@/components/admin/titan-notification-hub';
 import { TitanPageShell } from '@/components/titan/titan-page-shell';
 import { CollapsibleSection } from '@/components/ui/premium';
@@ -27,6 +30,7 @@ export default async function AdminNotificationsPage() {
     admin ? loadTitanNotificationEvents(admin, { limit: 150 }) : Promise.resolve({ events: [], tablesReady: false }),
   ]);
   const unreadCount = admin ? await countUnreadNotifications(admin) : 0;
+  const cadence = admin ? await loadCadenceRules(admin) : { rules: [], tablesReady: false };
 
   const templateRows = (templates ?? []).map((r) => normalizeNotificationTemplateRow(r as Record<string, unknown>));
 
@@ -83,6 +87,14 @@ export default async function AdminNotificationsPage() {
           unreadCount={unreadCount}
           compactHeader
         />
+
+        <CollapsibleSection title="Bulk outbound" subtitle="Send or schedule SMS/email to multiple customers or leads" defaultOpen={false}>
+          <BulkOutboundPanel />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Customer notification cadence" subtitle="Welcome, reminders, post-service, and rebook rules" defaultOpen={false}>
+          <NotificationCadenceSettingsPanel rules={cadence.rules} tablesReady={cadence.tablesReady} />
+        </CollapsibleSection>
 
         <CollapsibleSection title="Delivery & templates" subtitle="Admin tools — templates, outbox, provider status" defaultOpen={false}>
           <NotificationCenterClient

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-cron';
 
 export type RevenueOpportunityType =
   | 'warm_lead'
@@ -14,7 +15,17 @@ export type RevenueOpportunityType =
   | 'google_places'
   | 'manual_prospect';
 
-export type RevenueOpportunityStatus = 'new' | 'contacted' | 'follow_up' | 'booked' | 'lost' | 'ignored';
+export type RevenueOpportunityStatus =
+  | 'new'
+  | 'seeded'
+  | 'contacted'
+  | 'quoted'
+  | 'follow_up'
+  | 'booked'
+  | 'won'
+  | 'lost'
+  | 'ignored'
+  | 'snoozed';
 
 export type RevenueOpportunity = {
   id: string;
@@ -63,11 +74,15 @@ export const OPPORTUNITY_TYPE_LABELS: Record<string, string> = {
 
 export const STATUS_LABELS: Record<RevenueOpportunityStatus, string> = {
   new: 'New',
+  seeded: 'Seeded',
   contacted: 'Contacted',
+  quoted: 'Quoted',
   follow_up: 'Follow-up',
   booked: 'Booked',
+  won: 'Won',
   lost: 'Lost',
   ignored: 'Ignored',
+  snoozed: 'Snoozed',
 };
 
 const WARM_TYPES = new Set<string>(['warm_lead', 'canceled_reschedule', 'coworker_nurse', 'referral', 'previous_customer']);
@@ -192,6 +207,9 @@ function normalizeStatus(raw: string): RevenueOpportunityStatus {
   const s = raw.toLowerCase();
   if (s === 'won' || s === 'pipeline' || s === 'replied') return 'booked';
   if (s === 'dismissed') return 'ignored';
+  if (s === 'quoted') return 'quoted';
+  if (s === 'seeded') return 'seeded';
+  if (s === 'snoozed') return 'snoozed';
   if (['new', 'contacted', 'follow_up', 'booked', 'lost', 'ignored'].includes(s)) return s as RevenueOpportunityStatus;
   return 'new';
 }
@@ -269,7 +287,26 @@ function rowToOpportunity(row: Record<string, unknown>): RevenueOpportunity {
   };
   base.recommendedMessage =
     str(row.suggested_reply) || str(row.suggested_dm) || generateRecommendedMessage(base);
-  return base;
+  return {
+    ...base,
+    businessName: str(row.business_name) || null,
+    businessCategory: str(row.business_category) || null,
+    businessAddress: str(row.business_address) || null,
+    websiteUrl: str(row.website_url) || null,
+    estimatedVehicleCount: row.estimated_vehicle_count != null ? Number(row.estimated_vehicle_count) : null,
+    distanceMiles: row.distance_miles != null ? Number(row.distance_miles) : null,
+    valueExplanation: str(row.value_explanation) || null,
+    followUpCadencePaused: Boolean(row.follow_up_cadence_paused),
+  } as RevenueOpportunity & {
+    businessName?: string | null;
+    businessCategory?: string | null;
+    businessAddress?: string | null;
+    websiteUrl?: string | null;
+    estimatedVehicleCount?: number | null;
+    distanceMiles?: number | null;
+    valueExplanation?: string | null;
+    followUpCadencePaused?: boolean;
+  };
 }
 
 export function rankForRevenueHunt(opportunities: RevenueOpportunity[]): RevenueOpportunity[] {
@@ -426,6 +463,7 @@ export async function createRevenueOpportunity(
     workspaceKey,
   };
   const message = generateRecommendedMessage(draft);
+  const created = new Date(now);
 
   const row = {
     title: input.title,
@@ -450,6 +488,8 @@ export async function createRevenueOpportunity(
     workspace_key: workspaceKey,
     created_at: now,
     updated_at: now,
+    follow_up_step: 0,
+    next_follow_up_at: initialOpportunityFollowUpAt(created),
   };
 
   const { data, error } = await admin.from('titan_opportunities').insert(row).select('id').single();

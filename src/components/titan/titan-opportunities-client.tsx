@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Copy, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { RevenueOpportunity, RevenueOpportunityEvent } from '@/lib/titan/revenue-opportunities';
 import {
   OPPORTUNITY_TYPE_LABELS,
@@ -12,15 +12,10 @@ import {
 import { displayMoney } from '@/lib/display-format';
 import {
   createOpportunityAction,
-  markOpportunityStatusAction,
-  scheduleFollowUpAction,
   seedWarmLeadsAction,
   syncDerivedOpportunitiesAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
-import { sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
-import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
-import { buildToneVariants } from '@/lib/outbound-message-tones';
-import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
+import { OpportunityDrawer } from '@/components/titan/opportunity-drawer';
 
 const TYPES = Object.entries(OPPORTUNITY_TYPE_LABELS);
 
@@ -100,159 +95,37 @@ function OpportunityCard({
   opp,
   events,
   serviceOptions,
+  onOpen,
 }: {
   opp: RevenueOpportunity;
   events: RevenueOpportunityEvent[];
   serviceOptions: { slug: string; title: string; priceCents?: number; durationMinutes?: number }[];
+  onOpen: () => void;
 }) {
-  const router = useRouter();
-  const { openPreview } = useOutboundPreview();
-  const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<string | null>(null);
-  const [showFollowUp, setShowFollowUp] = useState(false);
-  const [showQuote, setShowQuote] = useState(false);
-  const [customDate, setCustomDate] = useState('');
-
-  const act = (fn: () => Promise<{ ok?: boolean; error?: string }>, success: string) => {
-    setMsg(null);
-    startTransition(async () => {
-      const res = await fn();
-      if (res.error) setMsg(res.error);
-      else {
-        setMsg(success);
-        router.refresh();
-      }
-    });
-  };
-
   return (
-    <article className="rounded-2xl border border-white/10 bg-black/45 p-5">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+      className="cursor-pointer rounded-2xl border border-white/10 bg-black/45 p-5 transition hover:border-emerald-500/30 hover:bg-black/60"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase text-emerald-300">{OPPORTUNITY_TYPE_LABELS[opp.opportunityType] ?? opp.opportunityType}</p>
           <h3 className="mt-1 text-lg font-black text-white">{opp.title}</h3>
-          <p className="mt-1 text-xs text-zinc-500">Source: {opp.source} · {STATUS_LABELS[opp.status]}</p>
+          <p className="mt-1 text-xs text-zinc-500">Source: {opp.source} · {STATUS_LABELS[opp.status as keyof typeof STATUS_LABELS] ?? opp.status}</p>
         </div>
         <div className="text-right">
           <p className="font-mono text-lg font-black text-emerald-300">{money(opp.estimatedRevenueCents)}</p>
           <p className="text-[10px] text-zinc-500">{opp.confidenceScore}% confidence</p>
         </div>
       </div>
-
-      <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100">
-        <span className="font-black uppercase text-cyan-300">Why Titan surfaced this: </span>
+      <p className="mt-3 line-clamp-2 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100">
         {opp.whySurfaced}
       </p>
-
-      {opp.recommendedAction ? <p className="mt-2 text-xs text-zinc-400"><span className="font-bold text-white">Action:</span> {opp.recommendedAction}</p> : null}
-
-      <div className="mt-3 flex flex-wrap gap-3 text-xs text-zinc-400">
-        {opp.contactName ? <span>{opp.contactName}</span> : null}
-        {opp.contactPhone ? <a href={`tel:${opp.contactPhone}`} className="text-emerald-300">{opp.contactPhone}</a> : null}
-        {opp.contactEmail ? <a href={`mailto:${opp.contactEmail}`} className="text-emerald-300">{opp.contactEmail}</a> : null}
-        {opp.socialUrl ? (
-          <a href={opp.socialUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-300">Profile</a>
-        ) : null}
-      </div>
-
-      {opp.notes ? <p className="mt-2 text-xs text-zinc-500">{opp.notes}</p> : null}
-
-      <p className="mt-3 rounded-xl border border-white/6 bg-white/5 p-3 text-xs italic text-zinc-300">{opp.recommendedMessage}</p>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {opp.contactPhone ? (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              const tones = buildToneVariants(opp.recommendedMessage, {
-                name: opp.contactName ?? undefined,
-                price: money(opp.estimatedRevenueCents),
-              });
-              openPreview({
-                title: 'Send opportunity SMS',
-                channel: 'sms',
-                recipient: opp.contactPhone!,
-                body: tones.professional,
-                toneVariants: tones,
-                contextLabel: `Opportunity · ${opp.title}`,
-                priceCents: opp.estimatedRevenueCents,
-                onSend: async (final) => {
-                  const res = await sendPreviewedSmsAction({
-                    to: opp.contactPhone!,
-                    body: final.body,
-                    kind: 'opportunity_outreach',
-                    templateKey: 'opportunity_sms',
-                    entityType: 'opportunity',
-                    entityId: opp.id,
-                  });
-                  if (!res.error) {
-                    await markOpportunityStatusAction(opp.id, 'contacted');
-                    router.refresh();
-                  }
-                  return res;
-                },
-              });
-            }}
-            className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
-          >
-            Preview & send SMS
-          </button>
-        ) : null}
-        <button type="button" onClick={() => { void navigator.clipboard.writeText(opp.recommendedMessage); setMsg('Copied.'); }} className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
-          <Copy className="h-3 w-3" /> Copy
-        </button>
-        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'contacted', 'Customer replied'), 'Marked replied')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50">Replied</button>
-        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'contacted'), 'Contacted')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50">Contacted</button>
-        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Booked!')} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">Booked</button>
-        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Lost')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-200 disabled:opacity-50">Lost</button>
-        <button type="button" disabled={pending} onClick={() => setShowQuote((v) => !v)} className="rounded-lg border border-cyan-500/30 px-3 py-2 text-[10px] font-black uppercase text-cyan-200 disabled:opacity-50">
-          {showQuote ? 'Hide quote' : 'Build quote'}
-        </button>
-        <button type="button" disabled={pending} onClick={() => setShowFollowUp((v) => !v)} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 disabled:opacity-50">Follow-up</button>
-      </div>
-
-      {showQuote && serviceOptions.length > 0 ? (
-        <div className="mt-4 border-t border-white/8 pt-4">
-          <QuoteBuilderPanel
-            opportunityId={opp.id}
-            contactName={opp.contactName ?? undefined}
-            leadEmail={opp.contactEmail}
-            leadPhone={opp.contactPhone}
-            estimates={[]}
-            serviceOptions={serviceOptions}
-            contextLabel={`Opportunity · ${opp.title}`}
-          />
-        </div>
-      ) : null}
-
-      {showFollowUp ? (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-white/8 pt-3">
-          {(['tomorrow', '2days', '3days', '1week'] as const).map((p) => (
-            <button key={p} type="button" disabled={pending} onClick={() => act(() => scheduleFollowUpAction(opp.id, p), 'Scheduled')} className="rounded-lg bg-white/5 px-3 py-2 text-[10px] font-black uppercase text-white">
-              {p === 'tomorrow' ? 'Tomorrow' : p === '2days' ? '2 days' : p === '3days' ? '3 days' : '1 week'}
-            </button>
-          ))}
-          <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="rounded-lg border border-white/10 bg-black px-2 py-2 text-xs text-white" />
-          <button type="button" disabled={!customDate || pending} onClick={() => act(() => scheduleFollowUpAction(opp.id, 'custom', `${customDate}T10:00:00`), 'Scheduled')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-white">Custom</button>
-        </div>
-      ) : null}
-
-      {events.length > 0 ? (
-        <details className="mt-4 border-t border-white/8 pt-3">
-          <summary className="cursor-pointer text-[10px] font-black uppercase text-zinc-500">Event history ({events.length})</summary>
-          <ul className="mt-2 space-y-1">
-            {events.map((e) => (
-              <li key={e.id} className="text-[10px] text-zinc-500">
-                {new Date(e.createdAt).toLocaleString()} — <span className="text-emerald-300">{e.eventType}</span>
-                {e.notes ? `: ${e.notes}` : ''}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-
-      {msg ? <p className="mt-2 text-xs text-emerald-200">{msg}</p> : null}
+      <p className="mt-3 text-[10px] font-black uppercase text-gold-soft">Click to open workflow →</p>
+      {events.length > 0 ? <p className="mt-1 text-[10px] text-zinc-600">{events.length} events logged</p> : null}
     </article>
   );
 }
@@ -273,10 +146,16 @@ export function TitanOpportunitiesClient({
   const [addOpen, setAddOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [banner, setBanner] = useState<string | null>(null);
+  const [drawerOpp, setDrawerOpp] = useState<RevenueOpportunity | null>(null);
 
   useEffect(() => {
     if (searchParams.get('add') === '1') setAddOpen(true);
-  }, [searchParams]);
+    const openId = searchParams.get('open');
+    if (openId) {
+      const found = opportunities.find((o) => o.id === openId);
+      if (found) setDrawerOpp(found);
+    }
+  }, [searchParams, opportunities]);
 
   if (!tablesReady) {
     return (
@@ -336,12 +215,27 @@ export function TitanOpportunitiesClient({
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {opportunities.map((opp) => (
-            <OpportunityCard key={opp.id} opp={opp} events={eventsByOpp[opp.id] ?? []} serviceOptions={serviceOptions} />
+            <OpportunityCard
+              key={opp.id}
+              opp={opp}
+              events={eventsByOpp[opp.id] ?? []}
+              serviceOptions={serviceOptions}
+              onOpen={() => setDrawerOpp(opp)}
+            />
           ))}
         </div>
       )}
 
       <AddModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      {drawerOpp ? (
+        <OpportunityDrawer
+          opp={drawerOpp}
+          events={eventsByOpp[drawerOpp.id] ?? []}
+          serviceOptions={serviceOptions}
+          onClose={() => setDrawerOpp(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -28,7 +28,7 @@ export async function GET() {
 
   const { data, error } = await admin
     .from('customer_credits')
-    .select('id, remaining_cents, reason, expires_at, status')
+    .select('id, remaining_cents, reason, expires_at, status, type')
     .eq('customer_id', customer.id)
     .in('status', ['active', 'partially_used'])
     .order('expires_at', { ascending: true, nullsFirst: false })
@@ -44,6 +44,7 @@ export async function GET() {
       id: String(row.id),
       remainingCents: Math.max(0, Number(row.remaining_cents ?? 0)),
       reason: String(row.reason ?? 'Store credit'),
+      type: String((row as { type?: string }).type ?? 'credit'),
       expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
     }))
     .filter((row) => row.remainingCents > 0);

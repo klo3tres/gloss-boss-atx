@@ -3,16 +3,97 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { ChevronRight, Send, X, Eye } from 'lucide-react';
+import { ChevronRight, Send, X, Eye, Clock } from 'lucide-react';
 import type { DailyExecutableAction } from '@/lib/titan/daily-action-plan';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
-import { sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
+import { sendPreviewedEmailAction, sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
 import { markOpportunityStatusAction } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import {
   dismissDailyActionAction,
   markDailyActionSentAction,
 } from '@/app/(dashboard)/admin/daily-action-actions';
+
+function actionChannels(action: DailyExecutableAction): Array<'sms' | 'email'> {
+  const channels: Array<'sms' | 'email'> = [];
+  if (action.contactPhone) channels.push('sms');
+  if (action.contactEmail) channels.push('email');
+  return channels;
+}
+
+function defaultChannel(action: DailyExecutableAction): 'sms' | 'email' {
+  return action.contactPhone ? 'sms' : 'email';
+}
+
+function defaultRecipient(action: DailyExecutableAction, channel: 'sms' | 'email') {
+  return channel === 'sms' ? action.contactPhone ?? '' : action.contactEmail ?? '';
+}
+
+function openActionModal(
+  action: DailyExecutableAction,
+  openPreview: ReturnType<typeof useOutboundPreview>['openPreview'],
+  opts: { sendLabel?: string; onSuccess?: () => void },
+) {
+  const channel = defaultChannel(action);
+  const channels = actionChannels(action);
+  const tones = buildToneVariants(action.messageScript);
+  const recipient = defaultRecipient(action, channel);
+
+  openPreview({
+    title: action.title,
+    channel,
+    channelOptions: channels.length > 1 ? channels : undefined,
+    recipient,
+    body: tones.professional,
+    subject: action.actionType === 'review' ? 'How did we do? — Gloss Boss ATX' : 'Gloss Boss ATX',
+    toneVariants: tones,
+    contextLabel: `${action.involvedNames} · ${action.expectedValueLabel}`,
+    kind: `daily_${action.actionType}`,
+    entityType: action.entityType,
+    entityId: action.entityId,
+    opportunityId: action.entityType === 'opportunity' ? action.entityId : undefined,
+    appointmentId: action.entityType === 'appointment' ? action.entityId : undefined,
+    sendLabel: opts.sendLabel,
+    onSend: async (final) => {
+      const to =
+        final.channel === 'sms'
+          ? action.contactPhone ?? ''
+          : action.contactEmail ?? '';
+      if (!to) return { error: final.channel === 'sms' ? 'No phone on file.' : 'No email on file.' };
+
+      const res =
+        final.channel === 'sms'
+          ? await sendPreviewedSmsAction({
+              to,
+              body: final.body,
+              kind: `daily_${action.actionType}`,
+              entityType: action.entityType,
+              entityId: action.entityId,
+              appointmentId: action.entityType === 'appointment' ? action.entityId : undefined,
+            })
+          : await sendPreviewedEmailAction({
+              to,
+              subject: final.subject ?? 'Gloss Boss ATX',
+              body: final.body,
+              kind: `daily_${action.actionType}`,
+              entityType: action.entityType,
+              entityId: action.entityId,
+              appointmentId: action.entityType === 'appointment' ? action.entityId : undefined,
+            });
+
+      if (!res.error) {
+        if (action.entityType === 'opportunity' && action.entityId) {
+          await markOpportunityStatusAction(action.entityId, 'contacted');
+        }
+        if (!action.id.startsWith('draft-')) {
+          await markDailyActionSentAction(action.id, action.actionType === 'review' ? 'review' : final.channel);
+        }
+        opts.onSuccess?.();
+      }
+      return res;
+    },
+  });
+}
 
 function ActionCard({ action }: { action: DailyExecutableAction }) {
   const router = useRouter();
@@ -20,35 +101,18 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
   const { openPreview } = useOutboundPreview();
 
   const onPreview = () => {
-    if (!action.contactPhone && !action.messageScript) return;
-    const tones = buildToneVariants(action.messageScript);
-    openPreview({
-      title: action.title,
-      channel: 'sms',
-      recipient: action.contactPhone ?? '',
-      body: tones.professional,
-      toneVariants: tones,
-      contextLabel: action.involvedNames,
-      onSend: async (final) => {
-        if (!action.contactPhone) return { error: 'No phone on file.' };
-        const res = await sendPreviewedSmsAction({
-          to: action.contactPhone,
-          body: final.body,
-          kind: `daily_${action.actionType}`,
-          entityType: action.entityType,
-          entityId: action.entityId,
-        });
-        if (!res.error) {
-          if (action.entityType === 'opportunity' && action.entityId) {
-            await markOpportunityStatusAction(action.entityId, 'contacted');
-          }
-          if (!action.id.startsWith('draft-')) {
-            await markDailyActionSentAction(action.id, action.actionType === 'review' ? 'review' : 'sms');
-          }
-          router.refresh();
-        }
-        return res;
-      },
+    if (!action.messageScript) return;
+    openActionModal(action, openPreview, {
+      sendLabel: 'Send now',
+      onSuccess: () => router.refresh(),
+    });
+  };
+
+  const onSend = () => {
+    if (!action.canSend) return;
+    openActionModal(action, openPreview, {
+      sendLabel: 'Send now',
+      onSuccess: () => router.refresh(),
     });
   };
 
@@ -66,8 +130,20 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
         </div>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{action.reason}</p>
+      {(action.contactPhone || action.contactEmail) && (
+        <p className="mt-2 text-[10px] text-zinc-500">
+          {action.contactPhone ? `SMS: ${action.contactPhone}` : null}
+          {action.contactPhone && action.contactEmail ? ' · ' : null}
+          {action.contactEmail ? `Email: ${action.contactEmail}` : null}
+        </p>
+      )}
+      {!action.canSend && action.sendBlocker ? (
+        <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2 py-1.5 text-[10px] text-amber-200">
+          {action.sendBlocker}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {action.canSend ? (
+        {action.messageScript ? (
           <button
             type="button"
             onClick={onPreview}
@@ -80,7 +156,7 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
         {action.canSend ? (
           <button
             type="button"
-            onClick={onPreview}
+            onClick={onSend}
             disabled={pending}
             className="inline-flex items-center gap-1 rounded-lg bg-gold px-2.5 py-1.5 text-[10px] font-black uppercase text-black hover:brightness-110"
           >
@@ -128,7 +204,9 @@ export function DailyActionPlanPanel({ actions }: { actions: DailyExecutableActi
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">What should I do today?</p>
         <h2 className="mt-1 text-lg font-black text-foreground">Daily action plan</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Executable moves with expected value — preview, send, or dismiss.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Preview, send, or schedule each move — SMS or email when contact info is available.
+        </p>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
         {actions.map((a) => (
@@ -182,30 +260,9 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
   const { openPreview } = useOutboundPreview();
 
   const onSend = () => {
-    if (!move.contactPhone && !move.messageScript) return;
-    const tones = buildToneVariants(move.messageScript);
-    openPreview({
-      title: move.title,
-      channel: 'sms',
-      recipient: move.contactPhone ?? '',
-      body: tones.professional,
-      toneVariants: tones,
-      contextLabel: move.involvedNames,
-      onSend: async (final) => {
-        if (!move.contactPhone) return { error: 'No phone on file.' };
-        const res = await sendPreviewedSmsAction({
-          to: move.contactPhone,
-          body: final.body,
-          kind: `daily_${move.actionType}`,
-          entityType: move.entityType,
-          entityId: move.entityId,
-        });
-        if (!res.error && !move.id.startsWith('draft-')) {
-          await markDailyActionSentAction(move.id, move.actionType === 'review' ? 'review' : 'sms');
-          router.refresh();
-        }
-        return res;
-      },
+    if (!move.canSend) return;
+    openActionModal(move, openPreview, {
+      onSuccess: () => router.refresh(),
     });
   };
 
@@ -215,14 +272,28 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
       <div className="flex items-center gap-2">
         <span className="shrink-0 font-mono text-gold-soft">{move.expectedValueLabel}</span>
         {move.canSend ? (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => startTransition(onSend)}
-            className="rounded-lg bg-gold px-2 py-1 text-[9px] font-black uppercase text-black"
-          >
-            Send
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => startTransition(onSend)}
+              className="inline-flex items-center gap-1 rounded-lg bg-gold px-2 py-1 text-[9px] font-black uppercase text-black"
+            >
+              <Send className="h-3 w-3" /> Send
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                startTransition(() => {
+                  openActionModal(move, openPreview, { sendLabel: 'Preview', onSuccess: () => router.refresh() });
+                })
+              }
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[9px] font-black uppercase text-muted-foreground"
+            >
+              <Clock className="h-3 w-3" /> Schedule
+            </button>
+          </>
         ) : null}
       </div>
     </li>

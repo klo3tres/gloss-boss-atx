@@ -57,6 +57,7 @@ export type CustomerDashboardProps = {
   loyaltyCanClaim?: boolean;
   loyaltyClaimableCount?: number;
   loyaltyRewardDescription?: string;
+  loyaltyRewardCents?: number;
   activeCardDesign?: any;
   membership?: CustomerMembershipView | null;
   accountCreditBalanceCents?: number;
@@ -663,10 +664,8 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             activeCardDesign={props.activeCardDesign} 
             stampsCount={loyaltyVisits} 
             customerEmail={membership ? `${theme.label} · ${membership.status}` : (props.history[0]?.guest_email || 'Gloss Boss Customer')}
+            showRewardBanner={isRewardReady}
           />
-          <p className="text-[10px] text-zinc-500 text-center mt-1">
-            💡 Click card to flip front/back
-          </p>
 
           {/* Stepper Progress Visualizer (Subtle text info card) */}
           <GlassCard className="border-zinc-900 bg-black/30 mt-2">
@@ -679,7 +678,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                     : 'Your punch reward is ready. Claim it below, then book your next visit.'
                 : `Complete ${loyalty.stampsUntilReward} more service${loyalty.stampsUntilReward === 1 ? '' : 's'} to unlock your next luxury detailing reward.`}
             </p>
-            {props.loyaltyCanClaim ? <LoyaltyClaimButton count={props.loyaltyClaimableCount} /> : null}
+            {props.loyaltyCanClaim ? (
+              <LoyaltyClaimButton
+                count={props.loyaltyClaimableCount}
+                rewardName={props.loyaltyRewardDescription}
+                rewardCents={props.loyaltyRewardCents}
+              />
+            ) : null}
             <Link
               href="/book"
               className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold py-3 text-xs font-black uppercase tracking-widest text-black shadow-[0_0_24px_rgba(212,175,55,0.15)] hover:brightness-110 transition duration-300"

@@ -38,6 +38,7 @@ export type DailyExecutableAction = {
   href: string;
   status: 'pending' | 'sent' | 'dismissed' | 'completed';
   canSend: boolean;
+  sendBlocker?: string;
 };
 
 export type DailyActionPlan = {
@@ -151,26 +152,29 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   }
 
   const unpaid = unpaidJobs.data ?? [];
-  if (unpaid.length > 0) {
-    const first = unpaid[0]!;
-    const balance = Number(first.balance_due_cents ?? 0);
+  for (const job of unpaid) {
+    const balance = Number(job.balance_due_cents ?? 0);
+    const name = str(job.guest_name) || 'Customer';
+    const phone = str(job.guest_phone) || null;
+    const email = str(job.guest_email) || null;
     drafts.push({
-      actionKey: `balance-${first.id}`,
+      actionKey: `balance-${job.id}`,
       actionType: 'balance',
-      title: `Send balance reminder — ${displayMoney(balance)}`,
-      involvedNames: unpaid.map((j) => str(j.guest_name) || 'Customer').join(', '),
-      expectedValueCents: unpaid.reduce((s, j) => s + Number(j.balance_due_cents ?? 0), 0),
-      expectedValueLabel: valueLabel(unpaid.reduce((s, j) => s + Number(j.balance_due_cents ?? 0), 0)),
+      title: `Balance reminder — ${name} (${displayMoney(balance)})`,
+      involvedNames: name,
+      expectedValueCents: balance,
+      expectedValueLabel: valueLabel(balance),
       reason: 'Outstanding balance blocks clean books and cash flow.',
       confidence: 91,
       confidenceLabel: 'Direct payment recovery',
-      messageScript: `Hi ${str(first.guest_name) || 'there'} — Gloss Boss ATX balance of ${displayMoney(balance)} is due. Reply when ready. Thank you!`,
-      contactPhone: str(first.guest_phone) || null,
-      contactEmail: str(first.guest_email) || null,
+      messageScript: `Hi ${name} — Gloss Boss ATX balance of ${displayMoney(balance)} is due. Reply when ready. Thank you!`,
+      contactPhone: phone,
+      contactEmail: email,
       entityType: 'appointment',
-      entityId: str(first.id),
-      href: workOrderPath(str(first.id), { source: 'appointment', shell: 'admin' }),
-      canSend: Boolean(first.guest_phone),
+      entityId: str(job.id),
+      href: workOrderPath(str(job.id), { source: 'appointment', shell: 'admin' }),
+      canSend: Boolean(phone || email),
+      sendBlocker: !phone && !email ? 'No phone or email on file.' : !phone ? 'SMS unavailable — email only.' : undefined,
     });
   }
 

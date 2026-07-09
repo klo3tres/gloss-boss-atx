@@ -19,7 +19,8 @@ export type TitanActivityKind =
   | 'staff_invite_revoked'
   | 'staff_invite_accepted'
   | 'staff_role_changed'
-  | 'staff_reset_link_sent';
+  | 'staff_reset_link_sent'
+  | 'referral_settings_changed';
 
 export type TitanActivityEvent = {
   id: string;

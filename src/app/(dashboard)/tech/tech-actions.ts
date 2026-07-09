@@ -1099,6 +1099,31 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
       createdBy: gate.userId,
     });
   }
+
+  if (kind === 'technician_on_the_way' && appointmentId && (smsResult?.ok || outboxStatus === 'sent')) {
+    try {
+      const { data: apptRow } = await db
+        .from('appointments')
+        .select('scheduled_start, guest_name, guest_phone, guest_email, customer_id')
+        .eq('id', appointmentId)
+        .maybeSingle();
+      const a = (apptRow ?? {}) as Record<string, unknown>;
+      const scheduledStart = String(a.scheduled_start ?? '').trim();
+      if (scheduledStart) {
+        const { enqueueEnrouteCadence } = await import('@/lib/customer-notification-cadence');
+        await enqueueEnrouteCadence(db, {
+          appointmentId,
+          customerId: customerId ?? (a.customer_id ? String(a.customer_id) : null),
+          customerName: guestName || (a.guest_name ? String(a.guest_name) : 'there'),
+          customerPhone: guestPhone ?? (a.guest_phone ? String(a.guest_phone) : null),
+          customerEmail: guestEmail ?? (a.guest_email ? String(a.guest_email) : null),
+          scheduledStart,
+        });
+      }
+    } catch (e) {
+      console.warn('[tech-actions] enroute cadence skipped', e);
+    }
+  }
   revalidatePath('/tech');
   if (appointmentId) revalidatePath(`/tech/work-orders/${appointmentId}`);
 
@@ -1658,6 +1683,33 @@ export async function techCompleteJobAction(
   void import('@/lib/review-request-send').then(({ sendReviewRequest }) =>
     sendReviewRequest(gate.supabase, appointmentId).catch((e) => console.warn('[tech] review request', e)),
   );
+
+  void import('@/lib/customer-notification-cadence').then(async ({ enqueuePostServiceCadence }) => {
+    try {
+      const { ensureCustomerReferralCode, referralLinkForCode } = await import('@/lib/referral/referral-codes');
+      const { resolveGoogleReviewUrl } = await import('@/lib/site-defaults');
+      const custId = (appt as { customer_id?: string | null }).customer_id;
+      let referralLink = '';
+      if (custId) {
+        const codeRes = await ensureCustomerReferralCode(gate.supabase, String(custId));
+        if (codeRes.code) referralLink = referralLinkForCode(codeRes.code);
+      }
+      const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+      await enqueuePostServiceCadence(gate.supabase, {
+        appointmentId,
+        customerId: custId ? String(custId) : null,
+        customerName: String(appt.guest_name ?? 'there'),
+        customerEmail: appt.guest_email ? String(appt.guest_email) : null,
+        customerPhone: appt.guest_phone ? String(appt.guest_phone) : null,
+        serviceSlug: String(appt.service_slug ?? ''),
+        referralLink: referralLink || `${base}/referrals`,
+        reviewLink: resolveGoogleReviewUrl(''),
+        portalLink: `${base}/dashboard`,
+      });
+    } catch (e) {
+      console.warn('[tech] post-service cadence', e);
+    }
+  });
 
   const smsOk = await hasSmsConsent(gate.supabase, appointmentId);
   await writeNotificationOutbox(gate.supabase, {

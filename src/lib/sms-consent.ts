@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const SMS_CONSENT_COPY =
   'Would you like to receive SMS text updates from Gloss Boss ATX about appointments, estimates, invoices, reminders, and service updates? Consent is optional and not required to book service. Message and data rates may apply. Reply STOP to unsubscribe.';
 
+export const SMS_STOP_FOOTER = 'Reply STOP to opt out.';
+
 export type SmsConsentSource =
   | 'account_signup'
   | 'online_booking'

@@ -113,7 +113,7 @@ export function AdminSettingsClient({
         <div className="space-y-4">
           <NotificationSettingsPanel prefs={notifyPrefs} />
           <PushoverSetupPanel configured={pushoverConfigured} />
-          <GoogleCalendarConnectPanel />
+          <GoogleCalendarConnectPanel returnTo="/admin/settings" />
           <SettingsLinkCard href="/admin/integrations" title="Email & SMS integrations" desc="Twilio, Resend, maps" icon={<Bell className="h-4 w-4" />} />
         </div>
       )}

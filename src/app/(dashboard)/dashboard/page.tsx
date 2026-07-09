@@ -437,6 +437,7 @@ export default async function CustomerDashboardRootPage({
   let loyaltyCanClaim = false;
   let loyaltyClaimableCount = 0;
   let loyaltyRewardDescription = '';
+  let loyaltyRewardCents = 0;
   let customerMembership: CustomerMembershipView | null = null;
   let accountCreditBalanceCents = 0;
   let activeDeals: ActiveDealView[] = [];
@@ -456,6 +457,7 @@ export default async function CustomerDashboardRootPage({
       loyaltyCanClaim = loyaltyView.canClaim;
       loyaltyClaimableCount = loyaltyView.claimableRewards;
       loyaltyRewardDescription = rewardConfig.rewardDescription;
+      loyaltyRewardCents = rewardConfig.rewardCents;
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
       const creditRes = await adminDb
         .from('customer_credits')
@@ -598,6 +600,7 @@ export default async function CustomerDashboardRootPage({
         loyaltyCanClaim={loyaltyCanClaim}
         loyaltyClaimableCount={loyaltyClaimableCount}
         loyaltyRewardDescription={loyaltyRewardDescription}
+        loyaltyRewardCents={loyaltyRewardCents}
         activeCardDesign={activeCardDesign}
         membership={customerMembership}
         accountCreditBalanceCents={accountCreditBalanceCents}

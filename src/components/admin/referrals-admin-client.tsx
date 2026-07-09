@@ -1,7 +1,9 @@
 'use client';
 
+import { useState, useTransition } from 'react';
 import type { ReferralProgramSettings } from '@/lib/referral/referral-codes';
 import { saveReferralProgramSettingsAction } from '@/app/(dashboard)/admin/referrals/actions';
+import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
 
 const inputClass = 'mt-1 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-sm text-white';
 
@@ -75,6 +77,11 @@ export function ReferralsAdminClient({
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Manually attach referral</p>
+        <ManualReferralAttach />
+      </section>
+
+      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Recent referrals</p>
         <ul className="mt-3 space-y-2 text-xs text-zinc-300">
           {events.length === 0 ? <li className="text-zinc-500">No referral events yet — codes are created when customers are added.</li> : null}
@@ -99,6 +106,42 @@ export function ReferralsAdminClient({
           ))}
         </ul>
       </section>
+    </div>
+  );
+}
+
+function ManualReferralAttach() {
+  const [pending, startTransition] = useTransition();
+  const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [appointmentId, setAppointmentId] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+
+  return (
+    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Referral code" className={inputClass} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Referred customer email" className={inputClass} />
+      <input value={appointmentId} onChange={(e) => setAppointmentId(e.target.value)} placeholder="Appointment ID (optional)" className={inputClass} />
+      <button
+        type="button"
+        disabled={pending || !code.trim()}
+        onClick={() => {
+          setMsg(null);
+          startTransition(async () => {
+            const res = await attachReferralToBookingAction({
+              referralCode: code,
+              customerEmail: email || undefined,
+              appointmentId: appointmentId || undefined,
+            });
+            setMsg(res.error ?? 'Referral attached as pending/booked.');
+          });
+        }}
+        className="sm:col-span-3 rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+      >
+        Attach referral
+      </button>
+      {msg ? <p className="sm:col-span-3 text-xs text-emerald-300">{msg}</p> : null}
+      <p className="sm:col-span-3 text-[10px] text-zinc-600">Reward unlocks after referred job is completed and paid. No account required for referred customer at booking.</p>
     </div>
   );
 }

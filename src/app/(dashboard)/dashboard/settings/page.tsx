@@ -7,7 +7,7 @@ import { parseUserUiPreferences } from '@/lib/user-ui-preferences';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
-import { cancelCustomerMembershipAction, updateCustomerSmsPreferencesAction } from './actions';
+import { cancelCustomerMembershipAction, updateCustomerEmailPreferencesAction, updateCustomerSmsPreferencesAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +20,21 @@ export default async function CustomerSettingsPage() {
   const { data: customer } = admin
     ? await admin
         .from('customers')
-        .select('id, full_name, email, phone, sms_consent, sms_status')
+        .select('id, full_name, email, phone, sms_consent, sms_status, email_marketing_opt_in')
         .ilike('email', email)
         .maybeSingle()
     : { data: null };
 
   const row = customer as
-    | { id?: string | null; full_name?: string | null; email?: string | null; phone?: string | null; sms_consent?: boolean | null; sms_status?: string | null }
+    | {
+        id?: string | null;
+        full_name?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        sms_consent?: boolean | null;
+        sms_status?: string | null;
+        email_marketing_opt_in?: boolean | null;
+      }
     | null;
 
   const { data: profileRow } = session.user?.id && admin
@@ -93,11 +101,23 @@ export default async function CustomerSettingsPage() {
             <Mail className='h-4 w-4' /> Email preferences
           </p>
           <p className='mt-3 text-sm text-zinc-300'>
-            Booking confirmations, receipts, signed agreements, and essential account messages are sent to {row?.email || email}.
+            Booking confirmations, receipts, signed agreements, and essential account messages are always sent to {row?.email || email}.
           </p>
-          <p className='mt-3 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-xs text-zinc-500'>
-            Marketing email controls will appear here once a dedicated email-preference field is added to the customer table.
-          </p>
+          <form action={updateCustomerEmailPreferencesAction} className='mt-5 rounded-2xl border border-white/10 bg-black/35 p-4'>
+            <label className='flex items-start gap-3 text-sm text-zinc-200'>
+              <input
+                name='email_marketing_opt_in'
+                type='checkbox'
+                defaultChecked={row?.email_marketing_opt_in !== false}
+                className='mt-1 h-4 w-4 accent-[var(--gold)]'
+              />
+              <span>
+                Send me occasional Gloss Boss ATX promotions, membership offers, and seasonal detailing tips by email.
+                <span className='mt-1 block text-xs text-zinc-500'>You can turn this off anytime. Transactional emails still send when needed.</span>
+              </span>
+            </label>
+            <button className='mt-4 rounded-xl bg-gold px-5 py-2 text-xs font-black uppercase text-black'>Save email preference</button>
+          </form>
         </div>
         <div className='rounded-3xl border border-gold/20 bg-zinc-950 p-5'>
           <p className='flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>

@@ -122,7 +122,7 @@ function statusTone(status: GoogleCalendarConnectionStatus): string {
 
 
 
-export function GoogleCalendarConnectPanel() {
+export function GoogleCalendarConnectPanel({ returnTo = '/admin/setup-center' }: { returnTo?: string }) {
 
   const searchParams = useSearchParams();
 
@@ -398,7 +398,7 @@ export function GoogleCalendarConnectPanel() {
 
         <a
 
-          href='/api/admin/google-calendar/connect'
+          href={`/api/admin/google-calendar/connect?return_to=${encodeURIComponent(returnTo)}`}
 
           className='rounded-xl bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'
 

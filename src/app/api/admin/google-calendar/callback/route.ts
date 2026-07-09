@@ -18,21 +18,31 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const runtime = 'nodejs';
 
-function redirectSetup(request: Request, params: Record<string, string>) {
-  const url = new URL('/admin/setup-center', request.url);
+function safeAdminReturnPath(raw: string | null | undefined): string {
+  const path = (raw ?? '').trim();
+  if (path.startsWith('/admin') && !path.startsWith('//')) return path.split('?')[0] || '/admin/setup-center';
+  return '/admin/setup-center';
+}
+
+function redirectAfterOAuth(request: Request, params: Record<string, string>, returnPath?: string) {
+  const url = new URL(returnPath ?? '/admin/setup-center', request.url);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
   return NextResponse.redirect(url);
 }
 
-function redirectCalendarError(request: Request, code: GoogleCalendarOAuthErrorCode, logDetail?: string) {
+function redirectSetup(request: Request, params: Record<string, string>, returnPath?: string) {
+  return redirectAfterOAuth(request, params, returnPath);
+}
+
+function redirectCalendarError(request: Request, code: GoogleCalendarOAuthErrorCode, logDetail?: string, returnPath?: string) {
   if (logDetail) {
     console.error('[google-calendar/callback]', code, logDetail.slice(0, 500));
   } else {
     console.error('[google-calendar/callback]', code);
   }
-  return redirectSetup(request, { calendar_error: code });
+  return redirectSetup(request, { calendar_error: code }, returnPath);
 }
 
 export async function GET(request: Request) {
@@ -65,8 +75,9 @@ export async function GET(request: Request) {
 
     const cookieStore = await cookies();
     const expected = cookieStore.get('gcal_oauth_state')?.value;
+    const returnTo = safeAdminReturnPath(cookieStore.get('gcal_oauth_return')?.value);
     if (!expected || expected !== state) {
-      return redirectCalendarError(request, 'oauth_state_mismatch');
+      return redirectCalendarError(request, 'oauth_state_mismatch', undefined, returnTo);
     }
 
     const gate = await requireAdminApiUser();
@@ -114,8 +125,9 @@ export async function GET(request: Request) {
       return redirectCalendarError(request, 'database_write_failed', insErr.message);
     }
 
-    const res = redirectSetup(request, { gcal: 'connected' });
+    const res = redirectSetup(request, { gcal: 'connected' }, returnTo);
     res.cookies.set('gcal_oauth_state', '', { maxAge: 0, path: '/' });
+    res.cookies.set('gcal_oauth_return', '', { maxAge: 0, path: '/' });
     return res;
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);

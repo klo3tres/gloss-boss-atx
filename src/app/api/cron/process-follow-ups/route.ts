@@ -28,7 +28,12 @@ export async function GET(request: Request) {
 
   try {
     const result = await runFollowUpEngine(admin);
-    return NextResponse.json(result);
+    const { processDueScheduledMessages, processAppointmentReminders } = await import('@/lib/customer-notification-cadence');
+    const { processOpportunityFollowUps } = await import('@/lib/opportunity-follow-up-cron');
+    const scheduled = await processDueScheduledMessages(admin);
+    const reminders = await processAppointmentReminders(admin);
+    const opportunityFollowUps = await processOpportunityFollowUps(admin);
+    return NextResponse.json({ ...result, scheduled, reminders, opportunityFollowUps });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Follow-up engine failed' },

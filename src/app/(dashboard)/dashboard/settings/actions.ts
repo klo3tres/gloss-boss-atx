@@ -39,6 +39,41 @@ export async function updateCustomerSmsPreferencesAction(formData: FormData) {
   revalidatePath('/dashboard/settings');
 }
 
+export async function updateCustomerEmailPreferencesAction(formData: FormData) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  const email = session.user?.email?.trim().toLowerCase();
+  if (!session.user || !email || !admin) return;
+
+  const emailMarketingOptIn = formData.get('email_marketing_opt_in') === 'on';
+  const { data: existing } = await admin.from('customers').select('id, email_marketing_opt_in').ilike('email', email).maybeSingle();
+  const prev = (existing as { email_marketing_opt_in?: boolean | null } | null)?.email_marketing_opt_in;
+
+  await admin
+    .from('customers')
+    .update({
+      email_marketing_opt_in: emailMarketingOptIn,
+      updated_at: new Date().toISOString(),
+    })
+    .ilike('email', email);
+
+  const customerId = (existing as { id?: string } | null)?.id;
+  if (customerId) {
+    const { logSmsConsentChange } = await import('@/lib/sms-consent');
+    await logSmsConsentChange(admin, {
+      customerId,
+      changedBy: session.user.id,
+      source: 'customer_profile',
+      previousConsent: prev === true,
+      newConsent: emailMarketingOptIn,
+      note: `Email marketing opt-in: ${emailMarketingOptIn ? 'yes' : 'no'}`,
+    });
+  }
+
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/settings');
+}
+
 export async function cancelCustomerMembershipAction(formData: FormData) {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();

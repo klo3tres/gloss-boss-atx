@@ -11,9 +11,9 @@ const LOGO = '/assets/glossboss_atx_logo.png';
 const DRIVEWAY_HERO = '/assets/black_detailer_driveway_1780873080456.png';
 
 const MEMBERSHIP_HIGHLIGHTS: Array<{ title: string; body: string; Icon: LucideIcon }> = [
-  { title: 'Member Pricing', body: 'Automatic discounts on all detailing packages.', Icon: Sparkles },
-  { title: 'Loyalty Multiplier', body: 'Earn stamps faster and unlock rewards.', Icon: Trophy },
-  { title: 'Priority Scheduling', body: 'Lock in recurring care with dedicated slots.', Icon: ShieldCheck },
+  { title: 'Member Pricing', body: '10–20% off all detailing packages by tier.', Icon: Sparkles },
+  { title: 'Included Credits', body: 'Quarterly detail credits, annual upgrades, and free wash value.', Icon: Trophy },
+  { title: 'Priority Scheduling', body: 'Lock in recurring care with dedicated member slots.', Icon: ShieldCheck },
 ];
 
 interface Plan {
@@ -95,7 +95,7 @@ export default async function MembershipsPage() {
             RECURRING SHINE FOR LUXURY DRIVES.
           </h1>
           <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base text-zinc-300 leading-relaxed font-medium">
-            Keep your vehicle in showroom condition with our tailored maintenance plans. Lock in guaranteed pricing, priority scheduling slots, and double loyalty points.
+            Keep your vehicle in showroom condition with tailored maintenance plans — member pricing, included wash credits, and priority scheduling slots.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <a

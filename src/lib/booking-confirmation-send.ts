@@ -331,6 +331,20 @@ export async function sendBookingConfirmation(
 
   if (anySent) {
     await markPortalLinkSent(admin, ctx.appointmentId);
+    try {
+      const { enqueueWelcomeCadence } = await import('@/lib/customer-notification-cadence');
+      await enqueueWelcomeCadence(admin, {
+        appointmentId: ctx.appointmentId,
+        customerName: ctx.guestName,
+        customerPhone: ctx.guestPhone || null,
+        customerEmail: ctx.guestEmail || null,
+        portalLink: ctx.portalUrl,
+        whenLabel: ctx.whenLabel,
+        address: ctx.address,
+      });
+    } catch (e) {
+      console.warn('[booking-confirmation] welcome cadence skipped', e);
+    }
   }
 
   if (!input.skipOwnerNotify) {

@@ -46,10 +46,12 @@ export function MembershipComparisonTable({
       ),
     },
     {
-      label: 'Loyalty punch speed',
-      render: (_p, meta) => (
-        <span>{meta ? `${meta.punchMultiplier}× stamps` : 'Punch card eligible'}</span>
-      ),
+      label: 'Free wash credit',
+      render: (_p, meta) => <span>{meta?.freeWashCreditCents ? 'Every 6 months' : '—'}</span>,
+    },
+    {
+      label: 'Digital punch card',
+      render: () => <CellCheck ok />,
     },
     {
       label: 'Quarterly credit',

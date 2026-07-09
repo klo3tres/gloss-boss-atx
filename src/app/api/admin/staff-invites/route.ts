@@ -44,6 +44,14 @@ export async function POST(request: Request) {
   }
 
   if (body.intent === 'create') {
+    const phone = body.phone?.trim() ?? '';
+    const email = body.email?.trim() ?? '';
+    if ((body.channel === 'sms' || body.channel === 'both') && !phone) {
+      return NextResponse.json({ ok: false, error: 'Phone number is required to send an SMS invite.' }, { status: 400 });
+    }
+    if ((body.channel === 'email' || body.channel === 'both') && !email) {
+      return NextResponse.json({ ok: false, error: 'Email address is required to send an email invite.' }, { status: 400 });
+    }
     const created = await createStaffInvite(admin, {
       invitedBy: session.user.id,
       fullName: body.fullName,
@@ -70,6 +78,12 @@ export async function POST(request: Request) {
     const refreshed = await regenerateInviteToken(admin, body.inviteId);
     if (!refreshed.ok || !refreshed.invite || !refreshed.token) {
       return NextResponse.json({ ok: false, error: refreshed.error ?? 'Resend failed' }, { status: 400 });
+    }
+    if ((body.channel === 'sms' || body.channel === 'both') && !refreshed.invite.phone) {
+      return NextResponse.json({ ok: false, error: 'Invite has no phone number — add a phone before sending SMS.' }, { status: 400 });
+    }
+    if ((body.channel === 'email' || body.channel === 'both') && !refreshed.invite.email) {
+      return NextResponse.json({ ok: false, error: 'Invite has no email — add an email before sending email.' }, { status: 400 });
     }
     const inviterName = session.profile?.full_name ?? 'Your manager';
     const sent = await sendStaffInviteNotification(admin, refreshed.invite, refreshed.token, body.channel, inviterName);

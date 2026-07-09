@@ -104,11 +104,33 @@ export async function POST() {
     if (role === 'customer') {
       try {
         const { linkAuthUserToCustomer } = await import('@/lib/customer-portal-access');
-        await linkAuthUserToCustomer(admin, {
+        const link = await linkAuthUserToCustomer(admin, {
           authUserId: user.id,
           email: emailNorm,
           fullName: fullName ?? undefined,
         });
+        if (link.ok && link.customerId) {
+          try {
+            const { enqueueWelcomeCadence } = await import('@/lib/customer-notification-cadence');
+            const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com';
+            const portalLink = `${appBase}/dashboard`;
+            const { data: customerRow } = await admin
+              .from('customers')
+              .select('phone, full_name')
+              .eq('id', link.customerId)
+              .maybeSingle();
+            const c = (customerRow ?? {}) as { phone?: string; full_name?: string };
+            await enqueueWelcomeCadence(admin, {
+              customerId: link.customerId,
+              customerName: c.full_name || fullName || 'there',
+              customerPhone: c.phone ?? null,
+              customerEmail: emailNorm,
+              portalLink: portalLink,
+            });
+          } catch (e) {
+            console.warn('[ensure-profile] welcome cadence skipped', e);
+          }
+        }
       } catch (e) {
         console.warn('[ensure-profile] customer link on create', e);
       }

@@ -163,3 +163,47 @@ export async function sendPreviewedEmailAction(input: {
   if (status !== 'sent') return { error: err ?? 'Email failed' };
   return { ok: true };
 }
+
+export async function schedulePreviewedMessageAction(input: {
+  channel: 'sms' | 'email';
+  to: string;
+  body: string;
+  subject?: string;
+  kind: string;
+  scheduledFor: string;
+  appointmentId?: string;
+  customerId?: string;
+  opportunityId?: string;
+  entityType?: string;
+  entityId?: string;
+}): Promise<{ ok?: boolean; error?: string; scheduledId?: string }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+
+  const scheduledFor = new Date(input.scheduledFor);
+  if (Number.isNaN(scheduledFor.getTime())) return { error: 'Invalid schedule time.' };
+  if (scheduledFor.getTime() < Date.now() - 60_000) return { error: 'Schedule time must be in the future.' };
+
+  const { scheduleCadenceMessage } = await import('@/lib/customer-notification-cadence');
+  const body =
+    input.channel === 'sms'
+      ? (await import('@/lib/customer-notification-cadence')).appendSmsCompliance(input.body)
+      : input.body;
+
+  const res = await scheduleCadenceMessage(gate.admin, {
+    ruleKey: input.kind,
+    channel: input.channel,
+    recipient: input.to,
+    body,
+    subject: input.subject,
+    scheduledFor: scheduledFor.toISOString(),
+    customerId: input.customerId ?? null,
+    appointmentId: input.appointmentId ?? null,
+    opportunityId: input.opportunityId ?? null,
+    entityType: input.entityType ?? undefined,
+    entityId: input.entityId ?? undefined,
+  });
+
+  if (!res.ok) return { error: res.error ?? 'Schedule failed' };
+  return { ok: true, scheduledId: res.id };
+}
