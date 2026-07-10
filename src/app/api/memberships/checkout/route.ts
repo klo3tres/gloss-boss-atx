@@ -35,13 +35,14 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as { planId?: string; interval?: string };
   const planId = String(body.planId ?? '').trim();
-  const selectedInterval = String(body.interval ?? 'monthly').trim().toLowerCase().replace(/-+/g, '');
-  
-  let interval = 'monthly';
+  const selectedInterval = String(body.interval ?? 'yearly').trim().toLowerCase().replace(/-+/g, '');
+
+  let interval = 'yearly';
   if (selectedInterval === 'weekly' || selectedInterval === 'week') interval = 'weekly';
   else if (selectedInterval === 'biweekly' || selectedInterval === 'bi_weekly' || selectedInterval === 'bi-weekly') interval = 'biweekly';
+  else if (selectedInterval === 'monthly' || selectedInterval === 'month') interval = 'monthly';
   else if (selectedInterval === 'yearly' || selectedInterval === 'year') interval = 'yearly';
-  else interval = 'monthly';
+  else interval = 'yearly';
 
   const { data: plan, error } = await admin.from('membership_plans').select('*').eq('id', planId).maybeSingle();
   if (error || !plan || plan.archived === true) return NextResponse.json({ error: 'Membership plan unavailable.' }, { status: 404 });
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
 
   if (amount <= 0) {
     amount = Number(plan.price_cents ?? 0);
+  }
+
+  if (amount < 50) {
+    const { MEMBERSHIP_TIER_CATALOG } = await import('@/lib/membership-tier-catalog');
+    const tierName = String(plan.tier ?? plan.name ?? '').toLowerCase();
+    const tierKey = tierName.includes('gold') ? 'gold' : tierName.includes('silver') ? 'silver' : tierName.includes('bronze') ? 'bronze' : null;
+    if (tierKey) {
+      const meta = MEMBERSHIP_TIER_CATALOG[tierKey];
+      if (interval === 'yearly' && meta.yearlyAnchorCents >= 50) amount = meta.yearlyAnchorCents;
+      else if (interval === 'monthly' && meta.monthlyAnchorCents >= 50) amount = meta.monthlyAnchorCents;
+    }
   }
 
   if (amount < 50) return NextResponse.json({ error: 'This membership plan needs a Stripe price above $0.50.' }, { status: 400 });

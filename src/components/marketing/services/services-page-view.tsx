@@ -88,7 +88,7 @@ export function ServicesPageView() {
       {hasOffers ? <OffersMarketingBand offers={offers} placement="services" /> : null}
 
       <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap gap-2">
+        <div className="sticky top-[72px] z-20 mb-8 -mx-1 flex flex-wrap gap-2 rounded-2xl border border-border bg-card/95 p-2 backdrop-blur-md shadow-sm">
           {TABS.map((tab) => (
             <button
               key={tab.id}

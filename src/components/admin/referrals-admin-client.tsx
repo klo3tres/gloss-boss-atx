@@ -1,11 +1,20 @@
 'use client';
 
-import { useActionState, useState, useTransition } from 'react';
+import { useActionState, useEffect, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ReferralProgramSettings } from '@/lib/referral/referral-codes';
+import { analyzeReferralEconomics } from '@/lib/referral/referral-economics';
 import { saveReferralProgramSettingsAction, type ReferralSaveResult } from '@/app/(dashboard)/admin/referrals/actions';
 import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
 
 const inputClass = 'mt-1 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-sm text-white';
+
+function formatRewardSummary(type: string, value: number): string {
+  if (type === 'percent') return `${value}%`;
+  if (type === 'dollar') return `$${value}`;
+  if (type === 'free_service') return 'Free service';
+  return String(value);
+}
 
 export function ReferralsAdminClient({
   settings,
@@ -16,14 +25,21 @@ export function ReferralsAdminClient({
   events: Record<string, unknown>[];
   rewards: Record<string, unknown>[];
 }) {
+  const router = useRouter();
   const [saveState, saveAction, savePending] = useActionState<ReferralSaveResult | null, FormData>(
     saveReferralProgramSettingsAction,
     null,
   );
 
+  useEffect(() => {
+    if (saveState?.ok === true) router.refresh();
+  }, [saveState, router]);
+
+  const economics = analyzeReferralEconomics(settings);
+
   return (
     <div className="space-y-6">
-      <form action={saveAction} className="rounded-3xl border border-white/10 bg-black/50 p-5 space-y-4">
+      <form key={saveState?.ok ? 'saved' : 'edit'} action={saveAction} className="rounded-3xl border border-white/10 bg-black/50 p-5 space-y-4">
         <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Program settings</p>
         {saveState?.ok === false ? (
           <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{saveState.error}</p>
@@ -45,6 +61,12 @@ export function ReferralsAdminClient({
           <label className="text-xs text-zinc-400">Max rewards per customer<input name="max_rewards_per_customer" type="number" defaultValue={settings.maxRewardsPerCustomer} className={inputClass} /></label>
           <label className="text-xs text-zinc-400">Free detail at N referrals<input name="free_detail_threshold" type="number" defaultValue={settings.freeDetailReferralThreshold} className={inputClass} /></label>
           <label className="text-xs text-zinc-400">Free detail service slug<input name="free_detail_service_slug" defaultValue={settings.freeDetailServiceSlug} className={inputClass} /></label>
+          <label className="text-xs text-zinc-400">Reward unlock rule
+            <select name="reward_unlock_rule" defaultValue={settings.rewardUnlockRule} className={inputClass}>
+              <option value="completed_paid">After completed paid job</option>
+              <option value="booked">On booking only</option>
+            </select>
+          </label>
         </div>
         <label className="text-xs text-zinc-400 md:col-span-2">
           Reward ladder (JSON array: threshold, label, rewardType, rewardValue)
@@ -73,16 +95,33 @@ export function ReferralsAdminClient({
         </button>
       </form>
 
+      <section className="rounded-3xl border border-gold/20 bg-gold/5 p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Titan referral economics</p>
+        <p className="mt-2 text-sm text-zinc-200">
+          Current reward: <span className="font-black text-white">{economics.currentRewardLabel}</span>
+          {' · '}
+          Suggested: <span className="font-black text-gold-soft">{economics.suggestedRewardLabel}</span>
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+          Average referral customer spends ${economics.avgReferralSpend.toFixed(0)}. Expected ROI at suggested reward:{' '}
+          <span className="font-black text-emerald-300">{economics.expectedRoiMultiple}x</span>. {economics.rationale}
+        </p>
+      </section>
+
       <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Program summary</p>
         <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-white/5 px-3 py-2">
             <dt className="text-zinc-500">Referred discount</dt>
-            <dd className="font-black text-gold-soft">{settings.referredRewardValue}% off first detail</dd>
+            <dd className="font-black text-gold-soft">
+              {formatRewardSummary(settings.referredRewardType, settings.referredRewardValue)} off first detail
+            </dd>
           </div>
           <div className="rounded-xl border border-white/5 px-3 py-2">
             <dt className="text-zinc-500">Referrer reward</dt>
-            <dd className="font-black text-white">{settings.referrerRewardValue}% after completion</dd>
+            <dd className="font-black text-white">
+              {formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)} after completion
+            </dd>
           </div>
           <div className="rounded-xl border border-white/5 px-3 py-2">
             <dt className="text-zinc-500">Stacking</dt>

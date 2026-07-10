@@ -75,19 +75,19 @@ export default function ResetPasswordPage() {
 
   return (
     <main className='flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground'>
-      <form onSubmit={handleSubmit} className='w-full max-w-md rounded-2xl border border-gold/20 bg-zinc-950 p-6'>
+      <form onSubmit={handleSubmit} className='w-full max-w-md rounded-2xl border border-gold/20 bg-card p-6 shadow-lg'>
         <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Gloss Boss ATX</p>
         <h1 className='mt-3 text-3xl font-black'>Set new password</h1>
-        <p className='mt-2 text-sm text-zinc-400'>Choose a secure password for your staff or customer account.</p>
+        <p className='mt-2 text-sm text-muted-foreground'>Choose a secure password for your staff or customer account.</p>
 
         {!envReady ? (
-          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200'>
+          <p className='mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-900'>
             Auth is in setup mode. Add Supabase env keys to activate password reset.
           </p>
         ) : null}
 
         {!ready ? (
-          <p className='mt-4 text-sm text-amber-200'>
+          <p className='mt-4 text-sm text-amber-800'>
             Open the reset link from your email or SMS. If it expired,{' '}
             <Link href='/forgot-password' className='text-gold-soft underline'>
               request a new link
@@ -97,12 +97,12 @@ export default function ResetPasswordPage() {
         ) : null}
 
         <label className='mt-6 block text-sm'>
-          <span className='mb-2 block text-zinc-300'>New password</span>
+          <span className='mb-2 block text-muted-foreground'>New password</span>
           <input
             type='password'
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+            className='gb-input w-full rounded-lg border border-border bg-input px-4 py-3'
             minLength={8}
             required
             disabled={!ready || !envReady}
@@ -110,12 +110,12 @@ export default function ResetPasswordPage() {
         </label>
 
         <label className='mt-4 block text-sm'>
-          <span className='mb-2 block text-zinc-300'>Confirm password</span>
+          <span className='mb-2 block text-muted-foreground'>Confirm password</span>
           <input
             type='password'
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+            className='gb-input w-full rounded-lg border border-border bg-input px-4 py-3'
             minLength={8}
             required
             disabled={!ready || !envReady}
@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
           {submitting ? 'Saving…' : 'Update password'}
         </button>
 
-        <p className='mt-4 text-center text-xs text-zinc-400'>
+        <p className='mt-4 text-center text-xs text-muted-foreground'>
           <Link href='/login' className='text-gold-soft'>
             Back to login
           </Link>

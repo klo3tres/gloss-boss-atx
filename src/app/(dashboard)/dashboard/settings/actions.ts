@@ -121,3 +121,69 @@ export async function cancelCustomerMembershipAction(formData: FormData) {
   revalidatePath('/dashboard/settings');
   revalidatePath('/admin/memberships');
 }
+
+export async function pauseCustomerMembershipAction(formData: FormData) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  const email = session.user?.email?.trim().toLowerCase();
+  const membershipId = String(formData.get('membershipId') ?? '').trim();
+  if (!session.user || !email || !membershipId || !admin) return;
+
+  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
+  const customerId = (customer as { id?: string } | null)?.id;
+  if (!customerId) return;
+
+  const { data: membership } = await admin
+    .from('customer_memberships')
+    .select('id, stripe_subscription_id')
+    .eq('id', membershipId)
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  const subId = String((membership as { stripe_subscription_id?: string } | null)?.stripe_subscription_id ?? '').trim();
+  if (subId) {
+    const secrets = await getStripeSecrets(admin);
+    if (secrets.secretKey) {
+      try {
+        const stripe = new Stripe(secrets.secretKey);
+        await stripe.subscriptions.update(subId, { pause_collection: { behavior: 'mark_uncollectible' } });
+      } catch (e) {
+        console.warn('[customer-settings] pause membership', e);
+      }
+    }
+  }
+  await admin.from('customer_memberships').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', membershipId);
+  revalidatePath('/dashboard/settings');
+}
+
+export async function resumeCustomerMembershipAction(formData: FormData) {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  const email = session.user?.email?.trim().toLowerCase();
+  const membershipId = String(formData.get('membershipId') ?? '').trim();
+  if (!session.user || !email || !membershipId || !admin) return;
+
+  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
+  const customerId = (customer as { id?: string } | null)?.id;
+  if (!customerId) return;
+
+  const { data: membership } = await admin
+    .from('customer_memberships')
+    .select('id, stripe_subscription_id')
+    .eq('id', membershipId)
+    .eq('customer_id', customerId)
+    .maybeSingle();
+  const subId = String((membership as { stripe_subscription_id?: string } | null)?.stripe_subscription_id ?? '').trim();
+  if (subId) {
+    const secrets = await getStripeSecrets(admin);
+    if (secrets.secretKey) {
+      try {
+        const stripe = new Stripe(secrets.secretKey);
+        await stripe.subscriptions.update(subId, { pause_collection: '' });
+      } catch (e) {
+        console.warn('[customer-settings] resume membership', e);
+      }
+    }
+  }
+  await admin.from('customer_memberships').update({ status: 'active', updated_at: new Date().toISOString() }).eq('id', membershipId);
+  revalidatePath('/dashboard/settings');
+}

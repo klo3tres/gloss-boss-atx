@@ -63,11 +63,29 @@ export async function saveLoyaltyRuleAction(formData: FormData) {
   const g = await gate();
   if (!g) return;
   const id = str(formData.get('id'));
+  const rewardType = str(formData.get('reward_type')) || 'credit';
+  const rewardCents = Math.max(0, Number(str(formData.get('reward_cents'))) || 7500);
+  const freeServiceSlug = str(formData.get('free_service_slug')) || null;
+  const rewardPayload: Record<string, unknown> = {
+    reward_type: rewardType,
+    reward_cents: rewardCents,
+    credit_cents: rewardCents,
+  };
+  if (rewardType === 'free_service' && freeServiceSlug) {
+    rewardPayload.free_service_slug = freeServiceSlug;
+  }
+  if (rewardType === 'free_wash') {
+    rewardPayload.free_wash = true;
+  }
+  if (rewardType === 'upgrade') {
+    rewardPayload.upgrade_credit_cents = rewardCents;
+  }
   const patch = {
     name: str(formData.get('name')) || 'Punch card reward',
     rule_type: 'punch_card',
     services_required: Number(str(formData.get('services_required'))) || 5,
     reward_description: str(formData.get('reward_description')) || 'Complete 5 services, unlock 6th wash/free reward.',
+    reward_payload: rewardPayload,
     active: formData.get('active') === 'on',
     updated_at: new Date().toISOString(),
   };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { fetchPublicSiteDataClient } from '@/lib/public-site-data-client';
 import type { PublicBrandPayload } from '@/lib/brand/public-brand-types';
 import {
   defaultDealConfig,
@@ -61,10 +61,20 @@ const initialState: PublicSiteDataState = {
   fleetPricing: null,
 };
 
-export function usePublicSiteData() {
-  const [state, setState] = useState<PublicSiteDataState>(initialState);
+export function usePublicSiteData(initial?: Partial<PublicSiteDataState>) {
+  const hasInitial = Boolean(initial?.loaded);
+  const [state, setState] = useState<PublicSiteDataState>(() =>
+    hasInitial
+      ? {
+          ...initialState,
+          ...initial,
+          loaded: true,
+        }
+      : initialState,
+  );
 
   useEffect(() => {
+    if (hasInitial) return;
     let cancelled = false;
     const tid = window.setTimeout(() => {
       if (!cancelled) {
@@ -76,14 +86,7 @@ export function usePublicSiteData() {
       }
     }, 10000);
 
-    fetchWithTimeout('/api/public/site-data', { cache: 'no-store', timeoutMs: 8000 })
-      .then(async (r) => {
-        try {
-          return (await r.json()) as PublicSiteDataPayload;
-        } catch {
-          return null;
-        }
-      })
+    fetchPublicSiteDataClient()
       .then((data) => {
         if (!data || cancelled) return;
         setState({
@@ -119,7 +122,7 @@ export function usePublicSiteData() {
       cancelled = true;
       clearTimeout(tid);
     };
-  }, []);
+  }, [hasInitial]);
 
   const packages = state.loaded && state.services.length > 0 ? state.services : defaultServicePackages;
   const deals = state.loaded ? state.deals : defaultDealConfig;

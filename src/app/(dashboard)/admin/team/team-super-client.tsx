@@ -169,7 +169,12 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
   const pending = invites.filter((i) => i.status === 'pending');
 
   if (pending.length === 0) {
-    return <p className="text-xs text-zinc-500">No pending invites.</p>;
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">
+        <p className="text-sm font-bold text-foreground">No pending invites</p>
+        <p className="mt-1 text-xs text-muted-foreground">Use the invite form above to add technicians, dispatchers, or admins. Pending invites stay visible here until accepted.</p>
+      </div>
+    );
   }
 
   return (

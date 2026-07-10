@@ -1,20 +1,38 @@
 'use client';
 
-import { sendReceiptActionState } from '@/app/(dashboard)/admin/receipts/receipt-actions';
-import { SubmitStatusButton } from '@/components/ui/submit-status-button';
-import { ToastActionForm } from '@/components/ui/toast-action-form';
+import Link from 'next/link';
 
-export function ReceiptSendForm({ receiptId, paymentId }: { receiptId?: string; paymentId?: string }) {
+export function ReceiptSendForm({
+  receiptId,
+  paymentId,
+  workOrderId,
+}: {
+  receiptId?: string;
+  paymentId?: string;
+  workOrderId?: string;
+}) {
+  const href = workOrderId
+    ? `/admin/work-orders/${encodeURIComponent(workOrderId)}?shell=admin#wo-receipt`
+    : receiptId
+      ? `/admin/receipts/${encodeURIComponent(receiptId)}`
+      : paymentId
+        ? `/admin/receipts/${encodeURIComponent(paymentId)}`
+        : null;
+
+  if (!href) {
+    return (
+      <span className='rounded-xl border border-white/10 px-4 py-2 text-xs font-black uppercase text-zinc-500'>
+        No receipt linked
+      </span>
+    );
+  }
+
   return (
-    <ToastActionForm action={sendReceiptActionState}>
-      {receiptId ? <input type='hidden' name='receiptId' value={receiptId} /> : null}
-      {paymentId ? <input type='hidden' name='paymentId' value={paymentId} /> : null}
-      <SubmitStatusButton
-        pendingText='Sending...'
-        className='rounded-xl border border-emerald-500/30 px-4 py-2 text-xs font-black uppercase text-emerald-200 disabled:opacity-50'
-      >
-        Send Receipt
-      </SubmitStatusButton>
-    </ToastActionForm>
+    <Link
+      href={href}
+      className='rounded-xl border border-emerald-500/30 px-4 py-2 text-xs font-black uppercase text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-500/10'
+    >
+      Preview &amp; send
+    </Link>
   );
 }

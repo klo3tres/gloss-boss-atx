@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Building2, CalendarCheck, ShieldCheck, Sparkles, Truck } from 'lucide-react';
 import { FleetInquiryForm } from '@/components/public/fleet-inquiry-form';
+import { SocialLinksRow } from '@/components/marketing/social-links';
 import { DEFAULT_FLEET_PRICING, parseFleetPricing } from '@/lib/fleet-pricing';
 import { mediaUrl, normalizeMediaRegistry } from '@/lib/media-registry';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
@@ -13,12 +14,13 @@ export default async function FleetPage() {
   let blurb = 'Recurring mobile detailing for business fleets, dealerships, executive teams, and property-managed vehicle groups.';
   let pricing = { ...DEFAULT_FLEET_PRICING };
   let registry = {};
+  let socialLinks = { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' };
   if (admin) {
     const { data } = await admin
       .from('site_settings')
       .select('key, value')
-      .in('key', ['fleet_services_blurb', 'fleet_pricing', 'media_registry'])
-      .limit(10);
+      .in('key', ['fleet_services_blurb', 'fleet_pricing', 'media_registry', 'social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url'])
+      .limit(20);
     const rows = (data ?? []) as Record<string, unknown>[];
     blurb = String(rows.find((r) => r.key === 'fleet_services_blurb')?.value ?? blurb);
     const raw = rows.find((r) => r.key === 'fleet_pricing')?.value;
@@ -28,6 +30,12 @@ export default async function FleetPage() {
       pricing = { ...DEFAULT_FLEET_PRICING };
     }
     registry = normalizeMediaRegistry(rows.find((r) => r.key === 'media_registry')?.value ?? null);
+    socialLinks = {
+      instagramUrl: String(rows.find((r) => r.key === 'social_instagram_url')?.value ?? ''),
+      tiktokUrl: String(rows.find((r) => r.key === 'social_tiktok_url')?.value ?? ''),
+      youtubeUrl: String(rows.find((r) => r.key === 'social_youtube_url')?.value ?? ''),
+      facebookUrl: String(rows.find((r) => r.key === 'social_facebook_url')?.value ?? ''),
+    };
   }
 
   const tiers = [
@@ -55,6 +63,7 @@ export default async function FleetPage() {
               Premium mobile detailing for business fleets
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">{blurb}</p>
+            <SocialLinksRow links={socialLinks} className="mt-5" />
             <div className="mt-7 grid max-w-2xl gap-3 sm:grid-cols-3">
               {['Work trucks', 'Company vehicles', 'Executive fleets'].map((item) => (
                 <div key={item} className="gb-premium-card rounded-2xl border border-border p-4">

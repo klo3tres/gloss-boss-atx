@@ -433,6 +433,7 @@ export default async function CustomerDashboardRootPage({
 
   const liveEvents = liveJob ? eventsByAppt.get(liveJob.id) ?? [] : [];
   let vehicleTotal = appointments.reduce((sum, a) => sum + (Array.isArray(a.booking_vehicles) ? a.booking_vehicles.length : 1), 0);
+  let loyaltyRewardThreshold = 5;
   let loyaltyStampsCount = 0;
   let loyaltyCanClaim = false;
   let loyaltyClaimableCount = 0;
@@ -450,9 +451,10 @@ export default async function CustomerDashboardRootPage({
         adminDb.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', cust.id),
       ]);
       if (typeof count === 'number' && count > 0) vehicleTotal = count;
-      loyaltyStampsCount = calculateLoyaltyStatus(stamps ?? []).totalStamps;
-      const redeemedRewards = await countRedeemedLoyaltyRewards(adminDb, String(cust.id));
       const rewardConfig = await loadLoyaltyRewardConfig(adminDb);
+      loyaltyRewardThreshold = rewardConfig.rewardThreshold;
+      loyaltyStampsCount = calculateLoyaltyStatus(stamps ?? [], { rewardThreshold: rewardConfig.rewardThreshold }).totalStamps;
+      const redeemedRewards = await countRedeemedLoyaltyRewards(adminDb, String(cust.id));
       const loyaltyView = buildLoyaltyRewardView(stamps ?? [], redeemedRewards, { rewardThreshold: rewardConfig.rewardThreshold });
       loyaltyCanClaim = loyaltyView.canClaim;
       loyaltyClaimableCount = loyaltyView.claimableRewards;
@@ -597,6 +599,7 @@ export default async function CustomerDashboardRootPage({
         appointmentCount={appointments.length}
         snapshotByAppt={snapshotByAppt}
         loyaltyStampsCount={loyaltyStampsCount}
+      loyaltyRewardThreshold={loyaltyRewardThreshold}
         loyaltyCanClaim={loyaltyCanClaim}
         loyaltyClaimableCount={loyaltyClaimableCount}
         loyaltyRewardDescription={loyaltyRewardDescription}

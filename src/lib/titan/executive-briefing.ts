@@ -50,6 +50,8 @@ export type ExecutiveBriefingSnapshot = {
   revenueTargetLabel: string;
   revenueGapCents: number;
   revenueGapLabel: string;
+  projectedRevenueTodayCents: number;
+  projectedRevenueTodayLabel: string;
   scheduleCount: number;
   scheduleLabel: string;
   operationalAdvantage: number;
@@ -142,6 +144,14 @@ export async function loadExecutiveBriefing(
   }
 
   const revenueGapCents = Math.max(0, revenueTargetCents - revenueToday);
+  const projectedFromActions = (dailyActionPlan.actions ?? [])
+    .filter((a) => a.status === 'pending')
+    .reduce((s, a) => s + (a.expectedValueCents ?? 0), 0);
+  const projectedFromSchedule = (metrics.todayJobs ?? []).reduce(
+    (s, j) => s + (Number((j as { revenueCents?: number }).revenueCents ?? 0) || 0),
+    0,
+  );
+  const projectedRevenueTodayCents = revenueToday + projectedFromActions + projectedFromSchedule;
   const scheduleCount = metrics.jobsTodayCount ?? metrics.jobsToday ?? metrics.todayJobs?.length ?? 0;
 
   const weatherExc = operations?.exceptions?.find((e) => e.category === 'weather');
@@ -234,6 +244,8 @@ export async function loadExecutiveBriefing(
     revenueTargetLabel: displayMoney(revenueTargetCents),
     revenueGapCents,
     revenueGapLabel: displayMoney(revenueGapCents),
+    projectedRevenueTodayCents,
+    projectedRevenueTodayLabel: displayMoney(projectedRevenueTodayCents),
     scheduleCount,
     scheduleLabel: `${scheduleCount} appointment${scheduleCount === 1 ? '' : 's'} today`,
     operationalAdvantage,

@@ -283,7 +283,11 @@ export async function GET() {
       brand: admin ? publicBrandPayload(await loadWorkspaceBrand(admin)) : undefined,
     };
 
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[CRM_DEBUG_DB]', 'site_data_route_unhandled', msg);

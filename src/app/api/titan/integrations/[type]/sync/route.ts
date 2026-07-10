@@ -33,6 +33,16 @@ export async function POST(
     }
   }
 
+  if (type === 'quickbooks' || type === 'zapier' || type === 'meta') {
+    await markIntegrationSync(admin, ctx.businessId, type as 'meta');
+    const hints: Record<string, string> = {
+      quickbooks: 'QuickBooks OAuth — add INTUIT_CLIENT_ID and INTUIT_CLIENT_SECRET, then reconnect.',
+      zapier: 'Zapier ready — use Titan API key webhook at /api/titan/leads from your Zap.',
+      meta: 'Meta lead sync — configure META_APP_ID and webhook verify token in env.',
+    };
+    return NextResponse.json({ ok: true, message: hints[type] ?? `${type} integration staged` });
+  }
+
   await markIntegrationSync(admin, ctx.businessId, type as 'twilio');
   return NextResponse.json({ ok: true, message: `${type} sync acknowledged` });
 }

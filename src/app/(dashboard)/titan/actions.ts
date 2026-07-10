@@ -72,3 +72,30 @@ export async function loadTitanApiKeysForPage() {
   const keys = await listBusinessApiKeys(gate.admin, gate.ctx.businessId);
   return { keys, businessId: gate.ctx.businessId };
 }
+
+export async function createTitanProjectAction(
+  formData: FormData,
+): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await requireTitanSession();
+  if (!gate) return { error: 'Sign in required' };
+
+  const title = String(formData.get('title') ?? '').trim();
+  const projectType = String(formData.get('project_type') ?? 'detailing_job').trim();
+  const dueAt = String(formData.get('due_at') ?? '').trim() || null;
+  const notes = String(formData.get('notes') ?? '').trim() || null;
+
+  if (!title) return { error: 'Project title is required' };
+
+  const { error } = await gate.admin.from('titan_projects').insert({
+    business_id: gate.ctx.businessId,
+    title,
+    project_type: projectType,
+    status: 'active',
+    due_at: dueAt,
+    notes,
+  });
+
+  if (error) return { error: error.message };
+  revalidatePath('/titan/projects');
+  return { ok: true };
+}

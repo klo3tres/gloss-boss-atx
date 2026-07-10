@@ -7,6 +7,8 @@ export type LoyaltyRewardConfig = {
   rewardThreshold: number;
   rewardDescription: string;
   rewardCents: number;
+  rewardType: string;
+  freeServiceSlug: string | null;
 };
 
 export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<LoyaltyRewardConfig> {
@@ -31,6 +33,8 @@ export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<Lo
     rewardThreshold: Math.max(1, Number(data?.services_required ?? 5) || 5),
     rewardDescription: String(data?.reward_description ?? 'Punch card reward — applies to your next detail'),
     rewardCents,
+    rewardType: String(payload.reward_type ?? 'credit'),
+    freeServiceSlug: payload.free_service_slug ? String(payload.free_service_slug) : null,
   };
 }
 

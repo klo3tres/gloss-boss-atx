@@ -29,6 +29,11 @@ function resourceDisplayType(item: AcademyResource) {
   return item.type;
 }
 
+function youtubeThumbnail(href: string): string | null {
+  const match = href.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  return match?.[1] ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
 function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?: number }) {
   const displayType = resourceDisplayType(item);
   const Icon = TYPE_ICON[item.type];
@@ -36,13 +41,19 @@ function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?
   const isPlayableVideo = item.type === 'video' && isRealVideoUrl(item.href);
   const isSearchLink = item.type === 'video' && isYouTubeSearch(item.href);
   const className =
-    'group relative flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/45 transition hover:border-gold/35 hover:shadow-[0_8px_30px_rgba(212,175,55,0.08)] h-full';
+    'group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition hover:border-gold/35 hover:shadow-[0_8px_30px_rgba(212,175,55,0.08)] h-full shadow-sm';
+
+  const thumbUrl = isPlayableVideo ? youtubeThumbnail(item.href) : null;
 
   const thumb = (
-    <div className="relative aspect-video bg-gradient-to-br from-zinc-900 via-black to-gold/10">
+    <div className="relative aspect-video bg-gradient-to-br from-muted via-card to-gold/10 overflow-hidden">
+      {thumbUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={thumbUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-90" />
+      ) : null}
       {isPlayableVideo ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full border border-gold/40 bg-black/60 text-gold-soft transition group-hover:scale-110">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/25">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border border-gold/40 bg-card text-gold-soft transition group-hover:scale-110 shadow-sm">
             <Play className="h-5 w-5 fill-current" />
           </span>
         </div>
@@ -50,14 +61,14 @@ function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?
         <div className="absolute inset-0 flex flex-col items-center justify-center opacity-50 gap-1">
           <Icon className="h-10 w-10 text-gold-soft" />
           {isSearchLink ? (
-            <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Search YouTube</span>
+            <span className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Search YouTube</span>
           ) : displayType === 'playbook' ? (
-            <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Recommended topic</span>
+            <span className="text-[8px] font-black uppercase tracking-wider text-muted-foreground">Recommended topic</span>
           ) : null}
         </div>
       )}
       {progress > 0 ? (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
           <div className="h-full bg-gold" style={{ width: `${Math.min(100, progress)}%` }} />
         </div>
       ) : null}
@@ -69,13 +80,13 @@ function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?
       {thumb}
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase text-zinc-400">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[9px] font-black uppercase text-muted-foreground">
             <Icon className="h-3 w-3" /> {displayType}
           </span>
-          {item.duration ? <span className="text-[9px] text-zinc-600">{item.duration}</span> : null}
+          {item.duration ? <span className="text-[9px] text-muted-foreground">{item.duration}</span> : null}
         </div>
-        <h3 className="mt-2 text-sm font-black text-white group-hover:text-gold-soft">{item.title}</h3>
-        <p className="mt-2 flex-1 text-xs leading-relaxed text-zinc-400">{item.summary}</p>
+        <h3 className="mt-2 text-sm font-black text-foreground group-hover:text-gold-soft">{item.title}</h3>
+        <p className="mt-2 flex-1 text-xs leading-relaxed text-muted-foreground">{item.summary}</p>
         {isSearchLink ? (
           <p className="mt-2 text-[9px] font-black uppercase tracking-wider text-gold-soft">Search YouTube →</p>
         ) : null}
@@ -91,7 +102,7 @@ function ResourceCard({ item, progress = 0 }: { item: AcademyResource; progress?
     );
   }
   return (
-    <Link href={item.href} className={className}>
+    <Link href={`/admin/academy/lessons/${encodeURIComponent(item.id)}`} className={className}>
       {body}
     </Link>
   );
@@ -163,7 +174,7 @@ export function TitanAcademyClient({
 
       <GlassCard glow className="border-gold/20">
         <SectionEyebrow>Titan Business Academy</SectionEyebrow>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-300 max-w-3xl">
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground max-w-3xl">
           Models, videos, and playbooks — sharpen operations, pricing, and AI-assisted growth.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -173,7 +184,7 @@ export function TitanAcademyClient({
               type="button"
               onClick={() => setCategory(c.id)}
               className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
-                category === c.id ? 'bg-gold text-black' : 'border border-white/15 text-zinc-400 hover:border-gold/30 hover:text-white'
+                category === c.id ? 'bg-gold text-black' : 'border border-border text-muted-foreground hover:border-gold/30 hover:text-foreground'
               }`}
             >
               {c.label}
@@ -202,8 +213,8 @@ export function TitanAcademyClient({
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           {BUSINESS_MODELS.map((m) => (
             <GlassCard key={m.id}>
-              <h3 className="text-sm font-black text-white">{m.name}</h3>
-              <p className="mt-2 text-xs leading-relaxed text-zinc-400">{m.description}</p>
+              <h3 className="text-sm font-black text-foreground">{m.name}</h3>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{m.description}</p>
               <p className="mt-3 text-[10px] font-bold uppercase text-gold-soft">{m.glossBossFit}</p>
             </GlassCard>
           ))}

@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight, MessageSquare, Quote } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { PublicReview } from '@/lib/public-site-data';
+import { formatReviewerShortName } from '@/lib/review-format';
 import { StarRating } from '@/components/ui/star-rating';
+import { PremiumEyebrow } from '@/components/premium/premium-eyebrow';
 
 function formatReviewDate(iso: string) {
   if (!iso) return '';
@@ -23,63 +24,48 @@ export function ReviewsCarousel({
   googleReviewUrl?: string;
   bookingHref?: string;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [direction, setDirection] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeReviews = reviews.filter((r) => r.rating >= 1 && r.text?.trim());
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const activeReviews = reviews.filter((r) => r.rating >= 1);
+  const avg = activeReviews.length
+    ? activeReviews.reduce((sum, r) => sum + r.rating, 0) / activeReviews.length
+    : 0;
 
   useEffect(() => {
-    if (activeReviews.length <= 1 || isPaused) {
+    if (activeReviews.length <= 1 || paused) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
-
     timerRef.current = setInterval(() => {
-      setDirection(1);
-      setActiveIndex((prev) => (prev + 1) % activeReviews.length);
-    }, 6000);
-
+      setIndex((prev) => (prev + 1) % activeReviews.length);
+    }, 7000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [activeReviews.length, isPaused]);
+  }, [activeReviews.length, paused]);
 
   if (activeReviews.length === 0) return null;
 
-  const handleNext = () => {
-    setDirection(1);
-    setActiveIndex((prev) => (prev + 1) % activeReviews.length);
-  };
-
-  const handlePrev = () => {
-    setDirection(-1);
-    setActiveIndex((prev) => (prev - 1 + activeReviews.length) % activeReviews.length);
-  };
-
-  const slideVariants = {
-    enter: (dir: number) => ({ x: dir > 0 ? 100 : -100, opacity: 0 }),
-    center: { x: 0, opacity: 1 },
-    exit: (dir: number) => ({ x: dir < 0 ? 100 : -100, opacity: 0 }),
-  };
-
-  const currentReview = activeReviews[activeIndex];
+  const current = activeReviews[index]!;
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-gold/15 bg-black/55 p-6 sm:p-8 backdrop-blur-xl shadow-[0_0_50px_rgba(212,175,55,0.08)]"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      className="relative overflow-hidden"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      aria-label="Client reviews"
     >
-      <div className="absolute top-4 right-6 text-gold/10 pointer-events-none select-none">
-        <Quote size={80} className="transform rotate-180" />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-gold-soft animate-pulse" />
-          <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Client testimonials</span>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <PremiumEyebrow>Client testimonials</PremiumEyebrow>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <StarRating rating={avg} size="md" showValue />
+            <span className="text-sm text-muted-foreground">
+              from {activeReviews.length} Google review{activeReviews.length === 1 ? '' : 's'}
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {googleReviewUrl ? (
@@ -87,114 +73,59 @@ export function ReviewsCarousel({
               href={googleReviewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-zinc-200 hover:border-gold/30"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-gold-soft hover:bg-gold/10"
             >
-              <span className="inline-flex items-center gap-1.5">
-                <span className="font-black text-[#4285F4]">G</span>
-                <span className="font-black text-[#EA4335]">o</span>
-                <span className="font-black text-[#FBBC05]">o</span>
-                <span className="font-black text-[#4285F4]">g</span>
-                <span className="font-black text-[#34A853]">l</span>
-                <span className="font-black text-[#EA4335]">e</span>
-                <span className="ml-1 text-zinc-400">Review</span>
-              </span>
+              Leave a review
             </a>
           ) : null}
           <Link
             href={bookingHref}
-            className="rounded-lg bg-gold px-2.5 py-1 text-[10px] font-black uppercase text-black"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl bg-gradient-to-r from-gold to-gold-soft px-5 py-2 text-[10px] font-black uppercase tracking-wider text-black hover:brightness-110"
           >
             Book now
           </Link>
         </div>
       </div>
 
-      <div className="relative min-h-[160px] flex flex-col justify-between">
-        <AnimatePresence initial={false} custom={direction} mode="wait">
+      <div className="relative min-h-[200px] rounded-3xl border border-border bg-card p-8 shadow-sm sm:p-10">
+        <AnimatePresence mode="wait">
           <motion.div
-            key={currentReview.id || activeIndex}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.35, ease: 'easeInOut' }}
-            className="w-full flex-1 flex flex-col justify-between"
+            key={current.id || index}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="mx-auto max-w-2xl text-center"
           >
-            <div>
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <StarRating rating={currentReview.rating} size="sm" />
-                {currentReview.isGoogle ? (
-                  <span className="rounded-md border border-blue-500/30 bg-blue-950/40 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-blue-200">
-                    Google
-                  </span>
-                ) : (
-                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-400">
-                    Client
-                  </span>
-                )}
-              </div>
-
-              <blockquote className="text-zinc-200 text-sm md:text-base italic leading-relaxed font-medium">
-                &ldquo;{currentReview.text}&rdquo;
-              </blockquote>
-            </div>
-
-            <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-3">
-              <div>
-                <cite className="not-italic text-xs font-black text-white uppercase tracking-wider block">
-                  {currentReview.reviewerName}
-                </cite>
-                <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider block mt-0.5">
-                  {currentReview.vehicleOrService || 'Auto detailing'}
-                </span>
-              </div>
-              {formatReviewDate(currentReview.date) ? (
-                <span className="text-[9px] font-mono text-zinc-600 tracking-wider">{formatReviewDate(currentReview.date)}</span>
-              ) : null}
-            </div>
+            <StarRating rating={current.rating} size="sm" className="justify-center" />
+            <p className="mt-4 text-lg font-semibold text-foreground">{formatReviewerShortName(current.reviewerName)}</p>
+            <blockquote className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
+              &ldquo;{current.text}&rdquo;
+            </blockquote>
+            {(current.vehicleOrService || current.date) && (
+              <p className="mt-5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                {[current.vehicleOrService, formatReviewDate(current.date)].filter(Boolean).join(' · ')}
+              </p>
+            )}
           </motion.div>
         </AnimatePresence>
-      </div>
 
-      {activeReviews.length > 1 ? (
-        <div className="flex items-center justify-between mt-6 border-t border-white/5 pt-4">
-          <div className="flex items-center gap-1.5">
-            {activeReviews.map((_, idx) => (
+        {activeReviews.length > 1 ? (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            {activeReviews.map((r, i) => (
               <button
-                key={idx}
+                key={r.id || i}
                 type="button"
-                onClick={() => {
-                  setDirection(idx > activeIndex ? 1 : -1);
-                  setActiveIndex(idx);
-                }}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  idx === activeIndex ? 'w-5 bg-gold' : 'w-1.5 bg-zinc-700 hover:bg-zinc-500'
+                aria-label={`Show review ${i + 1}`}
+                onClick={() => setIndex(i)}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === index ? 'w-8 bg-gold' : 'w-1.5 bg-border hover:bg-gold/40'
                 }`}
-                aria-label={`Go to slide ${idx + 1}`}
               />
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handlePrev}
-              className="rounded-xl border border-white/10 p-2 text-zinc-400 hover:border-gold/30 hover:text-gold-soft hover:bg-gold/5 transition duration-200"
-              aria-label="Previous testimonial"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={handleNext}
-              className="rounded-xl border border-white/10 p-2 text-zinc-400 hover:border-gold/30 hover:text-gold-soft hover:bg-gold/5 transition duration-200"
-              aria-label="Next testimonial"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }

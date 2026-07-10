@@ -189,9 +189,15 @@ export function WeatherReadinessWidget({
     );
   }
 
+  const customerLight = variant === 'customer';
+
   return (
     <section
-      className={`relative overflow-hidden rounded-3xl border p-5 bg-gradient-to-b ${weatherTheme.gradient} ${borderAccent[variant]} ${className} transition-all duration-300 shadow-[0_0_35px_rgba(0,0,0,0.4)]`}
+      className={
+        customerLight
+          ? `weather-customer-widget relative overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-sm ${className}`
+          : `relative overflow-hidden rounded-3xl border p-5 bg-gradient-to-b ${weatherTheme.gradient} ${borderAccent[variant]} ${className} transition-all duration-300 shadow-[0_0_35px_rgba(0,0,0,0.4)]`
+      }
       aria-label="Weather readiness widget"
     >
       {/* Self-contained CSS Animations for weather backdrops */}
@@ -251,8 +257,8 @@ export function WeatherReadinessWidget({
       <div className="relative z-10">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">Weather Readiness</span>
-            <h4 className="text-sm font-black text-white mt-0.5 tracking-tight">{locationLabel}</h4>
+            <span className={`text-[9px] font-black uppercase tracking-[0.25em] ${customerLight ? 'text-muted-foreground' : 'text-zinc-400'}`}>Weather Readiness</span>
+            <h4 className={`text-sm font-black mt-0.5 tracking-tight ${customerLight ? 'text-foreground' : 'text-white'}`}>{locationLabel}</h4>
           </div>
           {autoFetch ? (
             <button

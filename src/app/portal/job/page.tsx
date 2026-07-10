@@ -103,6 +103,18 @@ export default async function PortalJobPage({ searchParams }: Props) {
     .maybeSingle();
   const row = job as { scheduled_start?: string; service_slug?: string } | null;
 
+  const { data: socialSettings } = await admin
+    .from('site_settings')
+    .select('key, value')
+    .in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']);
+  const socialRows = socialSettings ?? [];
+  const socialLinks = {
+    instagramUrl: String(socialRows.find((r) => r.key === 'social_instagram_url')?.value ?? ''),
+    tiktokUrl: String(socialRows.find((r) => r.key === 'social_tiktok_url')?.value ?? ''),
+    youtubeUrl: String(socialRows.find((r) => r.key === 'social_youtube_url')?.value ?? ''),
+    facebookUrl: String(socialRows.find((r) => r.key === 'social_facebook_url')?.value ?? ''),
+  };
+
   return (
     <PortalJobGateClient
       guestName={loaded.ctx.guestName}
@@ -111,6 +123,7 @@ export default async function PortalJobPage({ searchParams }: Props) {
       service={serviceLabel(str(row?.service_slug))}
       portalPath={portalPath}
       expired={expired}
+      socialLinks={socialLinks}
     />
   );
 }

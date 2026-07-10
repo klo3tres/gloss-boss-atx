@@ -218,3 +218,48 @@ html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-400,
 html[data-theme='light'] .gb-page:not(.gb-dashboard-shell) .text-zinc-300 {
   color: var(--muted-foreground) !important;
 }
+
+/* Standalone luxury / booking / titan surfaces */
+html[data-theme='light'] .gb-luxury-page.gb-marketing-page,
+html[data-theme='light'] .gb-booking-wizard.gb-marketing-page {
+  background: linear-gradient(180deg, #f7f6f3 0%, #ffffff 40%, #f0efec 100%);
+}
+
+html[data-theme='light'] .gb-luxury-page [class*='bg-black'],
+html[data-theme='light'] .gb-luxury-page [class*='bg-zinc-950'],
+html[data-theme='light'] .gb-booking-wizard [class*='bg-black'],
+html[data-theme='light'] .gb-booking-wizard [class*='bg-zinc-950'] {
+  background-color: var(--card) !important;
+}
+
+html[data-theme='light'] .gb-luxury-page .text-white,
+html[data-theme='light'] .gb-booking-wizard .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .gb-luxury-page input,
+html[data-theme='light'] .gb-luxury-page select,
+html[data-theme='light'] .gb-luxury-page textarea,
+html[data-theme='light'] .gb-booking-wizard input,
+html[data-theme='light'] .gb-booking-wizard select,
+html[data-theme='light'] .gb-booking-wizard textarea {
+  background: var(--input) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .titan-platform-shell [class*='bg-black'],
+html[data-theme='light'] .titan-platform-shell [class*='bg-zinc-950'] {
+  background-color: var(--card) !important;
+}
+
+html[data-theme='light'] .titan-platform-shell .text-white {
+  color: var(--foreground) !important;
+}
+
+html[data-theme='light'] .titan-platform-shell .border-white\/5,
+html[data-theme='light'] .titan-platform-shell .border-white\/10,
+html[data-theme='light'] .gb-sticky-book-cta {
+  background: color-mix(in srgb, var(--card) 95%, transparent) !important;
+  border-color: rgba(212, 175, 55, 0.25) !important;
+}

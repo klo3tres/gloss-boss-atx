@@ -16,6 +16,10 @@ import { resolveOrderLedger } from '@/lib/order-ledger';
 import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { fetchPaymentsForJob, fetchUnassignedCustomerPaymentsForDiagnostics } from '@/lib/payments-resolve';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
+import { buildLoyaltyRewardView, countRedeemedLoyaltyRewards, loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
+import { loadDealConfigForBooking } from '@/lib/booking-server-shared';
+import { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
+import type { WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
 import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 
@@ -644,6 +648,140 @@ export default async function TechWorkOrderDetailPage({
     }));
   }
 
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+  const [deals, referralSettings, rewardConfig, membershipPlansRes, activeMembershipRes, offersRes, visitCountRes] =
+    await Promise.all([
+      loadDealConfigForBooking(admin),
+      loadReferralProgramSettings(admin),
+      loadLoyaltyRewardConfig(admin),
+      admin
+        .from('membership_plans')
+        .select('id, name, slug, tier, price_cents, price_monthly_cents, price_yearly_cents, discount_percent, benefits, archived')
+        .eq('archived', false)
+        .order('tier'),
+      row.customer_id
+        ? admin
+            .from('customer_memberships')
+            .select('status, membership_plans(name, tier)')
+            .eq('customer_id', row.customer_id)
+            .in('status', ['active', 'trialing', 'past_due'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      admin
+        .from('offers')
+        .select('id, title, slug, percent_off, discount_percent, discount_fixed_cents, active, archived, ends_at')
+        .eq('active', true)
+        .neq('archived', true)
+        .limit(8),
+      row.customer_id
+        ? admin
+            .from('appointments')
+            .select('id', { count: 'exact', head: true })
+            .eq('customer_id', row.customer_id)
+            .in('status', ['completed', 'closed', 'paid'])
+        : Promise.resolve({ count: 0 }),
+    ]);
+
+  let referralCode = '';
+  let referralLink = '';
+  if (row.customer_id) {
+    try {
+      const codeRes = await ensureCustomerReferralCode(admin, String(row.customer_id));
+      referralCode = codeRes.code;
+      referralLink = referralLinkForCode(codeRes.code);
+    } catch {
+      referralCode = '';
+    }
+  }
+
+  const redeemedRewards = row.customer_id ? await countRedeemedLoyaltyRewards(admin, String(row.customer_id)) : 0;
+  const loyaltyView = buildLoyaltyRewardView(stampsList, redeemedRewards, { rewardThreshold: rewardConfig.rewardThreshold });
+  const loyaltyRewardCredits = creditsList
+    .filter((c) => c.type === 'loyalty_reward' && c.status === 'active' && (c.remaining_cents ?? 0) > 0)
+    .map((c) => ({
+      id: c.id,
+      amountCents: c.amount_cents,
+      remainingCents: c.remaining_cents ?? c.amount_cents,
+      reason: c.reason,
+    }));
+
+  const activeMembershipRow = activeMembershipRes.data as Row | null;
+  const membershipPlanJoin = activeMembershipRow?.membership_plans as Row | { name?: string; tier?: string } | null;
+  const activeMembership = membershipPlanJoin
+    ? {
+        name: str((membershipPlanJoin as Row).name) || 'Member',
+        tier: str((membershipPlanJoin as Row).tier) || 'standard',
+        status: str(activeMembershipRow?.status) || 'active',
+      }
+    : null;
+
+  const onlinePct = deals.websitePromoActive ? Number(deals.websitePromoPercent ?? 0) : 0;
+  const multiPct = Number(deals.multiCarSecondVehicleDiscountPercent ?? 0);
+  const activeOffers = ((offersRes.data ?? []) as Row[])
+    .filter((o) => {
+      if (o.ends_at) {
+        const end = new Date(str(o.ends_at));
+        if (!Number.isNaN(end.getTime()) && end < new Date()) return false;
+      }
+      return true;
+    })
+    .map((o) => {
+      const pct = Number(o.percent_off ?? o.discount_percent ?? 0);
+      const fixed = Number(o.discount_fixed_cents ?? 0);
+      const detail = fixed > 0 ? `$${(fixed / 100).toFixed(0)} off` : pct > 0 ? `${pct}% off` : 'Active offer';
+      return { id: str(o.id), label: str(o.title || o.slug) || 'Offer', detail };
+    });
+
+  const growthData: WorkOrderGrowthData = {
+    customerId: str(row.customer_id) || undefined,
+    guestName,
+    guestPhone,
+    serviceLabel: displayLabel(row.service_slug, 'detail'),
+    vehicleLabel: primaryVehicleLabel,
+    balanceDueCents: pricing.remainingBalanceCents,
+    visitCount: typeof visitCountRes.count === 'number' ? visitCountRes.count : 0,
+    avgTicketCents: pricing.finalTotalCents,
+    membershipPlans: ((membershipPlansRes.data ?? []) as Row[]).map((p) => ({
+      id: str(p.id),
+      name: str(p.name),
+      slug: str(p.slug),
+      tier: str(p.tier),
+      priceMonthlyCents: Number(p.price_monthly_cents ?? p.price_cents ?? 0),
+      priceYearlyCents: Number(p.price_yearly_cents ?? 0),
+      discountPercent: Number(p.discount_percent ?? 0),
+      benefits: Array.isArray(p.benefits) ? p.benefits.map((b) => String(b)) : [],
+    })),
+    activeMembership,
+    referralCode: referralCode || undefined,
+    referralLink: referralLink || undefined,
+    referralEnabled: referralSettings.enabled,
+    referrerRewardLabel:
+      referralSettings.referrerRewardType === 'percent'
+        ? `${referralSettings.referrerRewardValue}% credit`
+        : referralSettings.referrerRewardType === 'dollar'
+          ? `$${referralSettings.referrerRewardValue} credit`
+          : 'Referrer reward',
+    referredRewardLabel:
+      referralSettings.referredRewardType === 'percent'
+        ? `${referralSettings.referredRewardValue}% off first detail`
+        : referralSettings.referredRewardType === 'dollar'
+          ? `$${referralSettings.referredRewardValue} off`
+          : 'New customer reward',
+    loyaltyRewardThreshold: rewardConfig.rewardThreshold,
+    loyaltyRewardDescription: rewardConfig.rewardDescription,
+    loyaltyRewardCents: rewardConfig.rewardCents,
+    loyaltyProgressStamps: loyaltyView.progressStamps,
+    loyaltyClaimableRewards: loyaltyView.claimableRewards,
+    loyaltyRewardCredits,
+    onlineDealLabel: onlinePct > 0 ? `${onlinePct}% off — ${deals.websitePromoLabel}` : undefined,
+    multiCarDealLabel: multiPct > 0 ? `${multiPct}% off additional vehicles` : undefined,
+    activeOffers,
+    bookUrl: `${baseUrl}/book`,
+    membershipsUrl: `${baseUrl}/memberships`,
+  };
+
   const weather = fullAddress
     ? await fetchWeatherForAddress(fullAddress, str(row.scheduled_start) || undefined)
     : { ok: false as const, blocker: 'No address for weather lookup.' };
@@ -941,6 +1079,7 @@ export default async function TechWorkOrderDetailPage({
       at: displayChicago(p.paid_at || p.created_at),
     })),
     receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`,
+    growthData,
   };
 
   return (

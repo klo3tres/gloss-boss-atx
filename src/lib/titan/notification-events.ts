@@ -157,6 +157,15 @@ export async function archiveNotification(admin: SupabaseClient, id: string): Pr
     .eq('id', id);
 }
 
+export async function archiveAllNotifications(admin: SupabaseClient, workspaceKey = 'default'): Promise<void> {
+  const now = new Date().toISOString();
+  await admin
+    .from('titan_notification_events')
+    .update({ archived_at: now, read_at: now })
+    .eq('workspace_key', workspaceKey)
+    .is('archived_at', null);
+}
+
 export async function updateNotificationChannelStatuses(
   admin: SupabaseClient,
   id: string,

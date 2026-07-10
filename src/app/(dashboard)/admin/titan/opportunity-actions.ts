@@ -64,11 +64,53 @@ export async function markOpportunityStatusAction(
   id: string,
   status: RevenueOpportunityStatus,
   notes?: string,
-): Promise<{ ok?: boolean; error?: string }> {
+): Promise<{ ok?: boolean; error?: string; projectId?: string }> {
   const g = await gate();
   if (!g) return { error: 'Unauthorized' };
   const res = await updateOpportunityStatus(g.admin, id, status, notes);
   if (!res.ok) return { error: res.error };
+
+  if (status === 'booked') {
+    const { createProjectFromBookedOpportunity } = await import('@/lib/titan/won-opportunity-project');
+    const project = await createProjectFromBookedOpportunity(g.admin, id);
+    revalidate();
+    revalidatePath('/titan/projects');
+    return { ok: true, projectId: project.projectId };
+  }
+
+  revalidate();
+  return { ok: true };
+}
+
+export async function logOpportunityCallAction(
+  opportunityId: string,
+  outcome?: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+
+  const { data: opp } = await g.admin.from('titan_opportunities').select('contact_phone, author_name, status').eq('id', opportunityId).maybeSingle();
+  if (!opp) return { error: 'Opportunity not found' };
+  const row = opp as Record<string, unknown>;
+  const phone = String(row.contact_phone ?? '').trim();
+  const note = outcome?.trim() || (phone ? `Outbound call to ${phone}` : 'Outbound call logged');
+
+  await g.admin.from('titan_opportunity_events').insert({
+    opportunity_id: opportunityId,
+    event_type: 'call',
+    notes: note,
+    workspace_key: 'default',
+  });
+
+  if (String(row.status) === 'new') {
+    await updateOpportunityStatus(g.admin, opportunityId, 'contacted', 'Call logged');
+  } else {
+    await g.admin
+      .from('titan_opportunities')
+      .update({ last_touched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', opportunityId);
+  }
+
   revalidate();
   return { ok: true };
 }

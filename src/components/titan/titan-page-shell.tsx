@@ -30,16 +30,16 @@ export function TitanPageShell({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="titan-page-hero rounded-3xl border border-gold/20 bg-[radial-gradient(ellipse_at_top_left,rgba(212,175,55,0.14),transparent_55%),rgba(0,0,0,0.72)] p-5 backdrop-blur-xl sm:p-8"
+        className="titan-page-hero gb-premium-hero rounded-3xl border border-gold/20 p-5 backdrop-blur-xl sm:p-8"
       >
         <SectionEyebrow>Titan</SectionEyebrow>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">{title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">{sentence}</p>
-        <div className="mt-6 flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-end sm:justify-between">
+        <h1 className="mt-2 text-2xl font-black tracking-tight text-foreground sm:text-3xl">{title}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">{sentence}</p>
+        <div className="mt-6 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Primary focus</p>
-            <div className="mt-1 text-3xl font-black tabular-nums text-white sm:text-4xl">{kpi}</div>
-            {kpiHint ? <p className="mt-1 text-xs text-zinc-500">{kpiHint}</p> : null}
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Primary focus</p>
+            <div className="mt-1 text-3xl font-black tabular-nums text-foreground sm:text-4xl">{kpi}</div>
+            {kpiHint ? <p className="mt-1 text-xs text-muted-foreground">{kpiHint}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {primaryAction}

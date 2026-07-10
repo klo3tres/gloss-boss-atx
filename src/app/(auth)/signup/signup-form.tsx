@@ -160,11 +160,11 @@ export default function SignupForm() {
 
         <form
           onSubmit={handleSignup}
-          className={`relative z-[20] w-full max-w-md rounded-2xl border border-gold/20 bg-zinc-950 p-6 transition-opacity ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
+          className={`relative z-[20] w-full max-w-md rounded-2xl border border-gold/20 bg-card p-6 shadow-lg transition-opacity ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
         >
           <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Gloss Boss ATX</p>
           <h1 className="mt-3 text-3xl font-black uppercase">Create Account</h1>
-          <p className="mt-2 text-sm text-zinc-400">Link your booking and view appointments, photos, and rewards.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Link your booking and view appointments, photos, and rewards.</p>
           {!envReady ? (
             <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
               Auth is in setup mode. Add Supabase env keys to activate account creation.
@@ -173,26 +173,26 @@ export default function SignupForm() {
 
           <div className="mt-6 space-y-4">
             <label className="block text-sm">
-              <span className="mb-2 block text-zinc-300">Full name</span>
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-black px-4 py-3" required />
+              <span className="mb-2 block text-muted-foreground">Full name</span>
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
             </label>
             <label className="block text-sm">
-              <span className="mb-2 block text-zinc-300">Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-black px-4 py-3" required />
+              <span className="mb-2 block text-muted-foreground">Email</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
             </label>
             <label className="block text-sm">
-              <span className="mb-2 block text-zinc-300">Password</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-black px-4 py-3" required />
+              <span className="mb-2 block text-muted-foreground">Password</span>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
             </label>
-            <fieldset className="rounded-xl border border-white/10 bg-black/35 p-4 text-sm">
+            <fieldset className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
               <legend className="px-1 text-xs font-black uppercase tracking-wider text-gold-soft">Optional SMS updates</legend>
-              <p className="text-xs leading-relaxed text-zinc-400">{SMS_CONSENT_COPY}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{SMS_CONSENT_COPY}</p>
               <div className="mt-3 grid gap-2">
-                <label className="rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300">
+                <label className="rounded-lg border border-border px-3 py-3 text-xs font-semibold text-foreground">
                   <input type="radio" name="smsConsent" checked={smsConsent} onChange={() => setSmsConsent(true)} className="mr-2 accent-[var(--gold)]" />
                   Yes, I agree to receive SMS updates.
                 </label>
-                <label className="rounded-lg border border-white/10 px-3 py-3 text-xs font-semibold text-zinc-300">
+                <label className="rounded-lg border border-border px-3 py-3 text-xs font-semibold text-foreground">
                   <input type="radio" name="smsConsent" checked={!smsConsent} onChange={() => setSmsConsent(false)} className="mr-2 accent-[var(--gold)]" />
                   No, do not send me SMS updates.
                 </label>

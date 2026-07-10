@@ -9,6 +9,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { GlassCard, PremiumBadge, SectionEyebrow, CollapsibleSection } from '@/components/ui/premium';
 import { ReportPrintButton } from '@/components/admin/report-print-button';
 import { Calendar, Download, Eye, TrendingUp, DollarSign, Clock, FileSpreadsheet, ArrowLeft, ArrowUpRight, ShieldAlert, Percent, Activity } from 'lucide-react';
+import { loadExtendedReportMetrics } from '@/lib/reports-extended-metrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,7 @@ export default async function ReportsPage({
   const fromIso = new Date(`${from}T00:00:00`).toISOString();
   const toIso = new Date(`${to}T23:59:59`).toISOString();
   const summary = await getFinancialSnapshot(admin, { startDate: fromIso, endDate: toIso, includeTest });
+  const extended = await loadExtendedReportMetrics(admin, { startIso: fromIso, endIso: toIso });
 
   const [reportOutstanding, reportIssued, reportRedeemed, reportExpired, reportVoided] = await Promise.all([
     admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
@@ -99,6 +101,26 @@ export default async function ReportsPage({
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
               <p className="mt-2 text-xl font-black text-white">{value}</p>
               <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-card p-6">
+        <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Growth & retention metrics</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Avg ticket', extended.avgTicketLabel],
+            ['Customer LTV (avg)', extended.customerLtvLabel],
+            ['Referral conversion', `${extended.referralConversionRate}%`],
+            ['Membership MRR', extended.membershipMrrLabel],
+            ['Fleet pipeline', extended.fleetPipelineLabel],
+            ['Open upsell opps', String(extended.upsellOpportunityCount)],
+            ['Referral rewards', extended.referralRevenueLabel],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-2xl border border-border bg-muted/20 p-4">
+              <p className="text-[10px] font-black uppercase text-muted-foreground">{label}</p>
+              <p className="mt-2 text-xl font-black text-foreground">{value}</p>
             </div>
           ))}
         </div>

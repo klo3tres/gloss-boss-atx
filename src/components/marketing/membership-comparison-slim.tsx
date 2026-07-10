@@ -46,7 +46,8 @@ export function MembershipComparisonSlim({ className = '' }: { className?: strin
       <div className="grid gap-3 sm:grid-cols-3">
         {plans.map((plan) => {
           const meta = tierMetaForPlan(plan);
-          const monthly = plan.price_monthly_cents || plan.price_cents || 0;
+          const yearly =
+            plan.price_yearly_cents || meta?.yearlyAnchorCents || (plan.price_monthly_cents || plan.price_cents || 0) * 12;
           const isGold = plan.tier.toLowerCase().includes('gold');
           return (
             <article
@@ -64,8 +65,8 @@ export function MembershipComparisonSlim({ className = '' }: { className?: strin
               <h3 className="mt-1 text-sm font-black text-white">{plan.name}</h3>
               {meta ? <p className="mt-1 text-[10px] leading-snug text-zinc-500 line-clamp-2">{meta.bestFor}</p> : null}
               <p className="mt-3 font-mono text-xl font-black text-white">
-                ${(monthly / 100).toFixed(0)}
-                <span className="text-[10px] font-bold text-zinc-500">/mo</span>
+                ${(yearly / 100).toFixed(0)}
+                <span className="text-[10px] font-bold text-zinc-500">/yr</span>
               </p>
               <ul className="mt-3 space-y-1.5 text-[10px] text-zinc-400">
                 <li className="flex items-center gap-1.5">

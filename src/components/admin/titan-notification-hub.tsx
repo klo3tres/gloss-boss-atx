@@ -8,6 +8,7 @@ import type { TitanNotificationEvent } from '@/lib/titan/notification-events';
 import { groupNotificationsByDay, mapTitanNotificationRow } from '@/lib/titan/notification-events';
 import {
   archiveNotificationAction,
+  archiveAllNotificationsAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
 } from '@/app/(dashboard)/admin/notifications/titan-notification-actions';
@@ -46,11 +47,11 @@ function priorityChip(priority: string) {
 
 function NotificationCard({
   evt,
-  onRead,
+  onOpen,
   onArchive,
 }: {
   evt: TitanNotificationEvent;
-  onRead: (id: string) => void;
+  onOpen: (evt: TitanNotificationEvent) => void;
   onArchive: (id: string) => void;
 }) {
   const unread = !evt.readAt;
@@ -65,8 +66,8 @@ function NotificationCard({
       onMouseLeave={() => setHover(false)}
       className={`group relative overflow-hidden rounded-2xl border p-4 backdrop-blur-xl transition ${
         unread
-          ? 'border-gold/30 bg-gradient-to-br from-gold/10 via-black/60 to-black/80 shadow-[0_0_24px_rgba(212,175,55,0.12)]'
-          : 'border-white/8 bg-black/45 opacity-90'
+          ? 'border-gold/30 bg-gradient-to-br from-gold/10 via-card to-card shadow-sm'
+          : 'border-border bg-card/80 opacity-95'
       }`}
     >
       {unread ? (
@@ -85,13 +86,10 @@ function NotificationCard({
       <button
         type="button"
         className="mt-2 w-full text-left"
-        onClick={() => {
-          onRead(evt.id);
-          if (evt.relatedUrl) window.location.href = evt.relatedUrl;
-        }}
+        onClick={() => onOpen(evt)}
       >
-        <h3 className="text-sm font-black text-white">{evt.title}</h3>
-        <p className={`mt-1 text-xs leading-relaxed text-zinc-400 ${hover ? '' : 'line-clamp-2'}`}>{evt.body}</p>
+        <h3 className="text-sm font-black text-foreground">{evt.title}</h3>
+        <p className={`mt-1 text-xs leading-relaxed text-muted-foreground ${hover ? '' : 'line-clamp-2'}`}>{evt.body}</p>
       </button>
 
       <AnimatePresence>
@@ -134,14 +132,14 @@ function NotificationCard({
   );
 }
 
-function Section({ title, events, onRead, onArchive }: { title: string; events: TitanNotificationEvent[]; onRead: (id: string) => void; onArchive: (id: string) => void }) {
+function Section({ title, events, onOpen, onArchive }: { title: string; events: TitanNotificationEvent[]; onOpen: (evt: TitanNotificationEvent) => void; onArchive: (id: string) => void }) {
   if (events.length === 0) return null;
   return (
     <section className="space-y-3">
-      <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">{title}</h2>
+      <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{title}</h2>
       <div className="space-y-3">
         {events.map((evt) => (
-          <NotificationCard key={evt.id} evt={evt} onRead={onRead} onArchive={onArchive} />
+          <NotificationCard key={evt.id} evt={evt} onOpen={onOpen} onArchive={onArchive} />
         ))}
       </div>
     </section>
@@ -167,6 +165,7 @@ export function TitanNotificationHub({
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [live, setLive] = useState(false);
+  const [detail, setDetail] = useState<TitanNotificationEvent | null>(null);
 
   useEffect(() => {
     setEvents(initialEvents);
@@ -231,6 +230,11 @@ export function TitanNotificationHub({
     });
   };
 
+  const openDetail = (evt: TitanNotificationEvent) => {
+    markRead(evt.id);
+    setDetail(evt);
+  };
+
   const archive = (id: string) => {
     setEvents((prev) => prev.filter((e) => e.id !== id));
     startTransition(async () => {
@@ -273,6 +277,22 @@ export function TitanNotificationHub({
           >
             ← Briefing
           </Link>
+          <button
+            type="button"
+            disabled={pending || events.length === 0}
+            onClick={() => {
+              startTransition(async () => {
+                await archiveAllNotificationsAction();
+                setEvents([]);
+                setUnread(0);
+                setDetail(null);
+                toast.info('Archived', 'All notifications archived.');
+              });
+            }}
+            className="inline-flex items-center gap-1 rounded-xl border border-border px-4 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-40"
+          >
+            <Archive className="h-3.5 w-3.5" /> Archive all
+          </button>
           <button
             type="button"
             disabled={pending || unread === 0}
@@ -351,11 +371,63 @@ export function TitanNotificationHub({
         </div>
       ) : (
         <div className="space-y-8">
-          <Section title="Today" events={grouped.today} onRead={markRead} onArchive={archive} />
-          <Section title="Yesterday" events={grouped.yesterday} onRead={markRead} onArchive={archive} />
-          <Section title="Earlier" events={grouped.older} onRead={markRead} onArchive={archive} />
+          <Section title="Today" events={grouped.today} onOpen={openDetail} onArchive={archive} />
+          <Section title="Yesterday" events={grouped.yesterday} onOpen={openDetail} onArchive={archive} />
+          <Section title="Earlier" events={grouped.older} onOpen={openDetail} onArchive={archive} />
         </div>
       )}
+
+      <AnimatePresence>
+        {detail ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+            onClick={() => setDetail(null)}
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl"
+            >
+              <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">{detail.source ?? 'Activity'}</p>
+              <h2 className="mt-2 text-lg font-black text-foreground">{detail.title}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{detail.body}</p>
+              <p className="mt-2 text-[10px] text-muted-foreground/70">{new Date(detail.createdAt).toLocaleString()}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {detail.relatedUrl ? (
+                  <Link
+                    href={detail.relatedUrl}
+                    className="inline-flex items-center gap-1 rounded-xl bg-gold px-4 py-2 text-[10px] font-black uppercase text-black"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Open
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    archive(detail.id);
+                    setDetail(null);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-xl border border-border px-4 py-2 text-[10px] font-black uppercase text-muted-foreground"
+                >
+                  <Archive className="h-3.5 w-3.5" /> Archive
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="rounded-xl border border-border px-4 py-2 text-[10px] font-black uppercase text-muted-foreground"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { GlobalAppNav } from '@/components/dashboard/global-app-nav';
+import { AdminCommandPalette } from '@/components/admin/admin-command-palette';
 import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-debug-footer';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 import { NotificationBellDropdown } from '@/components/admin/notification-bell-dropdown';
@@ -74,7 +75,8 @@ const adminNavGroups: NavGroup[] = [
     links: [
       { href: '/admin/revenue', label: 'Revenue' },
       { href: '/admin/reports', label: 'Reports' },
-      { href: '/admin/payments', label: 'Payments / receipts' },
+      { href: '/admin/payments', label: 'Payments' },
+      { href: '/admin/receipts', label: 'Receipts' },
     ],
   },
   {
@@ -83,6 +85,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/cms', label: 'Website content' },
       { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/promotions', label: 'Promotions' },
+      { href: '/admin/marketing', label: 'Campaigns' },
       { href: '/admin/referrals', label: 'Referrals' },
       { href: '/admin/fleet', label: 'Fleet growth' },
     ],
@@ -537,7 +540,10 @@ export function DashboardShell({
             
             <div className="flex shrink-0 items-center gap-2">
               {navRole === 'admin' || navRole === 'super_admin' ? (
-                <NotificationBellDropdown className="mt-1" />
+                <>
+                  <AdminCommandPalette enabled />
+                  <NotificationBellDropdown className="mt-1" />
+                </>
               ) : (
               <button
                 type="button"
@@ -570,7 +576,10 @@ export function DashboardShell({
           ) : (
             <div className="gb-no-print flex items-center justify-end gap-2">
               {navRole === 'admin' || navRole === 'super_admin' ? (
-                <NotificationBellDropdown />
+                <>
+                  <AdminCommandPalette enabled />
+                  <NotificationBellDropdown />
+                </>
               ) : (
               <button
                 type="button"

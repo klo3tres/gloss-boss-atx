@@ -36,6 +36,17 @@ export function MembershipComparisonTable({
 }) {
   const rows: Row[] = [
     {
+      label: 'Annual price',
+      render: (p, meta) => {
+        const yearly = p.price_yearly_cents || meta?.yearlyAnchorCents || 0;
+        return (
+          <span className="font-mono font-black text-white">
+            {yearly > 0 ? `$${(yearly / 100).toFixed(0)}/yr` : '—'}
+          </span>
+        );
+      },
+    },
+    {
       label: 'Best for',
       render: (_p, meta) => <span className="text-[11px] leading-relaxed text-zinc-400">{meta?.bestFor ?? '—'}</span>,
     },

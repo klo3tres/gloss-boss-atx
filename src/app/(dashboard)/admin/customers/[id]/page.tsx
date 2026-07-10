@@ -14,7 +14,10 @@ import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { CustomerProfileTabs } from '@/components/admin/customer-profile-tabs';
 import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
 import { CustomerTimelineFeed } from '@/components/admin/customer-timeline-feed';
+import { CustomerIntelligencePanel } from '@/components/admin/customer-intelligence-panel';
 import { loadCustomerTimeline } from '@/lib/customer-timeline';
+import { loadCustomerIntelligence } from '@/lib/titan/customer-intelligence';
+import { loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
 import { 
   Mail, 
   Phone, 
@@ -159,10 +162,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     .order('created_at', { ascending: false });
 
   const stamps = (stampsData ?? []) as Array<{ id: string; stamp_count: number; reason: string | null; note?: string | null; created_at: string; appointment_id?: string | null; voided?: boolean | null; voided_at?: string | null; voided_by?: string | null; source?: string | null; admin_id?: string | null; technician_id?: string | null }>;
-  const loyaltyStatus = calculateLoyaltyStatus(stamps);
+  const rewardConfig = await loadLoyaltyRewardConfig(admin);
+  const loyaltyStatus = calculateLoyaltyStatus(stamps, { rewardThreshold: rewardConfig.rewardThreshold });
   const stampsTotal = loyaltyStatus.totalStamps;
   const currentPunchCardStamps = loyaltyStatus.progressStamps;
   const isRewardReady = loyaltyStatus.rewardReady;
+  const punchSlots = rewardConfig.rewardThreshold;
 
   const [servicesRes, pricesRes] = await Promise.all([
     admin.from('services').select('slug, title, duration_minutes').eq('active', true).order('sort_order'),
@@ -260,6 +265,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     phone: String(c.phone ?? ''),
     full_name: String(c.full_name ?? ''),
   });
+  const customerIntel = await loadCustomerIntelligence(admin, id, c as Record<string, unknown>);
 
   const noteForm = (
     <form action={addCustomerNoteAction} className="space-y-3 rounded-2xl border border-white/5 bg-black/40 p-4">
@@ -437,6 +443,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
         </section>
 
+        <CustomerIntelligencePanel intel={customerIntel} />
+
         <CustomerTimelineFeed events={timelineBundle.events} noteForm={noteForm} />
 
         {/* Management tabs — timeline above is the primary customer story */}
@@ -531,12 +539,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                     <div className="grid gap-6 lg:grid-cols-2">
                       <div className="space-y-4">
                         <p className="text-xs text-zinc-400">
-                          The customer currently has <strong className="text-white">{currentPunchCardStamps} / 5 stamps</strong> on their active punch card.
+                          The customer currently has <strong className="text-white">{currentPunchCardStamps} / {punchSlots} stamps</strong> on their active punch card.
+                          {rewardConfig.rewardDescription ? (
+                            <span className="block mt-1 text-zinc-500">Reward: {rewardConfig.rewardDescription}</span>
+                          ) : null}
                         </p>
 
                         {/* Punch Grid Visual */}
                         <div className="flex gap-2.5 pt-1">
-                          {[1, 2, 3, 4, 5].map((i) => {
+                          {[...Array(punchSlots)].map((_, idx) => {
+                            const i = idx + 1;
                             const isStamped = currentPunchCardStamps >= i;
                             return (
                               <div

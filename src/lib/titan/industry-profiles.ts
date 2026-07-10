@@ -6,6 +6,8 @@ export type TitanIntegrationType =
   | 'website_forms'
   | 'resend'
   | 'meta'
+  | 'quickbooks'
+  | 'zapier'
   | 'other';
 
 export type IntegrationCardModel = {
@@ -59,6 +61,30 @@ export const TITAN_INTEGRATION_CATALOG: IntegrationCardModel[] = [
     description: 'Transactional and marketing email delivery.',
     permissions: ['email:send'],
     docsHint: 'Uses RESEND_API_KEY at platform level today.',
+  },
+  {
+    type: 'quickbooks',
+    label: 'QuickBooks Online',
+    description: 'Sync invoices, payments, and customers to QuickBooks.',
+    permissions: ['accounting.read', 'accounting.write'],
+    docsHint: 'Connect your Intuit developer app — OAuth handshake stores tokens per business. Sync exports paid appointments.',
+    connectPath: '/titan/connect?connect=quickbooks',
+  },
+  {
+    type: 'zapier',
+    label: 'Zapier',
+    description: 'Trigger Zaps when leads book, pay, or opportunities update.',
+    permissions: ['webhooks:write'],
+    docsHint: 'Use your Titan API key + webhook URL in Zapier. Copy from API Keys and paste into a Zapier Catch Hook trigger.',
+    connectPath: '/titan/api-keys',
+  },
+  {
+    type: 'meta',
+    label: 'Meta (Facebook / Instagram)',
+    description: 'Lead ads, page insights, and DM handoff into Titan opportunities.',
+    permissions: ['pages_manage_metadata', 'leads_retrieval', 'instagram_basic'],
+    docsHint: 'Meta Business verification required. Connect to import ad leads into Lead Radar automatically.',
+    connectPath: '/titan/connect?connect=meta',
   },
 ];
 

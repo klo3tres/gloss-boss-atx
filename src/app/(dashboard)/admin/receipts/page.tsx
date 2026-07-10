@@ -149,7 +149,8 @@ export default async function AdminReceiptsPage() {
           {rows.map((r) => {
             const receipt = (r.receipt && typeof r.receipt === 'object' ? r.receipt : {}) as Row;
             const customer = (r.customer && typeof r.customer === 'object' ? r.customer : {}) as Row;
-            const id = str(receipt.id || r.payment_id || r.id);
+            const workOrderId = str(r.appointment_id || r.fallback_booking_id);
+            const id = str(receipt.id || r.payment_id || workOrderId || r.id);
             const receiptNumber = str(receipt.receipt_number) || `RCPT-${id.slice(0, 8).toUpperCase()}`;
             const statusText = str(receipt.status || r.status || (Number(r.balance_due_cents ?? 0) > 0 ? 'Balance due' : 'Draft'));
             const customerName = str(r.guest_name || customer.full_name || r.customer_name) || 'Customer';
@@ -207,14 +208,18 @@ export default async function AdminReceiptsPage() {
                       sentStatus: str(receipt.sent_status || receipt.last_send_status),
                       lineItems,
                       discounts: str(receipt.discount_label || r.promo_code),
-                      pdfHref: `/api/receipts/${encodeURIComponent(id)}/pdf`,
+                      pdfHref: `/api/receipts/${encodeURIComponent(id)}/pdf${workOrderId && !str(receipt.id) && !str(r.payment_id) ? (str(r.fallback_booking_id) ? '?source=fallback' : '?source=appointment') : ''}`,
                       receiptHref: `/admin/receipts/${encodeURIComponent(id)}`,
                       paymentHref: str(r.payment_id) ? `/admin/payments/${str(r.payment_id)}` : undefined,
                     }}
                   />
                   <Link href={`/admin/receipts/${encodeURIComponent(id)}`} className='rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Open Receipt</Link>
                   {str(r.payment_id) ? <Link href={`/admin/payments/${str(r.payment_id)}`} className='rounded-xl border border-white/15 px-4 py-2 text-xs font-black uppercase text-zinc-300'>Payment</Link> : null}
-                  <ReceiptSendForm receiptId={str(receipt.id) || undefined} paymentId={str(r.payment_id) || undefined} />
+                  <ReceiptSendForm
+                    receiptId={str(receipt.id) || undefined}
+                    paymentId={str(r.payment_id) || undefined}
+                    workOrderId={workOrderId || undefined}
+                  />
                   <form action={updateReceiptRevenueFlagsAction} className='flex flex-wrap gap-2'>
                     <input type='hidden' name='receiptId' value={str(receipt.id)} />
                     <input type='hidden' name='paymentId' value={str(r.payment_id)} />

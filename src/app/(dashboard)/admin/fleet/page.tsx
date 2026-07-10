@@ -6,6 +6,8 @@ import { DEFAULT_FLEET_PRICING, parseFleetPricing } from '@/lib/fleet-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { setFleetPricingAction, setFleetServicesSettingAction } from '../operations/fleet-actions';
 import { FleetInboxClient } from '@/components/admin/fleet-inbox-client';
+import { FleetContractsPanel } from '@/components/admin/fleet-contracts-panel';
+import { loadFleetContracts } from '@/lib/business-modules';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +60,7 @@ export default async function AdminFleetPage() {
 
   const profiles = (profilesRes.data ?? []) as ProfileRow[];
   const technicians = profiles.filter((p) => p.role === 'technician' || p.role === 'admin' || p.role === 'super_admin');
+  const fleetContracts = await loadFleetContracts(admin);
 
   async function savePricing(formData: FormData) {
     'use server';
@@ -76,6 +79,19 @@ export default async function AdminFleetPage() {
           Fleet inquiries could not load: {inquiriesRes.error.message}.
         </p>
       ) : null}
+
+      <div className="mb-6 flex flex-wrap gap-3">
+        <a
+          href="/admin/fleet/scanner"
+          className="inline-flex rounded-xl border border-gold/30 bg-gold/10 px-4 py-2.5 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/15"
+        >
+          Open Fleet Scanner
+        </a>
+      </div>
+
+      <div className="mb-6">
+        <FleetContractsPanel initialContracts={fleetContracts} />
+      </div>
 
       <FleetInboxClient
         initialInquiries={inquiries}

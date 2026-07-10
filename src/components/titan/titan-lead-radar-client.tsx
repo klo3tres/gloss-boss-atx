@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Copy, ExternalLink, Plus, Radar } from 'lucide-react';
+import { Copy, ExternalLink, MapPin, Mail, Phone, Plus, Radar } from 'lucide-react';
 import type { LeadRadarItem, LeadRadarSummary } from '@/lib/titan/lead-radar-engine';
 import type { HuntCategory, HuntSource, LeadPlaybook } from '@/lib/titan/lead-radar-hunt';
 import { Titan24HourHunt } from '@/components/titan/titan-24-hour-hunt';
@@ -55,9 +55,13 @@ function LeadCard({ item }: { item: LeadRadarItem }) {
   };
 
   const profileUrl = item.authorProfileUrl || item.sourceUrl;
+  const mapsUrl = item.locationText
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.locationText)}`
+    : null;
+  const isFleet = /fleet|dealership|apartment|hoa|commercial|google_places/i.test(`${item.sourceType} ${item.detectedIntent}`);
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-black/45 p-5">
+    <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase text-cyan-300">{SOURCE_TYPE_LABELS[item.sourceType] ?? item.sourceType}</p>
@@ -72,11 +76,34 @@ function LeadCard({ item }: { item: LeadRadarItem }) {
 
       <p className="mt-3 line-clamp-4 text-xs text-zinc-300">{item.rawText}</p>
 
-      <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100">
-        <span className="font-black uppercase text-cyan-300">Why flagged: </span>{item.whyTitanFlagged}
+      <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-foreground">
+        <span className="font-black uppercase text-cyan-600 dark:text-cyan-300">Why flagged: </span>{item.whyTitanFlagged}
       </p>
 
-      <p className="mt-3 rounded-xl border border-white/6 bg-white/5 p-3 text-xs italic text-zinc-300">{item.recommendedReply}</p>
+      <dl className="mt-3 grid gap-1.5 text-xs text-muted-foreground">
+        {item.sourceName ? (
+          <div className="flex gap-2"><dt className="shrink-0 font-bold text-foreground/70">Company</dt><dd>{item.sourceName}</dd></div>
+        ) : null}
+        {item.contactName ? (
+          <div className="flex gap-2"><dt className="shrink-0 font-bold text-foreground/70">Contact</dt><dd>{item.contactName}</dd></div>
+        ) : null}
+        {item.phone ? (
+          <div className="flex gap-2 items-center"><dt className="shrink-0 font-bold text-foreground/70">Phone</dt><dd><a href={`tel:${item.phone}`} className="text-emerald-600 hover:underline inline-flex items-center gap-1"><Phone className="h-3 w-3" />{item.phone}</a></dd></div>
+        ) : null}
+        {item.email ? (
+          <div className="flex gap-2 items-center"><dt className="shrink-0 font-bold text-foreground/70">Email</dt><dd><a href={`mailto:${item.email}`} className="text-emerald-600 hover:underline inline-flex items-center gap-1"><Mail className="h-3 w-3" />{item.email}</a></dd></div>
+        ) : null}
+        {mapsUrl ? (
+          <div className="flex gap-2 items-center"><dt className="shrink-0 font-bold text-foreground/70">Maps</dt><dd><a href={mapsUrl} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{item.locationText}</a></dd></div>
+        ) : item.locationText ? (
+          <div className="flex gap-2"><dt className="shrink-0 font-bold text-foreground/70">Location</dt><dd>{item.locationText}</dd></div>
+        ) : null}
+        {isFleet ? (
+          <div className="flex gap-2"><dt className="shrink-0 font-bold text-foreground/70">Titan research</dt><dd>High-value B2B prospect — use fleet quote wizard after convert.</dd></div>
+        ) : null}
+      </dl>
+
+      <p className="mt-3 rounded-xl border border-border bg-muted/30 p-3 text-xs italic text-foreground">{item.recommendedReply}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={() => { void navigator.clipboard.writeText(item.recommendedReply); setMsg('Reply copied.'); }} className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">

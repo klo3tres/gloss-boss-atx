@@ -7,6 +7,10 @@ import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import { loadLeadRadarItems } from '@/lib/titan/lead-radar-engine';
 import { resolveGoogleReviewUrl } from '@/lib/site-defaults';
 import { workOrderPath } from '@/lib/work-order-links';
+import { buildContextualMessage } from '@/lib/titan/contextual-messages';
+import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
+import { buildTrackedBalancePayUrl } from '@/lib/payment-link-tracking';
+import { recommendMembershipTier } from '@/lib/membership-roi';
 
 export type DailyActionType =
   | 'follow_up'
@@ -79,7 +83,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         .limit(5),
       admin
         .from('appointments')
-        .select('id, guest_name, guest_phone, guest_email, balance_due_cents')
+        .select('id, guest_name, guest_phone, guest_email, balance_due_cents, access_token, vehicle_description')
         .gt('balance_due_cents', 0)
         .not('status', 'eq', 'cancelled')
         .order('scheduled_start', { ascending: false })
@@ -141,7 +145,12 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       reason: 'Completed detail with no review request sent yet.',
       confidence: 88,
       confidenceLabel: 'Post-service reviews convert well',
-      messageScript: `Gloss Boss ATX — Thanks ${name}! We'd love your Google review: ${reviewUrl}`,
+      messageScript: buildContextualMessage('review', {
+        customerName: name,
+        vehicle: str(appt.vehicle_description) || null,
+        service: str(appt.service_slug) || null,
+        reviewUrl,
+      }),
       contactPhone: str(appt.guest_phone) || null,
       contactEmail: str(appt.guest_email) || null,
       entityType: 'appointment',
@@ -152,11 +161,23 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   }
 
   const unpaid = unpaidJobs.data ?? [];
+  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
   for (const job of unpaid) {
     const balance = Number(job.balance_due_cents ?? 0);
     const name = str(job.guest_name) || 'Customer';
     const phone = str(job.guest_phone) || null;
     const email = str(job.guest_email) || null;
+    const apptId = str(job.id);
+    const accessToken = str((job as { access_token?: string }).access_token);
+    let paymentUrl: string | null = null;
+    try {
+      const checkout = await createCustomerFinalBalanceCheckoutSession({ admin, appointmentId: apptId, origin });
+      if (checkout.ok && 'url' in checkout && checkout.url) {
+        paymentUrl = accessToken ? buildTrackedBalancePayUrl(origin, apptId, accessToken) : checkout.url;
+      }
+    } catch {
+      /* stripe optional */
+    }
     drafts.push({
       actionKey: `balance-${job.id}`,
       actionType: 'balance',
@@ -164,15 +185,22 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       involvedNames: name,
       expectedValueCents: balance,
       expectedValueLabel: valueLabel(balance),
-      reason: 'Outstanding balance blocks clean books and cash flow.',
-      confidence: 91,
-      confidenceLabel: 'Direct payment recovery',
-      messageScript: `Hi ${name} — Gloss Boss ATX balance of ${displayMoney(balance)} is due. Reply when ready. Thank you!`,
+      reason: paymentUrl
+        ? 'Stripe pay link ready — one tap to collect.'
+        : 'Outstanding balance blocks clean books and cash flow.',
+      confidence: paymentUrl ? 95 : 91,
+      confidenceLabel: paymentUrl ? 'Secure payment link generated' : 'Direct payment recovery',
+      messageScript: buildContextualMessage('balance', {
+        customerName: name,
+        balanceCents: balance,
+        paymentUrl,
+        vehicle: str((job as { vehicle_description?: string }).vehicle_description) || null,
+      }),
       contactPhone: phone,
       contactEmail: email,
       entityType: 'appointment',
-      entityId: str(job.id),
-      href: workOrderPath(str(job.id), { source: 'appointment', shell: 'admin' }),
+      entityId: apptId,
+      href: workOrderPath(apptId, { source: 'appointment', shell: 'admin' }),
       canSend: Boolean(phone || email),
       sendBlocker: !phone && !email ? 'No phone or email on file.' : !phone ? 'SMS unavailable — email only.' : undefined,
     });
@@ -252,21 +280,44 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   const members = membershipCandidates.data ?? [];
   if (members.length > 0) {
     const first = members[0]!;
+    const memberName = str(first.full_name) || 'Repeat client';
+    const { data: memberAppts } = await admin
+      .from('appointments')
+      .select('base_price_cents, completed_at, vehicle_description')
+      .eq('customer_id', str(first.id))
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .limit(12);
+    const completedMember = memberAppts ?? [];
+    const visitCount = completedMember.length;
+    const avgTicket =
+      visitCount > 0
+        ? Math.round(completedMember.reduce((s, a) => s + (Number(a.base_price_cents) || 0), 0) / visitCount)
+        : avgJobCents;
+    const roi = recommendMembershipTier(Math.max(visitCount, 2), avgTicket / 100);
     drafts.push({
       actionKey: `membership-${first.id}`,
       actionType: 'membership',
-      title: `Membership upsell — ${str(first.full_name) || 'Repeat client'}`,
+      title: `Membership upsell — ${memberName}`,
       involvedNames: members
         .map((m) => str(m.full_name))
         .filter(Boolean)
         .slice(0, 3)
         .join(', '),
-      expectedValueCents: Math.round(avgJobCents * 0.15 * 4),
-      expectedValueLabel: 'Recurring care + priority',
-      reason: 'Multiple visits without a membership plan.',
-      confidence: 65,
-      confidenceLabel: 'Repeat visit pattern',
-      messageScript: `Hi ${str(first.full_name) || 'there'} — Gloss Boss memberships save on every detail. ${bookUrl.replace('/book', '/memberships')}`,
+      expectedValueCents: Math.round(roi.best.netSavings * 100) || Math.round(avgJobCents * 0.15 * 4),
+      expectedValueLabel: `Recommend ${roi.best.meta.tier.toUpperCase()}`,
+      reason: roi.explanation,
+      confidence: Math.min(95, 60 + visitCount * 8),
+      confidenceLabel: `${visitCount} visits · avg ${displayMoney(avgTicket)}`,
+      messageScript: buildContextualMessage('membership', {
+        customerName: memberName,
+        vehicle: str(completedMember[0]?.vehicle_description) || null,
+        visitCount,
+        avgTicketCents: avgTicket,
+        recommendedTier: roi.best.meta.tier.toUpperCase(),
+        projectedAnnualSavingsCents: Math.max(0, Math.round(roi.best.netSavings * 100)),
+        bookUrl: bookUrl.replace('/book', '/memberships'),
+      }),
       contactPhone: str(first.phone) || null,
       contactEmail: str(first.email) || null,
       entityType: 'customer',

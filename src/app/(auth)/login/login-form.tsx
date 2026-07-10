@@ -214,15 +214,15 @@ export default function LoginForm() {
 
       <form
         onSubmit={handleLogin}
-        className={`relative z-[20] w-full max-w-md rounded-3xl border border-gold/15 bg-black/85 p-8 shadow-[0_0_50px_rgba(212,175,55,0.15)] backdrop-blur-xl gb-premium-card transition-opacity duration-300 ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
+        className={`relative z-[20] w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-lg gb-premium-card transition-opacity duration-300 ${phase === 'finishing' ? 'opacity-40' : 'opacity-100'}`}
       >
         <div className="flex flex-col items-center mb-6">
           <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-16 w-auto object-contain filter brightness-110 mb-4" />
           <p className='text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft'>{brand.businessDisplayName}</p>
         </div>
 
-        <h1 className='text-2xl font-black uppercase tracking-tight text-white text-center'>Portal Sign In</h1>
-        <p className='mt-2 text-xs text-zinc-400 text-center leading-relaxed'>
+        <h1 className='text-2xl font-black uppercase tracking-tight text-foreground text-center'>Portal Sign In</h1>
+        <p className='mt-2 text-xs text-muted-foreground text-center leading-relaxed'>
           Secure workspace access for clients, technicians, and administrators.
         </p>
 
@@ -233,23 +233,23 @@ export default function LoginForm() {
         ) : null}
 
         <div className='mt-6 space-y-4'>
-          <label className='block text-xs font-bold uppercase text-zinc-400'>
+          <label className='block text-xs font-bold uppercase text-muted-foreground'>
             <span className='mb-2 block'>Email Address</span>
             <input
               type='email'
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className='gb-input bg-black/40 border-white/10 focus:border-gold transition'
+              className='gb-input'
               required
             />
           </label>
-          <label className='block text-xs font-bold uppercase text-zinc-400'>
+          <label className='block text-xs font-bold uppercase text-muted-foreground'>
             <span className='mb-2 block'>Password</span>
             <input
               type='password'
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className='gb-input bg-black/40 border-white/10 focus:border-gold transition'
+              className='gb-input'
               required
             />
           </label>
@@ -269,7 +269,7 @@ export default function LoginForm() {
           {phase === 'submitting' || phase === 'finishing' ? 'Signing in...' : 'Sign In'}
         </button>
 
-        <div className='mt-6 flex items-center justify-between text-xs text-zinc-400 border-t border-white/5 pt-4'>
+        <div className='mt-6 flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4'>
           <Link href='/signup' className='hover:text-gold-soft font-semibold'>
             Create account
           </Link>

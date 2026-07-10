@@ -27,8 +27,8 @@ export function PremiumSection({
         <MotionFade>
           <div className={`max-w-3xl space-y-3 ${alignCls}`}>
             {eyebrow ? <PremiumEyebrow>{eyebrow}</PremiumEyebrow> : null}
-            <h2 className="text-3xl font-black uppercase tracking-tight text-white sm:text-5xl">{title}</h2>
-            {subtitle ? <p className="text-sm leading-relaxed text-zinc-400 sm:text-base">{subtitle}</p> : null}
+            <h2 className="text-3xl font-black uppercase tracking-tight text-foreground sm:text-5xl">{title}</h2>
+            {subtitle ? <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">{subtitle}</p> : null}
           </div>
         </MotionFade>
         <div className="mt-12">{children}</div>

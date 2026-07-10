@@ -8,6 +8,7 @@ import { LoyaltyCardPreviewConsole } from '@/components/admin/loyalty-card-previ
 import { addManualLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import { CustomerCreditsManager } from '@/components/admin/customer-credits-manager';
 import { MembershipPlansManager } from '@/components/admin/membership-plans-manager';
+import { syncMembershipAnnualPrices } from '@/lib/membership-annual-sync';
 
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
 import { Award, Upload } from 'lucide-react';
@@ -62,6 +63,8 @@ export default async function MembershipsAdminPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isStaffRole(session.profile?.role) || !admin) notFound();
 
+  await syncMembershipAnnualPrices(admin).catch(() => ({ updated: 0 }));
+
   const [plansRes, rulesRes, customersRes, membershipsRes, designsRes] = await Promise.all([
     admin.from('membership_plans').select('*').order('tier'),
     admin.from('loyalty_rules').select('*').order('created_at', { ascending: false }),
@@ -78,6 +81,10 @@ export default async function MembershipsAdminPage() {
   const publicPlans = canonicalMembershipPlans(plans);
   const hiddenPlanCount = Math.max(0, plans.length - publicPlans.length);
   const rules = (rulesRes.data ?? []) as Record<string, unknown>[];
+  const rulePayload =
+    rules[0]?.reward_payload && typeof rules[0].reward_payload === 'object'
+      ? (rules[0].reward_payload as Record<string, unknown>)
+      : {};
   const customers = (customersRes.data ?? []) as { id: string; full_name: string | null; email: string | null }[];
   const designs = (designsRes.data ?? []) as any[];
 
@@ -160,6 +167,23 @@ export default async function MembershipsAdminPage() {
                 <label className="block text-xs text-zinc-400">
                   Reward Description Text
                   <textarea name='reward_description' defaultValue={String(rules[0]?.reward_description ?? 'Complete 5 services, unlock 6th wash/free reward.')} className='mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white' rows={3} />
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  6th reward type
+                  <select name="reward_type" defaultValue={String(rulePayload.reward_type ?? 'credit')} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white">
+                    <option value="credit">Account credit ($)</option>
+                    <option value="free_wash">Free maintenance wash</option>
+                    <option value="free_service">Free detail service</option>
+                    <option value="upgrade">Upgrade credit</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Reward value (cents)
+                  <input name="reward_cents" type="number" defaultValue={Number(rulePayload.reward_cents ?? rulePayload.credit_cents ?? 7500)} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono" />
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Free service slug (if applicable)
+                  <input name="free_service_slug" defaultValue={String(rulePayload.free_service_slug ?? '')} placeholder="e.g. maintenance-exterior-wash" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white" />
                 </label>
                 
                 <label className='flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1'>

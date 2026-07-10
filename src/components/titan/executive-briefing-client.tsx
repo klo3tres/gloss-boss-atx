@@ -78,6 +78,7 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
 
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <StatChip label="Revenue today" value={briefing.revenueTodayLabel} hint={`Target ${briefing.revenueTargetLabel}`} href="/admin/revenue" />
+        <StatChip label="Projected today" value={briefing.projectedRevenueTodayLabel} hint="Collected + missions + schedule" href="/admin" />
         <StatChip label="Gap to target" value={briefing.revenueGapLabel} hint="Close with missions below" href="/admin/titan?workspace=growth" />
         <StatChip label="Bookings" value={String(briefing.scheduleCount)} hint={briefing.scheduleLabel} href="/admin/calendar" />
         <StatChip label="Balances" value={briefing.balanceDueLabel} hint="Open jobs" href="/admin?overview=1" />

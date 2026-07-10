@@ -27,7 +27,7 @@ interface Plan {
 }
 
 export function MembershipsPricingClient({ plans }: { plans: Plan[] }) {
-  const [interval, setInterval] = useState<'biweekly' | 'monthly' | 'yearly'>('monthly');
+  const [interval, setInterval] = useState<'biweekly' | 'monthly' | 'yearly'>('yearly');
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const biweeklyEnabled = useMemo(
     () =>

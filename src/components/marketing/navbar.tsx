@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Menu, X, ChevronDown } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { clearAuthUxSession } from '@/lib/auth/auth-session-ux';
@@ -218,6 +219,7 @@ export function Navbar() {
 
           <div className='hidden items-center gap-6 md:flex md:flex-1 md:justify-end lg:gap-8'>
             {coreLinks}
+            {!isDash ? <ThemeToggle compact /> : null}
             {!isDash ? (
               <Link
                 href='/book'
@@ -290,7 +292,12 @@ export function Navbar() {
               </div>
               <div className='mx-auto max-w-7xl px-4 pt-4 flex flex-col gap-4'>
             {/* Core Links */}
-            <div className='flex flex-col gap-3 pb-3 border-b border-white/5'>
+            <div className='flex flex-col gap-3 pb-3 border-b border-border'>
+              {!isDash ? (
+                <div className='pb-2'>
+                  <ThemeToggle />
+                </div>
+              ) : null}
               {publicNavLinks.map((item) => (
                 <Link
                   key={item.href}

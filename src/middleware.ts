@@ -1,11 +1,16 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
+import { applySecurityHeaders } from '@/lib/security/response-headers';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 
 const PROTECTED = ['/dashboard', '/admin', '/tech', '/customer', '/titan'];
 
 function needsAuth(pathname: string): boolean {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function secure(response: NextResponse) {
+  return applySecurityHeaders(response);
 }
 
 /**
@@ -16,11 +21,11 @@ export async function middleware(request: NextRequest) {
   try {
     const env = getPublicSupabaseEnv();
 
-    let response = NextResponse.next({
+    let response = secure(NextResponse.next({
       request: {
         headers: request.headers,
       },
-    });
+    }));
 
     if (!env) {
       return response;
@@ -52,17 +57,17 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('next', `${pathname}${request.nextUrl.search ?? ''}`);
-      return NextResponse.redirect(url);
+      return secure(NextResponse.redirect(url));
     }
 
     return response;
   } catch (e) {
     console.error('[middleware] Supabase session refresh failed — continuing without redirect.', e);
-    return NextResponse.next({
+    return secure(NextResponse.next({
       request: {
         headers: request.headers,
       },
-    });
+    }));
   }
 }
 

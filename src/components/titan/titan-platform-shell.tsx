@@ -38,19 +38,19 @@ export function TitanPlatformShell({
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-[#070708] text-zinc-100">
-      <header className="border-b border-white/8 bg-zinc-950/90 backdrop-blur-md">
+    <div className="titan-platform-shell min-h-screen bg-background text-foreground">
+      <header className="border-b border-border bg-card/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-400/90">Titan OS</p>
-            <h1 className="text-lg font-black text-white">{business.name}</h1>
-            <p className="text-xs text-zinc-500">AI business operating system · {business.industry.replace(/_/g, ' ')}</p>
+            <h1 className="text-lg font-black text-foreground">{business.name}</h1>
+            <p className="text-xs text-muted-foreground">AI business operating system · {business.industry.replace(/_/g, ' ')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {business.isPlatformTenant ? (
               <Link
                 href="/admin"
-                className="inline-flex items-center gap-1 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 hover:border-amber-500/30"
+                className="inline-flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground hover:border-gold/30 hover:text-foreground"
               >
                 Gloss Boss admin <ExternalLink className="h-3 w-3" />
               </Link>
@@ -72,8 +72,8 @@ export function TitanPlatformShell({
                 href={href}
                 className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold uppercase tracking-wide transition ${
                   active
-                    ? 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/25'
-                    : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+                    ? 'bg-gold/15 text-gold-soft ring-1 ring-gold/25'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 }`}
               >
                 <Icon className="h-4 w-4" />

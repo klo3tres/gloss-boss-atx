@@ -65,7 +65,7 @@ export function MembershipPlansManager({ publicPlans }: { publicPlans: PlanProps
       <section className="grid gap-6 md:grid-cols-3">
         {publicPlans.map((p) => {
           const tc = getTierColorClass(p.tier);
-          const monthlyPrice = p.price_monthly_cents ?? p.price_cents ?? 0;
+          const yearlyPrice = p.price_yearly_cents ?? (p.price_monthly_cents ?? p.price_cents ?? 0) * 12;
           
           return (
             <div
@@ -92,9 +92,9 @@ export function MembershipPlansManager({ publicPlans }: { publicPlans: PlanProps
                 {/* Pricing / Key Statistics Badge */}
                 <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Monthly Billing</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Annual billing</p>
                     <p className="text-xl font-black text-white mt-1 font-mono">
-                      ${(monthlyPrice / 100).toFixed(0)}<span className="text-xs text-zinc-500 font-normal">/mo</span>
+                      ${(yearlyPrice / 100).toFixed(0)}<span className="text-xs text-zinc-400 font-normal">/yr</span>
                     </p>
                   </div>
                   <div className="text-right">
@@ -121,7 +121,7 @@ export function MembershipPlansManager({ publicPlans }: { publicPlans: PlanProps
                 {p.benefits && p.benefits.length > 0 && (
                   <div className="space-y-2 pt-1">
                     <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Benefits & Inclusions</p>
-                    <ul className="space-y-1.5 text-xs text-zinc-400">
+                    <ul className="space-y-1.5 text-xs text-zinc-200">
                       {p.benefits.slice(0, 4).map((b, idx) => (
                         <li key={idx} className="flex gap-2 items-start leading-relaxed">
                           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-soft" />

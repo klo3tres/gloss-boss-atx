@@ -824,7 +824,7 @@ export function BookingWizard() {
       <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>Add-ons for this vehicle</p>
       <div className='mt-2 flex flex-wrap gap-2'>
         {addonOptions.length === 0 ? (
-          <span className='text-xs text-zinc-500'>Loading add-ons…</span>
+          <span className='text-xs text-muted-foreground'>Loading add-ons…</span>
         ) : (
           addonOptions.map((opt) => {
             const on = slugs.includes(opt.slug);
@@ -841,7 +841,7 @@ export function BookingWizard() {
                 onClick={() => toggleAddOn(vehicleIndex, opt.slug)}
                 className={clsx(
                   'rounded-full border px-3 py-2 text-xs font-semibold transition',
-                  on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                  on ? 'border-gold bg-gold/15 text-gold-soft' : 'border-border text-muted-foreground hover:border-gold/40',
                 )}
               >
                 {opt.label} {priceLabel}
@@ -1426,7 +1426,7 @@ export function BookingWizard() {
           }}
         />
         {bookingDurationMinutes > 0 ? (
-          <p className='mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500 lg:hidden'>
+          <p className='mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:hidden'>
             Est. {Math.round(bookingDurationMinutes / 15) * 15} min
             {pricePreviewText ? ` · ${pricePreviewText}` : ''}
           </p>
@@ -1443,14 +1443,14 @@ export function BookingWizard() {
         </p>
       ) : null}
       {catalogRefreshing ? (
-        <div className='flex items-center gap-2 text-xs text-zinc-500' aria-live='polite'>
+        <div className='flex items-center gap-2 text-xs text-muted-foreground' aria-live='polite'>
           <span className='inline-block h-3 w-3 animate-spin rounded-full border border-gold/30 border-t-gold-soft' aria-hidden />
           Updating prices…
         </div>
       ) : null}
-      <div className='rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/10 via-black/50 to-black p-4 text-sm text-zinc-200'>
+      <div className='rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/10 via-black/50 to-black p-4 text-sm text-muted-foreground'>
         <p className='font-black uppercase tracking-wider text-gold-soft'>Member pricing</p>
-        <p className='mt-1 text-xs leading-relaxed text-zinc-300'>
+        <p className='mt-1 text-xs leading-relaxed text-muted-foreground'>
           {customerCredits.signedIn
             ? `Signed in. Available credits and member pricing are checked automatically before checkout.`
             : 'Sign in to use member pricing and earn loyalty stamps. Already a member? Sign in before booking. Guest booking still works without an account.'}
@@ -1463,7 +1463,7 @@ export function BookingWizard() {
           ) : (
             <a href='/login?next=/book' className='rounded-lg border border-gold/35 px-3 py-2 text-xs font-black uppercase text-gold-soft'>Sign in</a>
           )}
-          <a href='/memberships' className='rounded-lg border border-white/15 px-3 py-2 text-xs font-black uppercase text-zinc-200'>View memberships</a>
+          <a href='/memberships' className='rounded-lg border border-border px-3 py-2 text-xs font-black uppercase text-muted-foreground'>View memberships</a>
         </div>
         {customerCredits.signedIn && customerCredits.credits.some((c) => c.type === 'loyalty_reward') ? (
           <div className='mt-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-100'>
@@ -1495,7 +1495,7 @@ export function BookingWizard() {
       {checkoutPhase === 'creating_checkout' || checkoutPhase === 'saving_booking' || checkoutPhase === 'redirecting' ? (
         <div className='rounded-xl border border-gold/35 bg-gold/10 p-4 text-sm text-gold-soft' role='status' aria-live='polite'>
           <p className='font-black uppercase tracking-wider'>{submitButtonLabel()}</p>
-          <p className='mt-2 text-xs text-zinc-300'>Please keep this page open. Secure payment opens in a new step.</p>
+          <p className='mt-2 text-xs text-muted-foreground'>Please keep this page open. Secure payment opens in a new step.</p>
           {checkoutTimedOut ? (
             <p className='mt-2 text-xs text-amber-200'>This is taking longer than expected (10s)…</p>
           ) : null}
@@ -1504,7 +1504,7 @@ export function BookingWizard() {
       {checkoutPhase === 'checkout_failed' && savedBooking ? (
         <div className='rounded-xl border border-amber-500/45 bg-amber-500/10 p-4 text-sm' role='alert'>
           <p className='font-bold text-amber-100'>{checkoutError ?? CHECKOUT_FAIL_COPY}</p>
-          <p className='mt-2 text-xs text-zinc-300'>Your appointment is saved. Choose an option below — you will not lose your booking.</p>
+          <p className='mt-2 text-xs text-muted-foreground'>Your appointment is saved. Choose an option below — you will not lose your booking.</p>
           <div className='mt-4 flex flex-col gap-2 sm:flex-row'>
             <button
               type='button'
@@ -1516,7 +1516,7 @@ export function BookingWizard() {
             <button
               type='button'
               onClick={() => void handlePayLater()}
-              className='rounded-xl border border-white/25 px-4 py-3 text-xs font-black uppercase text-white'
+              className='rounded-xl border border-border px-4 py-3 text-xs font-black uppercase text-foreground'
             >
               Continue booking and pay later
             </button>
@@ -1531,13 +1531,13 @@ export function BookingWizard() {
 
       <div className='grid min-w-0 max-w-full gap-8 lg:grid-cols-[minmax(0,1fr)_min(100%,300px)]'>
         <div className='order-2 min-w-0 lg:order-1'>
-          <div className='rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-6'>
+          <div className='rounded-2xl border border-border bg-card p-4 sm:p-6'>
             <p className='text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft'>{stepTitle}</p>
 
           {currentStep === 0 ? (
           <section className='mt-4'>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Your vehicle</h2>
-            <p className='mt-1 text-sm text-zinc-400'>We price by vehicle size and tailor products to your paint.</p>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl'>Your vehicle</h2>
+            <p className='mt-1 text-sm text-muted-foreground'>We price by vehicle size and tailor products to your paint.</p>
             <div className='mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
               {UI_VEHICLE_CLASSES.map((c) => {
                 const active = vehicleClass === c;
@@ -1551,7 +1551,7 @@ export function BookingWizard() {
                       'group relative min-h-[190px] overflow-hidden rounded-2xl border p-0 text-left transition duration-300',
                       active
                         ? 'border-gold shadow-[0_0_34px_rgba(212,175,55,0.32)] ring-2 ring-gold/40'
-                        : 'border-white/10 hover:border-gold/40 hover:shadow-[0_0_24px_rgba(212,175,55,0.14)]',
+                        : 'border-border hover:border-gold/40 hover:shadow-[0_0_24px_rgba(212,175,55,0.14)]',
                     )}
                     aria-pressed={active}
                   >
@@ -1559,14 +1559,14 @@ export function BookingWizard() {
                     <span className='absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/15' />
                     <span className='relative z-10 flex h-full min-h-[190px] flex-col justify-between p-4'>
                       <span className='flex items-center justify-between gap-3'>
-                        <span className='rounded-full border border-white/15 bg-black/60 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-300'>
+                        <span className='rounded-full border border-border bg-muted/50 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-muted-foreground'>
                           {classLabel(c)}
                         </span>
                         {active ? <Check className='h-5 w-5 rounded-full bg-gold p-1 text-black' /> : null}
                       </span>
                       <span>
-                        <span className='block text-2xl font-black uppercase tracking-tight text-white'>{design.title}</span>
-                        <span className='mt-1 block text-xs font-semibold text-zinc-300'>{design.note}</span>
+                        <span className='block text-2xl font-black uppercase tracking-tight text-foreground'>{design.title}</span>
+                        <span className='mt-1 block text-xs font-semibold text-muted-foreground'>{design.note}</span>
                       </span>
                     </span>
                   </button>
@@ -1575,21 +1575,21 @@ export function BookingWizard() {
             </div>
             <div className='mt-6 grid gap-4 md:grid-cols-2'>
               <label className='text-sm md:col-span-2'>
-                <span className='mb-2 block text-zinc-300'>Year / make / model</span>
+                <span className='mb-2 block text-muted-foreground'>Year / make / model</span>
                 <input
                   value={vehicleDescription}
                   onChange={(e) => setVehicleDescription(e.target.value)}
-                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base'
+                  className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base'
                   placeholder='2022 BMW M3 Competition'
                   required
                 />
               </label>
               <label className='text-sm md:col-span-2'>
-                <span className='mb-2 block text-zinc-300'>Color</span>
+                <span className='mb-2 block text-muted-foreground'>Color</span>
                 <input
                   value={vehicleColor}
                   onChange={(e) => setVehicleColor(e.target.value)}
-                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base'
+                  className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base'
                   placeholder='Black'
                   required
                 />
@@ -1600,8 +1600,8 @@ export function BookingWizard() {
 
           {currentStep === 1 ? (
           <section className='mt-4'>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Select your detail</h2>
-            <p className='mt-1 text-sm text-zinc-400'>Duration and pricing update live for your {classLabel(vehicleClass)}.</p>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl'>Select your detail</h2>
+            <p className='mt-1 text-sm text-muted-foreground'>Duration and pricing update live for your {classLabel(vehicleClass)}.</p>
             <div className='mt-4 grid gap-3 sm:grid-cols-2'>
               {services.map((s) => {
                 const active = s.slug === serviceSlug;
@@ -1615,16 +1615,16 @@ export function BookingWizard() {
                     className={clsx(
                       'rounded-2xl border p-4 text-left transition duration-300',
                       active
-                        ? 'border-gold bg-black/80 shadow-[0_0_28px_rgba(212,166,77,0.35)] ring-2 ring-gold/50'
-                        : 'border-gold/20 bg-zinc-950/80 hover:border-gold/45 hover:shadow-[0_0_18px_rgba(212,166,77,0.12)]',
+                        ? 'border-gold bg-gold/10 shadow-[0_0_28px_rgba(212,166,77,0.25)] ring-2 ring-gold/50'
+                        : 'border-gold/20 bg-card hover:border-gold/45 hover:shadow-[0_0_18px_rgba(212,166,77,0.12)]',
                     )}
                   >
                     <div className='flex items-start justify-between gap-2'>
                       <div>
                         <p className='text-[10px] font-bold uppercase tracking-widest text-gold-soft'>{s.slug.replace(/-/g, ' ')}</p>
-                        <p className='mt-1 text-base font-black uppercase text-white'>{s.title}</p>
-                        <p className='mt-1 text-xs text-zinc-400'>{s.subtitle}</p>
-                        <p className='mt-2 text-[11px] font-bold uppercase tracking-wide text-zinc-300'>
+                        <p className='mt-1 text-base font-black uppercase text-foreground'>{s.title}</p>
+                        <p className='mt-1 text-xs text-muted-foreground'>{s.subtitle}</p>
+                        <p className='mt-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground'>
                           {duration ? `Estimated ${duration}` : 'Duration confirmed after review'}
                           {limited ? ' · Quote required' : ''}
                         </p>
@@ -1641,25 +1641,25 @@ export function BookingWizard() {
           {currentStep === 2 ? (
           <div className='mt-4 space-y-6'>
           <section>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Add-ons</h2>
-            <p className='mt-1 text-sm text-zinc-400'>Optional upgrades for vehicle 1. Add more vehicles below if needed.</p>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl'>Add-ons</h2>
+            <p className='mt-1 text-sm text-muted-foreground'>Optional upgrades for vehicle 1. Add more vehicles below if needed.</p>
             {renderVehicleAddOns(0, primaryAddOnSlugs)}
           </section>
 
           {extraVehicles.map((line, idx) => (
-            <section key={idx} className='rounded-2xl border border-white/10 bg-black/30 p-4'>
+            <section key={idx} className='rounded-2xl border border-border bg-muted/40 p-4'>
               <div className='flex items-center justify-between gap-2'>
                 <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Vehicle {idx + 2}</p>
-                <button type='button' onClick={() => removeExtra(idx)} className='rounded-lg border border-white/15 p-2 text-zinc-400 hover:text-white' aria-label='Remove vehicle'>
+                <button type='button' onClick={() => removeExtra(idx)} className='rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground' aria-label='Remove vehicle'>
                   <Trash2 className='h-4 w-4' />
                 </button>
               </div>
               <label className='mt-3 block text-sm'>
-                <span className='mb-2 block text-zinc-300'>Package</span>
+                <span className='mb-2 block text-muted-foreground'>Package</span>
                 <select
                   value={line.serviceSlug}
                   onChange={(e) => updateExtra(idx, { serviceSlug: e.target.value })}
-                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                  className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                 >
                   {services.map((s) => (
                     <option key={s.id} value={s.slug}>
@@ -1678,32 +1678,32 @@ export function BookingWizard() {
                       onClick={() => updateExtra(idx, { vehicleClass: c })}
                       className={clsx(
                         'relative min-h-[88px] overflow-hidden rounded-xl border px-2 py-2 text-[10px] font-bold uppercase tracking-wider sm:text-xs',
-                        line.vehicleClass === c ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300 hover:border-gold/30',
+                        line.vehicleClass === c ? 'border-gold bg-gold/10 text-gold-soft' : 'border-border text-muted-foreground hover:border-gold/30',
                       )}
                     >
                       <img src={design.image} alt='' className='absolute inset-0 h-full w-full object-cover opacity-30' />
-                      <span className='absolute inset-0 bg-black/60' />
+                      <span className='absolute inset-0 bg-muted/50' />
                       <span className='relative'>{design.title}</span>
                     </button>
                   );
                 })}
               </div>
               <label className='mt-3 block text-sm'>
-                <span className='mb-2 block text-zinc-300'>Vehicle (year / make / model)</span>
+                <span className='mb-2 block text-muted-foreground'>Vehicle (year / make / model)</span>
                 <input
                   value={line.vehicleDescription}
                   onChange={(e) => updateExtra(idx, { vehicleDescription: e.target.value })}
-                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                  className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                   placeholder='2021 Ford F-150'
                   required
                 />
               </label>
               <label className='mt-3 block text-sm'>
-                <span className='mb-2 block text-zinc-300'>Color</span>
+                <span className='mb-2 block text-muted-foreground'>Color</span>
                 <input
                   value={line.vehicleColor}
                   onChange={(e) => updateExtra(idx, { vehicleColor: e.target.value })}
-                  className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                  className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                   placeholder='Black'
                   required
                 />
@@ -1727,18 +1727,18 @@ export function BookingWizard() {
 
           {currentStep === 3 ? (
           <section className='mt-4 grid gap-4 md:grid-cols-2'>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl md:col-span-2'>Date & time</h2>
-            <p className='text-sm text-zinc-400 md:col-span-2'>Only open slots are shown — calendar blocks and existing bookings are respected.</p>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl md:col-span-2'>Date & time</h2>
+            <p className='text-sm text-muted-foreground md:col-span-2'>Only open slots are shown — calendar blocks and existing bookings are respected.</p>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Appointment date</span>
-              <p className='mb-2 text-xs text-zinc-500'>{bookingAvailabilityHint(bookingRules)}</p>
+              <span className='mb-2 block text-muted-foreground'>Appointment date</span>
+              <p className='mb-2 text-xs text-muted-foreground'>{bookingAvailabilityHint(bookingRules)}</p>
               <select
                 value={bookingDateKey}
                 onChange={(e) => {
                   setBookingDateKey(e.target.value);
                   setScheduleError(null);
                 }}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                 required
               >
                 {bookableDateKeys.length === 0 ? <option value="">No online dates available — call us</option> : null}
@@ -1755,14 +1755,14 @@ export function BookingWizard() {
               </select>
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Start time (15-minute slots)</span>
+              <span className='mb-2 block text-muted-foreground'>Start time (15-minute slots)</span>
               <select
                 value={bookingTimeValue}
                 onChange={(e) => {
                   setBookingTimeValue(e.target.value);
                   setScheduleError(null);
                 }}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                 required
               >
                 <option value=''>Select a time</option>
@@ -1784,7 +1784,7 @@ export function BookingWizard() {
                       }}
                       className={clsx(
                         'rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                        bookingTimeValue === s.value ? 'border-gold bg-gold/15 text-gold-soft' : 'border-white/15 text-zinc-400 hover:border-gold/40',
+                        bookingTimeValue === s.value ? 'border-gold bg-gold/15 text-gold-soft' : 'border-border text-muted-foreground hover:border-gold/40',
                       )}
                     >
                       {s.label}
@@ -1806,10 +1806,10 @@ export function BookingWizard() {
 
           {currentStep === 4 ? (
           <div className='mt-4 space-y-6'>
-          <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-black/45 p-4 md:grid-cols-2'>
+          <section id='service-address' className='grid gap-4 rounded-2xl border border-gold/20 bg-card p-4 md:grid-cols-2'>
             <div className='md:col-span-2'>
-              <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Service address & access</h2>
-              <p className='mt-1 text-sm text-zinc-400'>Required so we can confirm drive distance and arrival details.</p>
+              <h2 className='text-lg font-black uppercase text-foreground sm:text-xl'>Service address & access</h2>
+              <p className='mt-1 text-sm text-muted-foreground'>Required so we can confirm drive distance and arrival details.</p>
               <div className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
                 {[
                   [Droplets, 'Water access', 'Outdoor spigot or approved water source available at arrival.'],
@@ -1819,18 +1819,18 @@ export function BookingWizard() {
                 ].map(([Icon, title, copy]) => (
                   <div key={String(title)} className='rounded-2xl border border-gold/20 bg-gold/10 p-4'>
                     <Icon className='h-5 w-5 text-gold-soft' />
-                    <p className='mt-3 text-xs font-black uppercase tracking-[0.16em] text-white'>{String(title)}</p>
-                    <p className='mt-1 text-[11px] leading-5 text-zinc-300'>{String(copy)}</p>
+                    <p className='mt-3 text-xs font-black uppercase tracking-[0.16em] text-foreground'>{String(title)}</p>
+                    <p className='mt-1 text-[11px] leading-5 text-muted-foreground'>{String(copy)}</p>
                   </div>
                 ))}
               </div>
             </div>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Service location type</span>
+              <span className='mb-2 block text-muted-foreground'>Service location type</span>
               <select
                 value={serviceLocationType}
                 onChange={(e) => setServiceLocationType(e.target.value as typeof serviceLocationType)}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                 required
               >
                 <option value=''>Select…</option>
@@ -1841,8 +1841,8 @@ export function BookingWizard() {
               </select>
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>Water access available?</span>
-              <select value={waterAccess} onChange={(e) => setWaterAccess(e.target.value as typeof waterAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
+              <span className='mb-2 block text-muted-foreground'>Water access available?</span>
+              <select value={waterAccess} onChange={(e) => setWaterAccess(e.target.value as typeof waterAccess)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' required>
                 <option value=''>Select…</option>
                 <option value='yes'>Yes</option>
                 <option value='no'>No</option>
@@ -1850,17 +1850,8 @@ export function BookingWizard() {
               </select>
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>Power outlet access?</span>
-              <select value={powerAccess} onChange={(e) => setPowerAccess(e.target.value as typeof powerAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
-                <option value=''>Select…</option>
-                <option value='yes'>Yes</option>
-                <option value='no'>No</option>
-                <option value='unsure'>Unsure</option>
-              </select>
-            </label>
-            <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Parking / service space available?</span>
-              <select value={parkingAccess} onChange={(e) => setParkingAccess(e.target.value as typeof parkingAccess)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required>
+              <span className='mb-2 block text-muted-foreground'>Power outlet access?</span>
+              <select value={powerAccess} onChange={(e) => setPowerAccess(e.target.value as typeof powerAccess)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' required>
                 <option value=''>Select…</option>
                 <option value='yes'>Yes</option>
                 <option value='no'>No</option>
@@ -1868,39 +1859,48 @@ export function BookingWizard() {
               </select>
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Street address</span>
-              <input value={serviceAddress} onChange={(e) => setServiceAddress(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' placeholder='123 Main St' required />
+              <span className='mb-2 block text-muted-foreground'>Parking / service space available?</span>
+              <select value={parkingAccess} onChange={(e) => setParkingAccess(e.target.value as typeof parkingAccess)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' required>
+                <option value=''>Select…</option>
+                <option value='yes'>Yes</option>
+                <option value='no'>No</option>
+                <option value='unsure'>Unsure</option>
+              </select>
+            </label>
+            <label className='text-sm md:col-span-2'>
+              <span className='mb-2 block text-muted-foreground'>Street address</span>
+              <input value={serviceAddress} onChange={(e) => setServiceAddress(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base' placeholder='123 Main St' required />
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>City</span>
-              <input value={serviceCity} onChange={(e) => setServiceCity(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+              <span className='mb-2 block text-muted-foreground'>City</span>
+              <input value={serviceCity} onChange={(e) => setServiceCity(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base' required />
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>State</span>
-              <input value={serviceState} onChange={(e) => setServiceState(e.target.value.toUpperCase().slice(0, 2))} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+              <span className='mb-2 block text-muted-foreground'>State</span>
+              <input value={serviceState} onChange={(e) => setServiceState(e.target.value.toUpperCase().slice(0, 2))} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base' required />
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>ZIP</span>
-              <input inputMode='numeric' value={serviceZip} onChange={(e) => setServiceZip(digitsOnly(e.target.value).slice(0, 5))} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' required />
+              <span className='mb-2 block text-muted-foreground'>ZIP</span>
+              <input inputMode='numeric' value={serviceZip} onChange={(e) => setServiceZip(digitsOnly(e.target.value).slice(0, 5))} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base' required />
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>Gate / apartment notes</span>
-              <input value={serviceAddressNotes} onChange={(e) => setServiceAddressNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 text-base' placeholder='Optional' />
+              <span className='mb-2 block text-muted-foreground'>Gate / apartment notes</span>
+              <input value={serviceAddressNotes} onChange={(e) => setServiceAddressNotes(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 text-base' placeholder='Optional' />
             </label>
           </section>
 
           <section className='grid gap-4 md:grid-cols-2'>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl md:col-span-2'>Your contact info</h2>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl md:col-span-2'>Your contact info</h2>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>Full name</span>
-              <input value={guestName} onChange={(e) => setGuestName(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
+              <span className='mb-2 block text-muted-foreground'>Full name</span>
+              <input value={guestName} onChange={(e) => setGuestName(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' required />
             </label>
             <label className='text-sm'>
-              <span className='mb-2 block text-zinc-300'>Email</span>
-              <input type='email' value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' required />
+              <span className='mb-2 block text-muted-foreground'>Email</span>
+              <input type='email' value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' required />
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Phone (10 digits)</span>
+              <span className='mb-2 block text-muted-foreground'>Phone (10 digits)</span>
               <input
                 type='tel'
                 inputMode='numeric'
@@ -1919,14 +1919,14 @@ export function BookingWizard() {
                   const r = normalizeUsPhone10Digits(guestPhone);
                   setPhoneError(r.ok ? null : r.error);
                 }}
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3'
+                className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3'
                 required
               />
               {phoneError ? <p className='mt-2 text-xs text-amber-300'>{phoneError}</p> : null}
             </label>
-            <fieldset className='rounded-xl border border-white/10 bg-black/35 p-4 text-sm md:col-span-2'>
+            <fieldset className='rounded-xl border border-border bg-muted/40 p-4 text-sm md:col-span-2'>
               <legend className='px-1 text-xs font-black uppercase tracking-wider text-gold-soft'>Optional SMS updates</legend>
-              <p className='text-xs leading-relaxed text-zinc-400'>
+              <p className='text-xs leading-relaxed text-muted-foreground'>
                 {SMS_CONSENT_COPY}{' '}
                 <a href='/privacy' className='text-gold-soft underline' target='_blank' rel='noreferrer'>
                   Privacy
@@ -1938,7 +1938,7 @@ export function BookingWizard() {
                 .
               </p>
               <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-300')}>
+                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-border text-muted-foreground')}>
                   <input
                     type='radio'
                     name='smsConsent'
@@ -1949,7 +1949,7 @@ export function BookingWizard() {
                   />
                   Yes, I agree to receive SMS updates.
                 </label>
-                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', !smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/10 text-zinc-300')}>
+                <label className={clsx('rounded-lg border px-3 py-3 text-xs font-semibold transition', !smsConsent ? 'border-gold bg-gold/10 text-gold-soft' : 'border-border text-muted-foreground')}>
                   <input
                     type='radio'
                     name='smsConsent'
@@ -1961,19 +1961,19 @@ export function BookingWizard() {
                   No, do not send me SMS updates.
                 </label>
               </div>
-              <p className='mt-2 text-xs text-zinc-500'>No is selected by default. You can still book and pay without SMS consent.</p>
+              <p className='mt-2 text-xs text-muted-foreground'>No is selected by default. You can still book and pay without SMS consent.</p>
             </fieldset>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Notes (optional)</span>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3' rows={3} />
+              <span className='mb-2 block text-muted-foreground'>Notes (optional)</span>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3' rows={3} />
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Referral code (optional)</span>
+              <span className='mb-2 block text-muted-foreground'>Referral code (optional)</span>
               <input
                 value={referralCode}
                 onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
                 placeholder='Friend referral code'
-                className='w-full rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
+                className='w-full rounded-lg gb-input border border-border bg-input px-4 py-3 uppercase tracking-wider'
               />
               {referralLabel ? (
                 <p className='mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs font-semibold text-emerald-100'>
@@ -1983,7 +1983,7 @@ export function BookingWizard() {
               ) : null}
             </label>
             <label className='text-sm md:col-span-2'>
-              <span className='mb-2 block text-zinc-300'>Promo code (optional)</span>
+              <span className='mb-2 block text-muted-foreground'>Promo code (optional)</span>
               <div className='flex gap-2'>
                 <input
                   value={promoCode}
@@ -1993,7 +1993,7 @@ export function BookingWizard() {
                     setPromoMessage(null);
                   }}
                   placeholder='Enter code'
-                  className='min-w-0 flex-1 rounded-lg border border-zinc-700 bg-black px-4 py-3 uppercase tracking-wider'
+                  className='min-w-0 flex-1 rounded-lg gb-input border border-border bg-input px-4 py-3 uppercase tracking-wider'
                 />
                 <button type='button' onClick={applyPromo} className='rounded-lg border border-gold/40 px-4 py-3 text-xs font-black uppercase tracking-wider text-gold-soft'>
                   Apply
@@ -2016,9 +2016,9 @@ export function BookingWizard() {
           ) : null}
 
           {currentStep === 5 ? (
-          <section className='mt-4 rounded-xl border border-gold/20 bg-black/60 p-4 text-sm text-zinc-300'>
-            <h2 className='text-lg font-black uppercase text-white sm:text-xl'>Payment</h2>
-            <p className='mt-1 text-sm text-zinc-400'>Choose deposit or pay in full. Member credits apply on the right.</p>
+          <section className='mt-4 rounded-xl border border-gold/20 bg-muted/50 p-4 text-sm text-muted-foreground'>
+            <h2 className='text-lg font-black uppercase text-foreground sm:text-xl'>Payment</h2>
+            <p className='mt-1 text-sm text-muted-foreground'>Choose deposit or pay in full. Member credits apply on the right.</p>
             <div className='mb-4 mt-4 grid gap-2 sm:grid-cols-2'>
               <button
                 type='button'
@@ -2026,23 +2026,23 @@ export function BookingWizard() {
                 disabled={freePromoEligible}
                 className={clsx(
                   'rounded-xl border px-4 py-3 text-left transition',
-                  paymentChoice === 'deposit' && !freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                  paymentChoice === 'deposit' && !freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-border text-muted-foreground',
                   freePromoEligible && 'opacity-50',
                 )}
               >
                 <span className='block text-xs font-black uppercase tracking-wider'>Pay deposit</span>
-                <span className='mt-1 block text-xs text-zinc-400'>Reserve now, pay balance later.</span>
+                <span className='mt-1 block text-xs text-muted-foreground'>Reserve now, pay balance later.</span>
               </button>
               <button
                 type='button'
                 onClick={() => setPaymentChoice('full')}
                 className={clsx(
                   'rounded-xl border px-4 py-3 text-left transition',
-                  paymentChoice === 'full' || freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-white/15 text-zinc-300',
+                  paymentChoice === 'full' || freePromoEligible ? 'border-gold bg-gold/10 text-gold-soft' : 'border-border text-muted-foreground',
                 )}
               >
                 <span className='block text-xs font-black uppercase tracking-wider'>{freePromoEligible ? 'Comped / Pay full' : 'Pay full amount now'}</span>
-                <span className='mt-1 block text-xs text-zinc-400'>{freePromoEligible ? 'FREE test comp bypasses Stripe.' : 'No remaining balance after checkout.'}</span>
+                <span className='mt-1 block text-xs text-muted-foreground'>{freePromoEligible ? 'FREE test comp bypasses Stripe.' : 'No remaining balance after checkout.'}</span>
               </button>
             </div>
             <p>
@@ -2071,51 +2071,51 @@ export function BookingWizard() {
         <aside className='order-1 h-fit space-y-4 rounded-2xl border border-gold/25 bg-gradient-to-b from-zinc-950/95 to-black/90 p-5 shadow-[0_0_36px_rgba(212,166,77,0.12)] lg:order-2 lg:sticky lg:top-28'>
           <p className='text-xs uppercase tracking-[0.2em] text-gold-soft'>Summary</p>
           {bookingDurationMinutes > 0 ? (
-            <p className='flex items-center gap-2 text-xs text-zinc-400'>
+            <p className='flex items-center gap-2 text-xs text-muted-foreground'>
               <Clock className='h-3.5 w-3.5 text-gold-soft' />
               Est. {Math.round(bookingDurationMinutes / 15) * 15} min on-site
             </p>
           ) : null}
-          <div className='space-y-2.5 text-sm text-zinc-300'>
+          <div className='space-y-2.5 text-sm text-muted-foreground'>
             {bookingLines.map((line, i) => {
               const svc = services.find((s) => s.slug === line.serviceSlug);
               return (
-                <div key={`${i}-${line.serviceSlug}`} className='border-b border-white/5 pb-2.5 last:border-0'>
+                <div key={`${i}-${line.serviceSlug}`} className='border-b border-border pb-2.5 last:border-0'>
                   <p>
-                    <span className='text-zinc-500'>Vehicle {i + 1}:</span>{' '}
-                    <span className='font-semibold text-white'>{svc?.title ?? line.serviceSlug}</span>
+                    <span className='text-muted-foreground'>Vehicle {i + 1}:</span>{' '}
+                    <span className='font-semibold text-foreground'>{svc?.title ?? line.serviceSlug}</span>
                   </p>
                   <p className='mt-0.5'>
-                    <span className='text-zinc-500'>Class:</span> <span className='text-zinc-200'>{classLabel(line.vehicleClass)}</span>
+                    <span className='text-muted-foreground'>Class:</span> <span className='text-muted-foreground'>{classLabel(line.vehicleClass)}</span>
                   </p>
                 </div>
               );
             })}
             {priceSummary?.kind === 'ok' ? (
-              <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3 sm:p-4'>
+              <div className='mt-3 space-y-2 rounded-xl border border-border bg-muted/40 p-3 sm:p-4'>
                 {freePromoEligible ? (
                   <p className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs font-bold text-emerald-100'>
                     Promo FREE applied — $0.00 total. Stripe skipped; you will continue to agreement signing.
                   </p>
                 ) : null}
-                <p className='flex justify-between border-b border-white/10 pb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500'>
+                <p className='flex justify-between border-b border-border pb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground'>
                   <span>Original — vehicle services</span>
-                  <span className='text-zinc-300'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>
+                  <span className='text-muted-foreground'>${(priceSummary.breakdown.vehicleSubtotalCents / 100).toFixed(2)}</span>
                 </p>
                 {priceSummary.lines.map((l, i) => (
-                  <p key={i} className='flex justify-between gap-2 text-xs leading-snug text-zinc-400'>
+                  <p key={i} className='flex justify-between gap-2 text-xs leading-snug text-muted-foreground'>
                     <span className='min-w-0 flex-1 break-words'>{l.label}</span>
                     <span className='shrink-0 tabular-nums'>${(l.cents / 100).toFixed(2)}</span>
                   </p>
                 ))}
                 {priceSummary.breakdown.addOnSubtotalCents > 0 ? (
-                  <p className='flex justify-between text-xs font-semibold text-zinc-300'>
+                  <p className='flex justify-between text-xs font-semibold text-muted-foreground'>
                     <span>Add-ons</span>
                     <span className='tabular-nums'>${(priceSummary.breakdown.addOnSubtotalCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
                 {priceSummary.addOnLines.map((l, i) => (
-                  <p key={`a-${i}`} className='flex justify-between gap-2 text-[11px] leading-snug text-zinc-500'>
+                  <p key={`a-${i}`} className='flex justify-between gap-2 text-[11px] leading-snug text-muted-foreground'>
                     <span className='min-w-0 flex-1 break-words'>· {l.label}</span>
                     <span className='shrink-0 tabular-nums'>${(l.cents / 100).toFixed(2)}</span>
                   </p>
@@ -2126,7 +2126,7 @@ export function BookingWizard() {
                     <span className='tabular-nums'>-${(priceSummary.breakdown.multiCarDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
-                <p className='flex justify-between text-[11px] text-zinc-500'>
+                <p className='flex justify-between text-[11px] text-muted-foreground'>
                   <span>Subtotal before offers & sitewide (after multi-car)</span>
                   <span className='tabular-nums'>${(priceSummary.breakdown.prePromoCents / 100).toFixed(2)}</span>
                 </p>
@@ -2180,12 +2180,12 @@ export function BookingWizard() {
                       <button
                         type='button'
                         onClick={() => setRequestedCreditCents(0)}
-                        className='rounded-lg border border-white/15 px-2 py-2 text-[10px] font-black uppercase text-zinc-300'
+                        className='rounded-lg border border-border px-2 py-2 text-[10px] font-black uppercase text-muted-foreground'
                       >
                         Clear
                       </button>
                     </div>
-                    <label className='mt-3 block text-[10px] font-bold uppercase tracking-wider text-zinc-400'>
+                    <label className='mt-3 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground'>
                       Custom credit amount
                       <input
                         type='number'
@@ -2193,7 +2193,7 @@ export function BookingWizard() {
                         step='0.01'
                         value={(requestedCreditCents / 100).toFixed(2)}
                         onChange={(e) => setRequestedCreditCents(Math.round(Math.max(0, Number(e.target.value || 0)) * 100))}
-                        className='mt-1 w-full rounded-lg border border-white/15 bg-black px-3 py-2 text-sm text-white'
+                        className='mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground'
                       />
                     </label>
                     {creditAppliedCents > 0 ? (
@@ -2202,7 +2202,7 @@ export function BookingWizard() {
                           <span>Credit applied</span>
                           <span className='tabular-nums'>-${(creditAppliedCents / 100).toFixed(2)}</span>
                         </p>
-                        <p className='flex justify-between text-white'>
+                        <p className='flex justify-between text-foreground'>
                           <span>{paymentChoice === 'full' ? 'Card due today' : 'Card deposit due today'}</span>
                           <span className='font-black tabular-nums'>${(cardDueCents / 100).toFixed(2)}</span>
                         </p>
@@ -2210,10 +2210,10 @@ export function BookingWizard() {
                     ) : null}
                   </div>
                 ) : null}
-                <div className='border-t border-white/10 pt-3'>
+                <div className='border-t border-border pt-3'>
                   <p className='flex flex-wrap items-end justify-between gap-x-3 gap-y-1'>
-                    <span className='text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500'>Final total</span>
-                    <span className='text-xl font-black tabular-nums tracking-tight text-white sm:text-2xl'>
+                    <span className='text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground'>Final total</span>
+                    <span className='text-xl font-black tabular-nums tracking-tight text-foreground sm:text-2xl'>
                       ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
                     </span>
                   </p>
@@ -2230,9 +2230,9 @@ export function BookingWizard() {
                     <span className='tabular-nums text-base font-black tracking-tight'>${(cardDueCents / 100).toFixed(2)}</span>
                   </p>
                   {paymentChoice === 'deposit' && !freePromoEligible ? (
-                    <p className='mt-2 flex justify-between text-xs text-zinc-400'>
+                    <p className='mt-2 flex justify-between text-xs text-muted-foreground'>
                       <span>Balance due at service</span>
-                      <span className='tabular-nums font-semibold text-zinc-200'>
+                      <span className='tabular-nums font-semibold text-muted-foreground'>
                         ${((priceSummary.breakdown.finalTotalCents - priceSummary.breakdown.depositCents) / 100).toFixed(2)}
                       </span>
                     </p>
@@ -2243,7 +2243,7 @@ export function BookingWizard() {
               <p className='text-gold-soft'>{pricePreviewText}</p>
             )}
             {allAddOnSlugs.length > 0 ? (
-              <p className='text-xs text-zinc-500'>
+              <p className='text-xs text-muted-foreground'>
                 Add-ons:{' '}
                 {bookingLines
                   .map((line, i) => {
@@ -2270,7 +2270,7 @@ export function BookingWizard() {
 
       {checkoutPhase === 'idle' ? (
         <div
-          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden'
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.08)] lg:hidden'
           role='navigation'
           aria-label='Booking steps'
         >
@@ -2279,7 +2279,7 @@ export function BookingWizard() {
               <button
                 type='button'
                 onClick={goBack}
-                className='shrink-0 rounded-xl border border-white/15 px-4 py-3 text-[10px] font-black uppercase text-zinc-300'
+                className='shrink-0 rounded-xl border border-border px-4 py-3 text-[10px] font-black uppercase text-muted-foreground'
               >
                 Back
               </button>
@@ -2290,14 +2290,14 @@ export function BookingWizard() {
                   <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>
                     {paymentChoice === 'full' ? 'Due today' : 'Deposit'}
                   </p>
-                  <p className='text-lg font-black tabular-nums text-white'>${(cardDueCents / 100).toFixed(2)}</p>
-                  <p className='truncate text-[10px] text-zinc-400'>
+                  <p className='text-lg font-black tabular-nums text-foreground'>${(cardDueCents / 100).toFixed(2)}</p>
+                  <p className='truncate text-[10px] text-muted-foreground'>
                     Total ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
                     {bookingDurationMinutes > 0 ? ` · ${Math.round(bookingDurationMinutes / 15) * 15} min` : ''}
                   </p>
                 </>
               ) : (
-                <p className='text-sm text-zinc-400'>{pricePreviewText ?? 'Select service'}</p>
+                <p className='text-sm text-muted-foreground'>{pricePreviewText ?? 'Select service'}</p>
               )}
             </div>
             {currentStep === lastWizardStep ? (
@@ -2322,14 +2322,14 @@ export function BookingWizard() {
         </div>
       ) : priceSummary?.kind === 'ok' ? (
         <div
-          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-black/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden'
+          className='fixed inset-x-0 bottom-0 z-50 border-t border-gold/35 bg-card/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.08)] lg:hidden'
           role='status'
           aria-live='polite'
         >
           <div className='mx-auto flex max-w-5xl items-center justify-between gap-3'>
             <div className='min-w-0'>
               <p className='text-[10px] font-black uppercase tracking-wider text-gold-soft'>Processing</p>
-              <p className='text-lg font-black tabular-nums text-white'>
+              <p className='text-lg font-black tabular-nums text-foreground'>
                 ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
               </p>
             </div>

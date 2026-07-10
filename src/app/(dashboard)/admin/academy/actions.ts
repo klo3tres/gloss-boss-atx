@@ -32,3 +32,23 @@ export async function loadAcademyArticlesFromCms(admin: ReturnType<typeof tryCre
   if (!Array.isArray(raw)) return [];
   return raw.filter((row) => row && typeof row === 'object' && (row as CmsAcademyArticle).published !== false) as CmsAcademyArticle[];
 }
+
+export async function markAcademyLessonCompleteAction(formData: FormData) {
+  const session = await getSessionWithProfile();
+  if (!session.user?.id || !isAdminLevel(session.profile?.role)) return;
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return;
+  const lessonId = String(formData.get('lessonId') ?? '').trim();
+  if (!lessonId) return;
+
+  const progressKey = `academy_progress_${session.user.id}`;
+  const { data } = await admin.from('site_settings').select('value').eq('key', progressKey).maybeSingle();
+  const existing = Array.isArray(data?.value) ? (data?.value as string[]) : [];
+  if (!existing.includes(lessonId)) existing.push(lessonId);
+
+  await admin.from('site_settings').upsert(
+    { key: progressKey, value: existing, updated_at: new Date().toISOString() },
+    { onConflict: 'key' },
+  );
+  revalidatePath('/admin/academy');
+}

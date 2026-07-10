@@ -21,7 +21,9 @@ export type TitanActivityKind =
   | 'staff_role_changed'
   | 'staff_reset_link_sent'
   | 'referral_settings_changed'
-  | 'tech_job_assigned';
+  | 'tech_job_assigned'
+  | 'payment_link_clicked'
+  | 'payment_received';
 
 export type TitanActivityEvent = {
   id: string;

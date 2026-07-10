@@ -24,7 +24,7 @@ const PREVIEW_STATES = [
 ] as const;
 
 export function LoyaltyCardPreviewConsole({ design }: LoyaltyCardPreviewConsoleProps) {
-  const [side, setSide] = useState<'front' | 'back'>('back');
+  const [side, setSide] = useState<'front' | 'back'>('front');
   const [previewStamps, setPreviewStamps] = useState(0);
   const [rewardReady, setRewardReady] = useState(false);
 

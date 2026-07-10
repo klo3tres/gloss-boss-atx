@@ -9,6 +9,7 @@ import {
   loadTitanNotificationEvents,
   markAllNotificationsRead,
   markNotificationRead,
+  archiveAllNotifications,
 } from '@/lib/titan/notification-events';
 import { pushoverConfigured, sendPushoverNotification } from '@/lib/pushover';
 import type { ScanFrequency } from '@/lib/titan/scan-budget';
@@ -49,6 +50,15 @@ export async function archiveNotificationAction(id: string) {
   if (!gate) return { error: 'Unauthorized' };
   await archiveNotification(gate.admin, id);
   revalidatePath('/admin/notifications');
+  return { ok: true };
+}
+
+export async function archiveAllNotificationsAction() {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  await archiveAllNotifications(gate.admin);
+  revalidatePath('/admin/notifications');
+  revalidatePath('/admin');
   return { ok: true };
 }
 

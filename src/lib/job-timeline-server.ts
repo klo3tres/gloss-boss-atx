@@ -14,7 +14,8 @@ export type JobTimelineEventType =
   | 'job_completed'
   | 'payment_received'
   | 'intake_submitted'
-  | 'custom_sms_sent';
+  | 'custom_sms_sent'
+  | 'payment_link_clicked';
 
 /**
  * Best-effort audit log — never throws; ignores schema drift.

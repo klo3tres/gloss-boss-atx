@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { SocialLinksFooter } from '@/components/marketing/social-links';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function ReviewPage({
   const { appointmentId } = await params;
   const qs = await searchParams;
   const admin = tryCreateAdminSupabase();
-  const [{ data: appointment }, { data: settings }, { data: media }] = admin
+  const [{ data: appointment }, { data: settings }, { data: media }, { data: socialRows }] = admin
     ? await Promise.all([
         admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle(),
         admin.from('site_settings').select('value').eq('key', 'google_review_url').maybeSingle(),
@@ -30,8 +31,14 @@ export default async function ReviewPage({
           .select('file_url, category, visible_to_customer')
           .eq('appointment_id', appointmentId)
           .order('created_at', { ascending: true }),
+        admin.from('site_settings').select('key, value').in('key', [
+          'social_instagram_url',
+          'social_facebook_url',
+          'social_tiktok_url',
+          'social_youtube_url',
+        ]),
       ])
-    : [{ data: null }, { data: null }, { data: [] }];
+    : [{ data: null }, { data: null }, { data: [] }, { data: [] }];
 
   const rawGoogle = (settings as { value?: unknown } | null)?.value;
   const googleReviewUrl =
@@ -45,14 +52,23 @@ export default async function ReviewPage({
     .slice(0, 8);
   const service = text((appointment as Record<string, unknown> | null)?.service_slug).replace(/-/g, ' ') || 'Completed detail';
   const vehicle = text((appointment as Record<string, unknown> | null)?.vehicle_description) || 'your vehicle';
+  const socialLinks = { instagramUrl: '', facebookUrl: '', tiktokUrl: '', youtubeUrl: '' };
+  for (const row of socialRows ?? []) {
+    const r = row as { key?: string; value?: unknown };
+    const val = typeof r.value === 'string' ? r.value : '';
+    if (r.key === 'social_instagram_url') socialLinks.instagramUrl = val;
+    if (r.key === 'social_facebook_url') socialLinks.facebookUrl = val;
+    if (r.key === 'social_tiktok_url') socialLinks.tiktokUrl = val;
+    if (r.key === 'social_youtube_url') socialLinks.youtubeUrl = val;
+  }
 
   return (
     <main className='gb-luxury-page min-h-screen bg-background px-4 py-24 text-foreground'>
-      <section className='mx-auto max-w-3xl rounded-3xl border border-gold/25 bg-black/70 p-6 shadow-[0_0_55px_rgba(212,175,55,0.12)] sm:p-8'>
+      <section className='mx-auto max-w-3xl rounded-3xl border border-border bg-card p-6 shadow-lg sm:p-8'>
         <Image src={LOGO} alt='Gloss Boss ATX' width={220} height={140} className='mx-auto h-auto w-40 object-contain' priority />
         <p className='mt-6 text-center text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Service review</p>
-        <h1 className='mt-3 text-center text-3xl font-black uppercase tracking-tight text-white sm:text-5xl'>How did we do?</h1>
-        <p className='mx-auto mt-3 max-w-xl text-center text-sm leading-relaxed text-zinc-300'>
+        <h1 className='mt-3 text-center text-3xl font-black uppercase tracking-tight text-foreground sm:text-5xl'>How did we do?</h1>
+        <p className='mx-auto mt-3 max-w-xl text-center text-sm leading-relaxed text-muted-foreground'>
           Review your completed {service} for {vehicle}. Your testimonial stays private until Gloss Boss ATX approves it.
         </p>
 
@@ -82,17 +98,17 @@ export default async function ReviewPage({
 
         <form action='/api/reviews' method='post' className='mt-7 space-y-4'>
           <input type='hidden' name='appointmentId' value={appointmentId} />
-          <label className='block text-xs font-black uppercase tracking-wider text-zinc-400'>
+          <label className='block text-xs font-black uppercase tracking-wider text-muted-foreground'>
             Rating
-            <select name='rating' defaultValue='5' className='mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-white'>
+            <select name='rating' defaultValue='5' className='mt-2 w-full rounded-xl border border-border bg-input px-3 py-3 text-foreground'>
               {[5, 4, 3, 2, 1].map((n) => (
                 <option key={n} value={n}>{n} stars</option>
               ))}
             </select>
           </label>
-          <label className='block text-xs font-black uppercase tracking-wider text-zinc-400'>
+          <label className='block text-xs font-black uppercase tracking-wider text-muted-foreground'>
             Testimonial
-            <textarea name='testimonial' rows={5} required placeholder='Tell us what stood out...' className='mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white' />
+            <textarea name='testimonial' rows={5} required placeholder='Tell us what stood out...' className='mt-2 w-full rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground' />
           </label>
           <button type='submit' className='w-full rounded-xl bg-gold px-5 py-4 text-xs font-black uppercase tracking-wider text-black'>Send testimonial</button>
         </form>
@@ -102,6 +118,10 @@ export default async function ReviewPage({
             <Star className='h-4 w-4' /> Leave Google review
           </Link>
         ) : null}
+
+        <div className="mt-6 border-t border-border pt-5">
+          <SocialLinksFooter links={socialLinks} />
+        </div>
       </section>
     </main>
   );

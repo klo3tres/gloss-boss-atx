@@ -16,6 +16,8 @@ import {
   syncDerivedOpportunitiesAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import { OpportunityDrawer } from '@/components/titan/opportunity-drawer';
+import { EmptyState } from '@/components/ui/empty-state';
+import type { ScriptBranding } from '@/lib/titan/script-branding-types';
 
 const TYPES = Object.entries(OPPORTUNITY_TYPE_LABELS);
 
@@ -63,28 +65,28 @@ function AddModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center" role="dialog" aria-modal="true">
-      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-500/25 bg-zinc-950 p-6 shadow-2xl">
-        <h2 className="text-xl font-black text-white">Add opportunity</h2>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 p-4 sm:items-center" role="dialog" aria-modal="true">
+      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-emerald-500/25 bg-card p-6 shadow-2xl">
+        <h2 className="text-xl font-black text-foreground">Add opportunity</h2>
         <div className="mt-4 grid gap-3">
-          <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <select value={type} onChange={(e) => setType(e.target.value)} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white">
+          <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <select value={type} onChange={(e) => setType(e.target.value)} className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground">
             {TYPES.map(([k, label]) => (
               <option key={k} value={k}>{label}</option>
             ))}
           </select>
-          <input type="number" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="Est. revenue ($)" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={social} onChange={(e) => setSocial(e.target.value)} placeholder="Social / profile URL" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={3} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
-          <input value={action} onChange={(e) => setAction(e.target.value)} placeholder="Recommended action" className="rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white" />
+          <input type="number" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="Est. revenue ($)" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <input value={social} onChange={(e) => setSocial(e.target.value)} placeholder="Social / profile URL" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={3} className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
+          <input value={action} onChange={(e) => setAction(e.target.value)} placeholder="Recommended action" className="rounded-xl border border-border bg-input px-3 py-3 text-sm text-foreground" />
         </div>
-        {err ? <p className="mt-2 text-xs text-rose-300">{err}</p> : null}
+        {err ? <p className="mt-2 text-xs text-rose-600">{err}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="submit" disabled={pending} className="rounded-xl bg-emerald-500 px-4 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50">Save</button>
-          <button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-4 py-3 text-[10px] font-black uppercase text-zinc-400">Cancel</button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-[10px] font-black uppercase text-muted-foreground">Cancel</button>
         </div>
       </form>
     </div>
@@ -94,7 +96,6 @@ function AddModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 function OpportunityCard({
   opp,
   events,
-  serviceOptions,
   onOpen,
 }: {
   opp: RevenueOpportunity;
@@ -102,30 +103,50 @@ function OpportunityCard({
   serviceOptions: { slug: string; title: string; priceCents?: number; durationMinutes?: number }[];
   onOpen: () => void;
 }) {
+  const ext = opp as RevenueOpportunity & {
+    businessName?: string | null;
+    businessAddress?: string | null;
+    websiteUrl?: string | null;
+    estimatedVehicleCount?: number | null;
+  };
+  const preview = opp.notes?.trim() || opp.whySurfaced || opp.recommendedAction || 'Click to open workflow and outreach scripts.';
+  const contactBits = [
+    opp.contactName,
+    opp.contactPhone,
+    opp.contactEmail,
+    ext.websiteUrl?.replace(/^https?:\/\//, ''),
+  ].filter(Boolean);
+
   return (
     <article
       role="button"
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => e.key === 'Enter' && onOpen()}
-      className="cursor-pointer rounded-2xl border border-white/10 bg-black/45 p-5 transition hover:border-emerald-500/30 hover:bg-black/60"
+      className="cursor-pointer rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:border-emerald-500/30 hover:shadow-md"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase text-emerald-300">{OPPORTUNITY_TYPE_LABELS[opp.opportunityType] ?? opp.opportunityType}</p>
-          <h3 className="mt-1 text-lg font-black text-white">{opp.title}</h3>
-          <p className="mt-1 text-xs text-zinc-500">Source: {opp.source} · {STATUS_LABELS[opp.status as keyof typeof STATUS_LABELS] ?? opp.status}</p>
+          <p className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-300">{OPPORTUNITY_TYPE_LABELS[opp.opportunityType] ?? opp.opportunityType}</p>
+          <h3 className="mt-1 text-lg font-black text-foreground">{ext.businessName ?? opp.title}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Source: {opp.source} · {STATUS_LABELS[opp.status as keyof typeof STATUS_LABELS] ?? opp.status}</p>
         </div>
         <div className="text-right">
-          <p className="font-mono text-lg font-black text-emerald-300">{money(opp.estimatedRevenueCents)}</p>
-          <p className="text-[10px] text-zinc-500">{opp.confidenceScore}% confidence</p>
+          <p className="font-mono text-lg font-black text-emerald-600 dark:text-emerald-300">{money(opp.estimatedRevenueCents)}</p>
+          <p className="text-[10px] text-muted-foreground">{opp.confidenceScore}% confidence</p>
         </div>
       </div>
-      <p className="mt-3 line-clamp-2 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100">
-        {opp.whySurfaced}
+      {contactBits.length > 0 ? (
+        <p className="mt-2 text-[10px] text-muted-foreground">{contactBits.join(' · ')}</p>
+      ) : null}
+      {ext.estimatedVehicleCount ? (
+        <p className="mt-1 text-[10px] font-bold uppercase text-muted-foreground">~{ext.estimatedVehicleCount} vehicles</p>
+      ) : null}
+      <p className="mt-3 line-clamp-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-foreground">
+        {preview}
       </p>
       <p className="mt-3 text-[10px] font-black uppercase text-gold-soft">Click to open workflow →</p>
-      {events.length > 0 ? <p className="mt-1 text-[10px] text-zinc-600">{events.length} events logged</p> : null}
+      {events.length > 0 ? <p className="mt-1 text-[10px] text-muted-foreground">{events.length} events logged</p> : null}
     </article>
   );
 }
@@ -135,11 +156,13 @@ export function TitanOpportunitiesClient({
   eventsByOpp,
   tablesReady,
   serviceOptions = [],
+  scriptBranding = null,
 }: {
   opportunities: RevenueOpportunity[];
   eventsByOpp: Record<string, RevenueOpportunityEvent[]>;
   tablesReady: boolean;
   serviceOptions?: { slug: string; title: string; priceCents?: number; durationMinutes?: number }[];
+  scriptBranding?: ScriptBranding | null;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -169,9 +192,9 @@ export function TitanOpportunitiesClient({
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <Link href="/admin/titan" className="text-[10px] font-black uppercase text-zinc-500 hover:text-white">← Titan</Link>
-          <h1 className="mt-2 text-2xl font-black text-white">Opportunity Board</h1>
-          <p className="mt-1 text-sm text-zinc-400">{opportunities.length} revenue opportunities — manual mode works without any API.</p>
+          <Link href="/admin/titan" className="text-[10px] font-black uppercase text-muted-foreground hover:text-foreground">← Titan</Link>
+          <h1 className="mt-2 text-2xl font-black text-foreground">Opportunity Board</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{opportunities.length} revenue opportunities — contact names, phones, and dynamic scripts load per lead.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase text-black">
@@ -197,21 +220,22 @@ export function TitanOpportunitiesClient({
               setBanner(res.error ?? `Imported ${res.created ?? 0} from CRM data.`);
               router.refresh();
             })}
-            className="rounded-xl border border-white/10 px-4 py-2 text-[10px] font-black uppercase text-zinc-300 disabled:opacity-50"
+            className="rounded-xl border border-border px-4 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50"
           >
             Sync from CRM
           </button>
         </div>
       </header>
 
-      {banner ? <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{banner}</p> : null}
+      {banner ? <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-100">{banner}</p> : null}
 
       {opportunities.length === 0 ? (
-        <div className="rounded-3xl border border-white/10 bg-black/40 p-8 text-center">
-          <p className="text-sm font-bold text-white">Titan needs opportunities to hunt.</p>
-          <p className="mt-2 text-xs text-zinc-400">Add your warm leads first: nurses, coworkers, referrals, apartments, Facebook posts, and canceled bookings.</p>
-          <button type="button" onClick={() => setAddOpen(true)} className="mt-4 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black">Add first opportunity</button>
-        </div>
+        <EmptyState
+          title="No opportunities yet"
+          description="Import warm leads, sync from CRM, or run Lead Radar to populate your revenue board."
+          primaryAction={{ label: 'Add opportunity', onClick: () => setAddOpen(true) }}
+          secondaryAction={{ label: 'Open Lead Radar', href: '/admin/titan/lead-radar' }}
+        />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {opportunities.map((opp) => (
@@ -233,6 +257,7 @@ export function TitanOpportunitiesClient({
           opp={drawerOpp}
           events={eventsByOpp[drawerOpp.id] ?? []}
           serviceOptions={serviceOptions}
+          scriptBranding={scriptBranding}
           onClose={() => setDrawerOpp(null)}
         />
       ) : null}

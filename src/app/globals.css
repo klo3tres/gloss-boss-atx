@@ -1566,12 +1566,42 @@ html[data-theme='light'] .gb-luxury-nav .gb-premium-btn {
 }
 
 html[data-theme='light'] .gb-membership-band {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2d2a24 100%) !important;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, #ffffff 55%, #f7f6f3 100%) !important;
+  border-color: rgba(212, 175, 55, 0.22) !important;
 }
 
 html[data-theme='light'] .gb-membership-band .text-white,
 html[data-theme='light'] .gb-membership-band h2 {
-  color: #fafafa !important;
+  color: #0a0a0a !important;
+}
+
+html[data-theme='light'] .gb-luxury-page:not(.gb-dashboard-shell) {
+  background:
+    radial-gradient(ellipse 100% 70% at 50% -20%, rgba(212, 175, 55, 0.12), transparent 55%),
+    linear-gradient(180deg, #f7f6f3 0%, #eceae6 48%, #f5f5f3 100%) !important;
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .gb-booking-wizard {
+  background: linear-gradient(180deg, #f7f6f3 0%, #ffffff 35%, #f0efec 100%) !important;
+}
+
+html[data-theme='light'] .gb-booking-wizard .gb-premium-hero,
+html[data-theme='light'] .gb-booking-wizard section.rounded-2xl,
+html[data-theme='light'] .gb-booking-wizard section.rounded-xl {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme='light'] .titan-platform-shell {
+  background: var(--background) !important;
+  color: var(--foreground);
+}
+
+html[data-theme='light'] .titan-platform-shell header {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
 }
 
 html[data-theme='dark'] .gb-marketing-page .gb-marketing-hero-bg .gb-hero-scrim-light {

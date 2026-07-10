@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText, X, Wrench, Sparkles, Car } from 'lucide-react';
+import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText, X, Wrench, Sparkles, Car, Gift } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
@@ -26,7 +26,8 @@ import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-pa
 import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
 import { AppointmentScheduleControls } from '@/components/admin/appointment-schedule-controls';
 import { WorkOrderConfirmationPanel } from '@/components/admin/work-order-confirmation-panel';
-import { WorkOrderSectionTabs } from '@/components/tech/work-order-section-tabs';
+import { WorkOrderGrowthPanel, type WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
+import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 import type { ConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
@@ -156,6 +157,7 @@ export type WorkOrderConsoleData = {
     at: string;
   }>;
   receiptPdfHref?: string;
+  growthData?: WorkOrderGrowthData;
   receiptBreakdownLines?: ReceiptBreakdownLine[];
   ledgerResolveError?: string | null;
   receiptParityDebug?: ReceiptParityDebug;
@@ -280,7 +282,7 @@ export function WorkOrderConsoleClient({
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'receipt' | 'tools'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'receipt' | 'growth' | 'tools'>('overview');
   const [activeDrawer, setActiveDrawer] = useState<'customer' | 'vehicle' | 'loyalty' | 'notes' | 'advanced' | null>(null);
   const [isContactOpen, setIsContactOpen] = useState(false);
 
@@ -558,10 +560,19 @@ export function WorkOrderConsoleClient({
             action: () => setActiveTab('receipt'),
           },
           {
+            label: 'Growth',
+            value: data.growthData?.loyaltyClaimableRewards
+              ? `${data.growthData.loyaltyClaimableRewards} reward ready`
+              : data.growthData?.activeMembership?.name ?? 'Upsell',
+            meta: data.growthData?.referralCode ? `Ref ${data.growthData.referralCode}` : 'Memberships & referrals',
+            icon: <Sparkles className='h-4 w-4' />,
+            action: () => setActiveTab('growth'),
+          },
+          {
             label: 'Loyalty',
             value: `${data.loyaltyStampsCount ?? 0} stamps`,
             meta: data.credits?.length ? `${data.credits.length} credit rows` : 'Rewards tracker',
-            icon: <Sparkles className='h-4 w-4' />,
+            icon: <Gift className='h-4 w-4' />,
             action: () => setActiveDrawer('loyalty'),
           },
           {
@@ -1402,14 +1413,11 @@ export function WorkOrderConsoleClient({
               <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
                 <SectionEyebrow>Order Receipt & Breakdown</SectionEyebrow>
                 {data.receiptPdfHref && (
-                  <a
+                  <ReceiptPdfDownloadButton
                     href={data.receiptPdfHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-gold-soft hover:underline font-bold"
-                  >
-                    Download PDF Receipt
-                  </a>
+                    label='Download PDF'
+                    className='text-xs font-bold uppercase text-gold-soft'
+                  />
                 )}
               </div>
 
@@ -1479,6 +1487,15 @@ export function WorkOrderConsoleClient({
           </div>
         </div>
       )}
+
+      {/* === GROWTH TAB === */}
+      {activeTab === 'growth' && data.growthData ? (
+        <div className='space-y-6 animate-in fade-in duration-200'>
+          <div id='wo-growth' className='scroll-mt-28'>
+            <WorkOrderGrowthPanel jobId={jobId} isFallback={data.isFallback} data={data.growthData} />
+          </div>
+        </div>
+      ) : null}
 
       {/* === LOYALTY TAB === */}
       <AnimatePresence>

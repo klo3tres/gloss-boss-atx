@@ -418,11 +418,16 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
       ...stripeMeta,
     });
 
+    const { buildTrackedBalancePayUrl } = await import('@/lib/payment-link-tracking');
+    const trackedPayUrl =
+      session.url && token ? buildTrackedBalancePayUrl(origin, appointmentId, token) : session.url ?? null;
+
     await admin
       .from('appointments')
       .update({
         final_payment_checkout_session_id: session.id,
         final_payment_url: session.url ?? null,
+        final_payment_tracked_url: trackedPayUrl,
         final_payment_created_at: new Date().toISOString(),
         balance_due_cents: balanceCents,
         payment_status: 'balance_due',
@@ -432,7 +437,7 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
 
     await syncJobBalanceDue(admin, jobRow, pricing, { appointmentId });
 
-    return session.url ? { ok: true, url: session.url, balanceCents } : { ok: false, error: 'No checkout URL returned' };
+    return trackedPayUrl ? { ok: true, url: trackedPayUrl, balanceCents } : { ok: false, error: 'No checkout URL returned' };
   } catch (e) {
     console.warn('[checkout] createCustomerFinalBalanceCheckoutSession', e);
     return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
@@ -727,6 +732,16 @@ export async function processCheckoutSessionCompleted(params: {
           updated_at: new Date().toISOString(),
         })
         .eq('id', appointmentId);
+      try {
+        const { onFinalBalancePaymentCompleted } = await import('@/lib/stripe/balance-payment-automation');
+        await onFinalBalancePaymentCompleted(admin, {
+          appointmentId,
+          amountCents: amount,
+          sessionId: session.id,
+        });
+      } catch (autoErr) {
+        console.warn('[checkout] balance payment automation', autoErr);
+      }
     } else if (isBookingFull) {
       extras.stripe_checkout_kind = 'booking_full';
       extras.payment_status = 'full_paid';

@@ -34,23 +34,26 @@ export function ServicePackageShowcase({
 
   return (
     <MotionFade delay={index * 0.05}>
-      <article className="group overflow-hidden rounded-3xl border border-border bg-card shadow-sm transition hover:border-gold/25">
+      <article className="group overflow-hidden rounded-3xl border border-border bg-card shadow-[0_8px_32px_rgba(0,0,0,0.06)] transition duration-300 hover:border-gold/30 hover:shadow-[0_12px_40px_rgba(212,175,55,0.12)]">
         <div className={`grid gap-0 lg:grid-cols-2 ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}>
           <div className="relative min-h-[260px] overflow-hidden lg:min-h-[380px]">
             <Image
               src={imageSrc}
               alt={service.title}
               fill
+              priority={index === 0}
+              loading={index === 0 ? 'eager' : 'lazy'}
+              sizes="(max-width: 1024px) 100vw, 50vw"
               unoptimized={imageSrc.startsWith('http')}
-              className="object-cover transition duration-700 group-hover:scale-[1.02]"
+              className="object-cover transition duration-700 group-hover:scale-[1.03]"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent dark:from-black/70 dark:via-black/10" />
             {popular ? (
-              <span className="absolute left-4 top-4 rounded-full border border-gold/40 bg-black/60 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-gold-soft backdrop-blur">
+              <span className="absolute left-4 top-4 rounded-full border border-gold/40 bg-card/90 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-gold-soft shadow-sm backdrop-blur">
                 Most booked
               </span>
             ) : null}
-            <p className="absolute bottom-4 left-4 right-4 text-sm leading-relaxed text-white/90">{presentation.ideal}</p>
+            <p className="absolute bottom-4 left-4 right-4 text-sm leading-relaxed text-foreground dark:text-white/90">{presentation.ideal}</p>
           </div>
 
           <div className="flex flex-col p-6 sm:p-8">
@@ -71,9 +74,9 @@ export function ServicePackageShowcase({
                   { label: 'SUV', value: formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice) },
                   { label: 'Truck', value: formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice) },
                 ].map((tier) => (
-                  <div key={tier.label} className="rounded-xl border border-border bg-muted/30 px-2 py-2.5 text-center">
+                  <div key={tier.label} className="rounded-xl border border-gold/15 bg-gradient-to-b from-gold/5 to-muted/20 px-2 py-2.5 text-center shadow-sm">
                     <p className="text-[9px] font-bold uppercase text-muted-foreground">{tier.label}</p>
-                    <p className="mt-0.5 font-mono text-base font-black text-gold-soft">{tier.value}</p>
+                    <p className="mt-0.5 font-mono text-lg font-black text-gold-soft">{tier.value}</p>
                   </div>
                 ))}
               </div>

@@ -6,9 +6,6 @@ import {
   Clock,
   CreditCard,
   FileText,
-  User,
-  MessageSquare,
-  Car,
   Sparkles,
   Wrench,
 } from 'lucide-react';
@@ -25,14 +22,14 @@ function MissionBtn({
   active?: boolean;
 }) {
   const cls =
-    'flex min-w-[3.75rem] shrink-0 flex-col items-center gap-0.5 rounded-xl border px-2 py-2 text-[8px] font-black uppercase tracking-wide transition sm:min-w-[4.25rem] sm:text-[9px] ' +
+    'flex min-w-[4rem] shrink-0 flex-col items-center gap-1 rounded-2xl border px-2.5 py-2.5 text-[8px] font-black uppercase tracking-wide transition sm:min-w-[4.5rem] sm:text-[9px] ' +
     (active
-      ? 'border-gold bg-gold/20 text-gold-soft shadow-[0_0_20px_rgba(212,175,55,0.3)]'
-      : 'border-white/15 bg-black/70 text-zinc-300 hover:border-gold/50 hover:text-gold-soft');
+      ? 'border-gold/50 bg-gold/15 text-gold-soft shadow-[0_4px_24px_rgba(212,175,55,0.25)]'
+      : 'border-border/80 bg-card/80 text-muted-foreground backdrop-blur-sm hover:border-gold/40 hover:text-foreground');
 
   return (
     <button type='button' onClick={onClick} className={cls}>
-      {icon}
+      <span className={active ? 'text-gold-soft' : 'text-muted-foreground'}>{icon}</span>
       <span>{label}</span>
     </button>
   );
@@ -54,7 +51,7 @@ export function WorkOrderMissionBar({
   hasPreInspection?: boolean;
 }) {
   return (
-    <div className='gb-mission-top fixed left-0 right-0 top-16 z-40 border-b border-gold/25 bg-black/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl lg:top-14'>
+    <div className='gb-mission-top fixed left-0 right-0 top-16 z-40 border-b border-gold/20 bg-background/95 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:top-14'>
       {timerWarning ? (
         <p className='border-b border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-center text-[10px] font-bold text-amber-200'>{timerWarning}</p>
       ) : null}
@@ -84,6 +81,12 @@ export function WorkOrderMissionBar({
           active={activeTab === 'receipt'}
         />
         <MissionBtn
+          label='Growth'
+          icon={<Sparkles className='h-4 w-4' />}
+          onClick={() => onTabChange('growth')}
+          active={activeTab === 'growth'}
+        />
+        <MissionBtn
           label='Tools'
           icon={<Wrench className='h-4 w-4' />}
           onClick={() => onTabChange('tools')}
@@ -93,3 +96,4 @@ export function WorkOrderMissionBar({
     </div>
   );
 }
+

@@ -1,13 +1,35 @@
 import Link from 'next/link';
 import { Award, ShieldCheck, Sparkles, Star, Trophy } from 'lucide-react';
 import { MarketingSiteFooter } from '@/components/marketing/marketing-site-footer';
+import { SocialLinksRow } from '@/components/marketing/social-links';
+import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const metadata = {
   title: 'About Our Craft | Gloss Boss ATX',
   description: 'The story, ethos, and standards of Austin’s premier mobile automotive detailing experts.',
 };
 
-export default function AboutPage() {
+export const dynamic = 'force-dynamic';
+
+async function loadSocialLinks() {
+  const empty = { instagramUrl: '', tiktokUrl: '', youtubeUrl: '', facebookUrl: '' };
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return empty;
+  const { data } = await admin
+    .from('site_settings')
+    .select('key, value')
+    .in('key', ['social_instagram_url', 'social_tiktok_url', 'social_youtube_url', 'social_facebook_url']);
+  const rows = data ?? [];
+  return {
+    instagramUrl: String(rows.find((r) => r.key === 'social_instagram_url')?.value ?? ''),
+    tiktokUrl: String(rows.find((r) => r.key === 'social_tiktok_url')?.value ?? ''),
+    youtubeUrl: String(rows.find((r) => r.key === 'social_youtube_url')?.value ?? ''),
+    facebookUrl: String(rows.find((r) => r.key === 'social_facebook_url')?.value ?? ''),
+  };
+}
+
+export default async function AboutPage() {
+  const socialLinks = await loadSocialLinks();
   const VALUES = [
     {
       title: 'Craftsman Standards',
@@ -40,6 +62,7 @@ export default function AboutPage() {
             It is a meticulous craft that requires patience, elite chemistry, and a refusal to cut corners. We bring
             this museum-grade precision directly to your Austin driveway.
           </p>
+          <SocialLinksRow links={socialLinks} className="mt-6" />
         </div>
       </section>
 
@@ -65,36 +88,26 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="max-w-4xl mx-auto px-4 sm:px-8 py-10">
-        <div className="rounded-3xl border border-border bg-card p-8 sm:p-10 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-            <Trophy className="h-32 w-32 text-gold" />
+      <section className="max-w-5xl mx-auto px-4 sm:px-8 pb-16">
+        <div className="gb-premium-card rounded-3xl border border-gold/20 p-8 sm:p-10 text-center">
+          <Trophy className="mx-auto h-8 w-8 text-gold-soft" />
+          <h2 className="mt-4 text-2xl font-black uppercase text-foreground">Built for owners who care</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground">
+            From daily drivers to collector exotics, Gloss Boss ATX treats every vehicle like a statement piece.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link href="/book" className="rounded-xl bg-gold px-6 py-3 text-sm font-black uppercase text-black">
+              Book a detail
+            </Link>
+            <Link href="/memberships" className="rounded-xl border border-border px-6 py-3 text-sm font-black uppercase text-foreground">
+              View memberships
+            </Link>
           </div>
-          <div className="max-w-3xl">
-            <h3 className="text-lg font-black uppercase text-foreground tracking-wider flex items-center gap-2">
-              <Star className="h-5 w-5 text-gold fill-gold" /> Meticulous, not fast
-            </h3>
-            <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-              We choose to limit our scheduled routes each day so our technicians can focus entirely on the vehicle
-              in front of them. Our high-pressure steam washers, paint correction systems, and premium glass-coatings
-              are applied without stopwatch pressure. When we detail your vehicle, it receives our undivided attention.
-            </p>
+          <div className="mt-6 flex items-center justify-center gap-1 text-gold-soft">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star key={i} className="h-4 w-4 fill-current" />
+            ))}
           </div>
-        </div>
-      </section>
-
-      <section className="max-w-5xl mx-auto px-4 sm:px-8 py-14 text-center">
-        <h2 className="text-2xl sm:text-3xl font-black uppercase text-foreground">Experience detailing redefined</h2>
-        <p className="mt-3 text-sm text-muted-foreground max-w-lg mx-auto">
-          Select a package, enter your location, and lock in your driveway appointment in under two minutes.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/book" className="rounded-xl bg-gradient-to-r from-gold via-gold-soft to-gold px-8 py-3.5 text-xs font-black uppercase tracking-widest text-black shadow-lg hover:brightness-110 transition">
-            Book driveway detailing
-          </Link>
-          <Link href="/services" className="rounded-xl border border-border bg-card px-8 py-3.5 text-xs font-black uppercase tracking-widest text-foreground hover:border-gold/30 transition">
-            Explore packages
-          </Link>
         </div>
       </section>
 

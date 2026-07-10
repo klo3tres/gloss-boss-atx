@@ -64,7 +64,7 @@ export default async function MembershipsPage() {
   const plans = publicMembershipPlans((data ?? []) as Plan[]);
 
   return (
-    <main className="gb-luxury-page min-h-screen bg-black pb-24 text-foreground">
+    <main className="gb-luxury-page gb-marketing-page min-h-screen pb-24 text-foreground">
       {/* Premium Driveway Hero Banner */}
       <section className="relative w-full min-h-[52vh] sm:h-[60vh] sm:min-h-[480px] flex items-center justify-center overflow-hidden border-b border-gold/15 mb-12 sm:mb-16">
         <Image
@@ -74,8 +74,8 @@ export default async function MembershipsPage() {
           priority
           className="object-cover object-center opacity-40 brightness-75 scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/80" />
 
         <div className="relative z-10 max-w-5xl px-6 text-center">
           <div className="flex justify-center mb-6">
@@ -91,10 +91,10 @@ export default async function MembershipsPage() {
           <p className="text-xs font-black uppercase tracking-[0.3em] text-gold">
             Gloss Boss Autocare Subscriptions
           </p>
-          <h1 className="mt-4 text-4.5xl font-black uppercase tracking-tight text-white sm:text-6xl max-w-3xl mx-auto leading-none">
+          <h1 className="mt-4 text-4.5xl font-black uppercase tracking-tight text-foreground sm:text-6xl max-w-3xl mx-auto leading-none">
             RECURRING SHINE FOR LUXURY DRIVES.
           </h1>
-          <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base text-zinc-300 leading-relaxed font-medium">
+          <p className="mt-4 max-w-2xl mx-auto text-sm sm:text-base text-muted-foreground leading-relaxed font-medium">
             Keep your vehicle in showroom condition with tailored maintenance plans — member pricing, included wash credits, and priority scheduling slots.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
@@ -106,7 +106,7 @@ export default async function MembershipsPage() {
             </a>
             <Link
               href="/book"
-              className="rounded-xl border border-white/20 bg-black/60 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white hover:bg-white/5 transition"
+              className="rounded-xl border border-border bg-card px-6 py-3.5 text-xs font-black uppercase tracking-wider text-foreground hover:border-gold/40 transition shadow-sm"
             >
               One-Time Booking
             </Link>
@@ -120,15 +120,15 @@ export default async function MembershipsPage() {
           {MEMBERSHIP_HIGHLIGHTS.map(({ title, body, Icon }) => (
             <div
               key={title}
-              className="rounded-3xl border border-white/5 bg-zinc-950/60 p-6 flex flex-col items-center text-center backdrop-blur-sm"
+              className="rounded-3xl border border-border bg-card p-6 flex flex-col items-center text-center shadow-sm"
             >
               <div className="rounded-2xl bg-gold/10 p-3.5 border border-gold/15">
                 <Icon className="h-6 w-6 text-gold-soft" />
               </div>
-              <h3 className="mt-4 text-sm font-black uppercase tracking-wider text-white">
+              <h3 className="mt-4 text-sm font-black uppercase tracking-wider text-foreground">
                 {title}
               </h3>
-              <p className="mt-2 text-xs leading-relaxed text-zinc-400 max-w-[240px]">
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground max-w-[240px]">
                 {body}
               </p>
             </div>

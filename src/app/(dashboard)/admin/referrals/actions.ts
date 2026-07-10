@@ -38,6 +38,7 @@ export async function saveReferralProgramSettingsAction(
     reviewRewardValue: num(formData.get('review_reward_value'), 10),
     freeDetailReferralThreshold: num(formData.get('free_detail_threshold'), 5),
     freeDetailServiceSlug: String(formData.get('free_detail_service_slug') ?? 'full-detail'),
+    rewardUnlockRule: String(formData.get('reward_unlock_rule') ?? 'completed_paid') as 'booked' | 'completed_paid',
     rewardLadder: (() => {
       try {
         const raw = String(formData.get('reward_ladder_json') ?? '').trim();
@@ -77,6 +78,10 @@ export async function saveReferralProgramSettingsAction(
 
   revalidatePath('/admin/referrals');
   revalidatePath('/book');
+  revalidatePath('/dashboard');
+  revalidatePath('/referrals');
+  revalidatePath('/');
+  revalidatePath('/api/public/referral-settings');
   return { ok: true };
 }
 

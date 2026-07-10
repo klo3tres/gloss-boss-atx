@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CustomerBookingLifecycle } from '@/components/booking/customer-booking-lifecycle';
+import { SocialLinksRow } from '@/components/marketing/social-links';
 
 type VehicleView = {
   description: string;
@@ -65,6 +66,16 @@ function ConfirmationInner() {
 
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [socialLinks, setSocialLinks] = useState({ instagramUrl: '', facebookUrl: '', tiktokUrl: '', youtubeUrl: '' });
+
+  useEffect(() => {
+    fetch('/api/public/site-data', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.socialLinks) setSocialLinks(d.socialLinks);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!appointmentId || !token) {
@@ -225,6 +236,11 @@ function ConfirmationInner() {
         >
           Sign in to view in dashboard
         </Link>
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-border bg-card p-5 text-center">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Follow Gloss Boss ATX</p>
+        <SocialLinksRow links={socialLinks} className="mt-3 justify-center" />
       </div>
     </div>
   );
