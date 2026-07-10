@@ -122,6 +122,11 @@ export async function cancelAppointmentLifecycle(
       serviceAddress: addr || null,
       extraNote: `Cancelled: ${reason}`,
     });
+    const techId = str(row.assigned_technician_id);
+    if (techId) {
+      const { notifyTechnicianJobCancelled } = await import('@/lib/staff-notification-router');
+      await notifyTechnicianJobCancelled(admin, { technicianId: techId, appointmentId: id, extraNote: reason });
+    }
   } catch (e) {
     console.warn('[lifecycle] owner cancel notify', e);
   }
@@ -239,6 +244,15 @@ export async function rescheduleAppointmentLifecycle(
       serviceAddress: addr || null,
       extraNote: `Was ${whenChicago(oldStart)} — ${str(input.reason) || 'rescheduled'}`,
     });
+    const techId = str(row.assigned_technician_id);
+    if (techId) {
+      const { notifyTechnicianJobRescheduled } = await import('@/lib/staff-notification-router');
+      await notifyTechnicianJobRescheduled(admin, {
+        technicianId: techId,
+        appointmentId: id,
+        extraNote: `Was ${whenChicago(oldStart)}`,
+      });
+    }
   } catch (e) {
     console.warn('[lifecycle] owner reschedule notify', e);
   }

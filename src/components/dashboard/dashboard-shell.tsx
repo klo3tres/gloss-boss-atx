@@ -294,13 +294,39 @@ export function DashboardShell({
         }
 
         if (appointmentIds.length > 0) {
-          const { data: events } = await supabase
-            .from('job_timeline_events')
-            .select('event_type, created_at, appointment_id, meta')
-            .in('appointment_id', appointmentIds)
-            .order('created_at', { ascending: false })
-            .limit(8);
-          setRecentEvents(events ?? []);
+          const [{ data: timelineEvents }, { data: staffAlerts }] = await Promise.all([
+            supabase
+              .from('job_timeline_events')
+              .select('event_type, created_at, appointment_id, meta')
+              .in('appointment_id', appointmentIds)
+              .order('created_at', { ascending: false })
+              .limit(8),
+            isTech
+              ? supabase
+                  .from('titan_notification_events')
+                  .select('title, body, created_at, related_url, priority, read_at')
+                  .eq('related_type', 'appointment')
+                  .in('related_id', appointmentIds)
+                  .order('created_at', { ascending: false })
+                  .limit(8)
+              : Promise.resolve({ data: [] }),
+          ]);
+
+          const merged = [
+            ...((staffAlerts ?? []) as Array<{ title?: string; event_type?: string; created_at: string; related_url?: string }>).map(
+              (e) => ({
+                event_type: e.title || 'Job alert',
+                created_at: e.created_at,
+                appointment_id: null,
+                meta: { href: e.related_url, body: (e as { body?: string }).body },
+              }),
+            ),
+            ...(timelineEvents ?? []),
+          ]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 8);
+
+          setRecentEvents(merged);
         } else {
           setRecentEvents([]);
         }

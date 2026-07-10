@@ -15,9 +15,11 @@ export async function sendPushoverNotification(params: {
   message: string;
   url?: string;
   priority?: 0 | 1 | 2;
+  /** Per-user Pushover key (staff). Falls back to PUSHOVER_USER_KEY env. */
+  userKey?: string;
 }): Promise<PushoverResult> {
   const token = process.env.PUSHOVER_APP_TOKEN?.trim();
-  const userKey = process.env.PUSHOVER_USER_KEY?.trim();
+  const userKey = params.userKey?.trim() || process.env.PUSHOVER_USER_KEY?.trim();
   if (!token || !userKey) {
     return { ok: false, skipped: true, error: 'Pushover not configured (PUSHOVER_APP_TOKEN / PUSHOVER_USER_KEY).' };
   }
