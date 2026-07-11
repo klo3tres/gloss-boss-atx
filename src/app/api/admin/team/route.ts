@@ -7,6 +7,8 @@ import { canAssignRole, canModifyStaffProfile, isProtectedOwner } from '@/lib/au
 import { repairStaffProfileFromSources } from '@/lib/auth/staff-profile-resolve';
 import { findPendingInviteByProfileEmail } from '@/lib/staff-invites';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
+import { passwordResetRedirectUrl } from '@/lib/auth/action-link-registry';
+import { logAuthEvent } from '@/lib/auth/auth-event-log';
 import type { AppRole } from '@/lib/auth/roles';
 
 export const runtime = 'nodejs';
@@ -154,13 +156,37 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
-    const redirectTo = `${appBase}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
+    const redirectTo = passwordResetRedirectUrl();
     const linkRes = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } });
     if (linkRes.error || !linkRes.data?.properties?.action_link) {
+      await logAuthEvent(admin, {
+        eventType: 'reset_requested',
+        actorUserId: gate.userId,
+        subjectUserId: userId,
+        subjectEmail: email,
+        detail: linkRes.error?.message ?? 'generateLink failed',
+      });
       return NextResponse.json({ ok: false, error: linkRes.error?.message ?? 'Could not generate reset link.' }, { status: 400 });
     }
-    const resetUrl = String(linkRes.data.properties.action_link);
+    let resetUrl = String(linkRes.data.properties.action_link);
+    // Force production callback destination if Supabase omitted redirect_to
+    try {
+      const u = new URL(resetUrl);
+      if (!u.searchParams.get('redirect_to')) {
+        u.searchParams.set('redirect_to', redirectTo);
+        resetUrl = u.toString();
+      }
+    } catch {
+      /* keep original */
+    }
+    await logAuthEvent(admin, {
+      eventType: 'reset_sent',
+      actorUserId: gate.userId,
+      subjectUserId: userId,
+      subjectEmail: email,
+      detail: 'Admin generated password reset link',
+      meta: { redirectTo },
+    });
     const displayName = String((profile as { full_name?: string } | null)?.full_name ?? email.split('@')[0] ?? 'Team member');
     const phone = String((profile as { phone?: string } | null)?.phone ?? '').trim();
 
@@ -336,8 +362,16 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ ok: false, error: `Login contact updated, but profile sync failed: ${error.message}` }, { status: 400 });
     }
+    await logAuthEvent(admin, {
+      eventType: 'auth_email_changed',
+      actorUserId: gate.userId,
+      subjectUserId: profileId,
+      subjectEmail: email,
+      detail: currentEmail && currentEmail.toLowerCase() !== email ? `from ${currentEmail}` : 'unchanged-or-same',
+      meta: { phoneUpdated: Boolean(phone) },
+    });
     revalidatePath('/admin/team');
-    return NextResponse.json({ ok: true, email, phone });
+    return NextResponse.json({ ok: true, email, phone, authEmailAligned: true });
   }
 
   if (body.intent === 'set_staff_active') {

@@ -81,3 +81,54 @@ test('segment error boundaries exist', async () => {
     await fs.access(new URL(rel, import.meta.url));
   }
 });
+
+test('profiles RLS repair migration exists and uses SECURITY DEFINER helpers', async () => {
+  const src = await fs.readFile(
+    new URL('../supabase/migrations/000129_profiles_rls_auth_repair.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(src, /infinite recursion/);
+  assert.match(src, /security definer/i);
+  assert.match(src, /set row_security = off/i);
+  assert.match(src, /is_admin_level/);
+  assert.match(src, /auth_event_log/);
+});
+
+test('auth callback routes recovery to reset-password', async () => {
+  const src = await fs.readFile(new URL('../src/app/auth/callback/route.ts', import.meta.url), 'utf8');
+  assert.match(src, /recovery/);
+  assert.match(src, /\/reset-password/);
+  assert.match(src, /typeParam/);
+});
+
+test('action link registry covers password reset and staff invite', async () => {
+  const src = await fs.readFile(new URL('../src/lib/auth/action-link-registry.ts', import.meta.url), 'utf8');
+  assert.match(src, /password_reset/);
+  assert.match(src, /staff_invite/);
+  assert.match(src, /passwordResetRedirectUrl/);
+  assert.match(src, /type=recovery/);
+  assert.match(src, /validateActionLinkRegistry/);
+});
+
+test('humanizeAuthError hides profiles recursion', async () => {
+  const src = await fs.readFile(new URL('../src/lib/auth/auth-event-log.ts', import.meta.url), 'utf8');
+  assert.match(src, /infinite recursion/);
+  assert.match(src, /profile connection failed/i);
+});
+
+test('Ask Titan is hidden on auth recovery routes', async () => {
+  const src = await fs.readFile(
+    new URL('../src/components/titan/titan-global-assistant.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(src, /\/reset-password/);
+  assert.match(src, /\/join-team/);
+  assert.match(src, /\/auth/);
+});
+
+test('signup uses emailRedirectTo confirmation callback', async () => {
+  const src = await fs.readFile(new URL('../src/app/(auth)/signup/signup-form.tsx', import.meta.url), 'utf8');
+  assert.match(src, /emailRedirectTo/);
+  assert.match(src, /Resend confirmation/);
+  assert.match(src, /humanizeAuthError/);
+});

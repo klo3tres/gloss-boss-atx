@@ -9,16 +9,17 @@ import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { resolveSafePostLoginRedirect, resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
 import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { humanizeAuthError } from '@/lib/auth/auth-event-log';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
 
 function formatLoginFailure(outcome: { code: string; message?: string; rawRole?: string }): string {
   switch (outcome.code) {
     case 'MISSING_PROFILE':
-      return 'Profile not found — contact admin.';
+      return 'Your account signed in, but no staff profile is linked yet. Ask the owner to repair your account from Admin → Team, or open your team invite link.';
     case 'PROFILE_QUERY_ERROR':
-      return outcome.message ?? 'Could not load your profile. Try again or contact admin.';
+      return humanizeAuthError(outcome.message);
     case 'INVALID_ROLE':
-      return `Your profile role is invalid (${outcome.rawRole ?? 'unknown'}). Contact admin.`;
+      return `Your profile role is invalid (${outcome.rawRole ?? 'unknown'}). Contact your administrator.`;
     case 'NO_SESSION':
       return 'Could not read your session after sign-in. Please try again.';
     default:
@@ -34,7 +35,9 @@ export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
+  const [resendBusy, setResendBusy] = useState(false);
   
   const [brand, setBrand] = useState<{
     businessDisplayName: string;
@@ -61,6 +64,23 @@ export default function LoginForm() {
   useEffect(() => {
     setSupabase(createSupabaseBrowserClient());
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash || '';
+    if (/type=recovery/i.test(hash) || /type=invite/i.test(hash)) {
+      const target = /type=recovery/i.test(hash) ? '/reset-password' : '/join-team';
+      window.location.replace(`${target}${hash}`);
+      return;
+    }
+    const err = searchParams.get('error');
+    const n = searchParams.get('notice');
+    if (err) setError(humanizeAuthError(err));
+    if (n === 'invite_already_accepted') setNotice('This invite was already accepted. Sign in with your staff email.');
+    if (n === 'password_already_updated') setNotice('Password already updated. Sign in with your new password.');
+    if (n === 'already_confirmed') setNotice('Email already confirmed. Sign in below.');
+    if (n === 'signed_in') setNotice('Signed in. Choose your destination after we verify your role.');
+  }, [searchParams]);
 
   useEffect(() => {
     const prefillEmail = searchParams.get('email');
@@ -99,7 +119,7 @@ export default function LoginForm() {
       const { data, error: signInError } = await client.auth.signInWithPassword({ email, password });
 
       if (signInError) {
-        setError(signInError.message);
+        setError(humanizeAuthError(signInError.message));
         setPhase('idle');
         return;
       }
@@ -193,8 +213,29 @@ export default function LoginForm() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong. Please try again.';
       console.warn('[AUTH] login error', e);
-      setError(msg);
+      setError(humanizeAuthError(msg));
       setPhase('idle');
+    }
+  };
+
+  const resendConfirmation = async () => {
+    if (!email.trim()) {
+      setError('Enter your email first, then tap Resend confirmation.');
+      return;
+    }
+    const client = supabase ?? createSupabaseBrowserClient();
+    if (!client) return;
+    setResendBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { error: resendErr } = await client.auth.resend({ type: 'signup', email: email.trim() });
+      if (resendErr) setError(humanizeAuthError(resendErr.message));
+      else setNotice(`If ${email.trim()} needs confirmation, a new email was sent.`);
+    } catch (e) {
+      setError(humanizeAuthError(e instanceof Error ? e.message : 'Could not resend.'));
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -260,14 +301,33 @@ export default function LoginForm() {
             {error}
           </p>
         ) : null}
+        {notice ? (
+          <p className='mt-4 text-xs text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl'>
+            {notice}
+          </p>
+        ) : null}
 
         <button
           type='submit'
           disabled={phase === 'submitting' || phase === 'finishing' || !envReady}
-          className='mt-6 w-full rounded-2xl bg-gold py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60 hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+          className='mt-6 w-full min-h-11 rounded-2xl bg-gold py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60 hover:bg-gold-soft transition shadow-[0_0_15px_rgba(212,175,55,0.25)]'
         >
           {phase === 'submitting' || phase === 'finishing' ? 'Signing in...' : 'Sign In'}
         </button>
+
+        <div className='mt-4 flex flex-col gap-2 text-xs text-muted-foreground'>
+          <button
+            type='button'
+            disabled={resendBusy || !envReady}
+            onClick={() => void resendConfirmation()}
+            className='min-h-11 rounded-xl border border-border px-3 py-2 font-semibold hover:border-gold/30 hover:text-gold-soft disabled:opacity-50'
+          >
+            {resendBusy ? 'Sending…' : 'Resend confirmation email'}
+          </button>
+          <Link href='/join-team' className='min-h-11 inline-flex items-center justify-center rounded-xl border border-border px-3 py-2 font-semibold hover:border-gold/30 hover:text-gold-soft'>
+            Accept team invite
+          </Link>
+        </div>
 
         <div className='mt-6 flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4'>
           <Link href='/signup' className='hover:text-gold-soft font-semibold'>

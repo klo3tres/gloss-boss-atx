@@ -4,6 +4,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 import { acceptStaffInvite } from '@/lib/staff-invites';
+import { logAuthEvent } from '@/lib/auth/auth-event-log';
 
 export const runtime = 'nodejs';
 
@@ -66,5 +67,14 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+
+  await logAuthEvent(admin, {
+    eventType: 'invite_accepted',
+    subjectUserId: result.authUserId ?? null,
+    subjectEmail: String(body.email ?? '').trim().toLowerCase() || null,
+    detail: `mode=${body.mode}`,
+    meta: { redirect: result.redirect },
+  });
+
   return NextResponse.json({ ok: true, redirect: result.redirect, authUserId: result.authUserId });
 }

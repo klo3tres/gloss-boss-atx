@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 import { clearAuthUxSession, setRoleCache, writeHydratedOnceFlag } from '@/lib/auth/auth-session-ux';
+import { signupConfirmRedirectUrl } from '@/lib/auth/action-link-registry';
+import { humanizeAuthError } from '@/lib/auth/auth-event-log';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
 import { resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
@@ -26,6 +28,7 @@ export default function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
+  const [resendBusy, setResendBusy] = useState(false);
 
   useEffect(() => {
     setSupabase(createSupabaseBrowserClient());
@@ -35,6 +38,38 @@ export default function SignupForm() {
     const prefillEmail = searchParams.get('email');
     if (prefillEmail && !email) setEmail(prefillEmail);
   }, [searchParams, email]);
+
+  const resendConfirmation = async () => {
+    setError(null);
+    setInfoMessage(null);
+    const client = supabase ?? createSupabaseBrowserClient();
+    if (!client || !email.trim()) {
+      setError('Enter the email you used to sign up, then try Resend.');
+      return;
+    }
+    setResendBusy(true);
+    try {
+      const emailRedirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/dashboard')}&type=signup`
+          : signupConfirmRedirectUrl();
+      const { error: resendError } = await client.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo },
+      });
+      if (resendError) {
+        setError(humanizeAuthError(resendError.message));
+        return;
+      }
+      const masked = email.trim().replace(/(.{2}).+(@.+)/, '$1***$2');
+      setInfoMessage(`Confirmation email requested for ${masked}. Check inbox and spam.`);
+    } catch (e) {
+      setError(humanizeAuthError(e instanceof Error ? e.message : 'Could not resend confirmation.'));
+    } finally {
+      setResendBusy(false);
+    }
+  };
 
   const handleSignup = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -57,10 +92,16 @@ export default function SignupForm() {
     try {
       clearAuthUxSession();
 
+      const emailRedirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/dashboard')}&type=signup`
+          : signupConfirmRedirectUrl();
+
       const { data, error: signUpError } = await client.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo,
           data: {
             full_name: fullName,
             sms_consent: smsConsent,
@@ -71,19 +112,33 @@ export default function SignupForm() {
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        setError(humanizeAuthError(signUpError.message));
         setPhase('idle');
         return;
       }
 
       if (!data.session?.user) {
-        setInfoMessage('Check your email to confirm your account, then sign in.');
+        const masked = email.trim().replace(/(.{2}).+(@.+)/, '$1***$2');
+        setInfoMessage(
+          `If confirmation is required, we asked Supabase to email ${masked}. Use Resend if nothing arrives within a few minutes.`,
+        );
         setPhase('idle');
         return;
       }
 
       setPhase('finishing');
       await waitForSessionHydration(client);
+
+      try {
+        await fetchWithTimeout('/api/auth/ensure-profile', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          timeoutMs: 8000,
+        });
+      } catch {
+        /* continue */
+      }
 
       const outcome = await fetchUserRole(client);
       if (!outcome.ok) {
@@ -92,7 +147,7 @@ export default function SignupForm() {
         if (outcome.code === 'MISSING_PROFILE') {
           setError('Profile not found — contact admin. If you just signed up, wait a moment and try signing in again.');
         } else if (outcome.code === 'PROFILE_QUERY_ERROR') {
-          setError(outcome.message ?? 'Could not load your profile.');
+          setError(humanizeAuthError(outcome.message ?? 'Could not load your profile.'));
         } else if (outcome.code === 'INVALID_ROLE') {
           setError('Your profile role is invalid. Contact admin.');
         } else {
@@ -115,17 +170,6 @@ export default function SignupForm() {
       setRoleCache(user.id, outcome.role);
       writeHydratedOnceFlag();
 
-      try {
-        await fetchWithTimeout('/api/auth/ensure-profile', {
-          method: 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          timeoutMs: 5000,
-        });
-      } catch {
-        /* best-effort */
-      }
-
       const nextRaw = searchParams.get('next');
       const fallback = resolveDashboardPathForRole(outcome.role, null, outcome.email);
       const destination = nextRaw ? getSafeInternalRedirect(nextRaw, fallback) : fallback;
@@ -138,8 +182,7 @@ export default function SignupForm() {
       }
       setPhase('idle');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Something went wrong. Please try again.';
-      setError(msg);
+      setError(humanizeAuthError(e instanceof Error ? e.message : 'Something went wrong. Please try again.'));
       setPhase('idle');
     }
   };
@@ -148,7 +191,7 @@ export default function SignupForm() {
 
   return (
     <SafeRenderBoundary label="Create account">
-      <main className="relative flex min-h-screen items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground">
+      <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-28 text-foreground">
         {phase === 'finishing' ? (
           <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
             <div className="flex flex-col items-center gap-3">
@@ -174,15 +217,36 @@ export default function SignupForm() {
           <div className="mt-6 space-y-4">
             <label className="block text-sm">
               <span className="mb-2 block text-muted-foreground">Full name</span>
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
+              <input
+                type="text"
+                autoComplete="name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="gb-input w-full min-h-11 rounded-lg border border-border bg-input px-4 py-3"
+                required
+              />
             </label>
             <label className="block text-sm">
               <span className="mb-2 block text-muted-foreground">Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="gb-input w-full min-h-11 rounded-lg border border-border bg-input px-4 py-3"
+                required
+              />
             </label>
             <label className="block text-sm">
               <span className="mb-2 block text-muted-foreground">Password</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="gb-input w-full rounded-lg border border-border bg-input px-4 py-3" required />
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="gb-input w-full min-h-11 rounded-lg border border-border bg-input px-4 py-3"
+                required
+              />
             </label>
             <fieldset className="rounded-xl border border-border bg-muted/30 p-4 text-sm">
               <legend className="px-1 text-xs font-black uppercase tracking-wider text-gold-soft">Optional SMS updates</legend>
@@ -200,15 +264,24 @@ export default function SignupForm() {
             </fieldset>
           </div>
 
-          {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
-          {infoMessage ? <p className="mt-4 text-sm text-emerald-400">{infoMessage}</p> : null}
+          {error ? <p className="mt-4 text-sm text-red-400" role="alert">{error}</p> : null}
+          {infoMessage ? <p className="mt-4 text-sm text-emerald-600 dark:text-emerald-400">{infoMessage}</p> : null}
 
           <button
             type="submit"
             disabled={phase === 'submitting' || phase === 'finishing' || !envReady}
-            className="mt-6 w-full rounded-lg bg-gold px-4 py-3 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-60"
+            className="mt-6 w-full min-h-11 rounded-lg bg-gold px-4 py-3 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-60"
           >
             {phase === 'submitting' || phase === 'finishing' ? 'Creating account...' : 'Create Account'}
+          </button>
+
+          <button
+            type="button"
+            disabled={resendBusy || !envReady}
+            onClick={() => void resendConfirmation()}
+            className="mt-3 w-full min-h-11 rounded-lg border border-border px-4 py-3 text-xs font-semibold text-muted-foreground hover:border-gold/30 hover:text-gold-soft disabled:opacity-50"
+          >
+            {resendBusy ? 'Sending…' : 'Resend confirmation email'}
           </button>
 
           <p className="mt-4 text-center text-xs text-zinc-400">

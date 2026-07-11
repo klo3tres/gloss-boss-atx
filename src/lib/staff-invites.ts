@@ -5,7 +5,8 @@ import { sendCustomerSms } from '@/lib/sms-send';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
 import { businessNotifyDestination } from '@/lib/email-send';
 import { logNotificationOutbox } from '@/lib/notification-outbox-log';
-import { getAppOrigin } from '@/lib/env/app-origin';
+import { staffInviteUrl } from '@/lib/auth/action-link-registry';
+import { logAuthEvent } from '@/lib/auth/auth-event-log';
 
 export type StaffInviteRole = 'super_admin' | 'admin' | 'dispatcher' | 'technician' | 'viewer';
 export type StaffInviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
@@ -40,8 +41,7 @@ export function generateInviteToken(): string {
 }
 
 export function inviteLinkForToken(token: string): string {
-  const base = getAppOrigin().replace(/\/$/, '');
-  return `${base}/join-team?token=${encodeURIComponent(token)}`;
+  return staffInviteUrl(token);
 }
 
 function mapInvite(row: Record<string, unknown>): StaffInviteRow {
@@ -127,7 +127,15 @@ export async function createStaffInvite(
     .maybeSingle();
 
   if (error || !data) return { ok: false, error: error?.message ?? 'Could not create invite.' };
-  return { ok: true, invite: mapInvite(data as Record<string, unknown>), token };
+  const invite = mapInvite(data as Record<string, unknown>);
+  await logAuthEvent(admin, {
+    eventType: 'invite_created',
+    actorUserId: input.invitedBy,
+    subjectEmail: invite.email,
+    detail: invite.role,
+    meta: { inviteId: invite.id },
+  });
+  return { ok: true, invite, token };
 }
 
 export async function validateStaffInviteToken(
@@ -232,6 +240,14 @@ export async function sendStaffInviteNotification(
     title: `Staff invite sent to ${invite.fullName}`,
     detail: `${role} · ${channel} · email:${emailStatus} sms:${smsStatus}`,
     href: '/admin/team',
+  });
+
+  const deliveryFailed = emailStatus === 'failed' || smsStatus === 'failed';
+  await logAuthEvent(admin, {
+    eventType: deliveryFailed ? 'invite_delivery_failed' : 'invite_sent',
+    subjectEmail: invite.email,
+    detail: `${role} · ${channel}`,
+    meta: { inviteId: invite.id, emailStatus, smsStatus, emailError, smsError },
   });
 
   const ownerTo = businessNotifyDestination();

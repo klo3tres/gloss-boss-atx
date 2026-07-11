@@ -11,7 +11,16 @@ import { isStaffRole, type AppRole } from '@/lib/auth/roles';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { isSupabasePublicReady, createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-const AUTH_PREFIXES = ['/login', '/signup', '/forgot-password', '/setup', '/unauthorized'];
+const AUTH_PREFIXES = [
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/join-team',
+  '/auth',
+  '/setup',
+  '/unauthorized',
+];
 
 function isAuthRoute(pathname: string) {
   return AUTH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));

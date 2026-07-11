@@ -4,6 +4,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
 import { isProtectedOwner } from '@/lib/auth/owner-config';
 import { isStaffRole } from '@/lib/auth/roles';
+import { humanizeAuthError, logAuthEvent } from '@/lib/auth/auth-event-log';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveInitialProfileRole } from '@/lib/auth/staff-profile-resolve';
@@ -64,12 +65,18 @@ export async function POST() {
 
   if (readErr) {
     const m = readErr.message ?? '';
+    console.error('[ensure-profile] read', readErr);
+    await logAuthEvent(admin, {
+      eventType: 'profile_resolution_failed',
+      subjectUserId: user.id,
+      subjectEmail: emailNorm,
+      detail: m.slice(0, 240),
+    });
     if (/relation|does not exist|Could not find|schema cache|column .* does not exist/i.test(m)) {
       console.warn('[ensure-profile] read_schema_drift', m);
-      return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
+      return NextResponse.json({ ok: false, recoverable: true, error: humanizeAuthError(m) }, { status: 200 });
     }
-    console.error('[ensure-profile] read', readErr);
-    return NextResponse.json({ error: readErr.message }, { status: 500 });
+    return NextResponse.json({ error: humanizeAuthError(m) }, { status: 500 });
   }
 
   if (!existing) {
@@ -97,10 +104,16 @@ export async function POST() {
       const m = String(insErr.message ?? '');
       if (/relation|does not exist|Could not find|schema cache/i.test(m)) {
         console.warn('[ensure-profile] insert_schema_drift', insErr);
-        return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
+        return NextResponse.json({ ok: false, recoverable: true, error: humanizeAuthError(m) }, { status: 200 });
       }
       console.error('[ensure-profile] insert', insErr);
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
+      await logAuthEvent(admin, {
+        eventType: 'profile_resolution_failed',
+        subjectUserId: user.id,
+        subjectEmail: emailNorm,
+        detail: String(insErr.message ?? '').slice(0, 240),
+      });
+      return NextResponse.json({ error: humanizeAuthError(insErr.message) }, { status: 500 });
     }
 
     if (role === 'customer') {
@@ -143,6 +156,12 @@ export async function POST() {
 
   const existingRole = parseAppRole(existing.role);
   if (existingRole && isStaffRole(existingRole)) {
+    await logAuthEvent(admin, {
+      eventType: 'profile_resolution_succeeded',
+      subjectUserId: user.id,
+      subjectEmail: emailNorm,
+      detail: existingRole,
+    });
     return NextResponse.json({ ok: true, noop: true, staff: true });
   }
 
@@ -183,7 +202,7 @@ export async function POST() {
         return NextResponse.json({ ok: false, recoverable: true, error: m }, { status: 200 });
       }
       console.error('[ensure-profile] owner promote', upErr);
-      return NextResponse.json({ error: upErr.message }, { status: 500 });
+      return NextResponse.json({ error: humanizeAuthError(m) }, { status: 500 });
     }
     return NextResponse.json({ ok: true, promoted: true });
   }
@@ -200,6 +219,13 @@ export async function POST() {
       console.warn('[ensure-profile] customer link on login', e);
     }
   }
+
+  await logAuthEvent(admin, {
+    eventType: 'profile_resolution_succeeded',
+    subjectUserId: user.id,
+    subjectEmail: emailNorm,
+    detail: String(existing.role ?? ''),
+  });
 
   return NextResponse.json({ ok: true, noop: true });
 }

@@ -12,6 +12,7 @@ import {
   writeHydratedOnceFlag,
 } from '@/lib/auth/auth-session-ux';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
+import { humanizeAuthError } from '@/lib/auth/auth-event-log';
 import { logRoleDebug } from '@/lib/auth/role-resolution';
 import { logRenderDebug } from '@/lib/debug/render-debug';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
@@ -123,7 +124,12 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
             return;
           }
           if (outcome.code === 'PROFILE_QUERY_ERROR') {
-            setProfileMessage(outcome.message);
+            setProfileMessage(
+              humanizeAuthError(
+                outcome.message ??
+                  'We couldn’t finish setting up your account. Your account is safe, but the profile connection failed. Please retry or contact your administrator.',
+              ),
+            );
             setState('profile_query_error');
             return;
           }
@@ -173,7 +179,7 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
         console.warn('[AUTH] gate error', e);
         logRenderDebug({ step: 'gate_exception', variant, message });
         if (!cancelled) {
-          setProfileMessage(message);
+          setProfileMessage(humanizeAuthError(message));
           setState('profile_query_error');
         }
       }
@@ -228,9 +234,24 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
       <main className='flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center text-foreground'>
         <h1 className='text-2xl font-black uppercase tracking-wider text-amber-300'>Account setup required</h1>
         <p className='max-w-md text-sm text-zinc-400'>{profileMessage ?? 'We could not load your staff profile.'}</p>
-        <Link href='/login' className='text-sm font-bold uppercase tracking-wider text-gold-soft underline'>
-          Back to login
-        </Link>
+        <p className='max-w-md text-xs text-muted-foreground'>
+          Retry sign-in, ask an administrator to repair your Team profile, or open your team invite link if you were invited.
+        </p>
+        <div className='flex flex-col gap-2 sm:flex-row'>
+          <button
+            type='button'
+            onClick={() => window.location.reload()}
+            className='min-h-11 rounded-lg bg-gold px-5 py-3 text-xs font-black uppercase tracking-wider text-black'
+          >
+            Retry
+          </button>
+          <Link href='/login' className='min-h-11 inline-flex items-center justify-center text-sm font-bold uppercase tracking-wider text-gold-soft underline'>
+            Back to login
+          </Link>
+          <Link href='/join-team' className='min-h-11 inline-flex items-center justify-center text-sm font-bold uppercase tracking-wider text-gold-soft underline'>
+            Team invite
+          </Link>
+        </div>
       </main>
     );
   }
