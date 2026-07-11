@@ -129,8 +129,10 @@ export function formatStartingPrice(value: number | null): string {
   return `${PRICING_STARTING_AT_LABEL} $${value}`;
 }
 
+/** Plain vehicle price for service cards — label only, no "Starting at" prefix. */
 export function formatVehiclePrice(value: number | null): string {
-  return formatStartingPrice(value);
+  if (value == null || value <= 0) return 'Quote';
+  return `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 }
 
 /** Public marketing copy for optional add-ons (booking catalog may override cents). */

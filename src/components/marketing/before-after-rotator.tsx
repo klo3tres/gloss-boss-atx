@@ -107,24 +107,19 @@ export function BeforeAfterRotator() {
   const active = slides[safeIndex];
 
   if (!slides.length || !active) {
-    return (
-      <div className='rounded-3xl border border-dashed border-white/10 bg-black/40 px-6 py-16 text-center'>
-        <p className='text-sm font-semibold text-zinc-400'>Featured work gallery coming soon.</p>
-        <p className='mt-2 text-xs text-zinc-600'>Upload and feature photos in Admin → CMS.</p>
-      </div>
-    );
+    return null;
   }
 
   return (
     <article
-      className="rounded-2xl border border-gold/20 bg-black/60 p-5 backdrop-blur"
+      className="rounded-2xl border border-gold/20 bg-card/80 p-5 backdrop-blur"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
     >
       <p className="text-xs uppercase tracking-[0.2em] text-gold-soft">Before / After Preview</p>
-      <p className="mt-2 text-[11px] text-zinc-500">Curated from Admin → Homepage featured transformations.</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">Curated from Admin → Homepage featured transformations.</p>
       <button
         type="button"
         className="group relative mt-4 block w-full overflow-hidden rounded-xl border border-gold/25 text-left outline-none transition hover:border-gold/50 hover:shadow-[0_0_32px_rgba(212,166,77,0.22)] focus-visible:ring-2 focus-visible:ring-gold-soft"
@@ -150,7 +145,7 @@ export function BeforeAfterRotator() {
           </span>
         </div>
       </button>
-      <p className="mt-3 text-sm font-semibold uppercase tracking-wide text-zinc-200">{active.label}</p>
+      <p className="mt-3 text-sm font-semibold uppercase tracking-wide text-foreground">{active.label}</p>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {slides.map((car, idx) => (
           <button
@@ -161,7 +156,7 @@ export function BeforeAfterRotator() {
               setActiveIndex(idx);
             }}
             className={`relative h-12 w-16 shrink-0 overflow-hidden rounded-md border-2 transition ${
-              idx === safeIndex ? "border-gold shadow-[0_0_12px_rgba(212,166,77,0.35)]" : "border-white/10 opacity-70 hover:opacity-100"
+              idx === safeIndex ? "border-gold shadow-[0_0_12px_rgba(212,166,77,0.35)]" : "border-border opacity-70 hover:opacity-100"
             }`}
             aria-label={`Show slide ${idx + 1}`}
           >
@@ -173,7 +168,7 @@ export function BeforeAfterRotator() {
         {slides.map((car, idx) => (
           <span
             key={`dot-${car.id}`}
-            className={`h-1.5 flex-1 rounded-full ${idx === safeIndex ? "bg-gold" : "bg-white/20"}`}
+            className={`h-1.5 flex-1 rounded-full ${idx === safeIndex ? "bg-gold" : "bg-muted"}`}
           />
         ))}
       </div>

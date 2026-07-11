@@ -35,7 +35,8 @@ import type { DealConfig, ServicePackage } from '@/lib/site-config';
 import { SectionErrorBoundary } from '@/components/site/section-error-boundary';
 import { HomeReferralCta } from '@/components/marketing/home-referral-cta';
 import { MembershipComparisonSlim } from '@/components/marketing/membership-comparison-slim';
-import { SocialLinksRow } from '@/components/marketing/social-links';
+
+const HOMEPAGE_BRAND_NAME = 'Gloss Boss ATX';
 
 const faqs = [
   {
@@ -115,11 +116,11 @@ export function HomePageView({
     isSectionVisible(visuals, 'membership') &&
     (packages.some((p) => /member|bronze|silver|gold/i.test(`${p.id} ${p.title}`)) || deals.websitePromoActive);
   return (
-    <main className="gb-page gb-marketing-page gb-page-pad relative min-h-screen overflow-x-hidden bg-background text-foreground">
+    <main className="gb-page gb-page-pad relative min-h-screen overflow-x-hidden bg-black text-white">
       <StickyBookCta bookingHref={bookingHref} />
 
       {isSectionVisible(visuals, 'hero') ? (
-        <section className="gb-marketing-hero relative flex min-h-[100svh] items-center border-b border-white/5 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
+        <section className="relative flex min-h-[100svh] items-center border-b border-white/5 px-4 pb-20 pt-24 sm:px-6 lg:px-8">
           <HomepageHeroBackground
             imageUrl={heroImageUrl}
             brand={brand}
@@ -128,25 +129,25 @@ export function HomePageView({
 
           <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-10 xl:grid-cols-[1.15fr_0.85fr]">
             <MotionFade>
-              <PremiumCard className="gb-hero-panel border-gold/15 bg-card/80 backdrop-blur-2xl shadow-lg">
+              <PremiumCard className="border-gold/15 bg-black/50 backdrop-blur-2xl">
                 <PremiumEyebrow>Premium mobile auto detailing</PremiumEyebrow>
                 <div className="mt-6 flex items-center gap-4">
                   <img
                     src={brand?.logoUrl ?? '/brand/glossboss-clean-logo.png'}
-                    alt={brand?.businessDisplayName ?? 'Gloss Boss ATX'}
+                    alt={HOMEPAGE_BRAND_NAME}
                     className="h-14 w-auto object-contain sm:h-16"
                   />
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft">
-                      {brand?.businessDisplayName ?? 'Gloss Boss ATX'}
+                      {HOMEPAGE_BRAND_NAME}
                     </p>
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                       {brand?.brandCityLabel ?? 'Austin, Texas'}
                     </p>
                   </div>
                 </div>
 
-                <h1 className="gb-hero-title mt-8 text-4xl font-black uppercase leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+                <h1 className="mt-8 text-4xl font-black uppercase leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">
                   {(visuals?.hero as { title?: string })?.title ? (
                     (visuals?.hero as { title: string }).title
                   ) : (
@@ -160,7 +161,7 @@ export function HomePageView({
                   )}
                 </h1>
 
-                <p className="gb-hero-sub mt-6 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                <p className="mt-6 max-w-xl text-sm leading-relaxed text-zinc-300 sm:text-base">
                   {(visuals?.hero as { subtitle?: string })?.subtitle ||
                     'Luxury mobile detailing in Austin, Texas. Book online in minutes with a secure deposit.'}
                 </p>
@@ -174,14 +175,21 @@ export function HomePageView({
                     View packages
                   </PremiumButton>
                   {socialButtons.length > 0 ? (
-                    <SocialLinksRow
-                      links={{
-                        instagramUrl: socialLinks.instagramUrl,
-                        facebookUrl: socialLinks.facebookUrl,
-                        tiktokUrl: socialLinks.tiktokUrl,
-                        youtubeUrl: socialLinks.youtubeUrl,
-                      }}
-                    />
+                    <div className="flex items-center gap-2 sm:ml-1">
+                      {socialButtons.map((s) => (
+                        <a
+                          key={s.label}
+                          href={s.href!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={s.label}
+                          title={s.label}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[10px] font-black uppercase text-zinc-300 transition hover:border-gold/30 hover:text-gold-soft"
+                        >
+                          {s.mark}
+                        </a>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               </PremiumCard>
@@ -197,20 +205,18 @@ export function HomePageView({
                     autoFetch
                     variant="customer"
                     locationLabel="Austin service area"
-                    compact
-                    homepageCompact
-                    className="border-gold/20 bg-card/80 backdrop-blur-md shadow-sm"
+                    className="border-gold/20 bg-black/70 backdrop-blur-xl"
                   />
                 </SectionErrorBoundary>
-                <PremiumCard hover={false} className="space-y-4 border-gold/20 bg-card shadow-sm">
+                <PremiumCard hover={false} className="space-y-4 border-gold/20 bg-black/70">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">Reserve</p>
-                      <h3 className="mt-1 text-lg font-black uppercase text-foreground">Schedule detailing</h3>
+                      <h3 className="mt-1 text-lg font-black uppercase text-white">Schedule detailing</h3>
                     </div>
                     <Flame className="h-5 w-5 text-gold" />
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-zinc-400">
                     30% Stripe deposit locks your slot. Signed checklist and photos on-site.
                   </p>
                   {deals.websitePromoActive && deals.websitePromoPercent > 0 ? (
@@ -229,7 +235,7 @@ export function HomePageView({
         </section>
       ) : null}
 
-      <section className="gb-marketing-band border-y border-border bg-muted/20 py-10">
+      <section className="border-y border-white/5 bg-zinc-950/80 py-10">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 md:grid-cols-4 sm:px-6 lg:px-8">
           {whyChoose.map((item, i) => (
             <MotionFade key={item.title} delay={i * 0.05}>
@@ -237,8 +243,8 @@ export function HomePageView({
                 <div className="mb-3 rounded-2xl border border-gold/20 bg-gold/5 p-3">
                   <item.icon className="h-5 w-5 text-gold-soft" />
                 </div>
-                <p className="gb-band-title text-xs font-black uppercase tracking-wider text-foreground">{item.title}</p>
-                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{item.desc}</p>
+                <p className="text-xs font-black uppercase tracking-wider text-white">{item.title}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-zinc-500">{item.desc}</p>
               </div>
             </MotionFade>
           ))}
@@ -268,7 +274,7 @@ export function HomePageView({
       </section>
 
       {showMembershipSection ? (
-        <section className="gb-membership-band relative overflow-hidden border-y border-border py-0">
+        <section className="relative overflow-hidden border-y border-white/5 py-0">
           <div className="relative min-h-[420px]">
             <img
               src={(visuals?.membership as { image?: string })?.image || mediaUrl(mediaRegistry, 'homepage.membershipCover')}
@@ -276,13 +282,13 @@ export function HomePageView({
               style={getObjectStyle(visuals?.membership as { fit?: string; position?: string })}
               className="absolute inset-0 h-full w-full object-cover opacity-30"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/85 to-background/60" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/40" />
             <div className="relative mx-auto flex max-w-7xl flex-col justify-center px-4 py-20 sm:px-6 lg:min-h-[420px] lg:px-8">
               <PremiumEyebrow>Memberships</PremiumEyebrow>
-              <h2 className="mt-4 max-w-xl text-3xl font-black uppercase tracking-tight text-foreground sm:text-5xl">
+              <h2 className="mt-4 max-w-xl text-3xl font-black uppercase tracking-tight text-white sm:text-5xl">
                 {(visuals?.membership as { title?: string })?.title || 'Save with recurring shine'}
               </h2>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">
                 {(visuals?.membership as { desc?: string })?.desc ||
                   'Bronze, Silver, and Gold plans with priority scheduling and member pricing.'}
               </p>
@@ -323,7 +329,7 @@ export function HomePageView({
       ) : null}
 
       {loaded && reviews.length > 0 ? (
-        <section className="border-t border-border py-16">
+        <section className="bg-zinc-950 py-16">
           <div className="mx-auto max-w-3xl px-4 sm:px-6">
             <SectionErrorBoundary label="Reviews">
               <ReviewsCarousel reviews={reviews} googleReviewUrl={googleReviewUrl} bookingHref={bookingHref} />
@@ -332,15 +338,15 @@ export function HomePageView({
         </section>
       ) : null}
 
-      <section id="faq" className="border-t border-border bg-muted/20 py-20">
+      <section id="faq" className="border-t border-white/5 bg-black py-20">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <PremiumEyebrow>FAQ</PremiumEyebrow>
-          <h2 className="mt-4 text-3xl font-black uppercase text-foreground">Before you book</h2>
+          <h2 className="mt-4 text-3xl font-black uppercase text-white">Before you book</h2>
           <dl className="mt-8 space-y-4">
             {faqs.map((item) => (
-              <PremiumCard key={item.q} className="p-5" hover={false}>
-                <dt className="text-sm font-bold text-foreground">{item.q}</dt>
-                <dd className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.a}</dd>
+              <PremiumCard key={item.q} className="bg-zinc-950/50 p-5" hover={false}>
+                <dt className="text-sm font-bold text-white">{item.q}</dt>
+                <dd className="mt-2 text-sm leading-relaxed text-zinc-400">{item.a}</dd>
               </PremiumCard>
             ))}
           </dl>
@@ -350,22 +356,22 @@ export function HomePageView({
       <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
         <div className="grid gap-6 sm:grid-cols-2">
           <PremiumCard>
-            <div className="flex items-center gap-2 border-b border-border pb-3">
+            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
               <Clock className="h-4 w-4 text-gold" />
               <p className="text-xs font-black uppercase text-gold-soft">Hours</p>
             </div>
-            <ul className="mt-4 space-y-2 text-xs text-muted-foreground">
+            <ul className="mt-4 space-y-2 text-xs text-zinc-300">
               <li className="flex justify-between"><span>Mon / Tue / Thu / Fri</span><span>5:00–7:30 PM</span></li>
               <li className="flex justify-between"><span>Wed</span><span>Closed</span></li>
               <li className="flex justify-between"><span>Sat / Sun</span><span>7:30 AM–7:00 PM</span></li>
             </ul>
           </PremiumCard>
           <PremiumCard>
-            <div className="flex items-center gap-2 border-b border-border pb-3">
+            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
               <MapPin className="h-4 w-4 text-gold" />
               <p className="text-xs font-black uppercase text-gold-soft">Service area</p>
             </div>
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-4 text-xs leading-relaxed text-zinc-400">
               Austin and surrounding areas including West Lake Hills, Lakeway, Bee Cave, Cedar Park, Round Rock, and more.
             </p>
           </PremiumCard>
@@ -373,13 +379,13 @@ export function HomePageView({
       </section>
 
       {isSectionVisible(visuals, 'finalCta') ? (
-        <section className="relative overflow-hidden border-t border-border py-24 text-center">
+        <section className="relative overflow-hidden border-t border-white/5 py-24 text-center">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.12),transparent_55%)]" />
           <div className="relative mx-auto max-w-2xl px-4">
-            <h2 className="text-4xl font-black uppercase text-foreground sm:text-5xl">
+            <h2 className="text-4xl font-black uppercase text-white sm:text-5xl">
               {(visuals?.finalCta as { title?: string })?.title || 'Ready for showroom gloss?'}
             </h2>
-            <p className="mt-4 text-sm text-muted-foreground">
+            <p className="mt-4 text-sm text-zinc-400">
               {(visuals?.finalCta as { subtitle?: string })?.subtitle ||
                 'Book in seconds. Pay deposit securely. We come to you.'}
             </p>
@@ -392,15 +398,15 @@ export function HomePageView({
         </section>
       ) : null}
 
-      <footer id="contact" className="border-t border-border bg-muted/30 px-4 py-16 sm:px-6">
+      <footer id="contact" className="border-t border-white/10 bg-black px-4 py-16 sm:px-6">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-10 lg:flex-row lg:justify-between">
           <div>
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-gold-soft">Gloss Boss ATX</p>
-            <p className="mt-3 text-sm text-muted-foreground">
-              <a href="tel:+15124812319" className="text-gold-soft hover:text-foreground">
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-gold-soft">{HOMEPAGE_BRAND_NAME}</p>
+            <p className="mt-3 text-sm text-zinc-300">
+              <a href="tel:+15124812319" className="text-gold-soft hover:text-white">
                 (512) 481-2319
               </a>
-              <span className="text-muted-foreground/60"> · </span>
+              <span className="text-zinc-600"> · </span>
               <a href="mailto:glossbossatx1@gmail.com" className="hover:text-gold-soft">
                 glossbossatx1@gmail.com
               </a>
@@ -409,7 +415,7 @@ export function HomePageView({
               <a href="tel:+15124812319" className="inline-flex items-center gap-2 rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft">
                 <Phone className="h-3.5 w-3.5" /> Call
               </a>
-              <a href="mailto:glossbossatx1@gmail.com" className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-[10px] font-black uppercase text-muted-foreground hover:border-gold/30">
+              <a href="mailto:glossbossatx1@gmail.com" className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2 text-[10px] font-black uppercase text-zinc-300">
                 <Mail className="h-3.5 w-3.5" /> Email
               </a>
               <PremiumButton href={bookingHref} className="!min-h-[40px] !py-2">
@@ -424,14 +430,14 @@ export function HomePageView({
                     href={s.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-lg border border-border bg-card px-3 py-2 text-[10px] font-bold uppercase text-muted-foreground hover:border-gold/30 hover:text-gold-soft"
+                    className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300 hover:border-gold/30 hover:text-gold-soft"
                   >
                     {s.label}
                   </a>
                 ))}
               </div>
             ) : null}
-            <p className="mt-8 text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">Powered by Titan™</p>
+            <p className="mt-8 text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">Powered by Titan™</p>
           </div>
           <SectionErrorBoundary label="Contact form">
             <ContactForm />

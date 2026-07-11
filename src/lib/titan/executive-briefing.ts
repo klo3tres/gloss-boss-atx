@@ -42,8 +42,24 @@ export type BriefingJobPreview = {
   href: string;
 };
 
+export type BriefingRoiAction = {
+  id: string;
+  title: string;
+  why: string;
+  confidence: number;
+  revenueImpactCents: number;
+  revenueImpactLabel: string;
+  timeEstimateMinutes: number;
+  priority: 'critical' | 'high' | 'medium';
+  href: string;
+  dependencies?: string;
+};
+
 export type ExecutiveBriefingSnapshot = {
   ownerName: string;
+  narrative: string;
+  revenueYesterdayCents: number;
+  revenueYesterdayLabel: string;
   revenueTodayCents: number;
   revenueTodayLabel: string;
   revenueTargetCents: number;
@@ -59,6 +75,11 @@ export type ExecutiveBriefingSnapshot = {
   advantageFactors: OperationalAdvantageFactor[];
   improveAction?: { label: string; href: string; points: number };
   opportunities: BriefingOpportunity[];
+  roiActions: BriefingRoiAction[];
+  unsignedAcknowledgments: number;
+  reviewsNeeded: number;
+  inventoryAlerts: number;
+  customersDue: number;
   healthLabel: string;
   healthTone: 'healthy' | 'watch' | 'critical';
   unreadActivity: number;
@@ -112,17 +133,85 @@ export async function loadExecutiveBriefing(
     loadGoogleCalendarConnection(admin),
   ]);
 
+  // moneyPlan.goalTarget is a book-count mission (e.g. "book 1"), never cents.
+  const avgJobCents = Math.max(parseMoneyLabel(metrics.averageTicketSize) || 0, 17500);
+
   const moneyPlan = await buildTodaysMoneyPlan(admin, {
     opportunities: revenueHunt.opportunities,
     leadRadar: leadRadar.items,
+    avgJobCents,
   });
 
-  const dailyActionPlan = await buildDailyActionPlan(admin, moneyPlan.goalTarget > 0 ? Math.round(moneyPlan.goalTarget / 4) : 17500);
+  const dailyActionPlan = await buildDailyActionPlan(admin, avgJobCents);
 
   const todayPay = summarizePayments(await fetchPaymentsSince(admin, startOfTodayIso(), new Date().toISOString()));
   const revenueToday = todayPay.grossCents;
 
-  let revenueTargetCents = moneyPlan.goalTarget > 0 ? moneyPlan.goalTarget : 85000;
+  const yesterdayStart = new Date();
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  yesterdayStart.setHours(0, 0, 0, 0);
+  const yesterdayEnd = new Date();
+  yesterdayEnd.setHours(0, 0, 0, 0);
+  const yesterdayPay = summarizePayments(
+    await fetchPaymentsSince(admin, yesterdayStart.toISOString(), yesterdayEnd.toISOString()),
+  );
+  const revenueYesterday = yesterdayPay.grossCents;
+
+  let unsignedAcknowledgments = 0;
+  let reviewsNeeded = 0;
+  let inventoryAlerts = 0;
+  let customersDue = 0;
+  try {
+    const activeAppts = await admin
+      .from('appointments')
+      .select('id')
+      .in('status', ['confirmed', 'assigned', 'in_progress'])
+      .limit(40);
+    const ids = (activeAppts.data ?? []).map((r) => String((r as { id: string }).id));
+    if (ids.length) {
+      const signed = await admin.from('signed_agreements').select('appointment_id').in('appointment_id', ids);
+      const signedSet = new Set((signed.data ?? []).map((r) => String((r as { appointment_id: string }).appointment_id)));
+      unsignedAcknowledgments = ids.filter((id) => !signedSet.has(id)).length;
+    }
+  } catch {
+    /* optional */
+  }
+  try {
+    const { count } = await admin
+      .from('titan_job_closeouts')
+      .select('id', { count: 'exact', head: true })
+      .is('review_requested_at', null);
+    reviewsNeeded = count ?? 0;
+  } catch {
+    /* optional */
+  }
+  try {
+    const { data: inv } = await admin
+      .from('titan_inventory_items')
+      .select('quantity_on_hand, reorder_threshold, active')
+      .eq('active', true)
+      .limit(100);
+    inventoryAlerts = (inv ?? []).filter((r) => {
+      const row = r as { quantity_on_hand?: number; reorder_threshold?: number };
+      const thr = Number(row.reorder_threshold ?? 0);
+      return thr > 0 && Number(row.quantity_on_hand ?? 0) <= thr;
+    }).length;
+  } catch {
+    /* optional */
+  }
+  try {
+    const { count } = await admin
+      .from('customer_follow_ups')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .lte('due_at', new Date().toISOString());
+    customersDue = count ?? 0;
+  } catch {
+    /* optional */
+  }
+
+  const DEFAULT_DAILY_TARGET_CENTS = 85000;
+  let revenueTargetCents = DEFAULT_DAILY_TARGET_CENTS;
   const { data: goalRow } = await admin
     .from('admin_goals')
     .select('target_value, unit, goal_type')
@@ -141,6 +230,10 @@ export async function loadExecutiveBriefing(
     } else {
       revenueTargetCents = raw;
     }
+  }
+  // Guard against mis-entered goals that produce nonsense daily targets (e.g. ~$32).
+  if (!Number.isFinite(revenueTargetCents) || revenueTargetCents < 25000) {
+    revenueTargetCents = DEFAULT_DAILY_TARGET_CENTS;
   }
 
   const revenueGapCents = Math.max(0, revenueTargetCents - revenueToday);
@@ -195,20 +288,36 @@ export async function loadExecutiveBriefing(
   const operationalAdvantage = Math.round((okCount / factors.length) * 100);
   const advantageDelta = Math.min(12, okCount * 2);
 
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
+  const { data: dismissedMissionRows } = await admin
+    .from('titan_daily_actions')
+    .select('action_key')
+    .eq('action_date', todayKey)
+    .in('status', ['dismissed', 'sent', 'completed']);
+  const dismissedKeys = new Set(
+    (dismissedMissionRows ?? []).map((r) => String((r as { action_key?: string }).action_key ?? '')).filter(Boolean),
+  );
+  const openMissions = moneyPlan.missions.filter((m) => {
+    if (m.entityType === 'opportunity' && m.entityId && dismissedKeys.has(`opp-${m.entityId}`)) return false;
+    if (m.entityType === 'lead_radar' && m.entityId && dismissedKeys.has(`radar-${m.entityId}`)) return false;
+    if (dismissedKeys.has(m.missionKey) || dismissedKeys.has(m.id)) return false;
+    return true;
+  });
+
   const improveAction =
     !gcal
       ? { label: 'Connect Google Calendar', href: '/admin/calendar', points: 8 }
       : critical > 0
         ? { label: 'Resolve exceptions', href: '/admin/exceptions', points: 6 }
-        : moneyPlan.missions[0]
+        : openMissions[0]
           ? {
-              label: moneyPlan.missions[0].title.slice(0, 48),
-              href: moneyPlan.missions[0].href,
+              label: openMissions[0].title.slice(0, 48),
+              href: openMissions[0].href,
               points: 4,
             }
           : undefined;
 
-  const opportunities = moneyPlan.missions.slice(0, 3).map(missionToOpportunity);
+  const opportunities = openMissions.slice(0, 3).map(missionToOpportunity);
 
   if (opportunities.length < 3 && metrics.unreadMessageCount > 0) {
     opportunities.push({
@@ -236,8 +345,45 @@ export async function loadExecutiveBriefing(
     });
   }
 
+  const roiActions: BriefingRoiAction[] = (dailyActionPlan.actions ?? []).slice(0, 5).map((a) => ({
+    id: a.id,
+    title: a.title,
+    why: a.valueExplanation || a.reason,
+    confidence: a.confidence,
+    revenueImpactCents: a.expectedValueCents,
+    revenueImpactLabel: a.expectedValueLabel,
+    timeEstimateMinutes: a.actionType === 'balance' ? 3 : a.actionType === 'review' ? 2 : 5,
+    priority:
+      a.expectedValueCents >= 20000 || a.actionType === 'balance'
+        ? 'critical'
+        : a.expectedValueCents >= 10000
+          ? 'high'
+          : 'medium',
+    href: a.href,
+    dependencies: a.canSend ? undefined : a.sendBlocker || 'Open record to complete',
+  }));
+
+  const expectedIfCompleted = roiActions.reduce((s, a) => s + a.revenueImpactCents, 0);
+  const narrativeParts = [
+    `Yesterday you collected ${displayMoney(revenueYesterday)}.`,
+    `Today's goal is ${displayMoney(revenueTargetCents)} — ${revenueGapCents > 0 ? `${displayMoney(revenueGapCents)} still to close` : 'on track'}.`,
+    `Projected finish ${displayMoney(projectedRevenueTodayCents)} if you clear the top actions.`,
+  ];
+  if (parseMoneyLabel(metrics.balanceDue) > 0) narrativeParts.push(`Payments waiting: ${metrics.balanceDue}.`);
+  if (unsignedAcknowledgments > 0) narrativeParts.push(`${unsignedAcknowledgments} acknowledgment(s) unsigned.`);
+  if (reviewsNeeded > 0) narrativeParts.push(`${reviewsNeeded} review request(s) ready.`);
+  if (customersDue > 0) narrativeParts.push(`${customersDue} customer(s) due for follow-up.`);
+  if (inventoryAlerts > 0) narrativeParts.push(`${inventoryAlerts} inventory alert(s).`);
+  if (weatherRisk) narrativeParts.push(`Weather: ${weatherRisk}`);
+  if (expectedIfCompleted > 0) {
+    narrativeParts.push(`Completing today's top ${roiActions.length} actions could add up to ${displayMoney(expectedIfCompleted)}.`);
+  }
+
   return {
     ownerName,
+    narrative: narrativeParts.join(' '),
+    revenueYesterdayCents: revenueYesterday,
+    revenueYesterdayLabel: displayMoney(revenueYesterday),
     revenueTodayCents: revenueToday,
     revenueTodayLabel: displayMoney(revenueToday),
     revenueTargetCents,
@@ -253,6 +399,11 @@ export async function loadExecutiveBriefing(
     advantageFactors: factors,
     improveAction,
     opportunities: opportunities.slice(0, 3),
+    roiActions,
+    unsignedAcknowledgments,
+    reviewsNeeded,
+    inventoryAlerts,
+    customersDue,
     healthLabel,
     healthTone,
     unreadActivity,

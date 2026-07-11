@@ -77,10 +77,12 @@ export function CustomerReferralCard({
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(referralLink)}`;
 
-  const ladder = rewardLadder.length > 0 ? rewardLadder : [
-    { threshold: 1, rewardType: 'percent' as const, rewardValue: getPercent ?? 20, label: `${getPercent ?? 20}% off` },
-    { threshold: threshold, rewardType: 'free_service' as const, rewardValue: 0, label: 'Free detail reward' },
-  ];
+  const ladder = rewardLadder.length > 0
+    ? rewardLadder
+    : [
+        { threshold: 1, rewardType: 'percent' as const, rewardValue: getPercent ?? 15, label: `${getPercent ?? 15}% off` },
+        { threshold: threshold, rewardType: 'free_service' as const, rewardValue: 0, label: 'Free detail reward' },
+      ];
   const nextTier = ladder.find((t) => completedReferrals < t.threshold) ?? ladder[ladder.length - 1];
   const progressTarget = nextTier?.threshold ?? threshold;
   const progress = Math.min(100, Math.round((completedReferrals / Math.max(1, progressTarget)) * 100));
@@ -92,7 +94,7 @@ export function CustomerReferralCard({
         <Gift className="h-4 w-4" /> Rewards center · Refer friends
       </div>
       <p className="mt-2 text-lg font-black text-white">
-        Give {givePercent ?? 10}%, get {getPercent ?? 20}%
+        Give {givePercent ?? 10}%, get {getPercent ?? 15}%
       </p>
       <p className="mt-1 text-sm text-zinc-400">
         {rewardRules ?? 'Share your link. When friends book and complete, you unlock Gloss Boss rewards automatically.'}

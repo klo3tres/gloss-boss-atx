@@ -10,6 +10,9 @@ const TYPE_ICON = {
   work_order: Briefcase,
   opportunity: Target,
   lead: Radar,
+  vehicle: Briefcase,
+  project: Target,
+  technician: User,
 } as const;
 
 export function AdminCommandPalette({ enabled }: { enabled: boolean }) {

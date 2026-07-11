@@ -5,6 +5,7 @@ import { sendCustomerSms } from '@/lib/sms-send';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
 import { businessNotifyDestination } from '@/lib/email-send';
 import { logNotificationOutbox } from '@/lib/notification-outbox-log';
+import { getAppOrigin } from '@/lib/env/app-origin';
 
 export type StaffInviteRole = 'super_admin' | 'admin' | 'dispatcher' | 'technician' | 'viewer';
 export type StaffInviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
@@ -39,7 +40,7 @@ export function generateInviteToken(): string {
 }
 
 export function inviteLinkForToken(token: string): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+  const base = getAppOrigin().replace(/\/$/, '');
   return `${base}/join-team?token=${encodeURIComponent(token)}`;
 }
 
@@ -267,7 +268,7 @@ export async function regenerateInviteToken(
       updated_at: new Date().toISOString(),
     })
     .eq('id', inviteId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'expired'])
     .select('*')
     .maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? 'Could not refresh invite token.' };

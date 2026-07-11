@@ -5,6 +5,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import {
   createStaffInvite,
+  inviteLinkForToken,
   listStaffInvites,
   regenerateInviteToken,
   sendStaffInviteNotification,
@@ -18,6 +19,7 @@ type Body =
   | { intent: 'list' }
   | { intent: 'create'; fullName: string; email?: string; phone?: string; role: StaffInviteRole; channel: 'sms' | 'email' | 'both' }
   | { intent: 'resend'; inviteId: string; channel: 'sms' | 'email' | 'both' }
+  | { intent: 'copy_link'; inviteId: string }
   | { intent: 'revoke'; inviteId: string }
   | { intent: 'update'; inviteId: string; email?: string; phone?: string; fullName?: string };
 
@@ -71,7 +73,7 @@ export async function POST(request: Request) {
       href: '/admin/team',
     });
     revalidatePath('/admin/team');
-    return NextResponse.json({ ok: true, invite: created.invite, sent });
+    return NextResponse.json({ ok: true, invite: created.invite, sent, inviteLink: inviteLinkForToken(created.token) });
   }
 
   if (body.intent === 'resend') {
@@ -87,6 +89,7 @@ export async function POST(request: Request) {
     }
     const inviterName = session.profile?.full_name ?? 'Your manager';
     const sent = await sendStaffInviteNotification(admin, refreshed.invite, refreshed.token, body.channel, inviterName);
+    const link = inviteLinkForToken(refreshed.token);
     await logTitanActivity(admin, {
       kind: 'staff_invite_resent',
       title: `Staff invite resent: ${refreshed.invite.fullName}`,
@@ -94,7 +97,7 @@ export async function POST(request: Request) {
       href: '/admin/team',
     });
     revalidatePath('/admin/team');
-    return NextResponse.json({ ok: true, sent });
+    return NextResponse.json({ ok: true, sent, inviteLink: link });
   }
 
   if (body.intent === 'revoke') {
@@ -111,6 +114,15 @@ export async function POST(request: Request) {
     });
     revalidatePath('/admin/team');
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'copy_link') {
+    const refreshed = await regenerateInviteToken(admin, body.inviteId);
+    if (!refreshed.ok || !refreshed.token) {
+      return NextResponse.json({ ok: false, error: refreshed.error ?? 'Could not create invite link' }, { status: 400 });
+    }
+    revalidatePath('/admin/team');
+    return NextResponse.json({ ok: true, inviteLink: inviteLinkForToken(refreshed.token) });
   }
 
   if (body.intent === 'update') {

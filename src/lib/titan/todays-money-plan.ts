@@ -24,11 +24,14 @@ export type MoneyMission = {
 
 export type TodaysMoneyPlan = {
   goalLabel: string;
+  /** Book-count target for the 24h mission (not cents). */
   goalTarget: number;
   goalProgress: number;
   missions: MoneyMission[];
   territoryHint?: string | null;
 };
+
+const CLOSED_OPP_STATUSES = new Set(['booked', 'won', 'lost', 'ignored', 'snoozed']);
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -55,8 +58,9 @@ export async function buildTodaysMoneyPlan(
 ): Promise<TodaysMoneyPlan> {
   const avg = Math.max(input.avgJobCents ?? 17500, 12000);
   const missions: MoneyMission[] = [];
+  const openOpps = input.opportunities.filter((o) => !CLOSED_OPP_STATUSES.has(String(o.status)));
 
-  const warmOpp = input.opportunities.find((o) => o.status === 'new' || o.status === 'follow_up');
+  const warmOpp = openOpps.find((o) => o.status === 'new' || o.status === 'follow_up');
   if (warmOpp) {
     const range = revenueRange(warmOpp.estimatedRevenueCents || avg);
     missions.push({
@@ -79,7 +83,7 @@ export async function buildTodaysMoneyPlan(
     });
   }
 
-  const recoveryOpp = input.opportunities.find((o) =>
+  const recoveryOpp = openOpps.find((o) =>
     ['previous_customer', 'canceled_reschedule', 'warm_lead'].includes(String(o.opportunityType)),
   );
   if (recoveryOpp && recoveryOpp.id !== warmOpp?.id) {
@@ -182,7 +186,7 @@ export async function buildTodaysMoneyPlan(
       confidenceScore: 45,
       confidenceLabel: 'Territory estimate — track results',
       effortLevel: 'medium',
-      href: '/admin/titan/territory',
+      href: '/admin/titan/lead-radar',
       status: 'open',
     });
   }

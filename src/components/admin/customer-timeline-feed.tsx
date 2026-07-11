@@ -36,6 +36,10 @@ const KIND_LABELS: Record<CustomerTimelineKind, string> = {
   estimate: 'Estimate',
   loyalty: 'Loyalty',
   credit: 'Credit',
+  opportunity: 'Opportunity',
+  membership: 'Membership',
+  referral: 'Referral',
+  lifecycle: 'Lifecycle',
   system: 'System',
 };
 
@@ -60,23 +64,30 @@ function kindIcon(kind: CustomerTimelineKind) {
     case 'intake':
       return FileText;
     case 'lead':
+    case 'opportunity':
+    case 'referral':
       return UserPlus;
     case 'loyalty':
+    case 'membership':
       return Award;
     case 'booking':
       return Calendar;
+    case 'lifecycle':
+      return FileText;
     default:
       return Wrench;
   }
 }
 
 function kindColor(kind: CustomerTimelineKind) {
-  if (kind === 'payment' || kind === 'receipt') return 'border-emerald-500/25 bg-emerald-500/5 text-emerald-300';
-  if (kind === 'follow_up' || kind === 'notification') return 'border-sky-500/25 bg-sky-500/5 text-sky-300';
-  if (kind === 'review') return 'border-amber-500/25 bg-amber-500/5 text-amber-300';
-  if (kind === 'note') return 'border-violet-500/25 bg-violet-500/5 text-violet-300';
+  if (kind === 'payment' || kind === 'receipt') return 'border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300';
+  if (kind === 'follow_up' || kind === 'notification') return 'border-sky-500/25 bg-sky-500/5 text-sky-700 dark:text-sky-300';
+  if (kind === 'review') return 'border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300';
+  if (kind === 'note') return 'border-violet-500/25 bg-violet-500/5 text-violet-700 dark:text-violet-300';
   if (kind === 'job' || kind === 'booking') return 'border-gold/25 bg-gold/5 text-gold-soft';
-  return 'border-white/10 bg-black/40 text-zinc-400';
+  if (kind === 'opportunity' || kind === 'referral' || kind === 'membership')
+    return 'border-cyan-500/25 bg-cyan-500/5 text-cyan-700 dark:text-cyan-300';
+  return 'border-border bg-muted/40 text-muted-foreground';
 }
 
 const FILTER_OPTIONS: { id: 'all' | CustomerTimelineKind; label: string }[] = [

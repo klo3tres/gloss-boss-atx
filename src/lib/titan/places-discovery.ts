@@ -185,7 +185,7 @@ export async function discoverPlacesProspects(
         if (distance > radiusMiles) continue;
 
         const prospectType = mapPlaceType(place, query.prospectType);
-        const monthly = estimateMonthlyCents(prospectType, null);
+        const monthly = estimateMonthlyCents(prospectType, null, place.name ?? place.placeId);
         byType[prospectType] = (byType[prospectType] ?? 0) + 1;
         discovered += 1;
         potentialMonthlyCents += monthly;
@@ -197,6 +197,31 @@ export async function discoverPlacesProspects(
           .maybeSingle();
 
         if (existing?.id) continue;
+
+        if (place.phone) {
+          const digits = place.phone.replace(/\D/g, '').slice(-10);
+          if (digits.length >= 10) {
+            const { data: byPhone } = await admin
+              .from('titan_prospects')
+              .select('id, phone')
+              .not('phone', 'is', null)
+              .limit(300);
+            const phoneHit = (byPhone ?? []).find(
+              (r) => String((r as { phone?: string }).phone ?? '').replace(/\D/g, '').slice(-10) === digits,
+            );
+            if (phoneHit?.id) continue;
+          }
+        }
+
+        if (place.name && place.address) {
+          const { data: byName } = await admin
+            .from('titan_prospects')
+            .select('id')
+            .ilike('company_name', place.name)
+            .ilike('address', place.address)
+            .maybeSingle();
+          if (byName?.id) continue;
+        }
 
         const score = computeScore(prospectType, monthly, distance, 'new');
         const now = new Date().toISOString();

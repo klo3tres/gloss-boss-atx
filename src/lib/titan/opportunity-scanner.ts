@@ -115,15 +115,16 @@ function inferType(text: string): OpportunityType {
 }
 
 function defaultValueCents(type: OpportunityType): number {
+  // Heuristic category estimates only — never treat as booked revenue.
   const map: Record<OpportunityType, number> = {
-    homeowner: 25000,
-    fleet: 120000,
-    apartment: 150000,
-    dealership: 180000,
-    b2b: 80000,
-    pressure_wash: 60000,
-    landscaping: 50000,
-    other: 40000,
+    homeowner: 0,
+    fleet: 0,
+    apartment: 0,
+    dealership: 0,
+    b2b: 0,
+    pressure_wash: 0,
+    landscaping: 0,
+    other: 0,
   };
   return map[type];
 }

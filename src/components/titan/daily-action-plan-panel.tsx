@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { ChevronRight, Send, X, Eye, Clock } from 'lucide-react';
+import { ChevronRight, Send, X, Eye } from 'lucide-react';
 import type { DailyExecutableAction } from '@/lib/titan/daily-action-plan';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
@@ -130,6 +130,9 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
         </div>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{action.reason}</p>
+      {action.valueExplanation ? (
+        <p className="mt-1 text-[10px] text-zinc-500">{action.valueExplanation}</p>
+      ) : null}
       {(action.contactPhone || action.contactEmail) && (
         <p className="mt-2 text-[10px] text-zinc-500">
           {action.contactPhone ? `SMS: ${action.contactPhone}` : null}
@@ -267,10 +270,13 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
   };
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/60 px-3 py-2 text-xs">
-      <span className="font-semibold text-foreground">{move.title}</span>
-      <div className="flex items-center gap-2">
+    <li className="rounded-xl border border-border bg-background/60 px-3 py-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-semibold text-foreground">{move.title}</span>
         <span className="shrink-0 font-mono text-gold-soft">{move.expectedValueLabel}</span>
+      </div>
+      {move.valueExplanation ? <p className="mt-1 text-[10px] text-zinc-500">{move.valueExplanation}</p> : null}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {move.canSend ? (
           <>
             <button
@@ -291,9 +297,31 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
               }
               className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[9px] font-black uppercase text-muted-foreground"
             >
-              <Clock className="h-3 w-3" /> Schedule
+              <Eye className="h-3 w-3" /> Preview
             </button>
           </>
+        ) : (
+          <Link
+            href={move.href}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[9px] font-black uppercase text-muted-foreground"
+          >
+            Open <ChevronRight className="h-3 w-3" />
+          </Link>
+        )}
+        {!move.id.startsWith('draft-') ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                await dismissDailyActionAction(move.id);
+                router.refresh();
+              })
+            }
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[9px] font-black uppercase text-muted-foreground hover:border-rose-500/30 hover:text-rose-400"
+          >
+            <X className="h-3 w-3" /> Dismiss
+          </button>
         ) : null}
       </div>
     </li>

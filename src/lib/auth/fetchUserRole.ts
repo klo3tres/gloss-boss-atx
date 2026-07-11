@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRole } from '@/lib/auth/roles';
-import { logRoleDebug, parseAppRole, OWNER_LOGIN_EMAIL } from '@/lib/auth/role-resolution';
+import { logRoleDebug, parseAppRole } from '@/lib/auth/role-resolution';
+import { isProtectedOwner } from '@/lib/auth/owner-config';
 
 export type FetchUserRoleResult =
   | { ok: false; code: 'NO_SESSION'; userId: null; email: null }
@@ -20,8 +21,8 @@ function logAuthFlow(payload: Record<string, unknown>) {
   console.info('[AUTH_FLOW]', JSON.stringify(payload));
 }
 
-function isOwnerEmail(email: string | null | undefined): boolean {
-  return (email ?? '').trim().toLowerCase() === OWNER_LOGIN_EMAIL;
+function isOwnerEmail(email: string | null | undefined, userId?: string | null): boolean {
+  return isProtectedOwner(email, userId);
 }
 
 /** Browser-only: creates missing profile or promotes owner via service role (`/api/auth/ensure-profile`). */
@@ -67,8 +68,7 @@ async function fetchProfileRow(
 }
 
 /**
- * Resolves role from `profiles.role`. Production recovery: profile/RLS/schema failures never block —
- * owner email still elevates to super_admin; everyone else falls back to `customer` and background-heals via ensure-profile.
+ * Resolves role from `profiles.role`. Staff must never silently downgrade to customer.
  */
 export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRoleResult> {
   try {
@@ -98,7 +98,7 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
       logAuthFlow({ step: 'fetchUserRole', code: 'PROFILE_QUERY_RECOVERY', email, profileError });
       logRoleDebug({ step: 'fetchUserRole', code: 'PROFILE_QUERY_RECOVERY', detail: profileError });
       scheduleBackgroundProfileSync();
-      if (isOwnerEmail(email)) {
+      if (isOwnerEmail(email, user.id)) {
         return {
           ok: true,
           userId: user.id,
@@ -109,18 +109,17 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
         };
       }
       return {
-        ok: true,
+        ok: false,
+        code: 'PROFILE_QUERY_ERROR',
         userId: user.id,
-        role: 'customer',
         email,
-        profileRow: null,
-        source: 'session_fallback',
+        message: profileError ?? 'Could not read profile.',
       };
     }
 
     const parsedForSync = profileRow ? parseAppRole(profileRow.role) : null;
     const needsProfileSync =
-      !profileRow || (isOwnerEmail(email) && parsedForSync !== 'super_admin');
+      !profileRow || (isOwnerEmail(email, user.id) && parsedForSync !== 'super_admin');
     if (needsProfileSync) {
       logAuthFlow({
         step: 'fetchUserRole',
@@ -128,14 +127,14 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
         email,
         userId: user.id,
         missingRow: !profileRow,
-        ownerNeedsElevate: Boolean(isOwnerEmail(email) && profileRow && parsedForSync !== 'super_admin'),
+        ownerNeedsElevate: Boolean(isOwnerEmail(email, user.id) && profileRow && parsedForSync !== 'super_admin'),
       });
       await requestProfileSync();
       const second = await fetchProfileRow(client, user.id);
       if (second.error) {
         logAuthFlow({ step: 'fetchUserRole', code: 'PROFILE_QUERY_RECOVERY_AFTER_SYNC', email, profileError: second.error });
         scheduleBackgroundProfileSync();
-        if (isOwnerEmail(email)) {
+        if (isOwnerEmail(email, user.id)) {
           return {
             ok: true,
             userId: user.id,
@@ -146,19 +145,18 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
           };
         }
         return {
-          ok: true,
+          ok: false,
+          code: 'PROFILE_QUERY_ERROR',
           userId: user.id,
-          role: 'customer',
           email,
-          profileRow: null,
-          source: 'session_fallback',
+          message: second.error ?? 'Could not read profile after sync.',
         };
       }
       profileRow = second.row;
     }
 
     if (!profileRow) {
-      if (isOwnerEmail(email)) {
+      if (isOwnerEmail(email, user.id)) {
         logAuthFlow({ step: 'fetchUserRole', source: 'owner_bootstrap', email, role: 'super_admin', note: 'heal_failed_or_no_row' });
         logRoleDebug({ step: 'fetchUserRole', code: 'OK', authUserId: user.id, resolvedRole: 'super_admin', source: 'owner_bootstrap' });
         return {
@@ -170,24 +168,16 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
           source: 'owner_bootstrap',
         };
       }
-      logAuthFlow({ step: 'fetchUserRole', code: 'MISSING_PROFILE_RECOVERY', email, userId: user.id });
-      logRoleDebug({ step: 'fetchUserRole', code: 'MISSING_PROFILE_RECOVERY', authUserId: user.id });
-      scheduleBackgroundProfileSync();
-      return {
-        ok: true,
-        userId: user.id,
-        role: 'customer',
-        email,
-        profileRow: null,
-        source: 'session_fallback',
-      };
+      logAuthFlow({ step: 'fetchUserRole', code: 'MISSING_PROFILE', email, userId: user.id });
+      logRoleDebug({ step: 'fetchUserRole', code: 'MISSING_PROFILE', authUserId: user.id });
+      return { ok: false, code: 'MISSING_PROFILE', userId: user.id, email };
     }
 
     const parsed = parseAppRole(profileRow.role);
     if (!parsed) {
       logAuthFlow({ step: 'fetchUserRole', code: 'INVALID_ROLE_RECOVERY', rawRole: profileRow.role, userId: user.id });
       scheduleBackgroundProfileSync();
-      if (isOwnerEmail(email)) {
+      if (isOwnerEmail(email, user.id)) {
         return {
           ok: true,
           userId: user.id,
@@ -197,17 +187,10 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
           source: 'owner_bootstrap',
         };
       }
-      return {
-        ok: true,
-        userId: user.id,
-        role: 'customer',
-        email,
-        profileRow: null,
-        source: 'session_fallback',
-      };
+      return { ok: false, code: 'INVALID_ROLE', userId: user.id, email, rawRole: profileRow.role };
     }
 
-    if (isOwnerEmail(email) && parsed !== 'super_admin') {
+    if (isOwnerEmail(email, user.id) && parsed !== 'super_admin') {
       logAuthFlow({
         step: 'fetchUserRole',
         source: 'owner_bootstrap',
@@ -248,7 +231,7 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
       } = await client.auth.getUser();
       if (!userErr && user) {
         const email = user.email ?? null;
-        if (isOwnerEmail(email)) {
+        if (isOwnerEmail(email, user.id)) {
           return {
             ok: true,
             userId: user.id,
@@ -258,14 +241,7 @@ export async function fetchUserRole(client: SupabaseClient): Promise<FetchUserRo
             source: 'owner_bootstrap',
           };
         }
-        return {
-          ok: true,
-          userId: user.id,
-          role: 'customer',
-          email,
-          profileRow: null,
-          source: 'session_fallback',
-        };
+        return { ok: false, code: 'PROFILE_QUERY_ERROR', userId: user.id, email, message: msg };
       }
     } catch {
       /* fall through */

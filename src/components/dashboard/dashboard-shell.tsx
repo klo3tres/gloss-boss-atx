@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Menu, X, Bell, ShieldAlert, MessageSquare } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -168,8 +168,7 @@ export function DashboardShell({
   titanMode?: boolean;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentTab = searchParams.get('tab');
+  const [currentTab, setCurrentTab] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [simNav, setSimNav] = useState<DashboardShellRole | null>(null);
   const [currentHash, setCurrentHash] = useState('');
@@ -201,6 +200,12 @@ export function DashboardShell({
       })
       .catch((err) => console.warn('Failed to load public brand:', err));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setCurrentTab(params.get('tab'));
+  }, [pathname]);
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -502,32 +507,17 @@ export function DashboardShell({
 
   return (
     <main className={`gb-dashboard-shell gb-luxury-page min-h-screen overflow-x-hidden bg-background text-foreground ${isTitanSurface ? 'titan-surface' : ''}`}>
-      {role === 'super_admin' ? (
-        <label className="gb-no-print fixed right-4 top-4 z-[80] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-gold/30 bg-black/95 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft shadow-2xl backdrop-blur-xl">
-          View as
-          <select
-            value={simNav ?? 'super_admin'}
-            onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
-            className="rounded-xl border border-white/10 bg-zinc-950 px-2 py-1.5 text-xs font-black normal-case tracking-normal text-white outline-none focus:border-gold/50"
-          >
-            <option value="super_admin">Owner</option>
-            <option value="admin">Admin</option>
-            <option value="technician">Technician</option>
-            <option value="customer">Customer</option>
-          </select>
-        </label>
-      ) : null}
       <div className='gb-no-print pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(212,166,77,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.08),transparent_30%)]' aria-hidden />
       <div className='relative mx-auto flex w-full max-w-[min(1680px,calc(100vw-1.5rem))] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:py-8'>
         <div className='gb-dashboard-mobile-bar gb-no-print flex items-center justify-between lg:hidden w-full border border-border bg-card rounded-2xl px-4 py-2.5 mb-2 backdrop-blur-md shadow-sm'>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <img src={brand.logoUrl || "/brand/glossboss-clean-logo.png"} alt={brand.businessDisplayName} className="h-7 w-auto object-contain filter brightness-110" />
-            <span className='text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>{brand.businessDisplayName}</span>
+            <span className='truncate text-[10px] font-black uppercase tracking-[0.15em] text-gold-soft'>{brand.businessDisplayName}</span>
           </div>
           <button
             type='button'
             onClick={() => setNavOpen((v) => !v)}
-            className='rounded-lg border border-gold/30 p-2 text-gold-soft hover:bg-gold/10 transition'
+            className='min-h-11 min-w-11 rounded-lg border border-gold/30 p-2 text-gold-soft hover:bg-gold/10 transition'
             aria-expanded={navOpen}
             aria-label='Toggle navigation'
           >
@@ -550,6 +540,21 @@ export function DashboardShell({
           </div>
           <h2 className='text-base font-black uppercase text-center text-foreground mb-2'>{panelTitle}</h2>
           {NavLinks}
+          {role === 'super_admin' ? (
+            <label className="mt-4 flex w-full flex-col gap-1 rounded-2xl border border-gold/30 bg-muted/30 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft">
+              View as
+              <select
+                value={simNav ?? 'super_admin'}
+                onChange={(event) => setSimulationRole(event.target.value as DashboardShellRole)}
+                className="min-h-11 w-full rounded-xl border border-border bg-input px-2 py-2 text-xs font-black normal-case tracking-normal text-foreground outline-none focus:border-gold/50"
+              >
+                <option value="super_admin">Owner</option>
+                <option value="admin">Admin</option>
+                <option value="technician">Technician</option>
+                <option value="customer">Customer</option>
+              </select>
+            </label>
+          ) : null}
         </aside>
 
         <section className='order-1 min-w-0 flex-1 space-y-6 overflow-x-hidden lg:order-2'>

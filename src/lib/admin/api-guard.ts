@@ -1,5 +1,6 @@
 import { isAdminLevel, isStaffRole, type AppRole } from '@/lib/auth/roles';
-import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
+import { isProtectedOwner } from '@/lib/auth/owner-config';
+import { parseAppRole } from '@/lib/auth/role-resolution';
 import { tryCreateServerSupabase } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -26,8 +27,7 @@ export async function requireAdminApiUser(): Promise<AdminApiOk | AdminApiErr> {
   const { data: profile, error: profErr } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
   let role = parseAppRole(profile?.role);
   if (profErr || !profile || profile.role == null || String(profile.role).trim() === '') {
-    const em = (user.email ?? '').trim().toLowerCase();
-    if (em === OWNER_LOGIN_EMAIL) {
+    if (isProtectedOwner(user.email, user.id)) {
       role = 'super_admin';
     }
   }
@@ -51,8 +51,7 @@ export async function requireStaffApiUser(): Promise<AdminApiOk | AdminApiErr> {
   const { data: profile, error: profErr } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
   let role = parseAppRole(profile?.role);
   if (profErr || !profile || profile.role == null || String(profile.role).trim() === '') {
-    const em = (user.email ?? '').trim().toLowerCase();
-    if (em === OWNER_LOGIN_EMAIL) {
+    if (isProtectedOwner(user.email, user.id)) {
       role = 'super_admin';
     }
   }

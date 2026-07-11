@@ -37,12 +37,18 @@ export function ThemeProvider({
   initialPreference?: ThemePreference;
   websiteDefault?: 'light' | 'dark';
 }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>(() => {
-    if (typeof window === 'undefined') return initialPreference;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
-    return initialPreference;
-  });
+  const [preference, setPreferenceState] = useState<ThemePreference>(initialPreference);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        setPreferenceState(stored);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const resolved = useMemo(() => {
     if (preference === 'system') return systemTheme();

@@ -1,7 +1,7 @@
 export const BOOKING_DRAFT_KEY = 'gb_booking_draft_v1';
 
 /** Inactivity window before vehicles/services/schedule are cleared (name + email kept). */
-export const BOOKING_DRAFT_TTL_MS = 15 * 60 * 1000;
+export const BOOKING_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type BookingDraftVehicle = {
   serviceSlug: string;

@@ -1,5 +1,9 @@
 import type { AppRole } from '@/lib/auth/roles';
+import { isProtectedOwner, PROTECTED_OWNER_EMAIL } from '@/lib/auth/owner-config';
 
+export { PROTECTED_OWNER_EMAIL, isProtectedOwner };
+/** @deprecated Use PROTECTED_OWNER_EMAIL */
+export const OWNER_LOGIN_EMAIL = PROTECTED_OWNER_EMAIL;
 export const VALID_APP_ROLES: readonly AppRole[] = ['super_admin', 'admin', 'dispatcher', 'technician', 'viewer', 'customer'];
 
 /** Normalize Postgres enum / odd client encodings to a snake_case key. */
@@ -53,15 +57,9 @@ export function parseAppRole(raw: unknown): AppRole | null {
 }
 
 /** Hard override for Gloss Boss owner account (code path + redirects). */
-export const OWNER_LOGIN_EMAIL = 'glossbossatx1@gmail.com';
-
-/**
- * Stable role resolution: owner email → super_admin; else valid DB role; else customer.
- * Never throws.
- */
 export function resolveRoleWithFallback(email: string | null | undefined, profileRole: unknown): AppRole {
   const e = (email ?? '').trim().toLowerCase();
-  if (e === OWNER_LOGIN_EMAIL) return 'super_admin';
+  if (isProtectedOwner(e)) return 'super_admin';
   const fromDb = parseAppRole(profileRole);
   if (fromDb) return fromDb;
   return 'customer';

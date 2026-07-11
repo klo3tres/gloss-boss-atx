@@ -228,6 +228,31 @@ export default async function AdminRevenuePage({
   const popularServices = Object.values(serviceBreakdown)
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+  const serviceVariety = Object.keys(serviceBreakdown).length;
+  const leastPopular =
+    serviceVariety >= 2
+      ? Object.values(serviceBreakdown).sort((a, b) => a.count - b.count)[0]
+      : null;
+  const mostPopularLabel =
+    serviceVariety === 0
+      ? 'No completed services yet'
+      : serviceVariety === 1
+        ? `${popularServices[0]?.label} (only service with data)`
+        : popularServices[0]?.label ?? 'No completed services yet';
+  const leastPopularLabel =
+    serviceVariety < 2
+      ? 'Not enough data'
+      : leastPopular?.label ?? 'No low performer yet';
+  const leastPopularAction =
+    serviceVariety < 2
+      ? 'Need at least two distinct completed services before ranking least popular.'
+      : 'Bundle with a high-performing package or test a limited-time offer.';
+  const mostPopularAction =
+    serviceVariety === 0
+      ? 'Complete jobs will populate this recommendation.'
+      : serviceVariety === 1
+        ? `Based on ${popularServices[0]?.count ?? 0} completed job(s) — more variety needed for comparisons.`
+        : 'Feature this service in homepage CTAs and gallery captions.';
 
   // Tech Revenue
   const techBreakdown: Record<string, { name: string; count: number; revenueCents: number }> = {};
@@ -343,8 +368,8 @@ export default async function AdminRevenuePage({
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {[
-            ['Most popular services', popularServices[0]?.label ?? 'No completed services yet', popularServices.length ? 'Feature this service in homepage CTAs and gallery captions.' : 'Complete jobs will populate this recommendation.'],
-            ['Least popular services', Object.values(serviceBreakdown).sort((a, b) => a.count - b.count)[0]?.label ?? 'No low performer yet', 'Bundle with a high-performing package or test a limited-time offer.'],
+            ['Most popular services', mostPopularLabel, mostPopularAction],
+            ['Least popular services', leastPopularLabel, leastPopularAction],
             ['Highest revenue services', Object.values(serviceBreakdown).sort((a, b) => b.revenueCents - a.revenueCents)[0]?.label ?? 'No revenue leader yet', 'Move this package higher in the booking flow and train techs to explain the value.'],
             ['Average ticket size', avgTicketSize, 'Raise ticket size with the top two add-ons during booking and closeout.'],
             ['Repeat customer rate', `${Math.round((topCustomers.filter((c) => c.jobCount > 1).length / Math.max(1, topCustomers.length)) * 100)}%`, 'Send rebooking offers to customers with one completed detail.'],

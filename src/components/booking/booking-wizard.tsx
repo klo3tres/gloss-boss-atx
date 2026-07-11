@@ -22,6 +22,7 @@ import { digitsOnly, normalizeUsPhone10Digits } from '@/lib/us-phone';
 import { defaultDealConfig, type DealConfig } from '@/lib/site-config';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { BookingStepProgress } from '@/components/booking/booking-step-progress';
+import { formatCustomerDuration } from '@/lib/format-customer-duration';
 import { BookingWizardNav } from '@/components/booking/booking-wizard-nav';
 import { BOOKING_WIZARD_STEPS, clampBookingStep } from '@/lib/booking/booking-wizard-steps';
 import { BookingWeatherHint } from '@/components/weather/booking-weather-hint';
@@ -1123,7 +1124,7 @@ export function BookingWizard() {
       }
 
       setCheckoutPhase('redirecting');
-      clearBookingDraft();
+      // Do NOT clear the draft here — browser Back from Stripe must restore review state.
       window.location.href = checkoutJson.url;
     } catch (err) {
       window.clearTimeout(timeoutId);
@@ -1417,20 +1418,14 @@ export function BookingWizard() {
   const stepTitle = BOOKING_WIZARD_STEPS[clampBookingStep(currentStep)]?.label ?? 'Book';
 
   return (
-    <form onSubmit={handleSubmit} className='gb-booking-form space-y-6 overflow-x-hidden pb-36 lg:pb-8'>
-      <div className='sticky top-20 z-20 lg:top-24'>
+    <form onSubmit={handleSubmit} className='gb-booking-form space-y-6 overflow-x-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-8'>
+      <div className='relative z-10'>
         <BookingStepProgress
           currentStep={currentStep}
           onStepClick={(step) => {
             if (step < currentStep) goToStep(step);
           }}
         />
-        {bookingDurationMinutes > 0 ? (
-          <p className='mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:hidden'>
-            Est. {Math.round(bookingDurationMinutes / 15) * 15} min
-            {pricePreviewText ? ` · ${pricePreviewText}` : ''}
-          </p>
-        ) : null}
       </div>
       {draftExpiredNotice ? (
         <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
@@ -1772,6 +1767,13 @@ export function BookingWizard() {
                   </option>
                 ))}
               </select>
+              {bookingDateKey && filteredSlotOpts.length === 0 ? (
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100" role="status">
+                  No open slots fit this job on the selected day. Estimated duration:{' '}
+                  <strong>{formatCustomerDuration(Math.round(bookingDurationMinutes / 15) * 15)}</strong>.
+                  Try another day, reduce add-ons, or split vehicles — a shorter service will show morning and afternoon openings around existing bookings.
+                </p>
+              ) : null}
               {filteredSlotOpts.length > 0 && filteredSlotOpts.length <= 24 ? (
                 <div className='mt-3 flex flex-wrap gap-2'>
                   {filteredSlotOpts.map((s) => (
@@ -2279,7 +2281,7 @@ export function BookingWizard() {
               <button
                 type='button'
                 onClick={goBack}
-                className='shrink-0 rounded-xl border border-border px-4 py-3 text-[10px] font-black uppercase text-muted-foreground'
+                className='min-h-11 shrink-0 rounded-xl border border-border px-4 py-3 text-[10px] font-black uppercase text-muted-foreground'
               >
                 Back
               </button>
@@ -2293,7 +2295,7 @@ export function BookingWizard() {
                   <p className='text-lg font-black tabular-nums text-foreground'>${(cardDueCents / 100).toFixed(2)}</p>
                   <p className='truncate text-[10px] text-muted-foreground'>
                     Total ${(priceSummary.breakdown.finalTotalCents / 100).toFixed(2)}
-                    {bookingDurationMinutes > 0 ? ` · ${Math.round(bookingDurationMinutes / 15) * 15} min` : ''}
+                    {bookingDurationMinutes > 0 ? ` · ${formatCustomerDuration(Math.round(bookingDurationMinutes / 15) * 15)}` : ''}
                   </p>
                 </>
               ) : (
@@ -2304,7 +2306,7 @@ export function BookingWizard() {
               <button
                 type='submit'
                 disabled={submitting || services.length === 0 || !canBookOnline}
-                className='shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
+                className='min-h-11 shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
               >
                 {submitting ? '…' : 'Pay'}
               </button>
@@ -2313,7 +2315,7 @@ export function BookingWizard() {
                 type='button'
                 onClick={goNext}
                 disabled={services.length === 0 || !canBookOnline}
-                className='shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
+                className='min-h-11 shrink-0 rounded-xl bg-gold px-5 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50'
               >
                 Next
               </button>

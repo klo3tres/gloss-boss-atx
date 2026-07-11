@@ -7,6 +7,7 @@ import { createAdminJobAction } from '@/app/(dashboard)/admin/work-orders/add/ac
 import { AdminAddJobSuccessPanel } from '@/components/admin/admin-add-job-success-panel';
 import type { CreateAdminJobResult } from '@/lib/admin/create-admin-job-result';
 import type { AdminJobQuoteResult } from '@/lib/admin/admin-job-quote';
+import { addonPriceCentsForVehicle } from '@/lib/addon-vehicle-pricing';
 
 type ServiceOption = { slug: string; title: string };
 type AddonOption = { slug: string; label: string; priceCents: number };
@@ -322,22 +323,25 @@ export function AdminAddJobWizard({
 
         {addons.length > 0 ? (
           <div className="mt-4">
-            <p className={labelClass}>Add-ons</p>
+            <p className={labelClass}>Add-ons (priced for {vehicleClass})</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {addons.map((a) => (
+              {addons.map((a) => {
+                const cents = addonPriceCentsForVehicle(a.slug, vehicleClass, a.priceCents);
+                return (
                 <button
                   key={a.slug}
                   type="button"
                   onClick={() => toggleAddon(a.slug)}
-                  className={`rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase transition ${
+                  className={`min-h-11 rounded-full border px-3 py-2 text-[10px] font-bold uppercase transition ${
                     selectedAddons.includes(a.slug)
                       ? 'border-gold/40 bg-gold/15 text-gold-soft'
-                      : 'border-white/10 text-zinc-400 hover:border-white/25'
+                      : 'border-border text-muted-foreground hover:border-gold/30'
                   }`}
                 >
-                  {a.label} · ${(a.priceCents / 100).toFixed(0)}
+                  {a.label} · ${(cents / 100).toFixed(0)}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : null}

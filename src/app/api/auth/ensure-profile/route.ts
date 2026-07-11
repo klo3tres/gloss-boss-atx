@@ -2,9 +2,11 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { OWNER_LOGIN_EMAIL, parseAppRole } from '@/lib/auth/role-resolution';
+import { isProtectedOwner } from '@/lib/auth/owner-config';
 import { isStaffRole } from '@/lib/auth/roles';
 import { getPublicSupabaseEnv } from '@/lib/supabase/env';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { resolveInitialProfileRole } from '@/lib/auth/staff-profile-resolve';
 
 /**
  * Service-role profile sync (browser calls after login/signup):
@@ -53,7 +55,7 @@ export async function POST() {
   }
 
   const emailNorm = user.email.trim().toLowerCase();
-  const isOwner = emailNorm === OWNER_LOGIN_EMAIL;
+  const isOwner = isProtectedOwner(emailNorm, user.id);
   const metaName = typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name.trim() : '';
   const fullName = metaName || (isOwner ? 'Gloss Boss Owner' : null);
   const now = new Date().toISOString();
@@ -71,7 +73,7 @@ export async function POST() {
   }
 
   if (!existing) {
-    const role = isOwner ? 'super_admin' : 'customer';
+    const role = await resolveInitialProfileRole(admin, { userId: user.id, email: emailNorm });
     const insertAttempts: Record<string, unknown>[] = [
       { id: user.id, full_name: fullName, role, email: emailNorm, updated_at: now },
       { id: user.id, full_name: fullName, role, email: emailNorm },
@@ -142,6 +144,18 @@ export async function POST() {
   const existingRole = parseAppRole(existing.role);
   if (existingRole && isStaffRole(existingRole)) {
     return NextResponse.json({ ok: true, noop: true, staff: true });
+  }
+
+  if (existingRole === 'customer') {
+    const expectedStaffRole = await resolveInitialProfileRole(admin, { userId: user.id, email: emailNorm });
+    if (isStaffRole(expectedStaffRole)) {
+      const now = new Date().toISOString();
+      await admin
+        .from('profiles')
+        .update({ role: expectedStaffRole, active: true, updated_at: now, email: emailNorm })
+        .eq('id', user.id);
+      return NextResponse.json({ ok: true, repaired: true, role: expectedStaffRole });
+    }
   }
 
   if (isOwner && String(existing.role) !== 'super_admin') {

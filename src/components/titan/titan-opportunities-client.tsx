@@ -200,18 +200,20 @@ export function TitanOpportunitiesClient({
           <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase text-black">
             <Plus className="h-3.5 w-3.5" /> Add opportunity
           </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => startTransition(async () => {
-              const res = await seedWarmLeadsAction();
-              setBanner(res.error ?? (res.inserted ? `Seeded ${res.inserted} warm leads.` : 'Warm leads already present.'));
-              router.refresh();
-            })}
-            className="rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
-          >
-            Seed warm leads
-          </button>
+          {process.env.NODE_ENV !== 'production' ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => startTransition(async () => {
+                const res = await seedWarmLeadsAction();
+                setBanner(res.error ?? (res.inserted ? `Seeded ${res.inserted} warm leads.` : 'Demo seeds disabled or already present.'));
+                router.refresh();
+              })}
+              className="rounded-xl border border-gold/30 px-4 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+            >
+              Seed warm leads (dev)
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={pending}

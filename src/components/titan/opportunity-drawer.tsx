@@ -13,6 +13,7 @@ import {
   scheduleFollowUpAction,
   seedOpportunityAction,
   snoozeOpportunityAction,
+  updateOpportunityContactAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import { sendPreviewedEmailAction, sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
@@ -48,6 +49,10 @@ export function OpportunityDrawer({
   const [note, setNote] = useState('');
   const [tab, setTab] = useState<'profile' | 'scripts' | 'quote'>('profile');
   const [msg, setMsg] = useState<string | null>(null);
+  const [editContact, setEditContact] = useState(false);
+  const [contactNameDraft, setContactNameDraft] = useState(opp.contactName ?? '');
+  const [contactPhoneDraft, setContactPhoneDraft] = useState(opp.contactPhone ?? '');
+  const [contactEmailDraft, setContactEmailDraft] = useState(opp.contactEmail ?? '');
 
   const ext = opp as RevenueOpportunity & {
     businessName?: string | null;
@@ -97,9 +102,7 @@ export function OpportunityDrawer({
   };
 
   const logCall = (outcome?: string) => {
-    void logOpportunityCallAction(opp.id, outcome);
-    setMsg('Call logged.');
-    router.refresh();
+    act(() => logOpportunityCallAction(opp.id, outcome), 'Call logged.');
   };
 
   const previewSend = (channel: 'sms' | 'email', scriptKey: OpportunityScriptKey) => {
@@ -184,28 +187,99 @@ export function OpportunityDrawer({
               </div>
 
               <dl className="space-y-2 text-sm">
-                {contactName ? (
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 text-muted-foreground">Contact</dt>
-                    <dd className="text-foreground">{contactName}</dd>
+                {editContact ? (
+                  <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+                    <p className="text-[10px] font-black uppercase text-muted-foreground">Edit contact</p>
+                    <input
+                      value={contactNameDraft}
+                      onChange={(e) => setContactNameDraft(e.target.value)}
+                      placeholder="Name"
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground"
+                    />
+                    <input
+                      value={contactPhoneDraft}
+                      onChange={(e) => setContactPhoneDraft(e.target.value)}
+                      placeholder="Phone"
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground"
+                    />
+                    <input
+                      value={contactEmailDraft}
+                      onChange={(e) => setContactEmailDraft(e.target.value)}
+                      placeholder="Email"
+                      className="w-full rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() =>
+                          act(
+                            () =>
+                              updateOpportunityContactAction(opp.id, {
+                                contactName: contactNameDraft,
+                                contactPhone: contactPhoneDraft,
+                                contactEmail: contactEmailDraft,
+                              }),
+                            'Contact saved',
+                          )
+                        }
+                        className="rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+                      >
+                        Save contact
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditContact(false)}
+                        className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                ) : null}
-                {opp.contactPhone ? (
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 text-muted-foreground">Phone</dt>
-                    <dd>
-                      <a href={`tel:${opp.contactPhone}`} className="text-emerald-600 hover:underline">{opp.contactPhone}</a>
-                    </dd>
-                  </div>
-                ) : null}
-                {opp.contactEmail ? (
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 text-muted-foreground">Email</dt>
-                    <dd>
-                      <a href={`mailto:${opp.contactEmail}`} className="text-emerald-600 hover:underline">{opp.contactEmail}</a>
-                    </dd>
-                  </div>
-                ) : null}
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase text-muted-foreground">Contact</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContactNameDraft(opp.contactName ?? '');
+                          setContactPhoneDraft(opp.contactPhone ?? '');
+                          setContactEmailDraft(opp.contactEmail ?? '');
+                          setEditContact(true);
+                        }}
+                        className="text-[10px] font-black uppercase text-gold-soft hover:underline"
+                      >
+                        {contactName || opp.contactPhone || opp.contactEmail ? 'Edit' : 'Add contact'}
+                      </button>
+                    </div>
+                    {contactName ? (
+                      <div className="flex gap-2">
+                        <dt className="shrink-0 text-muted-foreground">Name</dt>
+                        <dd className="text-foreground">{contactName}</dd>
+                      </div>
+                    ) : null}
+                    {opp.contactPhone ? (
+                      <div className="flex gap-2">
+                        <dt className="shrink-0 text-muted-foreground">Phone</dt>
+                        <dd>
+                          <a href={`tel:${opp.contactPhone}`} className="text-emerald-600 hover:underline">{opp.contactPhone}</a>
+                        </dd>
+                      </div>
+                    ) : null}
+                    {opp.contactEmail ? (
+                      <div className="flex gap-2">
+                        <dt className="shrink-0 text-muted-foreground">Email</dt>
+                        <dd>
+                          <a href={`mailto:${opp.contactEmail}`} className="text-emerald-600 hover:underline">{opp.contactEmail}</a>
+                        </dd>
+                      </div>
+                    ) : null}
+                    {!contactName && !opp.contactPhone && !opp.contactEmail ? (
+                      <p className="text-xs text-muted-foreground">No contact on file — add a phone or email to send outreach.</p>
+                    ) : null}
+                  </>
+                )}
                 {ext.businessAddress ? (
                   <div className="flex gap-2">
                     <dt className="shrink-0 text-muted-foreground">Address</dt>
@@ -291,10 +365,10 @@ export function OpportunityDrawer({
                 <button type="button" disabled={pending} onClick={() => act(() => seedOpportunityAction(opp.id), 'Seeded as warm lead')} className="rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50">
                   Seed warm lead
                 </button>
-                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'quoted'), 'Marked quoted')} className="rounded-lg border border-cyan-500/30 px-3 py-2 text-[10px] font-black uppercase text-cyan-200 disabled:opacity-50">
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'quoted'), 'Marked quoted')} className="rounded-lg border border-cyan-500/30 px-3 py-2 text-[10px] font-black uppercase text-cyan-700 disabled:opacity-50">
                   Quoted
                 </button>
-                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Marked booked')} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-200 disabled:opacity-50">
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Marked booked')} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-700 disabled:opacity-50">
                   Booked
                 </button>
                 <button type="button" disabled={pending} onClick={() => act(() => snoozeOpportunityAction(opp.id), 'Snoozed 60 days')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">

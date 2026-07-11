@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { TechWelcomeBanner } from '@/components/tech/tech-welcome-banner';
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   CalendarDays,
@@ -244,14 +244,18 @@ export function TechPremiumShell({
   const goalPct =
     goalTargetCents != null && goalTargetCents > 0 ? Math.min(100, Math.round((revenueWeekCents / goalTargetCents) * 100)) : 0;
 
-  const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const activeTab = searchParams.get('tab') || 'overview';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setActiveTab(params.get('tab') || 'overview');
+  }, [pathname]);
 
   const handleTabChange = (newTab: string) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     params.set('tab', newTab);
     router.push(`${pathname}?${params.toString()}`);
   };

@@ -66,7 +66,16 @@ export async function sendPreviewedSmsAction(input: {
   customerId?: string;
   entityType?: string;
   entityId?: string;
-}): Promise<{ ok?: boolean; error?: string }> {
+}): Promise<{
+  ok?: boolean;
+  error?: string;
+  salesCoach?: {
+    styleLabel: string;
+    responseProbability: number;
+    reason: string;
+    suggestedImprovement: string;
+  };
+}> {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
 
@@ -109,7 +118,28 @@ export async function sendPreviewedSmsAction(input: {
     });
     return { error: sent.error ?? 'SMS failed' };
   }
-  return { ok: true };
+
+  const { scoreOutboundMessage, persistMessageScore } = await import('@/lib/titan/sales-coach');
+  const coach = scoreOutboundMessage(input.body, 'sms');
+  await persistMessageScore(gate.admin as never, {
+    channel: 'sms',
+    kind: input.kind,
+    body: input.body,
+    score: coach,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    customerId: input.customerId,
+  });
+
+  return {
+    ok: true,
+    salesCoach: {
+      styleLabel: coach.styleLabel,
+      responseProbability: coach.responseProbability,
+      reason: coach.reason,
+      suggestedImprovement: coach.suggestedImprovement,
+    },
+  };
 }
 
 export async function sendPreviewedEmailAction(input: {
@@ -121,7 +151,16 @@ export async function sendPreviewedEmailAction(input: {
   customerId?: string;
   entityType?: string;
   entityId?: string;
-}): Promise<{ ok?: boolean; error?: string }> {
+}): Promise<{
+  ok?: boolean;
+  error?: string;
+  salesCoach?: {
+    styleLabel: string;
+    responseProbability: number;
+    reason: string;
+    suggestedImprovement: string;
+  };
+}> {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
 
@@ -161,7 +200,28 @@ export async function sendPreviewedEmailAction(input: {
   });
 
   if (status !== 'sent') return { error: err ?? 'Email failed' };
-  return { ok: true };
+
+  const { scoreOutboundMessage, persistMessageScore } = await import('@/lib/titan/sales-coach');
+  const coach = scoreOutboundMessage(input.body, 'email');
+  await persistMessageScore(gate.admin as never, {
+    channel: 'email',
+    kind: input.kind,
+    body: input.body,
+    score: coach,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    customerId: input.customerId,
+  });
+
+  return {
+    ok: true,
+    salesCoach: {
+      styleLabel: coach.styleLabel,
+      responseProbability: coach.responseProbability,
+      reason: coach.reason,
+      suggestedImprovement: coach.suggestedImprovement,
+    },
+  };
 }
 
 export async function schedulePreviewedMessageAction(input: {

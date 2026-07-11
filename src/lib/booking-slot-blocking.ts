@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { APPOINTMENT_BUFFER_MINUTES } from '@/lib/booking-buffer';
 import { estimatedEndIso, totalBookingDurationMinutes, type VehicleDurationLine } from '@/lib/booking-service-duration';
 import type { DurationCatalog } from '@/lib/booking-duration-catalog';
 
@@ -35,9 +34,28 @@ function pushBlockFromRow(
   rangeStart: number,
   rangeEnd: number,
   seen: Set<string>,
+  opts?: { requireConfirmed?: boolean },
 ) {
   const id = str(r.id);
   if (id && seen.has(id)) return;
+  const status = str(r.status).toLowerCase();
+  if (status === 'cancelled' || status === 'deleted' || status === 'expired' || status === 'draft') return;
+
+  // Unpaid checkout holds only block while fresh (2 hours). Confirmed/paid always block.
+  const payStatus = str(r.payment_status).toLowerCase();
+  const isHold =
+    status === 'awaiting_payment' ||
+    status === 'payment_pending' ||
+    status === 'checkout_started' ||
+    payStatus === 'awaiting_deposit';
+  if (isHold) {
+    const created = str(r.created_at) || str(r.updated_at) || str(r.scheduled_start);
+    const createdMs = created ? new Date(created).getTime() : NaN;
+    const HOLD_MS = 2 * 60 * 60 * 1000;
+    if (!Number.isNaN(createdMs) && Date.now() - createdMs > HOLD_MS) return;
+  }
+  if (opts?.requireConfirmed && isHold) return;
+
   const startIso = str(r.scheduled_start);
   if (!startIso) return;
   const startMs = new Date(startIso).getTime();
@@ -50,7 +68,7 @@ function pushBlockFromRow(
         : totalBookingDurationMinutes(lines);
     endMs = startMs + mins * 60_000;
   }
-  endMs += APPOINTMENT_BUFFER_MINUTES * 60_000;
+  // estimated_end / duration already include service buffer — do not double-add here.
   if (endMs <= rangeStart || startMs >= rangeEnd) return;
   if (id) seen.add(id);
   blocks.push({ start: startIso, end: new Date(endMs).toISOString(), appointmentId: id || undefined });
@@ -68,7 +86,7 @@ export async function fetchBookedBlocks(
 
   const { data: appts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, archived_at, deleted_at, schedule_override')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override')
     .gte('scheduled_start', rangeStartIso)
     .lte('scheduled_start', rangeEndIso)
     .is('archived_at', null)
@@ -76,8 +94,8 @@ export async function fetchBookedBlocks(
 
   const { data: activeAppts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, archived_at, deleted_at, schedule_override, payment_status')
-    .in('status', ['in_progress', 'assigned', 'confirmed', 'deposit_paid'])
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override')
+    .in('status', ['in_progress', 'assigned', 'confirmed', 'deposit_paid', 'paid_in_full'])
     .is('archived_at', null)
     .is('deleted_at', null)
     .lt('scheduled_start', rangeEndIso);
@@ -85,14 +103,14 @@ export async function fetchBookedBlocks(
   for (const row of activeAppts ?? []) {
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
-    pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
+    pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen, { requireConfirmed: true });
   }
 
   for (const row of appts ?? []) {
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
     const status = str(r.status).toLowerCase();
-    if (status === 'cancelled' || status === 'deleted') continue;
+    if (status === 'cancelled' || status === 'deleted' || status === 'expired' || status === 'draft') continue;
     const payStatus = str(r.payment_status).toLowerCase();
     if (payStatus === 'refunded' || payStatus === 'voided') continue;
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
@@ -142,7 +160,8 @@ export function slotConflictsWithBlocks(
   excludeAppointmentId?: string,
 ): boolean {
   const startMs = new Date(scheduledStartIso).getTime();
-  const endMs = startMs + durationMinutes * 60_000 + APPOINTMENT_BUFFER_MINUTES * 60_000;
+  // durationMinutes already includes booking buffer from totalBookingDurationMinutes — do not add again.
+  const endMs = startMs + durationMinutes * 60_000;
   if (Number.isNaN(startMs)) return true;
   return blocks.some((b) => {
     if (excludeAppointmentId && b.appointmentId === excludeAppointmentId) return false;

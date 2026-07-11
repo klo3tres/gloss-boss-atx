@@ -54,14 +54,35 @@ function str(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
 
+function isPlaceholderBusinessName(name: string) {
+  return !name || /^my business$/i.test(name) || /^my business\b/i.test(name);
+}
+
+function resolveBusinessName(rawBusiness: string, rawDisplay: string) {
+  const businessName = isPlaceholderBusinessName(rawBusiness) ? FALLBACKS.businessDisplayName : rawBusiness;
+  const displayName = isPlaceholderBusinessName(rawDisplay) ? businessName : rawDisplay;
+  return { businessName, displayName };
+}
+
+function resolveBrandShortName(raw: string, displayName: string) {
+  if (isPlaceholderBusinessName(raw) || !raw) {
+    return displayName.replace(/\s+ATX$/i, '').trim() || FALLBACKS.brandShortName;
+  }
+  return raw;
+}
+
 export function mapWorkspaceBrandRow(row: Record<string, unknown> | null | undefined): WorkspaceBrand {
   if (!row) return { ...FALLBACKS };
-  const businessName = str(row.business_name) || FALLBACKS.businessDisplayName;
+  const { businessName, displayName } = resolveBusinessName(
+    str(row.business_name),
+    str(row.business_display_name),
+  );
+  const legalName = str(row.legal_business_name);
   return {
     workspaceKey: str(row.workspace_key) || DEFAULT_WORKSPACE_KEY,
-    businessDisplayName: str(row.business_display_name) || businessName,
-    legalBusinessName: str(row.legal_business_name) || businessName,
-    brandShortName: str(row.brand_short_name) || 'Gloss Boss',
+    businessDisplayName: displayName,
+    legalBusinessName: isPlaceholderBusinessName(legalName) ? businessName : legalName,
+    brandShortName: resolveBrandShortName(str(row.brand_short_name), displayName),
     brandCityLabel: str(row.brand_city_label) || 'Austin, TX',
     brandSlug: str(row.brand_slug) || 'gloss-boss-atx',
     logoUrl: str(row.logo_url) || FALLBACKS.logoUrl,
@@ -134,9 +155,13 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
 
 /** Public-safe brand payload — no secrets, no owner PII beyond support contact. */
 export function publicBrandPayload(brand: WorkspaceBrand): PublicBrandPayload {
+  const displayName = isPlaceholderBusinessName(brand.businessDisplayName)
+    ? FALLBACKS.businessDisplayName
+    : brand.businessDisplayName;
+  const shortName = resolveBrandShortName(brand.brandShortName, displayName);
   return {
-    businessDisplayName: brand.businessDisplayName,
-    brandShortName: brand.brandShortName,
+    businessDisplayName: displayName,
+    brandShortName: shortName,
     brandCityLabel: brand.brandCityLabel,
     logoUrl: brand.logoUrl,
     iconUrl: brand.iconUrl,

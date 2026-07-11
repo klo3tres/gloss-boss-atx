@@ -88,113 +88,8 @@ export const STATUS_LABELS: Record<RevenueOpportunityStatus, string> = {
 
 const WARM_TYPES = new Set<string>(['warm_lead', 'canceled_reschedule', 'coworker_nurse', 'referral', 'previous_customer']);
 
-const SEED_LEADS: Array<Omit<RevenueOpportunity, 'id' | 'createdAt' | 'lastTouchedAt' | 'nextFollowUpAt' | 'recommendedMessage' | 'workspaceKey'>> = [
-  {
-    title: 'Saturday 4 PM interior lead',
-    opportunityType: 'warm_lead',
-    source: 'Manual warm lead',
-    estimatedRevenueCents: 18900,
-    confidenceScore: 85,
-    status: 'new',
-    recommendedAction: 'Text before offering the slot to anyone else.',
-    contactName: null,
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Interested in interior detail this Saturday around 4 PM.',
-    whySurfaced: 'Warm lead with stated interest and no booked appointment.',
-  },
-  {
-    title: 'Bryn interior detail lead',
-    opportunityType: 'warm_lead',
-    source: 'Referral / warm',
-    estimatedRevenueCents: 17500,
-    confidenceScore: 80,
-    status: 'new',
-    recommendedAction: 'Reach out with a specific day/time offer.',
-    contactName: 'Bryn',
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Asked about interior detail pricing.',
-    whySurfaced: 'Warm lead with stated interest and no booked appointment.',
-  },
-  {
-    title: 'Andrea detail lead',
-    opportunityType: 'warm_lead',
-    source: 'Referral / warm',
-    estimatedRevenueCents: 16500,
-    confidenceScore: 78,
-    status: 'new',
-    recommendedAction: 'Confirm vehicle type and send booking link.',
-    contactName: 'Andrea',
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Interested in full or interior detail.',
-    whySurfaced: 'Warm lead with stated interest and no booked appointment.',
-  },
-  {
-    title: 'Canceled payday reschedule lead',
-    opportunityType: 'canceled_reschedule',
-    source: 'Canceled booking',
-    estimatedRevenueCents: 15000,
-    confidenceScore: 72,
-    status: 'follow_up',
-    recommendedAction: 'Offer next-week slot — payday timing likely caused cancel.',
-    contactName: null,
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Canceled citing payday — good rebook candidate next week.',
-    whySurfaced: 'Canceled due to payday; likely rebook candidate.',
-  },
-  {
-    title: 'Coworker / nurse warm lead',
-    opportunityType: 'coworker_nurse',
-    source: 'Personal network',
-    estimatedRevenueCents: 14000,
-    confidenceScore: 70,
-    status: 'new',
-    recommendedAction: 'Personal text — mention you had an opening this weekend.',
-    contactName: null,
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Coworker or nurse connection interested in mobile detail.',
-    whySurfaced: 'Warm personal-network lead with high trust factor.',
-  },
-  {
-    title: 'Apartment complex prospect',
-    opportunityType: 'apartment_hoa',
-    source: 'B2B prospect',
-    estimatedRevenueCents: 450000,
-    confidenceScore: 55,
-    status: 'new',
-    recommendedAction: 'Email property manager about resident detail day.',
-    contactName: null,
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Target Austin/Round Rock apartment or HOA for on-site detail day.',
-    whySurfaced: 'High-value B2B prospect with repeat revenue potential.',
-  },
-  {
-    title: 'Fleet prospect',
-    opportunityType: 'fleet',
-    source: 'B2B prospect',
-    estimatedRevenueCents: 360000,
-    confidenceScore: 50,
-    status: 'new',
-    recommendedAction: 'Call or email — ask who handles fleet vehicle cleaning.',
-    contactName: null,
-    contactPhone: null,
-    contactEmail: null,
-    socialUrl: null,
-    notes: 'Small fleet or dealership lot — recurring monthly potential.',
-    whySurfaced: 'High-value B2B prospect with repeat revenue potential.',
-  },
-];
+/** Demo seeds are disabled in production — never invent fake opportunity revenue. */
+const SEED_LEADS: Array<Omit<RevenueOpportunity, 'id' | 'createdAt' | 'lastTouchedAt' | 'nextFollowUpAt' | 'recommendedMessage' | 'workspaceKey'>> = [];
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -314,9 +209,10 @@ export function rankForRevenueHunt(opportunities: RevenueOpportunity[]): Revenue
   const now = Date.now();
   const statusWeight = (s: RevenueOpportunityStatus) => (s === 'new' ? 0 : s === 'follow_up' ? 1 : 2);
   const typeWeight = (t: string) => (WARM_TYPES.has(normalizeType(t)) ? 0 : 1);
+  const closed = new Set<RevenueOpportunityStatus>(['booked', 'won', 'lost', 'ignored', 'snoozed']);
 
   return [...opportunities]
-    .filter((o) => o.status !== 'booked' && o.status !== 'lost' && o.status !== 'ignored')
+    .filter((o) => !closed.has(o.status))
     .sort((a, b) => {
       const sw = statusWeight(a.status) - statusWeight(b.status);
       if (sw !== 0) return sw;
@@ -428,6 +324,97 @@ async function logEvent(
   });
 }
 
+function normalizePhoneDigits(phone: string | null | undefined): string {
+  return str(phone).replace(/\D/g, '').slice(-10);
+}
+
+function normalizeNameKey(name: string | null | undefined): string {
+  return str(name).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+async function findDuplicateOpportunityId(
+  admin: SupabaseClient,
+  input: {
+    title: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    businessName?: string;
+    businessAddress?: string;
+    sourceUrl?: string;
+    keywordMatched?: string;
+  },
+  workspaceKey: string,
+): Promise<string | null> {
+  if (input.keywordMatched) {
+    const { data } = await admin
+      .from('titan_opportunities')
+      .select('id')
+      .eq('workspace_key', workspaceKey)
+      .eq('keyword_matched', input.keywordMatched)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return str(data.id);
+  }
+
+  if (input.sourceUrl) {
+    const { data } = await admin
+      .from('titan_opportunities')
+      .select('id')
+      .eq('workspace_key', workspaceKey)
+      .eq('source_url', input.sourceUrl)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return str(data.id);
+  }
+
+  const phone = normalizePhoneDigits(input.contactPhone);
+  if (phone.length >= 10) {
+    const { data } = await admin
+      .from('titan_opportunities')
+      .select('id, contact_phone')
+      .eq('workspace_key', workspaceKey)
+      .not('status', 'in', '(lost,ignored)')
+      .not('contact_phone', 'is', null)
+      .limit(200);
+    const hit = (data ?? []).find((r) => normalizePhoneDigits((r as { contact_phone?: string }).contact_phone) === phone);
+    if (hit?.id) return str(hit.id);
+  }
+
+  const email = str(input.contactEmail).toLowerCase();
+  if (email) {
+    const { data } = await admin
+      .from('titan_opportunities')
+      .select('id')
+      .eq('workspace_key', workspaceKey)
+      .ilike('contact_email', email)
+      .not('status', 'in', '(lost,ignored)')
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return str(data.id);
+  }
+
+  const nameKey = normalizeNameKey(input.businessName || input.title);
+  const addrKey = normalizeNameKey(input.businessAddress);
+  if (nameKey) {
+    const { data } = await admin
+      .from('titan_opportunities')
+      .select('id, title, business_name, business_address')
+      .eq('workspace_key', workspaceKey)
+      .not('status', 'in', '(lost,ignored)')
+      .limit(300);
+    const hit = (data ?? []).find((r) => {
+      const row = r as { title?: string; business_name?: string; business_address?: string };
+      const rowName = normalizeNameKey(row.business_name || row.title);
+      if (rowName !== nameKey) return false;
+      if (!addrKey) return true;
+      return normalizeNameKey(row.business_address) === addrKey;
+    });
+    if (hit?.id) return str(hit.id);
+  }
+
+  return null;
+}
+
 export async function createRevenueOpportunity(
   admin: SupabaseClient,
   input: {
@@ -443,9 +430,33 @@ export async function createRevenueOpportunity(
     source?: string;
     confidenceScore?: number;
     whySurfaced?: string;
+    businessName?: string;
+    businessAddress?: string;
+    websiteUrl?: string;
+    businessCategory?: string;
+    estimatedVehicleCount?: number;
+    distanceMiles?: number;
+    valueExplanation?: string;
+    sourceUrl?: string;
+    keywordMatched?: string;
   },
   workspaceKey = 'default',
-): Promise<{ ok: boolean; id?: string; error?: string }> {
+): Promise<{ ok: boolean; id?: string; error?: string; duplicate?: boolean }> {
+  const dupId = await findDuplicateOpportunityId(
+    admin,
+    {
+      title: input.title,
+      contactPhone: input.contactPhone,
+      contactEmail: input.contactEmail,
+      businessName: input.businessName,
+      businessAddress: input.businessAddress,
+      sourceUrl: input.sourceUrl ?? input.socialUrl ?? input.websiteUrl,
+      keywordMatched: input.keywordMatched,
+    },
+    workspaceKey,
+  );
+  if (dupId) return { ok: true, id: dupId, duplicate: true };
+
   const now = new Date().toISOString();
   const type = normalizeType(input.opportunityType);
   const draft: RevenueOpportunity = {
@@ -477,13 +488,15 @@ export async function createRevenueOpportunity(
     businessId = biz?.id ? String(biz.id) : null;
   }
 
-  const row = {
+  const sourceUrl = input.sourceUrl ?? input.socialUrl ?? input.websiteUrl ?? null;
+  const row: Record<string, unknown> = {
     title: input.title,
     body: input.notes ?? null,
     source_platform: 'manual',
     source_label: input.source ?? 'Manual',
     source_label_custom: input.source ?? 'Manual',
-    source_url: input.socialUrl ?? null,
+    source_url: sourceUrl,
+    keyword_matched: input.keywordMatched ?? null,
     author_name: input.contactName ?? null,
     contact_phone: input.contactPhone ?? null,
     contact_email: input.contactEmail ?? null,
@@ -503,9 +516,31 @@ export async function createRevenueOpportunity(
     updated_at: now,
     follow_up_step: 0,
     next_follow_up_at: initialOpportunityFollowUpAt(created),
+    business_name: input.businessName ?? null,
+    business_address: input.businessAddress ?? null,
+    website_url: input.websiteUrl ?? null,
+    business_category: input.businessCategory ?? null,
+    estimated_vehicle_count: input.estimatedVehicleCount ?? null,
+    distance_miles: input.distanceMiles ?? null,
+    value_explanation: input.valueExplanation ?? null,
   };
 
-  const { data, error } = await admin.from('titan_opportunities').insert(row).select('id').single();
+  let { data, error } = await admin.from('titan_opportunities').insert(row).select('id').single();
+  if (error && /business_name|business_address|website_url|value_explanation|estimated_vehicle|distance_miles|column .* does not exist|schema cache/i.test(error.message)) {
+    const {
+      business_name: _bn,
+      business_address: _ba,
+      website_url: _wu,
+      business_category: _bc,
+      estimated_vehicle_count: _ev,
+      distance_miles: _dm,
+      value_explanation: _ve,
+      ...legacy
+    } = row;
+    const retry = await admin.from('titan_opportunities').insert(legacy).select('id').single();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) {
     if (isMissingTable(error.message)) return { ok: false, error: 'Apply migration 000100 for Titan opportunities.' };
     return { ok: false, error: error.message };
@@ -560,6 +595,9 @@ export async function scheduleOpportunityFollowUp(
 }
 
 export async function seedWarmLeads(admin: SupabaseClient, workspaceKey = 'default'): Promise<{ ok: boolean; inserted: number; error?: string }> {
+  if (process.env.NODE_ENV === 'production' || SEED_LEADS.length === 0) {
+    return { ok: true, inserted: 0, error: 'Demo seed leads are disabled. Add real opportunities or convert Lead Radar items.' };
+  }
   const { data: existing } = await admin.from('titan_opportunities').select('title').eq('workspace_key', workspaceKey).limit(500);
   const titles = new Set((existing ?? []).map((r) => str((r as { title?: string }).title).toLowerCase()));
 
@@ -580,6 +618,26 @@ export async function seedWarmLeads(admin: SupabaseClient, workspaceKey = 'defau
     if (res.ok) inserted += 1;
   }
   return { ok: true, inserted };
+}
+
+export async function updateOpportunityContact(
+  admin: SupabaseClient,
+  id: string,
+  contact: { contactName?: string; contactPhone?: string; contactEmail?: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    updated_at: now,
+    last_touched_at: now,
+  };
+  if (contact.contactName !== undefined) patch.author_name = contact.contactName.trim() || null;
+  if (contact.contactPhone !== undefined) patch.contact_phone = contact.contactPhone.trim() || null;
+  if (contact.contactEmail !== undefined) patch.contact_email = contact.contactEmail.trim() || null;
+
+  const { error } = await admin.from('titan_opportunities').update(patch).eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  await logEvent(admin, id, 'contact_updated', 'Contact details updated');
+  return { ok: true };
 }
 
 async function upsertDerived(
@@ -782,8 +840,10 @@ export async function loadRevenueHuntBundle(admin: SupabaseClient, workspaceKey 
       o.nextFollowUpAt &&
       Date.parse(o.nextFollowUpAt) <= Date.now() &&
       o.status !== 'booked' &&
+      o.status !== 'won' &&
       o.status !== 'lost' &&
-      o.status !== 'ignored',
+      o.status !== 'ignored' &&
+      o.status !== 'snoozed',
   );
   const recentEvents = await loadRecentOpportunityEvents(admin, workspaceKey, 8);
   return {

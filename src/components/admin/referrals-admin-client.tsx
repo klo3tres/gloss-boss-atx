@@ -2,18 +2,118 @@
 
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ReferralProgramSettings } from '@/lib/referral/referral-codes';
+import type { ReferralProgramSettings, ReferralRewardLadderTier } from '@/lib/referral/referral-codes';
 import { analyzeReferralEconomics } from '@/lib/referral/referral-economics';
 import { saveReferralProgramSettingsAction, type ReferralSaveResult } from '@/app/(dashboard)/admin/referrals/actions';
 import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
 
-const inputClass = 'mt-1 w-full rounded-xl border border-zinc-700 bg-black px-3 py-2 text-sm text-white';
+const inputClass = 'mt-1 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground';
 
 function formatRewardSummary(type: string, value: number): string {
   if (type === 'percent') return `${value}%`;
   if (type === 'dollar') return `$${value}`;
   if (type === 'free_service') return 'Free service';
   return String(value);
+}
+
+function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }) {
+  const [tiers, setTiers] = useState<ReferralRewardLadderTier[]>(
+    initial.length > 0 ? initial : [{ threshold: 1, rewardType: 'percent', rewardValue: 15, label: '15% off next detail' }],
+  );
+
+  return (
+    <div className="space-y-3">
+      <input type="hidden" name="reward_ladder_json" value={JSON.stringify(tiers)} />
+      <p className="text-xs text-muted-foreground">Reward ladder — unlocks as referrals complete</p>
+      {tiers.map((tier, idx) => (
+        <div key={idx} className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-4">
+          <label className="text-[10px] font-black uppercase text-muted-foreground">
+            At N referrals
+            <input
+              type="number"
+              min={1}
+              value={tier.threshold}
+              onChange={(e) => {
+                const next = [...tiers];
+                next[idx] = { ...tier, threshold: Number(e.target.value) || 1 };
+                setTiers(next);
+              }}
+              className={inputClass}
+            />
+          </label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">
+            Type
+            <select
+              value={tier.rewardType}
+              onChange={(e) => {
+                const next = [...tiers];
+                next[idx] = { ...tier, rewardType: e.target.value as ReferralRewardLadderTier['rewardType'] };
+                setTiers(next);
+              }}
+              className={inputClass}
+            >
+              <option value="percent">Percent</option>
+              <option value="dollar">Dollar</option>
+              <option value="free_service">Free service</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">
+            Value
+            <input
+              type="number"
+              value={tier.rewardValue}
+              onChange={(e) => {
+                const next = [...tiers];
+                next[idx] = { ...tier, rewardValue: Number(e.target.value) || 0 };
+                setTiers(next);
+              }}
+              className={inputClass}
+            />
+          </label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">
+            Label
+            <div className="mt-1 flex gap-1">
+              <input
+                value={tier.label}
+                onChange={(e) => {
+                  const next = [...tiers];
+                  next[idx] = { ...tier, label: e.target.value };
+                  setTiers(next);
+                }}
+                className={inputClass + ' mt-0'}
+              />
+              <button
+                type="button"
+                onClick={() => setTiers(tiers.filter((_, i) => i !== idx))}
+                className="rounded-xl border border-border px-2 text-[10px] font-black uppercase text-muted-foreground"
+                aria-label="Remove tier"
+              >
+                ✕
+              </button>
+            </div>
+          </label>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() =>
+          setTiers([
+            ...tiers,
+            {
+              threshold: (tiers[tiers.length - 1]?.threshold ?? 0) + 1,
+              rewardType: 'percent',
+              rewardValue: 10,
+              label: 'New reward',
+            },
+          ])
+        }
+        className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-foreground"
+      >
+        Add ladder tier
+      </button>
+    </div>
+  );
 }
 
 export function ReferralsAdminClient({
@@ -39,52 +139,44 @@ export function ReferralsAdminClient({
 
   return (
     <div className="space-y-6">
-      <form key={saveState?.ok ? 'saved' : 'edit'} action={saveAction} className="rounded-3xl border border-white/10 bg-black/50 p-5 space-y-4">
+      <form key={saveState?.ok ? 'saved' : 'edit'} action={saveAction} className="space-y-4 rounded-3xl border border-border bg-card p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Program settings</p>
         {saveState?.ok === false ? (
-          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{saveState.error}</p>
+          <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{saveState.error}</p>
         ) : null}
         {saveState?.ok === true ? (
-          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
             Settings saved. Booking and rewards will use these values on the next checkout.
           </p>
         ) : null}
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
+        <label className="flex items-center gap-2 text-sm text-foreground">
           <input type="checkbox" name="enabled" defaultChecked={settings.enabled} className="accent-[var(--gb-gold)]" /> Enable referral program
         </label>
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-xs text-zinc-400">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
-          <label className="text-xs text-zinc-400">Referrer reward value<input name="referrer_reward_value" type="number" defaultValue={settings.referrerRewardValue} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Referred customer reward type<select name="referred_reward_type" defaultValue={settings.referredRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
-          <label className="text-xs text-zinc-400">Referred reward value<input name="referred_reward_value" type="number" defaultValue={settings.referredRewardValue} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Min completed bookings before unlock<input name="min_completed_bookings" type="number" defaultValue={settings.minCompletedBookings} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Max rewards per customer<input name="max_rewards_per_customer" type="number" defaultValue={settings.maxRewardsPerCustomer} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Free detail at N referrals<input name="free_detail_threshold" type="number" defaultValue={settings.freeDetailReferralThreshold} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Free detail service slug<input name="free_detail_service_slug" defaultValue={settings.freeDetailServiceSlug} className={inputClass} /></label>
-          <label className="text-xs text-zinc-400">Reward unlock rule
+          <label className="text-xs text-muted-foreground">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
+          <label className="text-xs text-muted-foreground">Referrer reward value<input name="referrer_reward_value" type="number" defaultValue={settings.referrerRewardValue} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referred customer reward type<select name="referred_reward_type" defaultValue={settings.referredRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
+          <label className="text-xs text-muted-foreground">Referred reward value<input name="referred_reward_value" type="number" defaultValue={settings.referredRewardValue} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Min completed bookings before unlock<input name="min_completed_bookings" type="number" defaultValue={settings.minCompletedBookings} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Max rewards per customer<input name="max_rewards_per_customer" type="number" defaultValue={settings.maxRewardsPerCustomer} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Free detail at N referrals<input name="free_detail_threshold" type="number" defaultValue={settings.freeDetailReferralThreshold} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Free detail service slug<input name="free_detail_service_slug" defaultValue={settings.freeDetailServiceSlug} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Reward unlock rule
             <select name="reward_unlock_rule" defaultValue={settings.rewardUnlockRule} className={inputClass}>
               <option value="completed_paid">After completed paid job</option>
               <option value="booked">On booking only</option>
             </select>
           </label>
         </div>
-        <label className="text-xs text-zinc-400 md:col-span-2">
-          Reward ladder (JSON array: threshold, label, rewardType, rewardValue)
-          <textarea
-            name="reward_ladder_json"
-            rows={5}
-            defaultValue={JSON.stringify(settings.rewardLadder ?? [], null, 2)}
-            className={`${inputClass} font-mono text-[11px]`}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2">
+        <RewardLadderEditor initial={settings.rewardLadder ?? []} />
+        <label className="flex items-center gap-2 text-sm text-foreground md:col-span-2">
           <input type="checkbox" name="stacking_allowed" defaultChecked={settings.stackingAllowed} className="accent-[var(--gb-gold)]" />
           Allow referred discount to stack with larger public promos (default: off)
         </label>
-        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gb-gold)]" /> Review reward enabled</label>
+        <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" name="review_reward_enabled" defaultChecked={settings.reviewRewardEnabled} className="accent-[var(--gb-gold)]" /> Review reward enabled</label>
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-xs text-zinc-400">Review reward type<select name="review_reward_type" defaultValue={settings.reviewRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option></select></label>
-          <label className="text-xs text-zinc-400">Review reward value<input name="review_reward_value" type="number" defaultValue={settings.reviewRewardValue} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Review reward type<select name="review_reward_type" defaultValue={settings.reviewRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option></select></label>
+          <label className="text-xs text-muted-foreground">Review reward value<input name="review_reward_value" type="number" defaultValue={settings.reviewRewardValue} className={inputClass} /></label>
         </div>
         <button
           type="submit"
@@ -97,54 +189,54 @@ export function ReferralsAdminClient({
 
       <section className="rounded-3xl border border-gold/20 bg-gold/5 p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Titan referral economics</p>
-        <p className="mt-2 text-sm text-zinc-200">
-          Current reward: <span className="font-black text-white">{economics.currentRewardLabel}</span>
+        <p className="mt-2 text-sm text-foreground">
+          Current reward: <span className="font-black">{economics.currentRewardLabel}</span>
           {' · '}
           Suggested: <span className="font-black text-gold-soft">{economics.suggestedRewardLabel}</span>
         </p>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
           Average referral customer spends ${economics.avgReferralSpend.toFixed(0)}. Expected ROI at suggested reward:{' '}
-          <span className="font-black text-emerald-300">{economics.expectedRoiMultiple}x</span>. {economics.rationale}
+          <span className="font-black text-emerald-700">{economics.expectedRoiMultiple}x</span>. {economics.rationale}
         </p>
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
-        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Program summary</p>
+      <section className="rounded-3xl border border-border bg-card p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Program summary</p>
         <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-white/5 px-3 py-2">
-            <dt className="text-zinc-500">Referred discount</dt>
+          <div className="rounded-xl border border-border px-3 py-2">
+            <dt className="text-muted-foreground">Referred discount</dt>
             <dd className="font-black text-gold-soft">
               {formatRewardSummary(settings.referredRewardType, settings.referredRewardValue)} off first detail
             </dd>
           </div>
-          <div className="rounded-xl border border-white/5 px-3 py-2">
-            <dt className="text-zinc-500">Referrer reward</dt>
-            <dd className="font-black text-white">
+          <div className="rounded-xl border border-border px-3 py-2">
+            <dt className="text-muted-foreground">Referrer reward</dt>
+            <dd className="font-black text-foreground">
               {formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)} after completion
             </dd>
           </div>
-          <div className="rounded-xl border border-white/5 px-3 py-2">
-            <dt className="text-zinc-500">Stacking</dt>
-            <dd className="font-black text-white">{settings.stackingAllowed ? 'Allowed' : 'Blocked (default)'}</dd>
+          <div className="rounded-xl border border-border px-3 py-2">
+            <dt className="text-muted-foreground">Stacking</dt>
+            <dd className="font-black text-foreground">{settings.stackingAllowed ? 'Allowed' : 'Blocked (default)'}</dd>
           </div>
-          <div className="rounded-xl border border-white/5 px-3 py-2">
-            <dt className="text-zinc-500">Reward ladder</dt>
-            <dd className="text-zinc-300">{(settings.rewardLadder ?? []).map((t) => t.label).join(' · ')}</dd>
+          <div className="rounded-xl border border-border px-3 py-2">
+            <dt className="text-muted-foreground">Reward ladder</dt>
+            <dd className="text-muted-foreground">{(settings.rewardLadder ?? []).map((t) => t.label).join(' · ')}</dd>
           </div>
         </dl>
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
-        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Manually attach referral</p>
+      <section className="rounded-3xl border border-border bg-card p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Manually attach referral</p>
         <ManualReferralAttach />
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
-        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Recent referrals</p>
-        <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-          {events.length === 0 ? <li className="text-zinc-500">No referral events yet — codes are created when customers are added.</li> : null}
+      <section className="rounded-3xl border border-border bg-card p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Recent referrals</p>
+        <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+          {events.length === 0 ? <li>No referral events yet — codes are created when customers are added.</li> : null}
           {events.slice(0, 15).map((e) => (
-            <li key={String(e.id)} className="flex justify-between rounded-xl border border-white/5 px-3 py-2">
+            <li key={String(e.id)} className="flex justify-between rounded-xl border border-border px-3 py-2">
               <span>{String(e.referral_code)} → {String(e.referred_email ?? e.referred_customer_id ?? 'unknown')}</span>
               <span className="uppercase text-gold-soft">{String(e.status)}</span>
             </li>
@@ -152,12 +244,12 @@ export function ReferralsAdminClient({
         </ul>
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-black/50 p-5">
-        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Reward ledger</p>
-        <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-          {rewards.length === 0 ? <li className="text-zinc-500">No rewards issued yet.</li> : null}
+      <section className="rounded-3xl border border-border bg-card p-5">
+        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Reward ledger</p>
+        <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+          {rewards.length === 0 ? <li>No rewards issued yet.</li> : null}
           {rewards.slice(0, 15).map((r) => (
-            <li key={String(r.id)} className="flex justify-between rounded-xl border border-white/5 px-3 py-2">
+            <li key={String(r.id)} className="flex justify-between rounded-xl border border-border px-3 py-2">
               <span>{String(r.reward_type)} · {String(r.reward_value)}</span>
               <span className="uppercase">{String(r.status)}</span>
             </li>
@@ -198,8 +290,8 @@ function ManualReferralAttach() {
       >
         Attach referral
       </button>
-      {msg ? <p className="sm:col-span-3 text-xs text-emerald-300">{msg}</p> : null}
-      <p className="sm:col-span-3 text-[10px] text-zinc-600">Reward unlocks after referred job is completed and paid. No account required for referred customer at booking.</p>
+      {msg ? <p className="sm:col-span-3 text-xs text-emerald-700">{msg}</p> : null}
+      <p className="sm:col-span-3 text-[10px] text-muted-foreground">Reward unlocks after referred job is completed and paid. No account required for referred customer at booking.</p>
     </div>
   );
 }

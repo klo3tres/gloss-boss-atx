@@ -19,6 +19,8 @@ export type TitanActivityKind =
   | 'staff_invite_revoked'
   | 'staff_invite_accepted'
   | 'staff_role_changed'
+  | 'staff_profile_repaired'
+  | 'staff_account_verified'
   | 'staff_reset_link_sent'
   | 'referral_settings_changed'
   | 'tech_job_assigned'

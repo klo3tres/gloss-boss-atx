@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { requireSuperAdminApiUser } from '@/lib/admin/api-guard';
+import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { parseAppRole } from '@/lib/auth/role-resolution';
+import { canAssignRole, canModifyStaffProfile, isProtectedOwner } from '@/lib/auth/owner-config';
+import { repairStaffProfileFromSources } from '@/lib/auth/staff-profile-resolve';
 import { findPendingInviteByProfileEmail } from '@/lib/staff-invites';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
+import type { AppRole } from '@/lib/auth/roles';
 
 export const runtime = 'nodejs';
 
@@ -17,10 +20,12 @@ type Body =
   | { intent: 'assign_role'; profileId: string; role: string }
   | { intent: 'display_name'; profileId: string; fullName: string }
   | { intent: 'set_staff_active'; profileId: string; active: boolean }
-  | { intent: 'remove_from_roster'; profileId: string };
+  | { intent: 'remove_from_roster'; profileId: string }
+  | { intent: 'repair_staff_profile'; profileId: string }
+  | { intent: 'verify_staff_account'; profileId: string };
 
 export async function POST(request: Request) {
-  const gate = await requireSuperAdminApiUser();
+  const gate = await requireAdminApiUser();
   if (!gate.ok) {
     return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
   }
@@ -38,6 +43,9 @@ export async function POST(request: Request) {
   }
 
   if (body.intent === 'create') {
+    if (gate.role !== 'super_admin') {
+      return NextResponse.json({ ok: false, error: 'Only the owner can create accounts directly. Use Staff Invite instead.' }, { status: 403 });
+    }
     const email = String(body.email ?? '').trim().toLowerCase();
     const password = String(body.password ?? '').trim();
     const role = String(body.role ?? '').trim();
@@ -140,8 +148,8 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://glossbossatx.com').replace(/\/$/, '');
-    const redirectTo = `${appBase}/reset-password`;
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
+    const redirectTo = `${appBase}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
     const linkRes = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } });
     if (linkRes.error || !linkRes.data?.properties?.action_link) {
       return NextResponse.json({ ok: false, error: linkRes.error?.message ?? 'Could not generate reset link.' }, { status: 400 });
@@ -234,7 +242,17 @@ export async function POST(request: Request) {
     if (!targetId || !nextRole) {
       return NextResponse.json({ ok: false, error: 'Invalid role or profile id' }, { status: 400 });
     }
-    if (targetId === gate.userId && nextRole !== 'super_admin') {
+    const { data: targetProfile } = await admin.from('profiles').select('role, full_name, email').eq('id', targetId).maybeSingle();
+    const targetEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+    const targetProtected = isProtectedOwner(targetEmail, targetId);
+
+    if (!canModifyStaffProfile(gate.role, gate.userId, targetId, targetEmail)) {
+      return NextResponse.json({ ok: false, error: 'You cannot modify this protected account.' }, { status: 403 });
+    }
+    if (!canAssignRole(gate.role, nextRole, targetProtected)) {
+      return NextResponse.json({ ok: false, error: 'You cannot assign that role.' }, { status: 403 });
+    }
+    if (targetId === gate.userId && gate.role === 'super_admin' && nextRole !== 'super_admin') {
       return NextResponse.json({ ok: false, error: 'You cannot demote your own super_admin account from this panel.' }, { status: 400 });
     }
     const { data: before } = await admin.from('profiles').select('role, full_name').eq('id', targetId).maybeSingle();
@@ -289,6 +307,11 @@ export async function POST(request: Request) {
     if (profileId === gate.userId && !active) {
       return NextResponse.json({ ok: false, error: 'You cannot deactivate your own account.' }, { status: 400 });
     }
+    const { data: targetProfile } = await admin.from('profiles').select('email').eq('id', profileId).maybeSingle();
+    const targetEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+    if (isProtectedOwner(targetEmail, profileId) && !active) {
+      return NextResponse.json({ ok: false, error: 'The protected owner account cannot be deactivated.' }, { status: 403 });
+    }
     const now = new Date().toISOString();
     let { error } = await admin.from('profiles').update({ active, updated_at: now }).eq('id', profileId);
     if (error && /active|updated_at|column .* does not exist|schema cache/i.test(error.message)) {
@@ -311,6 +334,11 @@ export async function POST(request: Request) {
     if (profileId === gate.userId) {
       return NextResponse.json({ ok: false, error: 'You cannot remove your own profile.' }, { status: 400 });
     }
+    const { data: targetProfile } = await admin.from('profiles').select('email').eq('id', profileId).maybeSingle();
+    const targetEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+    if (isProtectedOwner(targetEmail, profileId)) {
+      return NextResponse.json({ ok: false, error: 'The protected owner account cannot be removed from the roster.' }, { status: 403 });
+    }
     const now = new Date().toISOString();
     let { error } = await admin
       .from('profiles')
@@ -326,6 +354,57 @@ export async function POST(request: Request) {
     revalidatePath('/admin/team');
     revalidatePath('/admin/dispatch');
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'repair_staff_profile') {
+    const profileId = String(body.profileId ?? '').trim();
+    if (!profileId) {
+      return NextResponse.json({ ok: false, error: 'Profile id required.' }, { status: 400 });
+    }
+    const { data: targetProfile } = await admin.from('profiles').select('email').eq('id', profileId).maybeSingle();
+    const targetEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+    if (!canModifyStaffProfile(gate.role, gate.userId, profileId, targetEmail)) {
+      return NextResponse.json({ ok: false, error: 'You cannot repair this account.' }, { status: 403 });
+    }
+    const repaired = await repairStaffProfileFromSources(admin, profileId);
+    if (!repaired.ok) {
+      return NextResponse.json({ ok: false, error: repaired.error ?? 'Repair failed.' }, { status: 400 });
+    }
+    await logTitanActivity(admin, {
+      kind: 'staff_profile_repaired',
+      title: 'Staff account repaired',
+      detail: repaired.fixed.join(', '),
+      href: '/admin/team',
+    });
+    revalidatePath('/admin/team');
+    return NextResponse.json({ ok: true, fixed: repaired.fixed, role: repaired.role });
+  }
+
+  if (body.intent === 'verify_staff_account') {
+    const profileId = String(body.profileId ?? '').trim();
+    if (!profileId) {
+      return NextResponse.json({ ok: false, error: 'Profile id required.' }, { status: 400 });
+    }
+    const { data: authUser, error: authErr } = await admin.auth.admin.getUserById(profileId);
+    const { data: profile } = await admin.from('profiles').select('id, role, email, active, full_name').eq('id', profileId).maybeSingle();
+    const email = String((profile as { email?: string } | null)?.email ?? authUser?.user?.email ?? '');
+    const { data: invite } = await admin
+      .from('staff_invites')
+      .select('status, role, expires_at, last_sent_at')
+      .ilike('email', email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return NextResponse.json({
+      ok: true,
+      authUserExists: Boolean(authUser?.user && !authErr),
+      profileExists: Boolean(profile),
+      profileRole: (profile as { role?: string } | null)?.role ?? null,
+      profileActive: (profile as { active?: boolean } | null)?.active !== false,
+      inviteStatus: (invite as { status?: string } | null)?.status ?? null,
+      inviteRole: (invite as { role?: string } | null)?.role ?? null,
+      email,
+    });
   }
 
   return NextResponse.json({ ok: false, error: 'Unknown intent' }, { status: 400 });

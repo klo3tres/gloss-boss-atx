@@ -28,7 +28,20 @@ export type OutboundPreviewConfig = {
   opportunityId?: string;
   entityType?: string;
   entityId?: string;
-  onSend?: (final: { body: string; subject?: string; channel: 'sms' | 'email' }) => Promise<{ ok?: boolean; error?: string }>;
+  onSend?: (final: {
+    body: string;
+    subject?: string;
+    channel: 'sms' | 'email';
+  }) => Promise<{
+    ok?: boolean;
+    error?: string;
+    salesCoach?: {
+      styleLabel: string;
+      responseProbability: number;
+      reason: string;
+      suggestedImprovement: string;
+    };
+  }>;
   onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string }) => Promise<{ ok?: boolean; error?: string }>;
 };
 
@@ -131,7 +144,12 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
                 if (res.error) setToast(res.error);
                 else {
                   setConfig(null);
-                  setToast('Message sent.');
+                  const coach = res.salesCoach;
+                  setToast(
+                    coach
+                      ? `Sent · ${coach.styleLabel} · ${coach.responseProbability}% reply odds — ${coach.suggestedImprovement}`
+                      : 'Message sent.',
+                  );
                 }
               })
               .finally(() => setBusy(false));

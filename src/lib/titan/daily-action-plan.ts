@@ -31,6 +31,8 @@ export type DailyExecutableAction = {
   involvedNames: string;
   expectedValueCents: number;
   expectedValueLabel: string;
+  /** Plain-English why this dollar amount was chosen. */
+  valueExplanation: string;
   reason: string;
   confidence: number;
   confidenceLabel: string;
@@ -63,12 +65,26 @@ function valueLabel(cents: number): string {
   return `Up to ${displayMoney(cents)}`;
 }
 
+function avgTicketExplanation(avgJobCents: number, multiplier = 1): string {
+  const base = `Uses your ~${displayMoney(avgJobCents)} average ticket`;
+  return multiplier > 1 ? `${base} × ${multiplier} contacts` : base;
+}
+
 type DraftAction = Omit<DailyExecutableAction, 'id' | 'status'>;
 
 export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 17500): Promise<DailyActionPlan> {
+  const safeAvg = Math.max(avgJobCents, 12000);
   const drafts: DraftAction[] = [];
   const reviewUrl = resolveGoogleReviewUrl('');
   const bookUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '')}/book`;
+
+  const actionDate = todayChicago();
+  const { data: closedRows } = await admin
+    .from('titan_daily_actions')
+    .select('action_key, status')
+    .eq('action_date', actionDate)
+    .in('status', ['dismissed', 'sent', 'completed']);
+  const closedKeys = new Set((closedRows ?? []).map((r) => str((r as { action_key?: string }).action_key)).filter(Boolean));
 
   const [followUps, revenueHunt, leadRadar, completedJobs, unpaidJobs, rebookRows, membershipCandidates] =
     await Promise.all([
@@ -115,8 +131,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       actionType: 'follow_up',
       title: `Follow up with ${dueFollowUps.length} past customer${dueFollowUps.length === 1 ? '' : 's'}`,
       involvedNames: names,
-      expectedValueCents: avgJobCents * dueFollowUps.length,
-      expectedValueLabel: valueLabel(avgJobCents * dueFollowUps.length),
+      expectedValueCents: safeAvg * dueFollowUps.length,
+      expectedValueLabel: valueLabel(safeAvg * dueFollowUps.length),
+      valueExplanation: avgTicketExplanation(safeAvg, dueFollowUps.length),
       reason: 'Win-back texts to customers due for another detail.',
       confidence: 72,
       confidenceLabel: 'Based on follow-up tier timing',
@@ -142,6 +159,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       involvedNames: name,
       expectedValueCents: 0,
       expectedValueLabel: 'Social proof → more bookings',
+      valueExplanation: 'No direct $ — reviews drive future bookings.',
       reason: 'Completed detail with no review request sent yet.',
       confidence: 88,
       confidenceLabel: 'Post-service reviews convert well',
@@ -185,6 +203,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       involvedNames: name,
       expectedValueCents: balance,
       expectedValueLabel: valueLabel(balance),
+      valueExplanation: `Exact balance due on work order (${displayMoney(balance)}).`,
       reason: paymentUrl
         ? 'Stripe pay link ready — one tap to collect.'
         : 'Outstanding balance blocks clean books and cash flow.',
@@ -208,13 +227,17 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
 
   const warmOpp = revenueHunt.opportunities?.find((o) => o.status === 'new' || o.status === 'follow_up');
   if (warmOpp) {
+    const oppCents = warmOpp.estimatedRevenueCents || safeAvg;
     drafts.push({
       actionKey: `opp-${warmOpp.id}`,
       actionType: 'lead',
       title: warmOpp.title,
       involvedNames: warmOpp.contactName ?? 'Lead',
-      expectedValueCents: warmOpp.estimatedRevenueCents || avgJobCents,
-      expectedValueLabel: valueLabel(warmOpp.estimatedRevenueCents || avgJobCents),
+      expectedValueCents: oppCents,
+      expectedValueLabel: valueLabel(oppCents),
+      valueExplanation: warmOpp.estimatedRevenueCents
+        ? 'Opportunity estimate from CRM / discovery.'
+        : avgTicketExplanation(safeAvg),
       reason: warmOpp.whySurfaced || 'Warm revenue opportunity ready for outreach.',
       confidence: warmOpp.confidenceScore,
       confidenceLabel: 'Titan revenue hunt',
@@ -235,8 +258,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       actionType: 'referral',
       title: `Contact referral candidate — ${socialLead.contactName ?? socialLead.authorName ?? 'Lead'}`,
       involvedNames: socialLead.contactName ?? socialLead.authorName ?? 'Lead',
-      expectedValueCents: avgJobCents,
-      expectedValueLabel: valueLabel(avgJobCents),
+      expectedValueCents: safeAvg,
+      expectedValueLabel: valueLabel(safeAvg),
+      valueExplanation: avgTicketExplanation(safeAvg),
       reason: socialLead.whyTitanFlagged || 'Social intent or referral opportunity.',
       confidence: socialLead.confidenceScore ?? 60,
       confidenceLabel: 'Lead radar signal',
@@ -253,6 +277,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   const rebooks = rebookRows.data ?? [];
   if (rebooks.length > 0) {
     const first = rebooks[0]!;
+    const rebookCount = Math.min(rebooks.length, 3);
     drafts.push({
       actionKey: `rebook-${first.id}`,
       actionType: 'rebook',
@@ -262,8 +287,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         .filter(Boolean)
         .slice(0, 3)
         .join(', '),
-      expectedValueCents: avgJobCents * Math.min(rebooks.length, 3),
-      expectedValueLabel: valueLabel(avgJobCents * Math.min(rebooks.length, 3)),
+      expectedValueCents: safeAvg * rebookCount,
+      expectedValueLabel: valueLabel(safeAvg * rebookCount),
+      valueExplanation: avgTicketExplanation(safeAvg, rebookCount),
       reason: '60–120 days since last detail — ideal maintenance window.',
       confidence: 78,
       confidenceLabel: 'Repeat customer timing',
@@ -293,8 +319,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
     const avgTicket =
       visitCount > 0
         ? Math.round(completedMember.reduce((s, a) => s + (Number(a.base_price_cents) || 0), 0) / visitCount)
-        : avgJobCents;
+        : safeAvg;
     const roi = recommendMembershipTier(Math.max(visitCount, 2), avgTicket / 100);
+    const membershipCents = Math.round(roi.best.netSavings * 100) || Math.round(safeAvg * 0.15 * 4);
     drafts.push({
       actionKey: `membership-${first.id}`,
       actionType: 'membership',
@@ -304,8 +331,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         .filter(Boolean)
         .slice(0, 3)
         .join(', '),
-      expectedValueCents: Math.round(roi.best.netSavings * 100) || Math.round(avgJobCents * 0.15 * 4),
+      expectedValueCents: membershipCents,
       expectedValueLabel: `Recommend ${roi.best.meta.tier.toUpperCase()}`,
+      valueExplanation: `Projected annual membership value from ${visitCount} visits @ ${displayMoney(avgTicket)} avg.`,
       reason: roi.explanation,
       confidence: Math.min(95, 60 + visitCount * 8),
       confidenceLabel: `${visitCount} visits · avg ${displayMoney(avgTicket)}`,
@@ -332,8 +360,9 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
     actionType: 'calendar_slot',
     title: 'Promote open calendar slots',
     involvedNames: 'Warm leads & past clients',
-    expectedValueCents: avgJobCents,
-    expectedValueLabel: valueLabel(avgJobCents),
+    expectedValueCents: safeAvg,
+    expectedValueLabel: valueLabel(safeAvg),
+    valueExplanation: avgTicketExplanation(safeAvg),
     reason: 'Fill empty route capacity this week.',
     confidence: 70,
     confidenceLabel: 'Open dispatch slots',
@@ -344,10 +373,10 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
     canSend: false,
   });
 
-  const actionDate = todayChicago();
+  const openDrafts = drafts.filter((d) => !closedKeys.has(d.actionKey));
   const probe = await admin.from('titan_daily_actions').select('id').limit(1);
   if (!probe.error) {
-    for (const d of drafts) {
+    for (const d of openDrafts) {
       await admin.from('titan_daily_actions').upsert(
         {
           action_date: actionDate,
@@ -375,12 +404,13 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       .from('titan_daily_actions')
       .select('*')
       .eq('action_date', actionDate)
-      .neq('status', 'dismissed')
+      .eq('status', 'pending')
       .order('expected_value_cents', { ascending: false });
 
     const actions: DailyExecutableAction[] = (rows ?? []).map((r) => {
       const row = r as Record<string, unknown>;
       const cents = Number(row.expected_value_cents ?? 0);
+      const draftMatch = openDrafts.find((d) => d.actionKey === str(row.action_key));
       return {
         id: str(row.id),
         actionKey: str(row.action_key),
@@ -389,6 +419,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         involvedNames: str(row.involved_names),
         expectedValueCents: cents,
         expectedValueLabel: valueLabel(cents),
+        valueExplanation: draftMatch?.valueExplanation || (cents > 0 ? avgTicketExplanation(safeAvg) : 'No direct dollar value'),
         reason: str(row.reason),
         confidence: Number(row.confidence_score ?? 70),
         confidenceLabel: str(row.confidence_label) || 'Titan estimate',
@@ -403,14 +434,13 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       };
     });
 
-    const pending = actions.filter((a) => a.status === 'pending');
     return {
-      actions: pending.slice(0, 8),
-      fastestMoneyMoves: pending.filter((a) => a.expectedValueCents > 0).slice(0, 3),
+      actions: actions.slice(0, 8),
+      fastestMoneyMoves: actions.filter((a) => a.expectedValueCents > 0).slice(0, 3),
     };
   }
 
-  const fallback = drafts.map((d, i) => ({ ...d, id: `draft-${i}`, status: 'pending' as const }));
+  const fallback = openDrafts.map((d, i) => ({ ...d, id: `draft-${i}`, status: 'pending' as const }));
   return {
     actions: fallback.slice(0, 8),
     fastestMoneyMoves: fallback.filter((a) => a.expectedValueCents > 0).slice(0, 3),

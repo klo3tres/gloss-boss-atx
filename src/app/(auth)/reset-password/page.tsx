@@ -2,14 +2,30 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
+import { clearAuthUxSession, setRoleCache, writeHydratedOnceFlag } from '@/lib/auth/auth-session-ux';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
-import { defaultDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+import { resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
+
+function formatResetFailure(outcome: { code: string; message?: string; rawRole?: string }): string {
+  switch (outcome.code) {
+    case 'MISSING_PROFILE':
+      return 'Your staff profile was not found. Ask the owner to repair your account from Admin → Team, or complete your team invite first.';
+    case 'PROFILE_QUERY_ERROR':
+      return outcome.message ?? 'Could not load your profile. Try again or contact the owner.';
+    case 'INVALID_ROLE':
+      return `Your profile role is invalid (${outcome.rawRole ?? 'unknown'}). Contact the owner.`;
+    case 'NO_SESSION':
+      return 'Session expired. Open the reset link from your email again.';
+    default:
+      return 'Password was saved but we could not route you to the correct portal. Try signing in.';
+  }
+}
 
 export default function ResetPasswordPage() {
-  const router = useRouter();
   const envReady = isSupabasePublicReady();
   const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
   const [password, setPassword] = useState('');
@@ -56,16 +72,41 @@ export default function ResetPasswordPage() {
 
     setSubmitting(true);
     try {
+      clearAuthUxSession();
+
       const { error: updateError } = await client.auth.updateUser({ password });
       if (updateError) {
         setError(updateError.message);
         return;
       }
 
+      await waitForSessionHydration(client);
+
+      try {
+        await fetchWithTimeout('/api/auth/ensure-profile', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          timeoutMs: 8000,
+        });
+      } catch {
+        /* non-blocking — ensure-profile also runs inside fetchUserRole sync path */
+      }
+
       const outcome = await fetchUserRole(client);
-      const destination = outcome.ok ? defaultDashboardPathForRole(outcome.role) : '/login';
-      setMessage('Password updated. Redirecting to your dashboard…');
-      window.setTimeout(() => router.replace(destination), 800);
+      if (!outcome.ok) {
+        setError(formatResetFailure(outcome));
+        return;
+      }
+
+      setRoleCache(outcome.userId, outcome.role);
+      writeHydratedOnceFlag();
+
+      const destination = resolveDashboardPathForRole(outcome.role, null, outcome.email);
+      setMessage(`Password updated. Opening your ${outcome.role.replace('_', ' ')} portal…`);
+      window.setTimeout(() => {
+        window.location.assign(destination);
+      }, 600);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update password.');
     } finally {

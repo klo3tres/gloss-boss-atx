@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 export type AdminSearchResult = {
   id: string;
-  type: 'customer' | 'work_order' | 'opportunity' | 'lead';
+  type: 'customer' | 'work_order' | 'opportunity' | 'lead' | 'vehicle' | 'project' | 'technician';
   title: string;
   subtitle: string;
   href: string;
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const like = `%${q.replace(/[%_]/g, '')}%`;
   const results: AdminSearchResult[] = [];
 
-  const [byName, byEmail, byPhone, appointments, opportunities] = await Promise.all([
+  const [byName, byEmail, byPhone, appointments, opportunities, vehicles, projects, techs] = await Promise.all([
     admin.from('customers').select('id, full_name, email, phone').ilike('full_name', like).limit(5),
     admin.from('customers').select('id, full_name, email, phone').ilike('email', like).limit(5),
     admin.from('customers').select('id, full_name, email, phone').ilike('phone', like).limit(5),
@@ -39,11 +39,10 @@ export async function GET(request: Request) {
       .or(`guest_name.ilike.${like},guest_email.ilike.${like},vehicle_description.ilike.${like}`)
       .order('scheduled_start', { ascending: false })
       .limit(8),
-    admin
-      .from('titan_revenue_opportunities')
-      .select('id, title, contact_name, contact_phone, status')
-      .ilike('title', like)
-      .limit(6),
+    admin.from('titan_opportunities').select('id, title, author_name, contact_phone, status').ilike('title', like).limit(6),
+    admin.from('vehicles').select('id, customer_id, year, make, model, color, nickname').or(`make.ilike.${like},model.ilike.${like},nickname.ilike.${like}`).limit(5),
+    admin.from('titan_projects').select('id, title, status, business_id').ilike('title', like).limit(5),
+    admin.from('profiles').select('id, full_name, email, role').in('role', ['technician', 'admin', 'super_admin']).ilike('full_name', like).limit(5),
   ]);
 
   const customerRows = [...(byName.data ?? []), ...(byEmail.data ?? []), ...(byPhone.data ?? [])];
@@ -75,29 +74,69 @@ export async function GET(request: Request) {
   }
 
   for (const o of opportunities.data ?? []) {
+    const row = o as Record<string, unknown>;
     results.push({
-      id: String(o.id),
+      id: String(row.id),
       type: 'opportunity',
-      title: String(o.title ?? 'Opportunity'),
-      subtitle: `${String(o.contact_name ?? '')} · ${String(o.status ?? '')}`.trim(),
-      href: `/titan/opportunities?open=${encodeURIComponent(String(o.id))}`,
+      title: String(row.title ?? 'Opportunity'),
+      subtitle: `${String(row.author_name ?? '')} · ${String(row.status ?? '')}`.trim(),
+      href: `/admin/titan/opportunities?open=${encodeURIComponent(String(row.id))}`,
+    });
+  }
+
+  for (const v of vehicles.data ?? []) {
+    const row = v as Record<string, unknown>;
+    const label = [row.year, row.make, row.model, row.nickname].filter(Boolean).join(' ') || 'Vehicle';
+    results.push({
+      id: String(row.id),
+      type: 'vehicle',
+      title: String(label),
+      subtitle: String(row.color ?? ''),
+      href: `/admin/vehicles/${row.id}`,
+    });
+  }
+
+  for (const p of projects.data ?? []) {
+    const row = p as Record<string, unknown>;
+    results.push({
+      id: String(row.id),
+      type: 'project',
+      title: String(row.title ?? 'Project'),
+      subtitle: String(row.status ?? ''),
+      href: '/titan/projects',
+    });
+  }
+
+  for (const t of techs.data ?? []) {
+    const row = t as Record<string, unknown>;
+    results.push({
+      id: String(row.id),
+      type: 'technician',
+      title: String(row.full_name ?? row.email ?? 'Staff'),
+      subtitle: String(row.role ?? ''),
+      href: '/admin/team',
     });
   }
 
   try {
-    const lr = await admin.from('titan_lead_radar').select('id, business_name, contact_name, phone, status').ilike('business_name', like).limit(6);
+    const lr = await admin
+      .from('titan_lead_radar_items')
+      .select('id, source_name, author_name, phone, status')
+      .or(`source_name.ilike.${like},author_name.ilike.${like}`)
+      .limit(6);
     for (const l of lr.data ?? []) {
+      const row = l as Record<string, unknown>;
       results.push({
-        id: String(l.id),
+        id: String(row.id),
         type: 'lead',
-        title: String(l.business_name ?? l.contact_name ?? 'Lead'),
-        subtitle: String(l.phone ?? l.status ?? ''),
-        href: '/admin/leads',
+        title: String(row.source_name ?? row.author_name ?? 'Lead'),
+        subtitle: String(row.phone ?? row.status ?? ''),
+        href: '/admin/titan/lead-radar',
       });
     }
   } catch {
-    /* optional table */
+    /* optional */
   }
 
-  return NextResponse.json({ results: results.slice(0, 20) });
+  return NextResponse.json({ results: results.slice(0, 24) });
 }

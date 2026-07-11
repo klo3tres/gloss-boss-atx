@@ -74,9 +74,12 @@ export function ServicePackageShowcase({
                   { label: 'SUV', value: formatVehiclePrice(service.suvPrice ?? service.suvTruckPrice) },
                   { label: 'Truck', value: formatVehiclePrice(service.truckPrice ?? service.suvTruckPrice) },
                 ].map((tier) => (
-                  <div key={tier.label} className="rounded-xl border border-gold/15 bg-gradient-to-b from-gold/5 to-muted/20 px-2 py-2.5 text-center shadow-sm">
-                    <p className="text-[9px] font-bold uppercase text-muted-foreground">{tier.label}</p>
-                    <p className="mt-0.5 font-mono text-lg font-black text-gold-soft">{tier.value}</p>
+                  <div
+                    key={tier.label}
+                    className="flex min-h-[72px] flex-col items-center justify-center rounded-xl border border-border bg-muted/30 px-2 py-3 text-center"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{tier.label}</p>
+                    <p className="mt-1 text-lg font-black text-foreground">{tier.value}</p>
                   </div>
                 ))}
               </div>

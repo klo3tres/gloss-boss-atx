@@ -9,6 +9,7 @@ import {
   scheduleOpportunityFollowUp,
   seedWarmLeads,
   syncDerivedRevenueOpportunities,
+  updateOpportunityContact,
   updateOpportunityStatus,
   type RevenueOpportunityStatus,
 } from '@/lib/titan/revenue-opportunities';
@@ -266,6 +267,18 @@ export async function addOpportunityNoteAction(id: string, note: string): Promis
   });
   const { logTitanActivity } = await import('@/lib/titan/activity-feed');
   await logTitanActivity(g.admin, { kind: 'command_executed', title: 'Opportunity note added', detail: note.slice(0, 120), href: '/admin/titan/opportunities' });
+  revalidate();
+  return { ok: true };
+}
+
+export async function updateOpportunityContactAction(
+  id: string,
+  contact: { contactName?: string; contactPhone?: string; contactEmail?: string },
+): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  const res = await updateOpportunityContact(g.admin, id, contact);
+  if (!res.ok) return { error: res.error };
   revalidate();
   return { ok: true };
 }

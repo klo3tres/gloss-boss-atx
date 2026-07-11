@@ -44,6 +44,7 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
           <h1 className="mt-1 text-2xl font-black text-foreground sm:text-3xl">
             {greeting}, {briefing.ownerName}
           </h1>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">{briefing.narrative}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {briefing.healthLabel} · Ops {briefing.operationalAdvantage}/100
           </p>
@@ -74,15 +75,54 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
         moves={briefing.dailyActionPlan.fastestMoneyMoves}
       />
 
+      {briefing.roiActions.length > 0 ? (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Highest ROI actions</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Confidence, revenue impact, and time — complete these first.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {briefing.roiActions.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={a.href}
+                  className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-border bg-background/60 px-3 py-2.5 transition hover:border-gold/30"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-foreground">{a.title}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{a.why}</p>
+                    {a.dependencies ? (
+                      <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-200">{a.dependencies}</p>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 text-right text-[10px]">
+                    <p className="font-black uppercase text-gold-soft">{a.priority}</p>
+                    <p className="mt-0.5 font-mono text-foreground">{a.revenueImpactLabel}</p>
+                    <p className="text-muted-foreground">
+                      {a.confidence}% · ~{a.timeEstimateMinutes}m
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <DailyActionPlanPanel actions={briefing.dailyActionPlan.actions} />
 
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <StatChip label="Yesterday" value={briefing.revenueYesterdayLabel} hint="Collected" href="/admin/revenue" />
         <StatChip label="Revenue today" value={briefing.revenueTodayLabel} hint={`Target ${briefing.revenueTargetLabel}`} href="/admin/revenue" />
         <StatChip label="Projected today" value={briefing.projectedRevenueTodayLabel} hint="Collected + missions + schedule" href="/admin" />
-        <StatChip label="Gap to target" value={briefing.revenueGapLabel} hint="Close with missions below" href="/admin/titan?workspace=growth" />
+        <StatChip label="Gap to target" value={briefing.revenueGapLabel} hint="Close with actions above" href="/admin/titan?workspace=growth" />
         <StatChip label="Bookings" value={String(briefing.scheduleCount)} hint={briefing.scheduleLabel} href="/admin/calendar" />
-        <StatChip label="Balances" value={briefing.balanceDueLabel} hint="Open jobs" href="/admin?overview=1" />
-        <StatChip label="Inbox" value={String(briefing.unreadActivity)} hint="Unread events" href="/admin/notifications" />
+        <StatChip
+          label="Ops signals"
+          value={`${briefing.unsignedAcknowledgments + briefing.reviewsNeeded + briefing.inventoryAlerts + briefing.customersDue}`}
+          hint={`Ack ${briefing.unsignedAcknowledgments} · Reviews ${briefing.reviewsNeeded} · Due ${briefing.customersDue}`}
+          href="/admin/exceptions"
+        />
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">

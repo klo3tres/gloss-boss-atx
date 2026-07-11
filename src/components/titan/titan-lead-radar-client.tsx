@@ -64,17 +64,17 @@ function LeadCard({ item }: { item: LeadRadarItem }) {
     <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase text-cyan-300">{SOURCE_TYPE_LABELS[item.sourceType] ?? item.sourceType}</p>
-          <p className="mt-1 text-sm font-bold text-white">{item.sourceName ?? item.authorName ?? 'Captured lead'}</p>
-          <p className="mt-1 text-[10px] uppercase text-emerald-300">{INTENT_LABELS[item.detectedIntent] ?? item.detectedIntent} · {item.status.replace(/_/g, ' ')}</p>
+          <p className="text-[10px] font-black uppercase text-cyan-600 dark:text-cyan-300">{SOURCE_TYPE_LABELS[item.sourceType] ?? item.sourceType}</p>
+          <p className="mt-1 text-sm font-bold text-foreground">{item.sourceName ?? item.authorName ?? 'Captured lead'}</p>
+          <p className="mt-1 text-[10px] uppercase text-emerald-700 dark:text-emerald-300">{INTENT_LABELS[item.detectedIntent] ?? item.detectedIntent} · {item.status.replace(/_/g, ' ')}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="font-mono text-lg font-black text-emerald-300">{money(item.estimatedRevenue)}</p>
-          <p className="text-[10px] text-zinc-500">{item.confidenceScore}% conf · {item.urgencyScore}% urgency</p>
+          <p className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300">{money(item.estimatedRevenue)}</p>
+          <p className="text-[10px] text-muted-foreground">{item.confidenceScore}% conf · {item.urgencyScore}% urgency</p>
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-4 text-xs text-zinc-300">{item.rawText}</p>
+      <p className="mt-3 line-clamp-4 text-xs text-muted-foreground">{item.rawText}</p>
 
       <p className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2 text-xs text-foreground">
         <span className="font-black uppercase text-cyan-600 dark:text-cyan-300">Why flagged: </span>{item.whyTitanFlagged}
@@ -104,6 +104,9 @@ function LeadCard({ item }: { item: LeadRadarItem }) {
       </dl>
 
       <p className="mt-3 rounded-xl border border-border bg-muted/30 p-3 text-xs italic text-foreground">{item.recommendedReply}</p>
+      <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-gold-soft">
+        Recommended first action: {item.phone ? 'Call or SMS' : item.email ? 'Email' : 'Convert & research'} · Score {item.confidenceScore}
+      </p>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={() => { void navigator.clipboard.writeText(item.recommendedReply); setMsg('Reply copied.'); }} className="inline-flex items-center gap-1 rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">

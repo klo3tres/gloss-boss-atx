@@ -51,6 +51,12 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
   const [returningUser] = useState(() => readHydratedOnceFlag());
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [customerPreview, setCustomerPreview] = useState(false);
+  const [deniedInfo, setDeniedInfo] = useState<{
+    email: string | null;
+    role: AppRole;
+    intendedPortal: string;
+    errorId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -149,12 +155,17 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
         } else if (variant === 'customer' && isStaffRole(role)) {
           window.location.assign(defaultDashboardPathForRole(role));
         } else {
+          const intendedPortal = defaultDashboardPathForRole(role);
+          const errorId = `gate-${Date.now().toString(36)}`;
           logRoleDebug({
             step: 'gate_unauthorized_role',
             authUserId: outcome.userId,
             resolvedRole: role,
-            redirectDestination: defaultDashboardPathForRole(role),
+            redirectDestination: intendedPortal,
+            errorId,
+            variant,
           });
+          setDeniedInfo({ email: outcome.email, role, intendedPortal, errorId });
           setState('unauthorized');
         }
       } catch (e) {
@@ -225,13 +236,73 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
   }
 
   if (state === 'unauthorized') {
+    const portalLabel =
+      deniedInfo?.intendedPortal === '/tech'
+        ? 'Tech portal'
+        : deniedInfo?.intendedPortal?.startsWith('/admin')
+          ? 'Admin portal'
+          : 'Customer portal';
     return (
       <main className='flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center text-foreground'>
-        <h1 className='text-2xl font-black uppercase tracking-wider text-red-400'>Unauthorized</h1>
-        <p className='max-w-md text-sm text-zinc-400'>You do not have access to this area. Sign in with the correct account.</p>
-        <Link href='/login' className='text-sm font-bold uppercase tracking-wider text-gold-soft underline'>
-          Back to login
-        </Link>
+        <div className='w-full max-w-lg rounded-2xl border border-rose-500/30 bg-card p-6 text-left shadow-lg'>
+          <h1 className='text-xl font-black uppercase tracking-wider text-rose-400'>Access denied</h1>
+          <p className='mt-3 text-sm text-muted-foreground'>
+            Your account is signed in, but this area requires different permissions.
+          </p>
+          <dl className='mt-4 space-y-2 text-xs'>
+            <div className='flex justify-between gap-4 border-b border-border pb-2'>
+              <dt className='text-muted-foreground'>Account</dt>
+              <dd className='font-semibold text-foreground'>{deniedInfo?.email ?? 'Unknown'}</dd>
+            </div>
+            <div className='flex justify-between gap-4 border-b border-border pb-2'>
+              <dt className='text-muted-foreground'>Assigned role</dt>
+              <dd className='font-semibold text-foreground'>{deniedInfo?.role ?? 'unknown'}</dd>
+            </div>
+            <div className='flex justify-between gap-4 border-b border-border pb-2'>
+              <dt className='text-muted-foreground'>Your portal</dt>
+              <dd className='font-semibold text-foreground'>{portalLabel}</dd>
+            </div>
+            {deniedInfo?.errorId ? (
+              <div className='flex justify-between gap-4 pt-1'>
+                <dt className='text-muted-foreground'>Error ID</dt>
+                <dd className='font-mono text-[10px] text-muted-foreground'>{deniedInfo.errorId}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <div className='mt-6 flex flex-wrap gap-2'>
+            {deniedInfo?.intendedPortal ? (
+              <a
+                href={deniedInfo.intendedPortal}
+                className='rounded-lg bg-gold px-4 py-2 text-[10px] font-black uppercase text-black'
+              >
+                Go to {portalLabel}
+              </a>
+            ) : null}
+            <button
+              type='button'
+              onClick={() => window.location.reload()}
+              className='rounded-lg border border-border px-4 py-2 text-[10px] font-black uppercase text-foreground'
+            >
+              Retry session
+            </button>
+            <button
+              type='button'
+              onClick={async () => {
+                const supabase = createSupabaseBrowserClient();
+                await supabase?.auth.signOut();
+                clearHydratedOnceFlag();
+                clearRoleCache();
+                window.location.assign('/login');
+              }}
+              className='rounded-lg border border-border px-4 py-2 text-[10px] font-black uppercase text-muted-foreground'
+            >
+              Sign out
+            </button>
+          </div>
+          <p className='mt-4 text-[11px] text-muted-foreground'>
+            If this is wrong, ask Kyle to repair your account from Admin → Team.
+          </p>
+        </div>
       </main>
     );
   }

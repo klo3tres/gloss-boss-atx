@@ -104,6 +104,7 @@ export function LeadsAdminClient({
   const router = useRouter();
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<'pipeline' | 'list'>('pipeline');
+  const [mobileStage, setMobileStage] = useState<string>(PIPELINE_STAGES[0]?.id ?? 'new');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   
   // Drawers / Modals State
@@ -355,7 +356,73 @@ export function LeadsAdminClient({
 
       {/* PIPELINE VIEW */}
       {view === 'pipeline' ? (
-        <div className="overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-zinc-800">
+        <>
+          {/* Mobile: one stage at a time */}
+          <div className="md:hidden space-y-3">
+            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {PIPELINE_STAGES.map((stage) => {
+                const count = (pipelineGrouped[stage.id] ?? []).length;
+                const active = mobileStage === stage.id;
+                return (
+                  <button
+                    key={stage.id}
+                    type="button"
+                    onClick={() => setMobileStage(stage.id)}
+                    className={`min-h-11 shrink-0 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
+                      active ? stage.color + ' ring-1 ring-gold/40' : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    {stage.label} · {count}
+                  </button>
+                );
+              })}
+            </div>
+            {(() => {
+              const stage = PIPELINE_STAGES.find((s) => s.id === mobileStage) ?? PIPELINE_STAGES[0];
+              const columnLeads = pipelineGrouped[stage.id] ?? [];
+              return (
+                <section className="rounded-2xl border border-border bg-card p-3">
+                  <header className="mb-3 flex items-center justify-between border-b border-border pb-2">
+                    <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${stage.color}`}>{stage.label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{columnLeads.length}</span>
+                  </header>
+                  <ul className="space-y-2.5">
+                    {columnLeads.length === 0 ? (
+                      <li className="py-8 text-center text-xs text-muted-foreground">No leads in this stage</li>
+                    ) : null}
+                    {columnLeads.map((r) => {
+                      const id = String(r.id);
+                      return (
+                        <li
+                          key={id}
+                          onClick={() => setActiveLeadId(id)}
+                          className="cursor-pointer rounded-2xl border border-border bg-muted/30 p-4 transition hover:border-gold/40"
+                        >
+                          <h4 className="truncate text-sm font-bold text-foreground">{String(r.name ?? 'Guest')}</h4>
+                          {r.vehicle ? <p className="mt-1 truncate text-[11px] text-muted-foreground">{String(r.vehicle)}</p> : null}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {r.phone ? (
+                              <a href={`tel:${String(r.phone)}`} onClick={(e) => e.stopPropagation()} className="min-h-11 rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase">
+                                Call
+                              </a>
+                            ) : null}
+                            {r.email ? (
+                              <a href={`mailto:${String(r.email)}`} onClick={(e) => e.stopPropagation()} className="min-h-11 rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase">
+                                Email
+                              </a>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })()}
+          </div>
+
+          {/* Desktop kanban */}
+          <div className="hidden overflow-x-auto pb-4 md:block -mx-4 px-4 scrollbar-thin scrollbar-thumb-zinc-800">
           <div className="flex gap-4 min-w-[1200px]">
             {PIPELINE_STAGES.map((stage) => {
               const columnLeads = pipelineGrouped[stage.id] ?? [];
@@ -468,7 +535,8 @@ export function LeadsAdminClient({
               );
             })}
           </div>
-        </div>
+          </div>
+        </>
       ) : null}
 
       {/* DETAIL LIST VIEW */}

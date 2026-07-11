@@ -16,6 +16,12 @@ async function teamApi(body: object): Promise<{
   smsStatus?: string;
   emailError?: string | null;
   smsError?: string | null;
+  fixed?: string[];
+  role?: string;
+  authUserExists?: boolean;
+  profileExists?: boolean;
+  profileRole?: string | null;
+  inviteStatus?: string | null;
 }> {
   const res = await fetchWithTimeout('/api/admin/team', {
     method: 'POST',
@@ -59,10 +65,11 @@ async function inviteApi(body: object) {
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     error?: string;
+    inviteLink?: string;
     sent?: { emailStatus?: string; smsStatus?: string; emailError?: string; smsError?: string };
   };
   if (!res.ok || !data.ok) return { ok: false as const, error: data.error ?? `Request failed (${res.status})` };
-  return { ok: true as const, sent: data.sent };
+  return { ok: true as const, sent: data.sent, inviteLink: data.inviteLink };
 }
 
 export function StaffInviteClient() {
@@ -103,40 +110,46 @@ export function StaffInviteClient() {
             r.sent?.emailStatus === 'sent' ? 'email sent' : r.sent?.emailStatus ? `email ${r.sent.emailStatus}` : null,
             r.sent?.smsStatus === 'sent' ? 'SMS sent' : r.sent?.smsStatus ? `SMS ${r.sent.smsStatus}` : null,
           ].filter(Boolean);
+          if (r.inviteLink) {
+            try {
+              await navigator.clipboard.writeText(r.inviteLink);
+            } catch {
+              /* ignore */
+            }
+          }
           setMsg({
             type: r.sent?.emailStatus === 'failed' && r.sent?.smsStatus !== 'sent' ? 'err' : 'ok',
-            text: `Invite sent · ${parts.join(' · ')}${r.sent?.emailError ? ` — ${r.sent.emailError}` : ''}${r.sent?.smsError ? ` — ${r.sent.smsError}` : ''}`,
+            text: `Invite created · ${parts.join(' · ') || 'link ready'}${r.inviteLink ? ' · link copied' : ''}${r.sent?.emailError ? ` — ${r.sent.emailError}` : ''}${r.sent?.smsError ? ` — ${r.sent.smsError}` : ''}`,
           });
           e.currentTarget.reset();
           router.refresh();
         })();
       }}
     >
-      <label className="block text-xs text-zinc-400 sm:col-span-2">
+      <label className="block text-xs text-muted-foreground sm:col-span-2">
         Full name
-        <input name="fullName" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+        <input name="fullName" required className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground" />
       </label>
-      <label className="block text-xs text-zinc-400">
+      <label className="block text-xs text-muted-foreground">
         <Mail className="inline h-3 w-3" /> Email (optional if SMS)
-        <input name="email" type="email" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+        <input name="email" type="email" className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground" />
       </label>
-      <label className="block text-xs text-zinc-400">
+      <label className="block text-xs text-muted-foreground">
         <Phone className="inline h-3 w-3" /> Phone (optional if email)
-        <input name="phone" type="tel" className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white" />
+        <input name="phone" type="tel" className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground" />
       </label>
-      <label className="block text-xs text-zinc-400">
+      <label className="block text-xs text-muted-foreground">
         Role
-        <select name="role" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white">
+        <select name="role" required className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground">
           <option value="technician">Technician</option>
           <option value="dispatcher">Dispatcher</option>
           <option value="admin">Admin</option>
           <option value="viewer">Viewer</option>
-          <option value="super_admin">Super admin</option>
         </select>
       </label>
-      <label className="block text-xs text-zinc-400">
+      <label className="block text-xs text-muted-foreground">
         Send via
-        <select name="channel" required className="mt-1 w-full rounded-lg border border-zinc-700 bg-black px-3 py-2 text-sm text-white">
+        <select name="channel" required className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground">
           <option value="both">SMS + email</option>
           <option value="sms">SMS only</option>
           <option value="email">Email only</option>
@@ -163,6 +176,7 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [resendChannel, setResendChannel] = useState<Record<string, 'sms' | 'email' | 'both'>>({});
 
   useEffect(() => setInvites(initialInvites), [initialInvites]);
 
@@ -179,19 +193,19 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
 
   return (
     <div className="space-y-3">
-      {msg ? <p className="text-xs text-emerald-300">{msg}</p> : null}
+      {msg ? <p className="text-xs text-emerald-700">{msg}</p> : null}
       {pending.map((inv) => (
-        <div key={inv.id} className="rounded-xl border border-white/10 bg-black/40 p-4">
+        <div key={inv.id} className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <p className="font-bold text-white">{inv.fullName}</p>
-              <p className="text-xs text-zinc-500">{inv.role.replace('_', ' ')} · {inv.email ?? '—'} · {inv.phone ?? '—'}</p>
-              <p className="mt-1 text-[10px] text-zinc-600">
+              <p className="font-bold text-foreground">{inv.fullName}</p>
+              <p className="text-xs text-muted-foreground">{inv.role.replace('_', ' ')} · {inv.email ?? '—'} · {inv.phone ?? '—'}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
                 {inv.lastSentAt ? `Last sent ${new Date(inv.lastSentAt).toLocaleString()} (${inv.lastSentChannel})` : 'Not sent yet'}
                 {' · '}Expires {new Date(inv.expiresAt).toLocaleDateString()}
               </p>
             </div>
-            <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[8px] font-black uppercase text-amber-200">Pending</span>
+            <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700">Pending</span>
           </div>
 
           {editingId === inv.id ? (
@@ -200,13 +214,13 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
                 value={editEmail}
                 onChange={(e) => setEditEmail(e.target.value)}
                 placeholder="Email"
-                className="rounded-lg border border-white/10 bg-black px-3 py-2 text-xs text-white"
+                className="rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground"
               />
               <input
                 value={editPhone}
                 onChange={(e) => setEditPhone(e.target.value)}
                 placeholder="Phone"
-                className="rounded-lg border border-white/10 bg-black px-3 py-2 text-xs text-white"
+                className="rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground"
               />
               <button
                 type="button"
@@ -237,7 +251,16 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
             </div>
           ) : null}
 
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={resendChannel[inv.id] ?? (inv.email && inv.phone ? 'both' : inv.phone ? 'sms' : 'email')}
+              onChange={(e) => setResendChannel((prev) => ({ ...prev, [inv.id]: e.target.value as 'sms' | 'email' | 'both' }))}
+              className="rounded-lg border border-border bg-input px-2 py-1.5 text-[10px] text-foreground"
+            >
+              <option value="both">SMS + email</option>
+              <option value="sms">SMS only</option>
+              <option value="email">Email only</option>
+            </select>
             <button
               type="button"
               onClick={() => {
@@ -245,7 +268,7 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
                 setEditEmail(inv.email ?? '');
                 setEditPhone(inv.phone ?? '');
               }}
-              className="rounded-lg border border-white/15 px-3 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+              className="rounded-lg border border-border px-3 py-1.5 text-[10px] font-black uppercase text-foreground"
             >
               Edit contact
             </button>
@@ -255,8 +278,24 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
               onClick={() => {
                 void (async () => {
                   setBusyId(inv.id);
-                  await inviteApi({ intent: 'resend', inviteId: inv.id, channel: 'both' });
+                  setMsg(null);
+                  const channel = resendChannel[inv.id] ?? (inv.email && inv.phone ? 'both' : inv.phone ? 'sms' : 'email');
+                  const r = await inviteApi({ intent: 'resend', inviteId: inv.id, channel });
                   setBusyId(null);
+                  if (!r.ok) {
+                    setMsg(r.error ?? 'Resend failed');
+                    return;
+                  }
+                  if (r.inviteLink) {
+                    try {
+                      await navigator.clipboard.writeText(r.inviteLink);
+                      setMsg('Invite resent and link copied to clipboard.');
+                    } catch {
+                      setMsg('Invite resent.');
+                    }
+                  } else {
+                    setMsg('Invite resent.');
+                  }
                   router.refresh();
                 })();
               }}
@@ -270,12 +309,38 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
               onClick={() => {
                 void (async () => {
                   setBusyId(inv.id);
+                  setMsg(null);
+                  const r = await inviteApi({ intent: 'copy_link', inviteId: inv.id });
+                  setBusyId(null);
+                  if (!r.ok || !r.inviteLink) {
+                    setMsg(r.error ?? 'Could not copy link');
+                    return;
+                  }
+                  try {
+                    await navigator.clipboard.writeText(r.inviteLink);
+                    setMsg('Invite link copied.');
+                  } catch {
+                    setMsg(r.inviteLink);
+                  }
+                  window.open(r.inviteLink, '_blank', 'noopener,noreferrer');
+                })();
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-[10px] font-black uppercase text-foreground"
+            >
+              Copy / open link
+            </button>
+            <button
+              type="button"
+              disabled={busyId === inv.id}
+              onClick={() => {
+                void (async () => {
+                  setBusyId(inv.id);
                   await inviteApi({ intent: 'revoke', inviteId: inv.id });
                   setBusyId(null);
                   router.refresh();
                 })();
               }}
-              className="rounded-lg border border-rose-500/30 px-3 py-1.5 text-[10px] font-black uppercase text-rose-300"
+              className="rounded-lg border border-rose-500/30 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600"
             >
               Revoke
             </button>
@@ -406,7 +471,7 @@ export function StaffRowSuperClient({
   const [name, setName] = useState(initialDisplayName);
   const [active, setActive] = useState(initialActive);
   const [pwd, setPwd] = useState('');
-  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'pwd-link' | 'active' | 'remove' | null>(null);
+  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'pwd-link' | 'active' | 'remove' | 'verify' | 'repair' | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -519,7 +584,6 @@ export function StaffRowSuperClient({
                       <option value="dispatcher">dispatcher</option>
                       <option value="admin">admin</option>
                       <option value="viewer">viewer</option>
-                      <option value="super_admin">super_admin</option>
                     </select>
                     <button
                       type="button"
@@ -541,6 +605,57 @@ export function StaffRowSuperClient({
                       className="rounded-xl border border-gold/40 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/5 disabled:opacity-40 transition"
                     >
                       Assign
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-white/5 bg-black/30 p-4">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Account repair</label>
+                  <p className="text-xs text-zinc-500">Verify auth + profile linkage and repair staff role from accepted invites.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        void (async () => {
+                          setBusy('verify');
+                          setMsg(null);
+                          const r = await teamApi({ intent: 'verify_staff_account', profileId });
+                          setBusy(null);
+                          if (!r.ok) {
+                            setMsg({ type: 'err', text: r.error ?? 'Verify failed' });
+                            return;
+                          }
+                          setMsg({
+                            type: 'ok',
+                            text: `Auth: ${r.authUserExists ? 'ok' : 'missing'} · Profile: ${r.profileExists ? r.profileRole : 'missing'} · Invite: ${r.inviteStatus ?? 'none'}`,
+                          });
+                        })();
+                      }}
+                      className="rounded-xl border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-zinc-300"
+                    >
+                      Verify account
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        void (async () => {
+                          setBusy('repair');
+                          setMsg(null);
+                          const r = await teamApi({ intent: 'repair_staff_profile', profileId });
+                          setBusy(null);
+                          if (!r.ok) {
+                            setMsg({ type: 'err', text: r.error ?? 'Repair failed' });
+                            return;
+                          }
+                          setMsg({ type: 'ok', text: `Repaired: ${(r.fixed ?? []).join(', ')}` });
+                          router.refresh();
+                        })();
+                      }}
+                      className="rounded-xl border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-300"
+                    >
+                      Repair profile/role
                     </button>
                   </div>
                 </div>

@@ -775,26 +775,16 @@ export async function POST(request: Request) {
     }
 
     const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
-    void notifyBusinessNewBookingQueued({
-      eventKind: hasCeramic ? 'ceramic_quote' : 'new_booking',
-      guestName: guestName.trim(),
-      guestEmail: emailNorm,
-      guestPhone: phoneDigits,
-      whenIso: scheduled.toISOString(),
-      totalCents: priced.finalTotalCents,
-      depositCents: depositAmountCents,
-      balanceCents: Math.max(0, priced.finalTotalCents - depositAmountCents),
-      appointmentId: appointment.id,
-      vehicles: vehicleDescriptionJoined,
-      serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
-      comped: false,
-    }).catch((e) => console.warn('[api/bookings] owner notify', e));
+    // Owner/tech confirmation notifications fire only after Stripe confirms payment
+    // (see notifyBookingCheckoutPaid). Do not notify on checkout_started / awaiting_payment.
+    void hasCeramic;
 
     return NextResponse.json({
       appointmentId: appointment.id,
       accessToken: appointment.access_token,
       depositAmountCents: depositAmountCents,
       appliedCreditCents,
+      status: 'payment_pending',
     });
   } catch (e) {
     console.error('[api/bookings] unexpected', e);

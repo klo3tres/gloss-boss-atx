@@ -69,30 +69,42 @@ function inferProspectType(companyName: string, message: string): ProspectType {
   const hay = `${companyName} ${message}`.toLowerCase();
   if (/apartment|complex|resident|multifamily/.test(hay)) return 'apartment_complex';
   if (/dealership|dealer|auto group/.test(hay)) return 'dealership';
-  if (/fleet|truck|commercial vehicle/.test(hay)) return 'fleet_operator';
+  if (/rental|enterprise|hertz|avis|budget car/.test(hay)) return 'fleet_operator';
+  if (/fleet|truck|commercial vehicle|equipment fleet/.test(hay)) return 'fleet_operator';
   if (/construction|builder|contractor/.test(hay)) return 'construction';
   if (/landscap|lawn|mow/.test(hay)) return 'landscaping';
   if (/property manage|pm company/.test(hay)) return 'property_manager';
   if (/hoa|homeowner/.test(hay)) return 'hoa';
   if (/realtor|real estate|broker/.test(hay)) return 'realtor';
-  return 'fleet_operator';
+  if (/plumb|hvac|electric|delivery|limo|transport|medical|home.?health/.test(hay)) return 'fleet_operator';
+  return 'other';
 }
 
-export function estimateMonthlyCents(type: ProspectType, fleetSize: number | null): number {
-  const perVehicle = 12000;
-  if (fleetSize && fleetSize > 0) return fleetSize * perVehicle;
-  const defaults: Record<ProspectType, number> = {
-    apartment_complex: 240000,
-    dealership: 180000,
-    fleet_operator: 320000,
-    construction: 150000,
-    landscaping: 120000,
-    property_manager: 200000,
-    hoa: 90000,
-    realtor: 60000,
-    other: 80000,
+function hashSeed(input: string): number {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+export function estimateMonthlyCents(type: ProspectType, fleetSize: number | null, companyName = ''): number {
+  if (fleetSize && fleetSize > 0) {
+    const perVehicle = type === 'dealership' ? 9000 : type === 'apartment_complex' ? 4000 : 10000;
+    return fleetSize * perVehicle;
+  }
+  const base: Record<ProspectType, [number, number]> = {
+    apartment_complex: [120000, 280000],
+    dealership: [90000, 220000],
+    fleet_operator: [80000, 260000],
+    construction: [70000, 180000],
+    landscaping: [50000, 140000],
+    property_manager: [100000, 240000],
+    hoa: [40000, 120000],
+    realtor: [30000, 90000],
+    other: [35000, 110000],
   };
-  return defaults[type];
+  const [lo, hi] = base[type] ?? base.other;
+  const seed = hashSeed(`${type}:${companyName}`);
+  return lo + (seed % Math.max(1, hi - lo));
 }
 
 export function buildScoreReason(type: ProspectType, fleetSize: number | null, distance: number | null): string {
@@ -178,7 +190,7 @@ export async function syncFleetInquiriesToProspects(admin: SupabaseClient): Prom
     const company = str(r.company_name) || 'Fleet inquiry';
     const type = inferProspectType(company, str(r.message));
     const fleetSize = r.fleet_size != null ? Number(r.fleet_size) : null;
-    const monthly = estimateMonthlyCents(type, fleetSize);
+    const monthly = estimateMonthlyCents(type, fleetSize, company);
     const score = computeScore(type, monthly, null, 'new');
     const scoreReason = buildScoreReason(type, fleetSize, null);
 
@@ -251,7 +263,7 @@ export async function addProspect(
     vehicleCount?: number;
   },
 ) {
-  const monthly = estimateMonthlyCents(input.prospectType, input.vehicleCount ?? null);
+  const monthly = estimateMonthlyCents(input.prospectType, input.vehicleCount ?? null, input.companyName);
   const score = computeScore(input.prospectType, monthly, input.distanceMiles ?? null, 'new');
   const now = new Date().toISOString();
   const { data, error } = await admin

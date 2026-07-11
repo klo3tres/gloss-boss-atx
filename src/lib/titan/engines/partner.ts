@@ -33,7 +33,7 @@ function toPartnerCard(p: TitanProspect): PartnerCard {
     partnershipReason: p.scoreReason,
     nextAction: p.status === 'new' ? 'Run outreach play' : 'Follow up on partnership thread',
     confidencePercent: Math.min(95, p.score),
-    href: '/admin/super',
+    href: `/admin/titan/opportunities?id=${encodeURIComponent(p.id)}`,
   };
 }
 

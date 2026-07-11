@@ -4,11 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { parseAppRole } from '@/lib/auth/role-resolution';
+import { canAssignRole, canModifyStaffProfile, isProtectedOwner } from '@/lib/auth/owner-config';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export async function promoteProfileRoleAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const session = await getSessionWithProfile();
-  if (!session.user || session.profile?.role !== 'super_admin') {
+  if (!session.user || (session.profile?.role !== 'super_admin' && session.profile?.role !== 'admin')) {
     return { ok: false, error: 'Unauthorized' };
   }
 
@@ -18,13 +19,24 @@ export async function promoteProfileRoleAction(formData: FormData): Promise<{ ok
     return { ok: false, error: 'Invalid role or profile id' };
   }
 
-  if (targetId === session.user.id && nextRole !== 'super_admin') {
-    return { ok: false, error: 'You cannot demote your own super_admin account from this panel.' };
-  }
-
   const admin = tryCreateAdminSupabase();
   if (!admin) {
     return { ok: false, error: 'Admin database client unavailable' };
+  }
+
+  const { data: targetProfile } = await admin.from('profiles').select('email').eq('id', targetId).maybeSingle();
+  const targetEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+  const targetProtected = isProtectedOwner(targetEmail, targetId);
+
+  if (!canModifyStaffProfile(session.profile?.role ?? null, session.user.id, targetId, targetEmail)) {
+    return { ok: false, error: 'You cannot modify this protected account.' };
+  }
+  if (!canAssignRole(session.profile?.role ?? null, nextRole, targetProtected)) {
+    return { ok: false, error: 'You cannot assign that role.' };
+  }
+
+  if (targetId === session.user.id && session.profile?.role === 'super_admin' && nextRole !== 'super_admin') {
+    return { ok: false, error: 'You cannot demote your own super_admin account from this panel.' };
   }
 
   const now = new Date().toISOString();

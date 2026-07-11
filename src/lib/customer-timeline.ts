@@ -19,6 +19,10 @@ export type CustomerTimelineKind =
   | 'estimate'
   | 'loyalty'
   | 'credit'
+  | 'opportunity'
+  | 'membership'
+  | 'referral'
+  | 'lifecycle'
   | 'system';
 
 export type CustomerTimelineEvent = {
@@ -65,7 +69,8 @@ function notificationTitle(kind: string, templateKey: string | null, channel: st
 
 function jobTimelineTitle(eventType: string): string {
   const t = eventType.toLowerCase();
-  if (t === 'job_started') return 'Job started';
+  if (t === 'job_started' || t === 'en_route' || t === 'technician_en_route') return 'Technician en route / job started';
+  if (t === 'tech_assigned' || t === 'technician_assigned') return 'Technician assigned';
   if (t === 'job_completed') return 'Job completed on site';
   if (t === 'payment_received') return 'Payment recorded on job';
   if (t === 'photo_before') return 'Before photos uploaded';
@@ -87,7 +92,7 @@ export async function loadCustomerTimeline(
     admin
       .from('appointments')
       .select(
-        'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name',
+        'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name, assigned_tech_id',
       )
       .eq('customer_id', customerId)
       .limit(120),
@@ -95,7 +100,7 @@ export async function loadCustomerTimeline(
       ? admin
           .from('appointments')
           .select(
-            'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name',
+            'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name, assigned_tech_id',
           )
           .eq('guest_email', custEmail)
           .limit(120)
@@ -104,7 +109,7 @@ export async function loadCustomerTimeline(
       ? admin
           .from('appointments')
           .select(
-            'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name',
+            'id, status, payment_status, scheduled_start, service_slug, vehicle_description, base_price_cents, created_at, job_completed_at, updated_at, guest_name, assigned_tech_id',
           )
           .eq('guest_phone', custPhone)
           .limit(120)
@@ -501,6 +506,126 @@ export async function loadCustomerTimeline(
       detail: [str(f.channel), str(f.vehicle_description)].filter(Boolean).join(' · ') || undefined,
       href: f.appointment_id ? woHref(String(f.appointment_id)) : '/admin/follow-ups',
     });
+  }
+
+  for (const row of apptRows) {
+    const id = String(row.id);
+    const status = str(row.status).toLowerCase();
+    const techId = str((row as { assigned_tech_id?: string }).assigned_tech_id);
+    if (techId && ['assigned', 'confirmed', 'in_progress', 'en_route', 'completed'].includes(status)) {
+      pushEvent(events, {
+        id: `appt:tech:${id}`,
+        kind: 'job',
+        occurredAt: str(row.updated_at) || str(row.scheduled_start) || str(row.created_at),
+        title: status === 'in_progress' || status === 'en_route' ? 'Technician en route / on site' : 'Technician assigned',
+        detail: str(row.service_slug).replace(/-/g, ' ') || undefined,
+        href: woHref(id),
+      });
+    }
+  }
+
+  try {
+    const { data: lifecycleRows } = await admin
+      .from('customer_timeline_events')
+      .select('id, event_type, title, detail, href, created_at')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    for (const row of lifecycleRows ?? []) {
+      const r = row as Record<string, unknown>;
+      const et = str(r.event_type).toLowerCase();
+      const kind: CustomerTimelineKind =
+        et.includes('payment')
+          ? 'payment'
+          : et.includes('referral')
+            ? 'referral'
+            : et.includes('membership')
+              ? 'membership'
+              : et.includes('opportunity')
+                ? 'opportunity'
+                : 'lifecycle';
+      pushEvent(events, {
+        id: `lifecycle:${r.id}`,
+        kind,
+        occurredAt: str(r.created_at),
+        title: str(r.title) || et.replace(/_/g, ' '),
+        detail: str(r.detail) || undefined,
+        href: str(r.href) || undefined,
+      });
+    }
+  } catch {
+    /* optional until migration 000125 */
+  }
+
+  try {
+    const email = custEmail;
+    const phone = custPhone;
+    if (email || phone) {
+      let oppQ = admin
+        .from('titan_opportunities')
+        .select('id, title, status, created_at, contact_email, contact_phone')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (email) oppQ = oppQ.ilike('contact_email', email);
+      else oppQ = oppQ.eq('contact_phone', phone);
+      const { data: opps } = await oppQ;
+      for (const o of opps ?? []) {
+        const r = o as Record<string, unknown>;
+        pushEvent(events, {
+          id: `opp:${r.id}`,
+          kind: 'opportunity',
+          occurredAt: str(r.created_at),
+          title: `Opportunity — ${str(r.title) || 'Lead'}`,
+          detail: str(r.status),
+          href: '/admin/titan/opportunities',
+        });
+      }
+    }
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const { data: memberships } = await admin
+      .from('customer_memberships')
+      .select('id, status, started_at, created_at, membership_plans(name, tier)')
+      .eq('customer_id', customerId)
+      .limit(10);
+    for (const m of memberships ?? []) {
+      const r = m as Record<string, unknown>;
+      const plan = r.membership_plans as { name?: string; tier?: string } | null;
+      pushEvent(events, {
+        id: `membership:${r.id}`,
+        kind: 'membership',
+        occurredAt: str(r.started_at) || str(r.created_at),
+        title: `Membership ${str(r.status)}`,
+        detail: plan?.name || plan?.tier || undefined,
+        href: '/admin/memberships',
+      });
+    }
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const { data: refs } = await admin
+      .from('referral_events')
+      .select('id, status, created_at, reward_cents')
+      .eq('referrer_customer_id', customerId)
+      .limit(20);
+    for (const ref of refs ?? []) {
+      const r = ref as Record<string, unknown>;
+      pushEvent(events, {
+        id: `referral:${r.id}`,
+        kind: 'referral',
+        occurredAt: str(r.created_at),
+        title: `Referral ${str(r.status).replace(/_/g, ' ')}`,
+        detail: r.reward_cents ? displayMoney(cents(r.reward_cents)) : undefined,
+        href: '/admin/referrals',
+      });
+    }
+  } catch {
+    /* optional */
   }
 
   events.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());

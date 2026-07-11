@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
       console.info('[Gloss Boss ATX][forgot-password] request', { email: email.trim() });
 
       const { error: resetError } = await client.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`,
       });
 
       if (resetError) {

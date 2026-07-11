@@ -92,7 +92,8 @@ export async function loadAdminGoalsMetrics(admin: AdminDb): Promise<AdminGoalsM
   const summary = monthSummary.grossCents > 0 ? monthSummary : rollingSummary;
   const monthRevenueCents = summary.grossCents;
   const monthJobs = appts?.length ?? 0;
-  const avgTicketCents = summary.paymentCount > 0 ? Math.round(summary.grossCents / summary.paymentCount) : 0;
+  const avgTicketCents =
+    monthJobs > 0 && summary.paymentCount > 0 ? Math.round(summary.grossCents / monthJobs) : 0;
 
   return {
     monthRevenueCents,

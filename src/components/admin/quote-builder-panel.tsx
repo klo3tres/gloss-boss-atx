@@ -10,6 +10,7 @@ import {
   sendLeadEstimateEmailWithBodyAction,
   sendLeadEstimateSmsWithBodyAction,
 } from '@/app/(dashboard)/admin/estimate-actions';
+import { markOpportunityStatusAction } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import type { ServiceEstimate } from '@/lib/service-estimates';
 import { formatChicagoDateTime } from '@/lib/chicago-time';
 import { displayMoney } from '@/lib/display-format';
@@ -33,6 +34,8 @@ const STATUS_LABELS: Record<string, string> = {
   converted: 'Work order',
   expired: 'Expired',
 };
+
+const fieldClass = 'mt-1 w-full rounded-xl border border-border bg-input px-3 py-2 text-xs text-foreground';
 
 export function QuoteBuilderPanel({
   leadId,
@@ -76,16 +79,24 @@ export function QuoteBuilderPanel({
   );
 
   const totalCents = Math.round(Number(totalDollars) * 100);
+  const canSaveDraft = Boolean(leadId || customerId || opportunityId);
 
   const ensureDraft = async (): Promise<{ estimateId: string; publicUrl: string } | null> => {
     if (draftEstimateId && publicUrl) return { estimateId: draftEstimateId, publicUrl };
+    const noteParts = [
+      notes.trim() || undefined,
+      `Duration: ~${durationMinutes} min`,
+      opportunityId ? `Opportunity: ${opportunityId}` : undefined,
+    ].filter(Boolean);
+    const mergedNotes = noteParts.join('\n');
+
     if (leadId) {
       const created = await createLeadEstimateAction({
         leadId,
         serviceSlug,
         vehicleClass,
         totalCents,
-        notes: notes.trim() || undefined,
+        notes: mergedNotes || undefined,
       });
       if (created.error || !created.estimateId) {
         setErr(created.error ?? 'Could not create quote');
@@ -106,7 +117,7 @@ export function QuoteBuilderPanel({
         serviceSlug,
         vehicleClass,
         totalCents,
-        notes: notes.trim() || undefined,
+        notes: mergedNotes || undefined,
       });
       if (created.error || !created.estimateId) {
         setErr(created.error ?? 'Could not create quote');
@@ -115,10 +126,20 @@ export function QuoteBuilderPanel({
       setDraftEstimateId(created.estimateId);
       const url = created.publicUrl ?? (typeof window !== 'undefined' ? `${window.location.origin}/book` : '/book');
       setPublicUrl(url);
+      if (opportunityId) {
+        await markOpportunityStatusAction(opportunityId, 'quoted', 'Quote draft created');
+      }
       return { estimateId: created.estimateId, publicUrl: url };
     }
     setErr('Save quote requires a linked lead, customer, or opportunity.');
     return null;
+  };
+
+  const afterSend = async () => {
+    if (opportunityId) {
+      await markOpportunityStatusAction(opportunityId, 'quoted', 'Quote sent');
+    }
+    router.refresh();
   };
 
   const openSmsPreview = () => {
@@ -131,7 +152,9 @@ export function QuoteBuilderPanel({
       if (!draft) return;
       const preview = leadId
         ? await previewLeadEstimateAction({ leadId, serviceSlug, totalCents, vehicleClass })
-        : { smsBody: `Gloss Boss quote: ${displayMoney(totalCents)} — ${draft.publicUrl}` };
+        : {
+            smsBody: `Hi${contactName ? ` ${contactName}` : ''} — Gloss Boss ATX quote for ${selectedService?.title ?? 'detailing'}: ${displayMoney(totalCents)} (~${durationMinutes} min). View/book: ${draft.publicUrl}`,
+          };
       const tones = buildToneVariants(preview.smsBody ?? '', {
         name: contactName,
         price: displayMoney(totalCents),
@@ -148,7 +171,7 @@ export function QuoteBuilderPanel({
         durationMinutes,
         onSend: async (final) => {
           const res = await sendLeadEstimateSmsWithBodyAction(draft.estimateId, final.body);
-          if (!res.error) router.refresh();
+          if (!res.error) await afterSend();
           return res;
         },
       });
@@ -166,8 +189,8 @@ export function QuoteBuilderPanel({
       const preview = leadId
         ? await previewLeadEstimateAction({ leadId, serviceSlug, totalCents, vehicleClass })
         : {
-            emailSubject: `Gloss Boss estimate — ${displayMoney(totalCents)}`,
-            emailBody: `Your quote: ${displayMoney(totalCents)} · ~${durationMinutes} min · ${draft.publicUrl}`,
+            emailSubject: `Gloss Boss ATX estimate — ${displayMoney(totalCents)}`,
+            emailBody: `Hi${contactName ? ` ${contactName}` : ''},\n\nYour Gloss Boss ATX quote for ${selectedService?.title ?? 'detailing'} is ${displayMoney(totalCents)} (~${durationMinutes} min).\n\nView and book here:\n${draft.publicUrl}\n\n— Gloss Boss ATX`,
           };
       openPreview({
         title: 'Send quote email',
@@ -183,7 +206,7 @@ export function QuoteBuilderPanel({
             subject: final.subject,
             body: final.body,
           });
-          if (!res.error) router.refresh();
+          if (!res.error) await afterSend();
           return res;
         },
       });
@@ -191,14 +214,14 @@ export function QuoteBuilderPanel({
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border border-gold/20 bg-black/40 p-4">
+    <div className="space-y-4 rounded-2xl border border-gold/20 bg-card p-4">
       <div>
         <h4 className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Quote builder</h4>
-        <p className="mt-1 text-[10px] text-zinc-500">Build price, preview message, send in under 60 seconds.</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">Build price, preview message, send in under 60 seconds.</p>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="block text-[9px] font-black uppercase text-zinc-500 sm:col-span-2">
+        <label className="block text-[9px] font-black uppercase text-muted-foreground sm:col-span-2">
           Service
           <select
             value={serviceSlug}
@@ -209,7 +232,7 @@ export function QuoteBuilderPanel({
               if (match?.priceCents) setTotalDollars(String(Math.round(match.priceCents / 100)));
               if (match?.durationMinutes) setDurationMinutes(match.durationMinutes);
             }}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
+            className={fieldClass}
           >
             {serviceOptions.map((s) => (
               <option key={s.slug} value={s.slug}>
@@ -218,13 +241,9 @@ export function QuoteBuilderPanel({
             ))}
           </select>
         </label>
-        <label className="block text-[9px] font-black uppercase text-zinc-500">
+        <label className="block text-[9px] font-black uppercase text-muted-foreground">
           Vehicle
-          <select
-            value={vehicleClass}
-            onChange={(e) => setVehicleClass(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
-          >
+          <select value={vehicleClass} onChange={(e) => setVehicleClass(e.target.value)} className={fieldClass}>
             {VEHICLE_CLASSES.map((v) => (
               <option key={v.value} value={v.value}>
                 {v.label}
@@ -232,17 +251,11 @@ export function QuoteBuilderPanel({
             ))}
           </select>
         </label>
-        <label className="block text-[9px] font-black uppercase text-zinc-500">
+        <label className="block text-[9px] font-black uppercase text-muted-foreground">
           Price ($)
-          <input
-            type="number"
-            min={1}
-            value={totalDollars}
-            onChange={(e) => setTotalDollars(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
-          />
+          <input type="number" min={1} value={totalDollars} onChange={(e) => setTotalDollars(e.target.value)} className={fieldClass} />
         </label>
-        <label className="block text-[9px] font-black uppercase text-zinc-500">
+        <label className="block text-[9px] font-black uppercase text-muted-foreground">
           Duration (min)
           <input
             type="number"
@@ -250,21 +263,16 @@ export function QuoteBuilderPanel({
             step={15}
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value) || 120)}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
+            className={fieldClass}
           />
         </label>
-        <label className="block text-[9px] font-black uppercase text-zinc-500 sm:col-span-2">
+        <label className="block text-[9px] font-black uppercase text-muted-foreground sm:col-span-2">
           Notes on quote
-          <textarea
-            rows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
-          />
+          <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={fieldClass} />
         </label>
       </div>
 
-      <p className="text-[11px] text-zinc-400">
+      <p className="text-[11px] text-muted-foreground">
         Titan estimate: <span className="text-gold-soft">{displayMoney(totalCents)}</span> · ~{durationMinutes} min
         {selectedService ? ` · ${selectedService.title}` : ''}
       </p>
@@ -272,15 +280,18 @@ export function QuoteBuilderPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={pending || !leadId}
+          disabled={pending || !canSaveDraft}
           onClick={() => {
             setErr(null);
             startTransition(async () => {
               const d = await ensureDraft();
-              if (d) setMsg(`Draft saved. Link: ${d.publicUrl}`);
+              if (d) {
+                setMsg(`Draft saved. Link: ${d.publicUrl}`);
+                router.refresh();
+              }
             });
           }}
-          className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300"
+          className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-foreground disabled:opacity-50"
         >
           Save draft
         </button>
@@ -307,32 +318,32 @@ export function QuoteBuilderPanel({
               void navigator.clipboard.writeText(publicUrl);
               setMsg('Quote link copied.');
             }}
-            className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-400"
+            className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground"
           >
             Copy link
           </button>
         ) : null}
         {customerId ? (
-          <Link href={`/admin/customers/${customerId}`} className="rounded-xl border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-400">
+          <Link href={`/admin/customers/${customerId}`} className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground">
             Customer
           </Link>
         ) : null}
-        <Link href="/book" className="rounded-xl border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-200">
+        <Link href="/book" className="rounded-xl border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-700">
           Booking link
         </Link>
       </div>
 
-      {msg ? <p className="text-[11px] text-emerald-400">{msg}</p> : null}
-      {err ? <p className="text-[11px] text-red-300">{err}</p> : null}
+      {msg ? <p className="text-[11px] text-emerald-700">{msg}</p> : null}
+      {err ? <p className="text-[11px] text-destructive">{err}</p> : null}
 
       {estimates.length > 0 ? (
-        <ul className="space-y-2 border-t border-white/5 pt-3">
+        <ul className="space-y-2 border-t border-border pt-3">
           {estimates.map((est) => (
-            <li key={est.id} className="rounded-xl border border-white/5 bg-zinc-950/50 p-3 text-xs">
+            <li key={est.id} className="rounded-xl border border-border bg-muted/40 p-3 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="font-black text-white">{displayMoney(est.totalCents)}</p>
-                  <p className="text-[10px] text-zinc-500">
+                  <p className="font-black text-foreground">{displayMoney(est.totalCents)}</p>
+                  <p className="text-[10px] text-muted-foreground">
                     {STATUS_LABELS[est.status] ?? est.status}
                     {est.sentAt ? ` · ${formatChicagoDateTime(est.sentAt)}` : ''}
                   </p>

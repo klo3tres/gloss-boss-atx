@@ -37,7 +37,8 @@ export function WeatherReadinessWidget({
   const [snapshot, setSnapshot] = useState<WeatherSnapshot | null>(initialSnapshot);
   const [loading, setLoading] = useState(autoFetch && !initialSnapshot);
   const [expanded, setExpanded] = useState(() => {
-    if (homepageCompact) return false;
+    // Homepage: show multi-day forecast carousel by default
+    if (homepageCompact) return true;
     if (typeof window === 'undefined') return !compact;
     const saved = sessionStorage.getItem('gb_weather_forecast_expanded');
     return saved === null ? !compact : saved === '1';
@@ -156,7 +157,7 @@ export function WeatherReadinessWidget({
   const sourceLabel = snapshot?.provider === 'openweather' ? 'OpenWeather' : 'Weather service';
   const refreshedAt = snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleString() : null;
 
-  if (homepageCompact && snapshot?.ok) {
+  if (homepageCompact) {
     return (
       <section
         className={`relative overflow-hidden rounded-2xl border p-3 bg-gradient-to-b ${weatherTheme.gradient} ${borderAccent[variant]} ${className}`}
@@ -165,13 +166,24 @@ export function WeatherReadinessWidget({
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">Detailing weather</p>
-            <p className="truncate text-sm font-black text-white">
-              {snapshot.temperatureF ?? '—'}°F · {conditionLabel}
-            </p>
-            <p className="text-[9px] text-zinc-500">
-              Rain risk {rain}% · {sourceLabel}
-              {refreshedAt ? ` · ${refreshedAt}` : ''}
-            </p>
+            {loading && !snapshot ? (
+              <p className="text-sm font-black text-white">Loading Austin forecast…</p>
+            ) : snapshot?.ok ? (
+              <>
+                <p className="truncate text-sm font-black text-white">
+                  {snapshot.temperatureF ?? '—'}°F · {conditionLabel}
+                </p>
+                <p className="text-[9px] text-zinc-500">
+                  Rain risk {rain}% · {sourceLabel}
+                  {refreshedAt ? ` · ${refreshedAt}` : ''}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black text-white">Forecast unavailable</p>
+                <p className="text-[9px] text-zinc-500">{snapshot?.blocker || 'Tap refresh to try again.'}</p>
+              </>
+            )}
           </div>
           {autoFetch ? (
             <button
@@ -189,7 +201,7 @@ export function WeatherReadinessWidget({
     );
   }
 
-  const customerLight = variant === 'customer';
+  const customerLight = variant === 'customer' && !/\bbg-black/.test(className);
 
   return (
     <section
@@ -380,11 +392,12 @@ export function WeatherReadinessWidget({
             {/* Expandable Forecast Drawer */}
             {expanded && snapshot.dailyForecasts && snapshot.dailyForecasts.length > 0 && (
               <div className="space-y-2 mt-2 pt-2 border-t border-white/5">
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-5 sm:overflow-visible">
                   {snapshot.dailyForecasts.slice(0, 5).map((d) => (
-                    <div
+                    <a
                       key={d.date}
-                      className={`rounded-xl border p-2.5 text-center flex flex-col justify-between min-h-[85px] transition duration-200 ${
+                      href={`/book?date=${encodeURIComponent(d.date)}`}
+                      className={`min-w-[4.5rem] shrink-0 rounded-xl border p-2.5 text-center flex flex-col justify-between min-h-[85px] transition duration-200 sm:min-w-0 ${
                         d.isBest
                           ? 'border-gold/30 bg-gold/10'
                           : d.isRainy
@@ -405,7 +418,7 @@ export function WeatherReadinessWidget({
                           <span className="inline-block text-[8px] font-black text-emerald-400">☀️ Dry</span>
                         )}
                       </div>
-                    </div>
+                    </a>
                   ))}
                 </div>
 

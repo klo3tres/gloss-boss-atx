@@ -552,16 +552,41 @@ export async function runGooglePlacesLeadDiscovery(
         .eq('source_type', 'google_places')
         .ilike('raw_text', `%${place.placeId}%`)
         .maybeSingle();
-      if (!existing?.id) {
-        const byName = await admin
-          .from('titan_lead_radar_items')
-          .select('id')
-          .eq('workspace_key', workspaceKey)
-          .eq('source_type', 'google_places')
-          .eq('source_name', place.name)
-          .maybeSingle();
-        if (byName.data?.id) continue;
-      } else continue;
+      if (existing?.id) continue;
+
+      const { data: byUrl } = await admin
+        .from('titan_lead_radar_items')
+        .select('id')
+        .eq('workspace_key', workspaceKey)
+        .eq('source_url', fingerprint)
+        .maybeSingle();
+      if (byUrl?.id) continue;
+
+      const byName = await admin
+        .from('titan_lead_radar_items')
+        .select('id')
+        .eq('workspace_key', workspaceKey)
+        .eq('source_type', 'google_places')
+        .eq('source_name', place.name)
+        .maybeSingle();
+      if (byName.data?.id) continue;
+
+      if (place.phone) {
+        const digits = place.phone.replace(/\D/g, '').slice(-10);
+        if (digits.length >= 10) {
+          const { data: phoneRows } = await admin
+            .from('titan_lead_radar_items')
+            .select('id, phone')
+            .eq('workspace_key', workspaceKey)
+            .eq('source_type', 'google_places')
+            .not('phone', 'is', null)
+            .limit(200);
+          const phoneHit = (phoneRows ?? []).find(
+            (r) => String((r as { phone?: string }).phone ?? '').replace(/\D/g, '').slice(-10) === digits,
+          );
+          if (phoneHit?.id) continue;
+        }
+      }
 
       const details = await fetchPlaceDetails(place.placeId);
       const intent = mapPlacesCategoryToIntent(q.query);
@@ -575,7 +600,7 @@ export async function runGooglePlacesLeadDiscovery(
         workspace_key: workspaceKey,
         source_type: 'google_places',
         source_name: place.name,
-        source_url: mapsUrl.startsWith('http') ? mapsUrl : fingerprint,
+        source_url: fingerprint,
         author_name: place.name,
         author_profile_url: place.website,
         location_text: place.address,
@@ -630,24 +655,40 @@ export async function convertLeadToOpportunity(
   const item = rowToItem(row as Record<string, unknown>);
   if (item.opportunityId) return { ok: true, opportunityId: item.opportunityId };
 
+  const businessLabel = item.sourceName ?? item.authorName ?? 'Lead Radar';
+  const hay = `${item.sourceName ?? ''} ${item.rawText ?? ''} ${item.locationText ?? ''}`.toLowerCase();
   const oppType =
-    item.detectedIntent === 'fleet_cleaning'
-      ? 'fleet'
-      : item.detectedIntent === 'apartment_resident_event'
-        ? 'apartment_hoa'
-        : item.sourceType === 'referral' || item.sourceType === 'coworker_nurse'
-          ? 'warm_lead'
-          : 'manual_prospect';
+    item.sourceType === 'google_places'
+      ? /dealer|dealership/.test(hay)
+        ? 'dealership'
+        : item.detectedIntent === 'fleet_cleaning'
+          ? 'fleet'
+          : item.detectedIntent === 'apartment_resident_event'
+            ? 'apartment_hoa'
+            : 'google_places'
+      : item.detectedIntent === 'fleet_cleaning'
+        ? 'fleet'
+        : item.detectedIntent === 'apartment_resident_event'
+          ? 'apartment_hoa'
+          : item.sourceType === 'referral' || item.sourceType === 'coworker_nurse'
+            ? 'warm_lead'
+            : 'manual_prospect';
 
-  const title = `${INTENT_LABELS[item.detectedIntent] ?? 'Lead'} — ${item.sourceName ?? item.authorName ?? 'Lead Radar'}`;
+  const title = `${INTENT_LABELS[item.detectedIntent] ?? 'Lead'} — ${businessLabel}`;
   const notes = [item.rawText, item.sourceUrl ? `Source: ${item.sourceUrl}` : ''].filter(Boolean).join('\n\n');
+  const estimatedCents =
+    item.estimatedRevenue > 0 ? Math.round(item.estimatedRevenue * 100) : 0;
+  const valueExplanation =
+    estimatedCents > 0
+      ? 'Category estimate from discovery — confirm with a real quote before treating as booked revenue.'
+      : 'No reliable estimate yet — build a quote from real service pricing.';
 
   const created = await createRevenueOpportunity(
     admin,
     {
       title,
       opportunityType: oppType,
-      estimatedRevenueCents: Math.round(item.estimatedRevenue * 100),
+      estimatedRevenueCents: estimatedCents,
       contactName: item.contactName ?? item.authorName ?? undefined,
       contactPhone: item.phone ?? undefined,
       contactEmail: item.email ?? undefined,
@@ -657,6 +698,19 @@ export async function convertLeadToOpportunity(
       source: SOURCE_TYPE_LABELS[item.sourceType] ?? item.sourceType,
       confidenceScore: item.confidenceScore,
       whySurfaced: item.whyTitanFlagged,
+      businessName: item.sourceType === 'google_places' ? businessLabel : undefined,
+      businessAddress: item.locationText || undefined,
+      websiteUrl: item.authorProfileUrl || item.sourceUrl || undefined,
+      valueExplanation,
+      sourceUrl: item.sourceUrl || undefined,
+      keywordMatched:
+        item.sourceType === 'google_places' && item.sourceUrl
+          ? item.sourceUrl.startsWith('google_places:')
+            ? item.sourceUrl
+            : `google_places:${item.sourceUrl}`
+          : item.id
+            ? `lead_radar:${item.id}`
+            : undefined,
     },
     workspaceKey,
   );
