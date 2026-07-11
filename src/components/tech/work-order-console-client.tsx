@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText, X, Wrench, Sparkles, Car, Gift } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
@@ -9,24 +10,19 @@ import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
 import { WorkOrderAssigneeChip } from '@/components/tech/work-order-assignee-chip';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { type InvoicePricingSnapshot } from '@/components/tech/work-order-invoice-builder';
-import { WorkOrderLedgerPanel, type LedgerDiscountRow, type LedgerPaymentRow } from '@/components/tech/work-order-ledger-panel';
-import { WorkOrderMileagePanel } from '@/components/tech/work-order-mileage-panel';
+import type { LedgerDiscountRow, LedgerPaymentRow } from '@/components/tech/work-order-ledger-panel';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import type { ReceiptParityDebug } from '@/lib/receipt-totals';
-import { ReceiptLedgerDebugPanel } from '@/components/admin/receipt-ledger-debug-panel';
 import type { JobPricingDisplay } from '@/lib/job-pricing-display';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
-import { WorkOrderPhotoUpload } from '@/app/(dashboard)/tech/work-order-photo-upload';
 import { WorkOrderCompletePanel } from '@/components/tech/work-order-complete-panel';
-import { WorkOrderGallery, type WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
-import { WorkOrderVehiclesForm } from '@/components/tech/work-order-vehicles-form';
+import type { WorkOrderGalleryPhoto } from '@/app/(dashboard)/tech/work-order-gallery';
 import { WorkOrderCollapsible } from '@/components/tech/work-order-collapsible';
-import { WorkOrderPreInspection } from '@/components/tech/work-order-pre-inspection';
 import { WorkOrderSchedulePanel } from '@/components/tech/work-order-schedule-panel';
 import { WorkOrderBalanceCheckout } from '@/components/tech/work-order-balance-checkout';
 import { AppointmentScheduleControls } from '@/components/admin/appointment-schedule-controls';
 import { WorkOrderConfirmationPanel } from '@/components/admin/work-order-confirmation-panel';
-import { WorkOrderGrowthPanel, type WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
+import type { WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
 import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 import type { ConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
@@ -36,6 +32,40 @@ import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(da
 import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
 import { JobWeatherIndicator } from '@/components/weather/job-weather-indicator';
+
+const DeferredWorkOrderPanel = () => <div className='h-40 animate-pulse rounded-2xl border border-white/5 bg-white/[0.03]' />;
+const WorkOrderLedgerPanel = dynamic(
+  () => import('@/components/tech/work-order-ledger-panel').then((mod) => mod.WorkOrderLedgerPanel),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderMileagePanel = dynamic(
+  () => import('@/components/tech/work-order-mileage-panel').then((mod) => mod.WorkOrderMileagePanel),
+  { loading: DeferredWorkOrderPanel },
+);
+const ReceiptLedgerDebugPanel = dynamic(
+  () => import('@/components/admin/receipt-ledger-debug-panel').then((mod) => mod.ReceiptLedgerDebugPanel),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderPhotoUpload = dynamic(
+  () => import('@/app/(dashboard)/tech/work-order-photo-upload').then((mod) => mod.WorkOrderPhotoUpload),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderGallery = dynamic(
+  () => import('@/app/(dashboard)/tech/work-order-gallery').then((mod) => mod.WorkOrderGallery),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderVehiclesForm = dynamic(
+  () => import('@/components/tech/work-order-vehicles-form').then((mod) => mod.WorkOrderVehiclesForm),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderPreInspection = dynamic(
+  () => import('@/components/tech/work-order-pre-inspection').then((mod) => mod.WorkOrderPreInspection),
+  { loading: DeferredWorkOrderPanel },
+);
+const WorkOrderGrowthPanel = dynamic(
+  () => import('@/components/tech/work-order-growth-panel').then((mod) => mod.WorkOrderGrowthPanel),
+  { loading: DeferredWorkOrderPanel },
+);
 
 function scrollToSection(id: string) {
   const el = document.getElementById(id);

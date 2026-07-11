@@ -273,14 +273,19 @@ export default async function TechnicianDashboardPage({
     const legalIds = new Set<string>();
     const customerAddressById = new Map<string, string>();
     if (ids.length > 0) {
-      const { data: subs } = await db.from('intake_submissions').select('appointment_id').in('appointment_id', ids);
+      const [subResult, sigResult, agreementResult] = await Promise.all([
+        db.from('intake_submissions').select('appointment_id').in('appointment_id', ids),
+        db.from('signed_agreements').select('appointment_id').in('appointment_id', ids),
+        db.from('job_agreements').select('appointment_id').in('appointment_id', ids),
+      ]);
+      const { data: subs } = subResult;
       intakeIds = new Set((subs ?? []).map((s) => String((s as { appointment_id: string }).appointment_id)));
-      const { data: sigs } = await db.from('signed_agreements').select('appointment_id').in('appointment_id', ids);
+      const { data: sigs } = sigResult;
       for (const row of sigs ?? []) {
         const aid = String((row as { appointment_id?: string }).appointment_id ?? '');
         if (aid) legalIds.add(aid);
       }
-      const { data: jobAgreements } = await db.from('job_agreements').select('appointment_id').in('appointment_id', ids);
+      const { data: jobAgreements } = agreementResult;
       for (const row of jobAgreements ?? []) {
         const aid = String((row as { appointment_id?: string }).appointment_id ?? '');
         if (aid) legalIds.add(aid);
@@ -323,12 +328,16 @@ export default async function TechnicianDashboardPage({
       map.set(key, cur);
     };
     if (ids.length > 0) {
-      const { data: med } = await db.from('job_media').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
+      const [mediaResult, photoResult] = await Promise.all([
+        db.from('job_media').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids),
+        db.from('job_photos').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids),
+      ]);
+      const { data: med } = mediaResult;
       for (const m of med ?? []) {
         const row = m as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         addPhoto(mediaByAppt, String(row.appointment_id ?? ''), row);
       }
-      const { data: photos } = await db.from('job_photos').select('appointment_id, category, photo_category, file_url, media_url, public_url, created_at').in('appointment_id', ids);
+      const { data: photos } = photoResult;
       for (const p of photos ?? []) {
         const row = p as { appointment_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         addPhoto(mediaByAppt, String(row.appointment_id ?? ''), row);
@@ -361,7 +370,8 @@ export default async function TechnicianDashboardPage({
         )
         .eq('technician_id', uid)
         .in('appointment_id', ids)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(100);
       const noteRows = !nq.error ? (nq.data ?? []) : [];
       if (nq.error) {
         console.warn('[tech dashboard] tech_job_notes select', nq.error.message);
@@ -430,13 +440,17 @@ export default async function TechnicianDashboardPage({
 
     const fallbackIds = Array.from(openTimerByFallback.keys());
     if (fallbackIds.length > 0) {
-      const { data: fallbackRows, error: fallbackErr } = await db
-        .from('booking_fallbacks')
-      .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, vehicle_class, payload, created_at')
-        .in('id', fallbackIds);
+      const [fallbackResult, fallbackMediaResult, fallbackPhotosResult] = await Promise.all([
+        db.from('booking_fallbacks')
+          .select('id, status, guest_name, guest_phone, guest_email, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, vehicle_class, payload, created_at')
+          .in('id', fallbackIds),
+        db.from('job_media').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds),
+        db.from('job_photos').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds),
+      ]);
+      const { data: fallbackRows, error: fallbackErr } = fallbackResult;
       if (fallbackErr) console.warn('[tech dashboard] fallback active select', fallbackErr.message);
       const mediaByFallback = new Map<string, { before: number; after: number; beforePhotos: { url: string; category: string; uploadedAt: string | null }[]; afterPhotos: { url: string; category: string; uploadedAt: string | null }[] }>();
-      const { data: fallbackMedia } = await db.from('job_media').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds);
+      const { data: fallbackMedia } = fallbackMediaResult;
       for (const m of fallbackMedia ?? []) {
         const row = m as { fallback_booking_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const fid = String(row.fallback_booking_id ?? '');
@@ -452,7 +466,7 @@ export default async function TechnicianDashboardPage({
         }
         mediaByFallback.set(fid, cur);
       }
-      const { data: fallbackPhotos } = await db.from('job_photos').select('fallback_booking_id, category, photo_category, file_url, media_url, public_url, created_at').in('fallback_booking_id', fallbackIds);
+      const { data: fallbackPhotos } = fallbackPhotosResult;
       for (const p of fallbackPhotos ?? []) {
         const row = p as { fallback_booking_id?: string; category?: string; photo_category?: string; file_url?: string; media_url?: string; public_url?: string; created_at?: string };
         const fid = String(row.fallback_booking_id ?? '');
@@ -578,7 +592,9 @@ export default async function TechnicianDashboardPage({
       .from('appointments')
       .select('id, base_price_cents, job_completed_at, updated_at, booking_add_ons, service_slug')
       .eq('assigned_technician_id', uid)
-      .eq('status', 'completed');
+      .eq('status', 'completed')
+      .order('job_completed_at', { ascending: false })
+      .limit(500);
     const now = new Date();
     const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const sow = sod - 7 * 86400000;

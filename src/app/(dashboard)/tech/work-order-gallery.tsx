@@ -167,7 +167,7 @@ export function WorkOrderGallery({
                   }`}
                   aria-label={`${pretty(p.category)} ${i + 1} of ${photos.length}`}
                 >
-                  <img src={p.url} alt="" className="h-full w-full object-cover" />
+                  <img src={p.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 </button>
               );
             })}
@@ -267,7 +267,7 @@ export function WorkOrderGallery({
                   onClick={() => setActive(p)}
                   className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${p.url === active.url ? 'border-gold' : 'border-white/10'}`}
                 >
-                  <img src={p.url} alt="" className="h-full w-full object-cover" />
+                  <img src={p.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>

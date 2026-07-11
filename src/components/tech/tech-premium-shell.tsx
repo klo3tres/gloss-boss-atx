@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { TechWelcomeBanner } from '@/components/tech/tech-welcome-banner';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { motion } from 'framer-motion';
 import {
   CalendarDays,
   Camera,
@@ -24,11 +24,8 @@ import {
   ChevronRight,
   Trophy,
 } from 'lucide-react';
-import { TeamGoalsScoreboard } from '@/components/goals/team-goals-scoreboard';
 import type { TeamGoalRow } from '@/components/goals/team-goals-scoreboard';
 import type { StaffAchievement } from '@/lib/goals-achievements';
-import { TechFieldTools } from '@/app/(dashboard)/tech/tech-field-tools';
-import { TechJobsClient } from '@/app/(dashboard)/tech/tech-jobs-client';
 import { TechTimerControls } from '@/app/(dashboard)/tech/tech-timer-controls';
 import { ConfirmSubmitButton } from '@/components/ui/confirm-submit-button';
 import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/app/(dashboard)/tech/tech-actions';
@@ -105,10 +102,33 @@ function vehicleLines(job: Pick<TechJob, 'booking_vehicles' | 'vehicle_descripti
 import { workOrderPath } from '@/lib/work-order-links';
 import { isRealTimerId, isStaleTimerStart } from '@/lib/tech-job-filters';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
-import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
-import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-widget';
-import { UnifiedCalendarView } from '@/components/calendar/unified-calendar-view';
 import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
+
+const DeferredPanel = () => <div className='h-28 animate-pulse rounded-2xl border border-white/5 bg-white/[0.03]' />;
+const TeamGoalsScoreboard = dynamic(
+  () => import('@/components/goals/team-goals-scoreboard').then((mod) => mod.TeamGoalsScoreboard),
+  { loading: DeferredPanel },
+);
+const TechFieldTools = dynamic(
+  () => import('@/app/(dashboard)/tech/tech-field-tools').then((mod) => mod.TechFieldTools),
+  { loading: DeferredPanel },
+);
+const TechJobsClient = dynamic(
+  () => import('@/app/(dashboard)/tech/tech-jobs-client').then((mod) => mod.TechJobsClient),
+  { loading: DeferredPanel },
+);
+const WeatherReadinessWidget = dynamic(
+  () => import('@/components/widgets/weather-readiness-widget').then((mod) => mod.WeatherReadinessWidget),
+  { loading: DeferredPanel },
+);
+const UpcomingScheduleWidget = dynamic(
+  () => import('@/components/widgets/upcoming-schedule-widget').then((mod) => mod.UpcomingScheduleWidget),
+  { loading: DeferredPanel },
+);
+const UnifiedCalendarView = dynamic(
+  () => import('@/components/calendar/unified-calendar-view').then((mod) => mod.UnifiedCalendarView),
+  { loading: DeferredPanel },
+);
 
 function workOrderHref(job: TechJob) {
   const id = job.isFallback && job.fallback_booking_id ? job.fallback_booking_id : job.id;
@@ -398,9 +418,7 @@ export function TechPremiumShell({
             <div className='pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_at_top,rgba(212,166,77,0.14),transparent_55%)]' />
             <p className='relative text-xs font-black uppercase tracking-[0.25em] text-gold-soft'>Live dispatch metrics</p>
             <div className='relative mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5'>
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
+              <div
                 className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'
               >
                 <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
@@ -408,7 +426,7 @@ export function TechPremiumShell({
                   Jobs today
                 </p>
                 <p className='mt-2.5 text-3xl font-black text-white'>{todayJobs.length}</p>
-              </motion.div>
+              </div>
               <div className='rounded-xl border border-gold/15 bg-black/60 px-4 py-3.5 shadow-lg backdrop-blur-sm hover:border-gold/30 transition duration-300'>
                 <p className='flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-zinc-400'>
                   <TrendingUp className='h-3.5 w-3.5 text-emerald-400' aria-hidden />
@@ -449,11 +467,9 @@ export function TechPremiumShell({
                   {goalLabel ?? 'Weekly goal'}
                 </p>
                 <div className='mt-2 h-2 overflow-hidden rounded-full bg-zinc-900'>
-                  <motion.div
+                  <div
                     className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400'
-                    initial={{ width: 0 }}
-                    animate={{ width: `${goalPct}%` }}
-                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                    style={{ width: `${goalPct}%` }}
                   />
                 </div>
                 <p className='mt-2 text-[10px] text-zinc-400 leading-tight'>
@@ -665,7 +681,7 @@ export function TechPremiumShell({
                     <div className='mt-3 grid grid-cols-4 gap-2'>
                       {activeJob.beforePhotos.map((photo) => (
                         <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                          <img src={photo.url} alt={`${photo.category} before`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <img src={photo.url} alt={`${photo.category} before`} loading='lazy' decoding='async' className='aspect-square rounded-lg border border-white/10 object-cover' />
                           <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
                         </div>
                       ))}
@@ -685,7 +701,7 @@ export function TechPremiumShell({
                     <div className='mt-3 grid grid-cols-4 gap-2'>
                       {activeJob.afterPhotos.map((photo) => (
                         <div key={`${photo.url}-${photo.category}`} className='space-y-1'>
-                          <img src={photo.url} alt={`${photo.category} after`} className='aspect-square rounded-lg border border-white/10 object-cover' />
+                          <img src={photo.url} alt={`${photo.category} after`} loading='lazy' decoding='async' className='aspect-square rounded-lg border border-white/10 object-cover' />
                           <p className='truncate text-[9px] uppercase text-zinc-400'>{photo.category.replace(/_/g, ' ')}</p>
                         </div>
                       ))}
