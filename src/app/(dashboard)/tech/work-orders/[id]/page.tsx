@@ -939,6 +939,7 @@ export default async function TechWorkOrderDetailPage({
     gateNotes,
     paymentComplete,
     agreementSigned,
+    agreementStatus: str(row.agreement_status) || (agreementSigned ? 'signed' : 'not_sent'),
     agreementCaptureHref,
     agreementDetailHref,
     agreementPdfHref,
@@ -946,7 +947,15 @@ export default async function TechWorkOrderDetailPage({
     agreementSignedAt: displayChicago(agreementRow?.signed_at, ''),
     agreementSmsConsent: Boolean(agreementRow?.sms_consent || agreementRow?.text_consent || agreementRow?.marketing_sms_consent),
     agreementPhotoConsent: Boolean(agreementRow?.photo_consent || agreementRow?.photos_consent || agreementRow?.before_after_photo_consent),
-    agreementMediaConsent: Boolean(agreementRow?.media_consent || agreementRow?.marketing_photo_consent || agreementRow?.social_media_consent),
+    agreementMediaConsent: Boolean(
+      agreementRow?.media_consent ||
+        agreementRow?.marketing_media_consent ||
+        agreementRow?.marketing_photo_consent ||
+        agreementRow?.social_media_consent,
+    ),
+    accessToken: str(row.access_token) || undefined,
+    currentUserId: session.user.id,
+    appointmentIdForAgreement: !isFallback ? queryId : '',
     technicianName: resolved.technicianName ?? '',
     assignedTechnicianId: str(row.assigned_technician_id) || null,
     technicians,

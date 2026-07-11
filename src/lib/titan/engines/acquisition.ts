@@ -24,8 +24,11 @@ function cardFromScanner(opp: TitanBriefing['opportunityScanner']['feed'][0]): T
       ? `Matched "${opp.keywordMatched}" · score ${opp.score} · ${opp.sourceLabel ?? opp.sourcePlatform}`
       : `Score ${opp.score} · ${opp.tier.replace('_', ' ')} opportunity`,
     timeToCloseDays: timeToCloseFromScore(opp.score),
-    href: '/admin/super',
+    href: `/admin/titan/opportunities?open=${encodeURIComponent(opp.id)}`,
+    opportunityId: opp.id,
     outreachRecommendation: opp.suggestedReply ?? opp.suggestedDm ?? undefined,
+    contactPhone: null,
+    contactEmail: null,
   };
 }
 
@@ -39,8 +42,11 @@ function cardFromProspect(p: TitanProspect): TitanRevenueCard {
     nextAction: p.phone ? 'Call with script' : p.email ? 'Send partnership email' : 'Research contact',
     reason: p.scoreReason ?? `${prospectTypeLabel(p.prospectType)} within service radius`,
     timeToCloseDays: timeToCloseFromScore(p.score),
-    href: '/admin/super',
+    href: '/admin/titan/lead-radar',
+    opportunityId: null,
     outreachRecommendation: pkg.callScript.slice(0, 200),
+    contactPhone: p.phone,
+    contactEmail: p.email,
   };
 }
 
@@ -57,6 +63,9 @@ function cardFromRebook(
     reason: `${o.daysSinceLastService} days since last service · usual interval ~${o.avgIntervalDays} days`,
     timeToCloseDays: 7,
     href: o.customerId ? `/admin/customers/${o.customerId}` : '/admin/follow-ups',
+    opportunityId: null,
+    contactPhone: null,
+    contactEmail: null,
   };
 }
 

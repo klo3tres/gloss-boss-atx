@@ -12,7 +12,7 @@ export default async function TitanHomePage() {
   const admin = tryCreateAdminSupabase();
   const ctx = admin ? await resolveBusinessContext(admin) : null;
   if (!ctx || !admin) return null;
-  if (ctx.business.isPlatformTenant) redirect('/admin/titan?workspace=growth');
+  if (ctx.business.isPlatformTenant) redirect('/admin/titan?workspace=today');
 
   const [integrations, opps] = await Promise.all([
     loadBusinessIntegrations(admin, ctx.businessId),

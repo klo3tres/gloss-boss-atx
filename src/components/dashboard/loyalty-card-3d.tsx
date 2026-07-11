@@ -27,6 +27,44 @@ interface LoyaltyCard3DProps {
   showRewardBanner?: boolean;
 }
 
+function BrandedCardFace({
+  eyebrow,
+  title,
+  footer,
+}: {
+  eyebrow: string;
+  title: string;
+  footer: string;
+}) {
+  return (
+    <div className="relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#1a1408] via-[#0c0a07] to-[#12100c] p-6">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-40"
+        style={{
+          background:
+            'radial-gradient(circle at 20% 15%, rgba(212,175,55,0.28), transparent 42%), radial-gradient(circle at 85% 80%, rgba(212,166,77,0.12), transparent 40%)',
+        }}
+        aria-hidden
+      />
+      <div className="relative">
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">{eyebrow}</p>
+        <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-400">{title}</p>
+      </div>
+      <div className="relative flex items-center gap-2">
+        <img
+          src="/brand/glossboss-clean-logo.png"
+          alt=""
+          className="h-8 w-auto object-contain opacity-90"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+        />
+        <p className="text-[9px] font-mono text-zinc-400">{footer}</p>
+      </div>
+    </div>
+  );
+}
+
 function StampOverlay({
   loyaltyTarget,
   currentStep,
@@ -49,6 +87,9 @@ function StampOverlay({
         const size = pos.size ?? LOYALTY_STAMP_DEFAULT_SIZE;
         const rewardLit = slot.isRewardSlot && (isRewardReady || currentStep >= loyaltyTarget);
 
+        // Only render punch art for filled stamps; empty slots stay invisible (no black circles).
+        if (!slot.isPunched && !slot.isRewardSlot) return null;
+
         return (
           <div
             key={slot.index}
@@ -62,8 +103,8 @@ function StampOverlay({
               slot.isPunched
                 ? 'border-gold bg-black/85 shadow-[0_0_10px_rgba(212,175,55,0.45)]'
                 : rewardLit
-                  ? 'border-emerald-400/60 bg-emerald-500/25 animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.35)]'
-                  : 'border-transparent bg-transparent'
+                  ? 'border-emerald-400/60 bg-emerald-500/25'
+                  : 'border-white/15 bg-black/40'
             }`}
           >
             {slot.isPunched ? (
@@ -78,12 +119,12 @@ function StampOverlay({
                 />
                 <Sparkles className="absolute h-[30%] w-[30%] text-gold" />
               </motion.div>
-            ) : slot.isRewardSlot ? (
+            ) : (
               <div className="flex flex-col items-center justify-center">
                 <Gift className={`h-[42%] w-[42%] ${rewardLit ? 'text-emerald-300' : 'text-white/25'}`} />
                 <span className={`text-[7px] font-black uppercase ${rewardLit ? 'text-emerald-200' : 'text-white/30'}`}>FREE</span>
               </div>
-            ) : null}
+            )}
           </div>
         );
       })}
@@ -108,6 +149,8 @@ export function LoyaltyCard3D({
   const [isFlipped, setIsFlipped] = useState(forceState === 'back');
   const [frontImageFailed, setFrontImageFailed] = useState(false);
   const [backImageFailed, setBackImageFailed] = useState(false);
+  const [frontLoaded, setFrontLoaded] = useState(false);
+  const [backLoaded, setBackLoaded] = useState(false);
 
   useEffect(() => {
     if (forceState === 'front') setIsFlipped(false);
@@ -117,6 +160,8 @@ export function LoyaltyCard3D({
   useEffect(() => {
     setFrontImageFailed(false);
     setBackImageFailed(false);
+    setFrontLoaded(false);
+    setBackLoaded(false);
   }, [activeCardDesign?.front_image_url, activeCardDesign?.back_image_url]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -145,6 +190,8 @@ export function LoyaltyCard3D({
   const showBackImage = Boolean(backImg && !backImageFailed);
   const lockedPreview = Boolean(forceState);
   const flipRotation = isFlipped ? 180 : 0;
+  const showFrontSkeleton = Boolean(frontImg && !frontImageFailed && !frontLoaded);
+  const showBackSkeleton = Boolean(backImg && !backImageFailed && !backLoaded);
 
   return (
     <div className={`mx-auto w-full max-w-[min(100%,420px)] ${className}`}>
@@ -168,29 +215,27 @@ export function LoyaltyCard3D({
           }}
           transition={{ type: 'spring', stiffness: 200, damping: 22 }}
           style={{ transformStyle: 'preserve-3d', aspectRatio: String(LOYALTY_CARD_ASPECT) }}
-          className="relative w-full cursor-pointer select-none rounded-2xl border border-gold/25 bg-zinc-950 shadow-[0_0_32px_rgba(212,175,55,0.12)]"
+          className="relative w-full cursor-pointer select-none rounded-2xl border border-gold/25 bg-gradient-to-br from-[#1a1408] via-[#0c0a07] to-[#12100c] shadow-[0_0_32px_rgba(212,175,55,0.12)]"
         >
           {/* FRONT */}
           <div
             className="absolute inset-0 flex items-center justify-center rounded-2xl"
             style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
           >
+            {showFrontSkeleton ? (
+              <div className="h-full w-full animate-pulse rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />
+            ) : null}
             {showFrontImage ? (
               <img
                 src={frontImg}
                 alt="Loyalty card front"
+                onLoad={() => setFrontLoaded(true)}
                 onError={() => setFrontImageFailed(true)}
-                className="h-full w-full object-contain object-center"
+                className={`h-full w-full object-contain object-center ${showFrontSkeleton ? 'opacity-0' : 'opacity-100'}`}
                 draggable={false}
               />
             ) : (
-              <div className="flex h-full w-full flex-col justify-between rounded-2xl bg-gradient-to-br from-zinc-950 via-neutral-900 to-zinc-950 p-6">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gold-soft">Gloss Boss ATX</p>
-                  <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">VIP Loyalty Card</p>
-                </div>
-                <p className="text-[9px] font-mono text-zinc-400">{customerEmail}</p>
-              </div>
+              <BrandedCardFace eyebrow="Gloss Boss ATX" title="VIP Loyalty Card" footer={customerEmail} />
             )}
           </div>
 
@@ -204,19 +249,20 @@ export function LoyaltyCard3D({
             }}
           >
             <div className="relative h-full w-full">
+              {showBackSkeleton ? (
+                <div className="absolute inset-0 z-10 animate-pulse rounded-2xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />
+              ) : null}
               {showBackImage ? (
                 <img
                   src={backImg}
                   alt="Loyalty card back"
+                  onLoad={() => setBackLoaded(true)}
                   onError={() => setBackImageFailed(true)}
-                  className="h-full w-full object-contain object-center"
+                  className={`h-full w-full object-contain object-center ${showBackSkeleton ? 'opacity-0' : 'opacity-100'}`}
                   draggable={false}
                 />
               ) : (
-                <div className="flex h-full w-full flex-col justify-between rounded-2xl bg-gradient-to-br from-zinc-950 via-neutral-900 to-zinc-950 p-6">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-gold-soft">Stamp card</p>
-                  <p className="text-[9px] text-zinc-400">Punches: {currentStamps}</p>
-                </div>
+                <BrandedCardFace eyebrow="Gloss Boss ATX" title="Stamp card" footer={`Punches: ${currentStamps}`} />
               )}
               <StampOverlay loyaltyTarget={loyaltyTarget} currentStep={currentStep} isRewardReady={isRewardReady} />
             </div>
@@ -232,10 +278,10 @@ export function LoyaltyCard3D({
         <div className="mt-2 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-[10px] text-amber-100">
           <p className="font-bold">Card artwork</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-zinc-400">
-            {!frontImg && <li>Front image missing in membership plan.</li>}
-            {frontImg && frontImageFailed && <li>Front image failed to load.</li>}
+            {!frontImg && <li>Front image missing — showing branded fallback.</li>}
+            {frontImg && frontImageFailed && <li>Front image failed to load — branded fallback in use.</li>}
             {!backImg && <li>Back image missing — stamp alignment uses default positions.</li>}
-            {backImg && backImageFailed && <li>Back image failed to load.</li>}
+            {backImg && backImageFailed && <li>Back image failed to load — branded fallback in use.</li>}
           </ul>
         </div>
       )}

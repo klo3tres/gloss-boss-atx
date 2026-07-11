@@ -335,6 +335,7 @@ export async function sendBookingConfirmation(
       const { enqueueWelcomeCadence } = await import('@/lib/customer-notification-cadence');
       await enqueueWelcomeCadence(admin, {
         appointmentId: ctx.appointmentId,
+        customerId: ctx.customerId,
         customerName: ctx.guestName,
         customerPhone: ctx.guestPhone || null,
         customerEmail: ctx.guestEmail || null,
@@ -344,6 +345,44 @@ export async function sendBookingConfirmation(
       });
     } catch (e) {
       console.warn('[booking-confirmation] welcome cadence skipped', e);
+    }
+    try {
+      const { data: apptToken } = await admin
+        .from('appointments')
+        .select('access_token')
+        .eq('id', ctx.appointmentId)
+        .maybeSingle();
+      const accessToken = str((apptToken as { access_token?: string } | null)?.access_token);
+      const { enqueueAgreementReminderCadence } = await import('@/lib/agreements/reminders');
+      await enqueueAgreementReminderCadence(admin, {
+        appointmentId: ctx.appointmentId,
+        customerId: ctx.customerId,
+        scheduledStart: ctx.whenIso,
+        accessToken: accessToken || null,
+      });
+    } catch (e) {
+      console.warn('[booking-confirmation] agreement reminders skipped', e);
+    }
+    try {
+      const { data: assigned } = await admin
+        .from('appointments')
+        .select('assigned_technician_id, scheduled_start, guest_name, service_slug')
+        .eq('id', ctx.appointmentId)
+        .maybeSingle();
+      const techId = String((assigned as { assigned_technician_id?: string } | null)?.assigned_technician_id ?? '').trim();
+      if (techId) {
+        const { enqueueStaffJobReminders } = await import('@/lib/staff-notification-router');
+        await enqueueStaffJobReminders(admin, {
+          appointmentId: ctx.appointmentId,
+          technicianId: techId,
+          scheduledStart:
+            String((assigned as { scheduled_start?: string } | null)?.scheduled_start ?? '') || ctx.whenIso,
+          guestName: String((assigned as { guest_name?: string } | null)?.guest_name ?? ctx.guestName),
+          serviceSlug: String((assigned as { service_slug?: string } | null)?.service_slug ?? ''),
+        });
+      }
+    } catch (e) {
+      console.warn('[booking-confirmation] staff job reminders skipped', e);
     }
   }
 

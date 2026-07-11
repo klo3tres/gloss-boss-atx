@@ -9,6 +9,7 @@ import {
   loadTitanNotificationEvents,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationUnread,
   archiveAllNotifications,
 } from '@/lib/titan/notification-events';
 import { pushoverConfigured, sendPushoverNotification } from '@/lib/pushover';
@@ -33,6 +34,14 @@ export async function markNotificationReadAction(id: string) {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
   await markNotificationRead(gate.admin, id);
+  revalidatePath('/admin/notifications');
+  return { ok: true };
+}
+
+export async function markNotificationUnreadAction(id: string) {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+  await markNotificationUnread(gate.admin, id);
   revalidatePath('/admin/notifications');
   return { ok: true };
 }

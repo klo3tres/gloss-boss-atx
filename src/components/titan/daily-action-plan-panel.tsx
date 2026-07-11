@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { ChevronRight, Send, X, Eye } from 'lucide-react';
+import { ChevronRight, Eye, RefreshCw, Send, X } from 'lucide-react';
 import type { DailyExecutableAction } from '@/lib/titan/daily-action-plan';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
@@ -12,6 +12,7 @@ import { markOpportunityStatusAction } from '@/app/(dashboard)/admin/titan/oppor
 import {
   dismissDailyActionAction,
   markDailyActionSentAction,
+  regenerateDailyActionPlanAction,
 } from '@/app/(dashboard)/admin/daily-action-actions';
 
 function actionChannels(action: DailyExecutableAction): Array<'sms' | 'email'> {
@@ -95,7 +96,7 @@ function openActionModal(
   });
 }
 
-function ActionCard({ action }: { action: DailyExecutableAction }) {
+export function ActionCard({ action }: { action: DailyExecutableAction }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { openPreview } = useOutboundPreview();
@@ -123,6 +124,11 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
           <p className="text-[9px] font-black uppercase tracking-wider text-gold-soft">{action.actionType.replace('_', ' ')}</p>
           <h3 className="mt-1 text-sm font-black text-foreground">{action.title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">{action.involvedNames}</p>
+          {action.carriedOver ? (
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
+              Carried over{action.actionDate ? ` · ${action.actionDate}` : ''}
+            </p>
+          ) : null}
         </div>
         <div className="text-right">
           <p className="text-sm font-black text-emerald-600 dark:text-emerald-300">{action.expectedValueLabel}</p>
@@ -192,27 +198,88 @@ function ActionCard({ action }: { action: DailyExecutableAction }) {
   );
 }
 
-export function DailyActionPlanPanel({ actions }: { actions: DailyExecutableAction[] }) {
-  if (actions.length === 0) {
+function formatGeneratedAt(iso: string | null | undefined) {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
+export function DailyActionPlanPanel({
+  actions,
+  lastGeneratedAt,
+  excludeIds,
+}: {
+  actions: DailyExecutableAction[];
+  lastGeneratedAt?: string | null;
+  /** Skip actions already shown in Highest ROI (avoids triple duplication). */
+  excludeIds?: string[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const skip = new Set(excludeIds ?? []);
+  const visible = actions.filter((a) => !skip.has(a.id));
+  const generatedLabel = formatGeneratedAt(lastGeneratedAt);
+
+  const onRefresh = () => {
+    startTransition(async () => {
+      await regenerateDailyActionPlanAction();
+      router.refresh();
+    });
+  };
+
+  if (visible.length === 0) {
     return (
       <section className="rounded-2xl border border-border bg-card p-5">
-        <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Daily action plan</p>
-        <p className="mt-2 text-sm text-muted-foreground">No pending actions — inbox and schedule look clear.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Daily action plan</p>
+            <p className="mt-2 text-sm text-muted-foreground">No pending actions — inbox and schedule look clear.</p>
+            {generatedLabel ? <p className="mt-1 text-[10px] text-muted-foreground">Last generated {generatedLabel}</p> : null}
+          </div>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onRefresh}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[10px] font-black uppercase text-foreground hover:border-gold/30 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${pending ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+        </div>
       </section>
     );
   }
 
   return (
     <section id="daily-action-plan" className="space-y-3">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">What should I do today?</p>
-        <h2 className="mt-1 text-lg font-black text-foreground">Daily action plan</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Preview, send, or schedule each move — SMS or email when contact info is available.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">What should I do today?</p>
+          <h2 className="mt-1 text-lg font-black text-foreground">Daily action plan</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Preview, send, or schedule each move — SMS or email when contact info is available.
+          </p>
+          {generatedLabel ? <p className="mt-1 text-[10px] text-muted-foreground">Last generated {generatedLabel}</p> : null}
+        </div>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onRefresh}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[10px] font-black uppercase text-foreground hover:border-gold/30 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3 w-3 ${pending ? 'animate-spin' : ''}`} /> Refresh
+        </button>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        {actions.map((a) => (
+        {visible.map((a) => (
           <ActionCard key={a.id} action={a} />
         ))}
       </div>
@@ -275,6 +342,9 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
         <span className="font-semibold text-foreground">{move.title}</span>
         <span className="shrink-0 font-mono text-gold-soft">{move.expectedValueLabel}</span>
       </div>
+      {move.carriedOver ? (
+        <p className="mt-1 text-[10px] font-bold uppercase text-amber-600 dark:text-amber-300">Carried over</p>
+      ) : null}
       {move.valueExplanation ? <p className="mt-1 text-[10px] text-zinc-500">{move.valueExplanation}</p> : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {move.canSend ? (

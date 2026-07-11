@@ -140,6 +140,10 @@ export async function markNotificationRead(admin: SupabaseClient, id: string): P
     .is('read_at', null);
 }
 
+export async function markNotificationUnread(admin: SupabaseClient, id: string): Promise<void> {
+  await admin.from('titan_notification_events').update({ read_at: null }).eq('id', id);
+}
+
 export async function markAllNotificationsRead(admin: SupabaseClient, workspaceKey = 'default'): Promise<void> {
   const now = new Date().toISOString();
   await admin

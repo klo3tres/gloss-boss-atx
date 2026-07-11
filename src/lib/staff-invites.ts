@@ -8,6 +8,21 @@ import { logNotificationOutbox } from '@/lib/notification-outbox-log';
 import { staffInviteUrl } from '@/lib/auth/action-link-registry';
 import { logAuthEvent } from '@/lib/auth/auth-event-log';
 
+function humanSmsSkipReason(reason?: string | null): string {
+  switch (reason) {
+    case 'missing_phone':
+      return 'SMS skipped — missing phone number.';
+    case 'twilio_not_configured':
+      return 'SMS skipped — Twilio is not configured.';
+    case 'invalid_phone':
+      return 'SMS skipped — invalid phone number.';
+    case 'consent_denied':
+      return 'SMS skipped — recipient has not opted in.';
+    default:
+      return reason ? `SMS skipped — ${reason}` : 'SMS skipped.';
+  }
+}
+
 export type StaffInviteRole = 'super_admin' | 'admin' | 'dispatcher' | 'technician' | 'viewer';
 export type StaffInviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
 
@@ -222,8 +237,18 @@ export async function sendStaffInviteNotification(
       body: smsBody,
       requireConsent: false,
     });
-    smsStatus = sms.ok ? 'sent' : 'failed';
-    if (!sms.ok) smsError = sms.error ?? 'SMS send failed';
+    if (sms.ok) {
+      smsStatus = 'sent';
+    } else if (sms.skipped) {
+      smsStatus = 'skipped';
+      smsError = sms.error ?? humanSmsSkipReason(sms.skipped_reason);
+    } else {
+      smsStatus = 'failed';
+      smsError = sms.error ?? 'SMS send failed';
+    }
+  } else if (channel === 'sms' || channel === 'both') {
+    smsStatus = 'skipped';
+    smsError = 'SMS skipped — missing phone number on invite.';
   }
 
   await admin

@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Archive, Bell, CheckCheck, MailOpen } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { TitanNotificationEvent } from '@/lib/titan/notification-events';
 import { groupNotificationsByDay, mapTitanNotificationRow } from '@/lib/titan/notification-events';
 import {
+  archiveNotificationAction,
   markAllNotificationsReadAction,
   markNotificationReadAction,
+  markNotificationUnreadAction,
 } from '@/app/(dashboard)/admin/notifications/titan-notification-actions';
 
 function mapRow(row: Record<string, unknown>): TitanNotificationEvent {
@@ -32,7 +34,7 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
         .select('*')
         .is('archived_at', null)
         .order('created_at', { ascending: false })
-        .limit(12),
+        .limit(50),
       supabase
         .from('titan_notification_events')
         .select('id', { count: 'exact', head: true })
@@ -61,7 +63,7 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
   }, []);
 
   const grouped = groupNotificationsByDay(events);
-  const preview = [...grouped.today, ...grouped.yesterday].slice(0, 6);
+  const list = [...grouped.today, ...grouped.yesterday, ...grouped.older];
 
   return (
     <div ref={ref} className={`relative ${className ?? ''}`}>
@@ -81,7 +83,7 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
               <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
             </span>
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">
-              {unread > 9 ? '9+' : unread}
+              {unread > 99 ? '99+' : unread}
             </span>
           </>
         ) : null}
@@ -94,9 +96,9 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className="absolute right-0 z-[120] mt-2 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-2xl border border-gold/25 bg-black/90 shadow-2xl backdrop-blur-2xl"
+            className="absolute right-0 z-[120] mt-2 flex max-h-[70vh] w-[min(100vw-2rem,24rem)] flex-col overflow-hidden rounded-2xl border border-gold/25 bg-black/90 shadow-2xl backdrop-blur-2xl"
           >
-            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-4 py-3">
               <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Alerts</p>
               <button
                 type="button"
@@ -113,46 +115,103 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
                 <CheckCheck className="h-3 w-3" /> All read
               </button>
             </div>
-            <div className="max-h-[min(60vh,24rem)] overflow-y-auto p-2">
-              {preview.length === 0 ? (
+            <div className="min-h-0 flex-1 overflow-y-auto p-2" style={{ maxHeight: 'calc(70vh - 6.5rem)' }}>
+              {list.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-zinc-500">No Titan alerts yet.</p>
               ) : (
-                preview.map((evt) => (
-                  <button
+                list.map((evt) => (
+                  <div
                     key={evt.id}
-                    type="button"
                     className={`mb-2 w-full rounded-xl border p-3 text-left transition hover:border-gold/30 ${
                       evt.readAt ? 'border-white/6 bg-white/5' : 'border-gold/20 bg-gold/5'
                     }`}
-                    onClick={() => {
-                      startTransition(async () => {
-                        await markNotificationReadAction(evt.id);
-                        setEvents((prev) =>
-                          prev.map((e) => (e.id === evt.id ? { ...e, readAt: new Date().toISOString() } : e)),
-                        );
-                        setUnread((n) => Math.max(0, n - 1));
-                      });
-                      setOpen(false);
-                      if (evt.relatedUrl) window.location.href = evt.relatedUrl;
-                    }}
                   >
-                    <div className="flex items-start gap-2">
-                      {!evt.readAt ? (
-                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
-                      ) : (
-                        <span className="mt-1.5 h-2 w-2 shrink-0" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-bold text-white">{evt.title}</p>
-                        <p className="mt-0.5 line-clamp-2 text-[10px] text-zinc-400">{evt.body}</p>
-                        <p className="mt-1 text-[9px] text-zinc-600">{new Date(evt.createdAt).toLocaleString()}</p>
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => {
+                        startTransition(async () => {
+                          if (!evt.readAt) {
+                            await markNotificationReadAction(evt.id);
+                            setEvents((prev) =>
+                              prev.map((e) => (e.id === evt.id ? { ...e, readAt: new Date().toISOString() } : e)),
+                            );
+                            setUnread((n) => Math.max(0, n - 1));
+                          }
+                        });
+                        if (evt.relatedUrl) {
+                          setOpen(false);
+                          window.location.href = evt.relatedUrl;
+                        }
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        {!evt.readAt ? (
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
+                        ) : (
+                          <span className="mt-1.5 h-2 w-2 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold text-white">{evt.title}</p>
+                          <p className="mt-0.5 line-clamp-2 text-[10px] text-zinc-400">{evt.body}</p>
+                          <p className="mt-1 text-[9px] text-zinc-600">{new Date(evt.createdAt).toLocaleString()}</p>
+                        </div>
                       </div>
+                    </button>
+                    <div className="mt-2 flex flex-wrap gap-1.5 pl-4">
+                      {evt.readAt ? (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            startTransition(async () => {
+                              await markNotificationUnreadAction(evt.id);
+                              setEvents((prev) => prev.map((e) => (e.id === evt.id ? { ...e, readAt: null } : e)));
+                              setUnread((n) => n + 1);
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[9px] font-black uppercase text-zinc-400 hover:text-gold-soft"
+                        >
+                          <MailOpen className="h-3 w-3" /> Mark unread
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            startTransition(async () => {
+                              await markNotificationReadAction(evt.id);
+                              setEvents((prev) =>
+                                prev.map((e) => (e.id === evt.id ? { ...e, readAt: new Date().toISOString() } : e)),
+                              );
+                              setUnread((n) => Math.max(0, n - 1));
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[9px] font-black uppercase text-zinc-400 hover:text-gold-soft"
+                        >
+                          <CheckCheck className="h-3 w-3" /> Mark read
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => {
+                          startTransition(async () => {
+                            await archiveNotificationAction(evt.id);
+                            setEvents((prev) => prev.filter((e) => e.id !== evt.id));
+                            if (!evt.readAt) setUnread((n) => Math.max(0, n - 1));
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[9px] font-black uppercase text-zinc-400 hover:text-amber-300"
+                      >
+                        <Archive className="h-3 w-3" /> Archive
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
-            <div className="border-t border-white/8 p-2">
+            <div className="shrink-0 border-t border-white/8 p-2">
               <Link
                 href="/admin/notifications"
                 onClick={() => setOpen(false)}

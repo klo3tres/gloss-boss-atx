@@ -50,7 +50,7 @@ export async function loadMarketingModuleData() {
 
 export async function sendMarketingCampaignAction(
   campaignId: string,
-): Promise<{ ok?: boolean; sent?: number; skipped?: number; error?: string; details?: string }> {
+): Promise<{ ok?: boolean; sent?: number; skipped?: number; excluded?: number; error?: string; details?: string }> {
   const g = await gate();
   if (!g) return { error: 'Unauthorized' };
 
@@ -78,6 +78,7 @@ export async function sendMarketingCampaignAction(
     ok: true,
     sent: result.sent,
     skipped: result.skipped,
+    excluded: result.excluded,
     details: result.errors.length ? result.errors.join('; ') : undefined,
   };
 }

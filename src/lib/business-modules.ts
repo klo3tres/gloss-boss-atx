@@ -18,7 +18,7 @@ export type FleetContract = {
 export type MarketingCampaign = {
   id: string;
   name: string;
-  channel: 'email' | 'sms' | 'social' | 'referral';
+  channel: 'email' | 'sms' | 'social' | 'referral' | 'both';
   audience: string;
   message: string;
   scheduledAt: string | null;

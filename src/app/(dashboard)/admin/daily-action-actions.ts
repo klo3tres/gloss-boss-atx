@@ -65,3 +65,13 @@ export async function markDailyActionSentAction(
   revalidatePath('/admin');
   return actionOk('Action logged as sent.');
 }
+
+export async function regenerateDailyActionPlanAction(): Promise<ActionResult> {
+  const g = await gate();
+  if (!g) return actionErr('Not authorized.');
+  const { buildDailyActionPlan } = await import('@/lib/titan/daily-action-plan');
+  const plan = await buildDailyActionPlan(g.admin);
+  revalidatePath('/admin');
+  revalidatePath('/admin/titan');
+  return actionOk(`Refreshed ${plan.actions.length} action(s).`);
+}

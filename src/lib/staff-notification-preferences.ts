@@ -4,7 +4,9 @@ export type StaffNotificationEventType =
   | 'job_assigned'
   | 'job_rescheduled'
   | 'job_cancelled'
-  | 'new_booking_assigned';
+  | 'new_booking_assigned'
+  | 'job_reminder_24h'
+  | 'job_reminder_2h';
 
 export type StaffNotificationPreferences = {
   notifyEmailEnabled: boolean;
@@ -99,6 +101,8 @@ export function isStaffInQuietHours(prefs: StaffNotificationPreferences, now = n
 export function staffEventAllowed(prefs: StaffNotificationPreferences, eventType: StaffNotificationEventType): boolean {
   switch (eventType) {
     case 'job_assigned':
+    case 'job_reminder_24h':
+    case 'job_reminder_2h':
       return prefs.notifyJobAssigned;
     case 'new_booking_assigned':
       return prefs.notifyNewBookingAssigned;

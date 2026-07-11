@@ -3,30 +3,34 @@
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReferralProgramSettings, ReferralRewardLadderTier } from '@/lib/referral/referral-codes';
+import { formatRewardSummary } from '@/lib/referral/referral-codes';
 import { analyzeReferralEconomics } from '@/lib/referral/referral-economics';
 import { saveReferralProgramSettingsAction, type ReferralSaveResult } from '@/app/(dashboard)/admin/referrals/actions';
 import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
 
 const inputClass = 'mt-1 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground';
 
-function formatRewardSummary(type: string, value: number): string {
-  if (type === 'percent') return `${value}%`;
-  if (type === 'dollar') return `$${value}`;
-  if (type === 'free_service') return 'Free service';
-  return String(value);
-}
-
 function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }) {
   const [tiers, setTiers] = useState<ReferralRewardLadderTier[]>(
     initial.length > 0 ? initial : [{ threshold: 1, rewardType: 'percent', rewardValue: 15, label: '15% off next detail' }],
   );
 
+  const moveTier = (idx: number, dir: -1 | 1) => {
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= tiers.length) return;
+    const next = [...tiers];
+    const tmp = next[idx];
+    next[idx] = next[nextIdx];
+    next[nextIdx] = tmp;
+    setTiers(next);
+  };
+
   return (
     <div className="space-y-3">
       <input type="hidden" name="reward_ladder_json" value={JSON.stringify(tiers)} />
-      <p className="text-xs text-muted-foreground">Reward ladder — unlocks as referrals complete</p>
+      <p className="text-xs text-muted-foreground">Reward ladder — unlocks as referrals complete. Defaults include 15% and are fully editable.</p>
       {tiers.map((tier, idx) => (
-        <div key={idx} className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-4">
+        <div key={idx} className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
           <label className="text-[10px] font-black uppercase text-muted-foreground">
             At N referrals
             <input
@@ -52,10 +56,10 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
               }}
               className={inputClass}
             >
-              <option value="percent">Percent</option>
-              <option value="dollar">Dollar</option>
+              <option value="percent">Percent off</option>
+              <option value="dollar">Dollar off</option>
               <option value="free_service">Free service</option>
-              <option value="custom">Custom</option>
+              <option value="custom">Custom label</option>
             </select>
           </label>
           <label className="text-[10px] font-black uppercase text-muted-foreground">
@@ -72,27 +76,46 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
             />
           </label>
           <label className="text-[10px] font-black uppercase text-muted-foreground">
-            Label
-            <div className="mt-1 flex gap-1">
-              <input
-                value={tier.label}
-                onChange={(e) => {
-                  const next = [...tiers];
-                  next[idx] = { ...tier, label: e.target.value };
-                  setTiers(next);
-                }}
-                className={inputClass + ' mt-0'}
-              />
-              <button
-                type="button"
-                onClick={() => setTiers(tiers.filter((_, i) => i !== idx))}
-                className="rounded-xl border border-border px-2 text-[10px] font-black uppercase text-muted-foreground"
-                aria-label="Remove tier"
-              >
-                ✕
-              </button>
-            </div>
+            Customer-facing label
+            <input
+              value={tier.label}
+              onChange={(e) => {
+                const next = [...tiers];
+                next[idx] = { ...tier, label: e.target.value };
+                setTiers(next);
+              }}
+              placeholder={formatRewardSummary(tier.rewardType, tier.rewardValue)}
+              className={inputClass}
+            />
           </label>
+          <div className="flex items-end gap-1 pb-1">
+            <button
+              type="button"
+              onClick={() => moveTier(idx, -1)}
+              disabled={idx === 0}
+              className="rounded-xl border border-border px-2 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-30"
+              aria-label="Move tier up"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              onClick={() => moveTier(idx, 1)}
+              disabled={idx === tiers.length - 1}
+              className="rounded-xl border border-border px-2 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-30"
+              aria-label="Move tier down"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              onClick={() => setTiers(tiers.filter((_, i) => i !== idx))}
+              className="rounded-xl border border-border px-2 py-2 text-[10px] font-black uppercase text-muted-foreground"
+              aria-label="Remove tier"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       ))}
       <button
@@ -104,7 +127,7 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
               threshold: (tiers[tiers.length - 1]?.threshold ?? 0) + 1,
               rewardType: 'percent',
               rewardValue: 10,
-              label: 'New reward',
+              label: '10% off next detail',
             },
           ])
         }
@@ -141,6 +164,9 @@ export function ReferralsAdminClient({
     <div className="space-y-6">
       <form key={saveState?.ok ? 'saved' : 'edit'} action={saveAction} className="space-y-4 rounded-3xl border border-border bg-card p-5">
         <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Program settings</p>
+        <p className="text-xs text-muted-foreground">
+          Primary customer referral links are durable (no 24-hour expiry). Codes stay valid until revoked.
+        </p>
         {saveState?.ok === false ? (
           <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{saveState.error}</p>
         ) : null}

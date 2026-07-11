@@ -21,7 +21,8 @@ export type AuthEventType =
   | 'role_resolved'
   | 'ambiguous_account_detected'
   | 'auth_email_changed'
-  | 'account_disabled';
+  | 'account_disabled'
+  | 'staff_auth_created';
 
 /** Never log passwords or raw tokens. */
 export async function logAuthEvent(

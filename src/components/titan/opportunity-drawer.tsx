@@ -24,6 +24,7 @@ import { buildToneVariants } from '@/lib/outbound-message-tones';
 import { brandingToScriptContext, type ScriptBranding } from '@/lib/titan/script-branding-types';
 import { FleetQuoteWizard } from '@/components/admin/fleet-quote-wizard';
 import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
+import { OpportunityNotesWorkspace } from '@/components/titan/opportunity-notes-workspace';
 
 const SCRIPT_LABELS: Record<OpportunityScriptKey, string> = {
   call_script: 'Call script',
@@ -50,7 +51,7 @@ export function OpportunityDrawer({
   const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState('');
-  const [tab, setTab] = useState<'profile' | 'scripts' | 'quote'>('profile');
+  const [tab, setTab] = useState<'profile' | 'scripts' | 'quote' | 'notes'>('profile');
   const [msg, setMsg] = useState<string | null>(null);
   const [editContact, setEditContact] = useState(false);
   const [contactNameDraft, setContactNameDraft] = useState(opp.contactName ?? '');
@@ -172,7 +173,7 @@ export function OpportunityDrawer({
         </header>
 
         <div className="flex shrink-0 gap-1 border-b border-border px-5 py-2">
-          {(['profile', 'scripts', 'quote'] as const).map((t) => (
+          {(['profile', 'notes', 'scripts', 'quote'] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -334,7 +335,9 @@ export function OpportunityDrawer({
                 {opp.whySurfaced}
               </p>
 
-              {opp.notes ? <p className="text-xs text-muted-foreground">{opp.notes}</p> : null}
+              {opp.notes && !opp.notes.trim().startsWith('{') ? (
+                <p className="text-xs text-muted-foreground">{opp.notes}</p>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 {opp.contactPhone ? (
@@ -395,11 +398,12 @@ export function OpportunityDrawer({
               </div>
 
               <div className="rounded-xl border border-border p-3">
-                <p className="text-[10px] font-black uppercase text-muted-foreground">Add note</p>
+                <p className="text-[10px] font-black uppercase text-muted-foreground">Add timeline note</p>
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="mt-2 w-full rounded-lg border border-border bg-input px-3 py-2 text-xs text-foreground" placeholder="Call outcome, gatekeeper name, etc." />
                 <button type="button" disabled={!note.trim() || pending} onClick={() => act(() => addOpportunityNoteAction(opp.id, note.trim()), 'Note saved')} className="mt-2 rounded-lg bg-muted px-3 py-2 text-[10px] font-black uppercase text-foreground disabled:opacity-50">
-                  Save note
+                  Save to timeline
                 </button>
+                <p className="mt-2 text-[10px] text-muted-foreground">Structured Discovery / Decision-maker pads are on the Notes tab.</p>
               </div>
 
               {events.length > 0 ? (
@@ -414,6 +418,8 @@ export function OpportunityDrawer({
               ) : null}
             </div>
           ) : null}
+
+          {tab === 'notes' ? <OpportunityNotesWorkspace opportunityId={opp.id} initialNotes={opp.notes} /> : null}
 
           {tab === 'scripts' ? (
             <div className="space-y-3">

@@ -265,7 +265,25 @@ export async function addOpportunityNoteAction(id: string, note: string): Promis
   if (!note.trim()) return { error: 'Note is empty.' };
   const { data: row } = await g.admin.from('titan_opportunities').select('notes').eq('id', id).maybeSingle();
   const existing = row?.notes ? String(row.notes) : '';
-  const merged = existing ? `${existing}\n\n[${new Date().toLocaleString()}] ${note.trim()}` : note.trim();
+  const { parseOpportunityNotePads, serializeOpportunityNotePads, newOpportunityNotePad } = await import(
+    '@/lib/titan/opportunity-note-pads'
+  );
+  let merged: string;
+  if (existing.trim().startsWith('{') && existing.includes('"pads"')) {
+    const pads = parseOpportunityNotePads(existing);
+    const general = pads.find((p) => p.label === 'General') ?? (pads.length < 8 ? newOpportunityNotePad('General') : null);
+    if (general) {
+      const stamp = `[${new Date().toLocaleString()}] ${note.trim()}`;
+      general.body = general.body ? `${general.body}\n\n${stamp}` : stamp;
+      general.updatedAt = new Date().toISOString();
+      const next = pads.some((p) => p.id === general.id) ? pads.map((p) => (p.id === general.id ? general : p)) : [...pads, general];
+      merged = serializeOpportunityNotePads(next.slice(0, 8));
+    } else {
+      merged = existing;
+    }
+  } else {
+    merged = existing ? `${existing}\n\n[${new Date().toLocaleString()}] ${note.trim()}` : note.trim();
+  }
   const { error } = await g.admin
     .from('titan_opportunities')
     .update({ notes: merged, last_touched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -279,6 +297,32 @@ export async function addOpportunityNoteAction(id: string, note: string): Promis
   });
   const { logTitanActivity } = await import('@/lib/titan/activity-feed');
   await logTitanActivity(g.admin, { kind: 'command_executed', title: 'Opportunity note added', detail: note.slice(0, 120), href: '/admin/titan/opportunities' });
+  revalidate();
+  return { ok: true };
+}
+
+export async function saveOpportunityNotePadsAction(
+  id: string,
+  pads: Array<{ id: string; label: string; body: string; updatedAt?: string }>,
+): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  if (!id) return { error: 'Missing opportunity.' };
+  if (pads.length > 8) return { error: 'Maximum 8 notes per opportunity.' };
+  const { serializeOpportunityNotePads } = await import('@/lib/titan/opportunity-note-pads');
+  const payload = serializeOpportunityNotePads(
+    pads.map((p) => ({
+      id: p.id,
+      label: p.label || 'General',
+      body: p.body ?? '',
+      updatedAt: p.updatedAt || new Date().toISOString(),
+    })),
+  );
+  const { error } = await g.admin
+    .from('titan_opportunities')
+    .update({ notes: payload, last_touched_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return { error: error.message };
   revalidate();
   return { ok: true };
 }

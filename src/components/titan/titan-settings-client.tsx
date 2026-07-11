@@ -66,7 +66,7 @@ export function TitanSettingsClient({
               }}
               className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase text-emerald-200 disabled:opacity-40"
             >
-              {runningJob === jobKey ? 'Runningâ€¦' : label}
+              {runningJob === jobKey ? 'Running…' : label}
             </button>
           ))}
         </div>
@@ -107,9 +107,9 @@ export function TitanSettingsClient({
       <TitanWorkspaceForm workspace={workspace} />
       <TitanSystemHealthPanel health={health} />
       <section className="rounded-3xl border border-white/8 bg-zinc-950/50 p-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft">Patch notes Â· v{TITAN_RELEASE.version}</p>
-        <p className="mt-2 text-xs text-zinc-500">Released {TITAN_RELEASE.releaseDate} Â· Migration {TITAN_RELEASE.migration}</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2"><div><p className="text-[10px] font-black uppercase text-emerald-300">Shipped workflows</p><ul className="mt-2 space-y-1 text-xs text-zinc-300">{TITAN_RELEASE.shipped.map((item) => <li key={item}>Â· {item}</li>)}</ul></div><div><p className="text-[10px] font-black uppercase text-amber-300">Known blockers</p><ul className="mt-2 space-y-1 text-xs text-zinc-400">{TITAN_RELEASE.knownBlockers.map((item) => <li key={item}>Â· {item}</li>)}</ul></div></div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft">Patch notes · v{TITAN_RELEASE.version}</p>
+        <p className="mt-2 text-xs text-zinc-500">Released {TITAN_RELEASE.releaseDate} · Migration {TITAN_RELEASE.migration}</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2"><div><p className="text-[10px] font-black uppercase text-emerald-300">Shipped workflows</p><ul className="mt-2 space-y-1 text-xs text-zinc-300">{TITAN_RELEASE.shipped.map((item) => <li key={item}>· {item}</li>)}</ul></div><div><p className="text-[10px] font-black uppercase text-amber-300">Known blockers</p><ul className="mt-2 space-y-1 text-xs text-zinc-400">{TITAN_RELEASE.knownBlockers.map((item) => <li key={item}>· {item}</li>)}</ul></div></div>
         <p className="mt-4 text-[10px] text-zinc-500">QA: {TITAN_RELEASE.qaStatus}</p>
         <p className="mt-1 text-[10px] text-zinc-600">Rollback: {TITAN_RELEASE.rollback}</p>
       </section>

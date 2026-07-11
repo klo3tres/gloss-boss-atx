@@ -4,9 +4,17 @@ import { customerCanReceiveSms } from '@/lib/sms-consent';
 import { twilioSendMode } from '@/lib/twilio-config';
 import { normalizeToE164 } from '@/lib/us-phone';
 
+export type SmsSkipReason =
+  | 'twilio_not_configured'
+  | 'missing_phone'
+  | 'invalid_phone'
+  | 'consent_denied'
+  | 'send_failed';
+
 export type SmsSendResult = {
   ok: boolean;
   skipped?: boolean;
+  skipped_reason?: SmsSkipReason | string;
   error?: string;
   sid?: string;
   deliveryStatus?: string;
@@ -74,6 +82,26 @@ export async function sendCustomerSms(params: {
     ...params.extraPayload,
   };
 
+  if (!String(params.to ?? '').trim()) {
+    await logSmsOutbox(params.db, {
+      kind: params.kind,
+      status: 'skipped',
+      appointment_id: params.appointment_id,
+      fallback_booking_id: params.fallback_booking_id,
+      customer_id: params.customer_id,
+      technician_id: params.technician_id,
+      template_key: params.template_key,
+      skipped_reason: 'missing_phone',
+      payload: basePayload,
+    });
+    return {
+      ok: false,
+      skipped: true,
+      skipped_reason: 'missing_phone',
+      error: 'No phone number on file.',
+    };
+  }
+
   if (!twilioConfigured()) {
     await logSmsOutbox(params.db, {
       kind: params.kind,
@@ -83,10 +111,15 @@ export async function sendCustomerSms(params: {
       customer_id: params.customer_id,
       technician_id: params.technician_id,
       template_key: params.template_key,
-      skipped_reason: 'Twilio not configured (SID, token, and Messaging Service or From number).',
+      skipped_reason: 'twilio_not_configured',
       payload: basePayload,
     });
-    return { ok: false, skipped: true, error: 'Twilio not configured.' };
+    return {
+      ok: false,
+      skipped: true,
+      skipped_reason: 'twilio_not_configured',
+      error: 'SMS skipped — Twilio is not configured.',
+    };
   }
 
   if (!phone.ok) {
@@ -98,10 +131,15 @@ export async function sendCustomerSms(params: {
       customer_id: params.customer_id,
       technician_id: params.technician_id,
       template_key: params.template_key,
-      skipped_reason: phone.error,
+      skipped_reason: 'invalid_phone',
       payload: basePayload,
     });
-    return { ok: false, skipped: true, error: phone.error };
+    return {
+      ok: false,
+      skipped: true,
+      skipped_reason: 'invalid_phone',
+      error: phone.error ?? 'Invalid phone number.',
+    };
   }
 
   if (params.requireConsent !== false) {
@@ -112,6 +150,7 @@ export async function sendCustomerSms(params: {
       phone: e164,
     });
     if (!consent.ok) {
+      const reason = consent.reason ?? 'SMS consent is not opted in.';
       await logSmsOutbox(params.db, {
         kind: params.kind,
         status: 'skipped',
@@ -120,10 +159,15 @@ export async function sendCustomerSms(params: {
         customer_id: params.customer_id,
         technician_id: params.technician_id,
         template_key: params.template_key,
-        skipped_reason: consent.reason ?? 'SMS consent is not opted in.',
-        payload: { ...basePayload, sms_consent_required: true },
+        skipped_reason: 'consent_denied',
+        payload: { ...basePayload, sms_consent_required: true, consent_detail: reason },
       });
-      return { ok: false, skipped: true, error: consent.reason ?? 'SMS consent is not opted in.' };
+      return {
+        ok: false,
+        skipped: true,
+        skipped_reason: 'consent_denied',
+        error: reason,
+      };
     }
   }
 
@@ -161,7 +205,12 @@ export async function sendCustomerSms(params: {
     technician_id: params.technician_id,
     template_key: params.template_key,
     error_message: sent.error ?? 'Twilio send failed.',
+    skipped_reason: 'send_failed',
     payload: basePayload,
   });
-  return { ok: false, error: sent.error ?? 'Twilio send failed.' };
+  return {
+    ok: false,
+    skipped_reason: 'send_failed',
+    error: sent.error ?? 'Twilio send failed.',
+  };
 }

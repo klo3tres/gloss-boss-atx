@@ -45,11 +45,15 @@ export type DailyExecutableAction = {
   status: 'pending' | 'sent' | 'dismissed' | 'completed';
   canSend: boolean;
   sendBlocker?: string;
+  /** True when this pending row was generated on a prior Chicago date. */
+  carriedOver?: boolean;
+  actionDate?: string;
 };
 
 export type DailyActionPlan = {
   actions: DailyExecutableAction[];
   fastestMoneyMoves: DailyExecutableAction[];
+  lastGeneratedAt: string | null;
 };
 
 function todayChicago(): string {
@@ -79,10 +83,14 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   const bookUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '')}/book`;
 
   const actionDate = todayChicago();
+  // Include recent dismissals so refresh does not resurrect the same action keys.
+  const lookback = new Date();
+  lookback.setDate(lookback.getDate() - 14);
+  const lookbackIso = lookback.toISOString().slice(0, 10);
   const { data: closedRows } = await admin
     .from('titan_daily_actions')
-    .select('action_key, status')
-    .eq('action_date', actionDate)
+    .select('action_key, status, action_date')
+    .gte('action_date', lookbackIso)
     .in('status', ['dismissed', 'sent', 'completed']);
   const closedKeys = new Set((closedRows ?? []).map((r) => str((r as { action_key?: string }).action_key)).filter(Boolean));
 
@@ -246,7 +254,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       contactEmail: warmOpp.contactEmail,
       entityType: 'opportunity',
       entityId: warmOpp.id,
-      href: '/admin/titan/opportunities',
+      href: `/admin/titan/opportunities?open=${encodeURIComponent(warmOpp.id)}`,
       canSend: Boolean(warmOpp.contactPhone),
     });
   }
@@ -411,6 +419,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       const row = r as Record<string, unknown>;
       const cents = Number(row.expected_value_cents ?? 0);
       const draftMatch = openDrafts.find((d) => d.actionKey === str(row.action_key));
+      const rowDate = str(row.action_date) || actionDate;
       return {
         id: str(row.id),
         actionKey: str(row.action_key),
@@ -431,18 +440,75 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         href: str(row.href) || '/admin',
         status: str(row.status) as DailyExecutableAction['status'],
         canSend: Boolean(row.contact_phone || row.contact_email),
+        actionDate: rowDate,
+        carriedOver: rowDate < actionDate,
       };
     });
+
+    // Carry forward still-pending actions from prior days (same action_key not closed).
+    const { data: carryRows } = await admin
+      .from('titan_daily_actions')
+      .select('*')
+      .lt('action_date', actionDate)
+      .gte('action_date', lookbackIso)
+      .eq('status', 'pending')
+      .order('expected_value_cents', { ascending: false })
+      .limit(8);
+
+    const seenKeys = new Set(actions.map((a) => a.actionKey));
+    for (const r of carryRows ?? []) {
+      const row = r as Record<string, unknown>;
+      const key = str(row.action_key);
+      if (!key || seenKeys.has(key) || closedKeys.has(key)) continue;
+      seenKeys.add(key);
+      const cents = Number(row.expected_value_cents ?? 0);
+      const rowDate = str(row.action_date) || actionDate;
+      actions.push({
+        id: str(row.id),
+        actionKey: key,
+        actionType: str(row.action_type) as DailyActionType,
+        title: str(row.title),
+        involvedNames: str(row.involved_names),
+        expectedValueCents: cents,
+        expectedValueLabel: valueLabel(cents),
+        valueExplanation: cents > 0 ? avgTicketExplanation(safeAvg) : 'No direct dollar value',
+        reason: str(row.reason),
+        confidence: Number(row.confidence_score ?? 70),
+        confidenceLabel: str(row.confidence_label) || 'Titan estimate',
+        messageScript: str(row.message_script),
+        contactPhone: str(row.contact_phone) || null,
+        contactEmail: str(row.contact_email) || null,
+        entityType: str(row.entity_type) || undefined,
+        entityId: str(row.entity_id) || undefined,
+        href: str(row.href) || '/admin',
+        status: 'pending',
+        canSend: Boolean(row.contact_phone || row.contact_email),
+        actionDate: rowDate,
+        carriedOver: true,
+      });
+    }
+
+    actions.sort((a, b) => b.expectedValueCents - a.expectedValueCents);
+
+    const lastGeneratedAt =
+      (rows ?? []).reduce<string | null>((max, r) => {
+        const u = str((r as { updated_at?: string }).updated_at);
+        if (!u) return max;
+        if (!max || u > max) return u;
+        return max;
+      }, null) ?? new Date().toISOString();
 
     return {
       actions: actions.slice(0, 8),
       fastestMoneyMoves: actions.filter((a) => a.expectedValueCents > 0).slice(0, 3),
+      lastGeneratedAt,
     };
   }
 
-  const fallback = openDrafts.map((d, i) => ({ ...d, id: `draft-${i}`, status: 'pending' as const }));
+  const fallback = openDrafts.map((d, i) => ({ ...d, id: `draft-${i}`, status: 'pending' as const, actionDate, carriedOver: false }));
   return {
     actions: fallback.slice(0, 8),
     fastestMoneyMoves: fallback.filter((a) => a.expectedValueCents > 0).slice(0, 3),
+    lastGeneratedAt: new Date().toISOString(),
   };
 }

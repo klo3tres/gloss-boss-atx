@@ -3,6 +3,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 import { insertJobAgreementFlexible, insertSignedAgreementFlexible } from '@/lib/signed-agreement-insert';
+import { markAgreementSigned } from '@/lib/agreements/requests';
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
       signatureData?: string | null;
       agreementSnapshot?: string;
       acknowledged?: boolean;
+      marketingMediaConsent?: boolean;
+      smsConsent?: boolean;
     };
 
     const {
@@ -30,7 +33,12 @@ export async function POST(request: Request) {
       signatureData,
       agreementSnapshot,
       acknowledged,
+      marketingMediaConsent,
+      smsConsent,
     } = body;
+
+    const marketingOk = Boolean(marketingMediaConsent);
+    const smsOk = Boolean(smsConsent);
 
     if ((!appointmentId && !fallbackBookingId) || !signerLegalName || !signatureType || !acknowledged) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -189,6 +197,11 @@ export async function POST(request: Request) {
       customer_id: typeof Ap.customer_id === 'string' ? Ap.customer_id : null,
       vehicle_id: typeof Ap.vehicle_id === 'string' ? Ap.vehicle_id : null,
       technician_id: techId,
+      marketing_media_consent: marketingOk,
+      media_consent: marketingOk,
+      operational_photo_consent: true,
+      photo_consent: true,
+      sms_consent: smsOk,
     };
 
     const signRes = await insertSignedAgreementFlexible(admin, signPayload);
@@ -240,6 +253,29 @@ export async function POST(request: Request) {
         .from('appointments')
         .update({ status: 'confirmed', updated_at: new Date().toISOString() })
         .eq('id', appointmentId);
+
+      let signedAgreementId: string | null = null;
+      try {
+        const { data: signedRow } = await admin
+          .from('signed_agreements')
+          .select('id')
+          .eq('appointment_id', appointmentId)
+          .order('signed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        signedAgreementId = signedRow?.id ? String(signedRow.id) : null;
+      } catch {
+        /* optional lookup */
+      }
+
+      await markAgreementSigned(admin, {
+        appointmentId,
+        signedAgreementId,
+        signerName: signerLegalName.trim(),
+        marketingMediaConsent: marketingOk,
+        smsConsent: smsOk,
+        mode: 'signed',
+      });
     } else if (resolvedFallbackId) {
       await admin
         .from('booking_fallbacks')
@@ -247,7 +283,11 @@ export async function POST(request: Request) {
         .eq('id', resolvedFallbackId);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      marketingMediaConsent: marketingOk,
+      smsConsent: smsOk,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Sign failed' }, { status: 500 });

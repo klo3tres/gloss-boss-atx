@@ -86,6 +86,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/media-studio', label: 'Media Studio' },
       { href: '/admin/promotions', label: 'Promotions' },
       { href: '/admin/marketing', label: 'Campaigns' },
+      { href: '/admin/communications', label: 'Communications' },
       { href: '/admin/referrals', label: 'Referrals' },
       { href: '/admin/fleet', label: 'Fleet growth' },
     ],
@@ -106,6 +107,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/brand-settings', label: 'Brand settings' },
       { href: '/admin/launch-readiness', label: 'Launch readiness' },
       { href: '/admin/notifications', label: 'Activity' },
+      { href: '/admin/communications', label: 'Communications' },
       { href: '/admin/integrations', label: 'Integrations' },
       { href: '/admin/system-status', label: 'System status' },
     ],
@@ -228,11 +230,16 @@ export function DashboardShell({
         const isCustomer = role === 'customer';
 
         if (isOwnerView) {
-          const { count } = await supabase
-            .from('messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'new');
-          setUnreadCount(count ?? 0);
+          const [{ count: messageCount }, { count: titanUnread }] = await Promise.all([
+            supabase.from('messages').select('id', { count: 'exact', head: true }).eq('status', 'new'),
+            supabase
+              .from('titan_notification_events')
+              .select('id', { count: 'exact', head: true })
+              .is('archived_at', null)
+              .is('read_at', null),
+          ]);
+          // Admin UI uses NotificationBellDropdown for titan unread; keep drawer badge in sync.
+          setUnreadCount(Math.max(messageCount ?? 0, titanUnread ?? 0));
 
           const { data: events } = await supabase
             .from('job_timeline_events')
@@ -540,7 +547,7 @@ export function DashboardShell({
           </div>
           <h2 className='text-base font-black uppercase text-center text-foreground mb-2'>{panelTitle}</h2>
           {NavLinks}
-          {role === 'super_admin' ? (
+          {role === 'super_admin' && navRole !== 'technician' ? (
             <label className="mt-4 flex w-full flex-col gap-1 rounded-2xl border border-gold/30 bg-muted/30 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft">
               View as
               <select
@@ -554,6 +561,15 @@ export function DashboardShell({
                 <option value="customer">Customer</option>
               </select>
             </label>
+          ) : null}
+          {role === 'super_admin' && navRole === 'technician' ? (
+            <button
+              type="button"
+              onClick={() => setSimulationRole('super_admin')}
+              className="mt-4 w-full rounded-2xl border border-gold/30 bg-muted/30 px-3 py-2 text-[9px] font-black uppercase tracking-[0.16em] text-gold-soft hover:bg-gold/10"
+            >
+              Exit technician view
+            </button>
           ) : null}
         </aside>
 
@@ -816,7 +832,7 @@ export function DashboardShell({
                                   onClick={() => setShowNotifications(false)}
                                   className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 hover:bg-gold/15 px-3 py-1.5 text-[10px] font-black uppercase text-gold-soft border border-white/10 hover:border-gold/30 transition w-fit"
                                 >
-                                  View Related Payment â†’
+                                  View Related Payment →
                                 </Link>
                               ) : null}
                             </div>

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-cron';
+import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-timing';
 import { GLOSS_BOSS_BUSINESS_ID } from '@/lib/titan/business-ids';
 
 export type RevenueOpportunityType =
@@ -890,7 +890,7 @@ export async function syncDerivedRevenueOpportunities(admin: SupabaseClient, wor
       const contact = str(row.contact_name) || str(row.author_name) || 'Online inquiry';
       const sourceType = str(row.source_type) || 'social';
       const result = await createRevenueOpportunity(admin, {
-        title: `${contact} â€” ${str(row.service_match) || 'detail inquiry'}`,
+        title: `${contact} — ${str(row.service_match) || 'detail inquiry'}`,
         opportunityType: sourceType.includes('facebook') ? 'facebook_group' : sourceType.includes('nextdoor') ? 'nextdoor' : 'warm_lead',
         estimatedRevenueCents: Math.round(Number(row.estimated_revenue ?? 0) * 100) || 17500,
         contactName: contact,

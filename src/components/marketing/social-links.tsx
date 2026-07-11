@@ -50,6 +50,12 @@ export function SocialLinksRow({
   );
 }
 
+/** True when at least one social URL is configured. */
+export function hasConfiguredSocialLinks(links: SocialLinks | null | undefined): boolean {
+  if (!links) return false;
+  return SOCIAL.some((s) => Boolean(links[s.key]?.trim()));
+}
+
 export function SocialLinksFooter({ links }: { links: SocialLinks }) {
   const items = SOCIAL.filter((s) => links[s.key]?.trim());
   if (items.length === 0) return null;

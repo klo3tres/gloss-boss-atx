@@ -10,6 +10,10 @@ export type TitanRevenueCard = {
   timeToCloseDays: number | null;
   href: string;
   outreachRecommendation?: string;
+  /** Real titan_opportunities id when deep-linkable; null for prospects/rebooks. */
+  opportunityId?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
 };
 
 export type PartnerCard = {

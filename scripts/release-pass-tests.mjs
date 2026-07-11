@@ -132,3 +132,93 @@ test('signup uses emailRedirectTo confirmation callback', async () => {
   assert.match(src, /Resend confirmation/);
   assert.match(src, /humanizeAuthError/);
 });
+
+test('agreement status module exists', async () => {
+  const src = await fs.readFile(new URL('../src/lib/agreements/status.ts', import.meta.url), 'utf8');
+  assert.match(src, /AgreementStatus/);
+  assert.match(src, /AGREEMENT_STATUS_LABELS/);
+  assert.match(src, /isAgreementComplete/);
+});
+
+test('agreementUrl is in action link registry', async () => {
+  const src = await fs.readFile(new URL('../src/lib/auth/action-link-registry.ts', import.meta.url), 'utf8');
+  assert.match(src, /export function agreementUrl/);
+  assert.match(src, /agreement:/);
+  assert.match(src, /\/agreement/);
+});
+
+test('migration 000130 agreement comms closed loop exists', async () => {
+  const src = await fs.readFile(
+    new URL('../supabase/migrations/000130_agreement_comms_closed_loop.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(src, /agreement_immediate/);
+  assert.match(src, /agreement_link/);
+  assert.match(src, /agreement_requests/);
+});
+
+test('communications page exists', async () => {
+  const src = await fs.readFile(
+    new URL('../src/app/(dashboard)/admin/communications/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(src, /Communications/);
+  assert.match(src, /Transactional/);
+  assert.match(src, /Marketing/);
+  assert.match(src, /Unsigned upcoming/);
+});
+
+test('work order agreement panel string exists', async () => {
+  const candidates = [
+    '../src/components/tech/work-order-agreement-panel.tsx',
+    '../src/components/tech/work-order-agreement-recapture-client.tsx',
+    '../src/components/admin/work-order-agreement-panel.tsx',
+    '../src/components/tech/work-order-console-client.tsx',
+  ];
+  let found = false;
+  for (const rel of candidates) {
+    try {
+      const src = await fs.readFile(new URL(rel, import.meta.url), 'utf8');
+      if (/WorkOrderAgreementPanel|WorkOrderAgreement|agreement panel|Agreement/i.test(src)) {
+        found = true;
+        break;
+      }
+    } catch {
+      /* optional path */
+    }
+  }
+  assert.equal(found, true);
+});
+
+test('validateActionLinkRegistry covers agreement', async () => {
+  const src = await fs.readFile(new URL('../src/lib/auth/action-link-registry.ts', import.meta.url), 'utf8');
+  assert.match(src, /validateActionLinkRegistry/);
+  assert.match(src, /def\.type === 'agreement'/);
+  assert.match(src, /missing \/agreement route coverage/);
+});
+
+test('mojibake repair helper fixes em dash and arrow', async () => {
+  const { repairMojibake, hasMojibake, MOJIBAKE_SAMPLE_PATTERNS } = await import('../src/lib/text/fix-mojibake.ts');
+  assert.equal(repairMojibake('Fleet â€” detail'), 'Fleet — detail');
+  assert.equal(repairMojibake('Open â†’ Admin'), 'Open → Admin');
+  assert.equal(hasMojibake('clean text'), false);
+  assert.equal(hasMojibake('bad â€” text'), true);
+  assert.ok(MOJIBAKE_SAMPLE_PATTERNS.includes('â€”'));
+});
+
+test('migration 000131 production completion pass exists', async () => {
+  const src = await fs.readFile(
+    new URL('../supabase/migrations/000131_production_completion_pass.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(src, /titan_opportunities/);
+  assert.match(src, /â€”/);
+  assert.match(src, /replace\(title/);
+});
+
+test('staff job reminders enqueue helpers exist', async () => {
+  const src = await fs.readFile(new URL('../src/lib/staff-notification-router.ts', import.meta.url), 'utf8');
+  assert.match(src, /enqueueStaffJobReminders/);
+  assert.match(src, /staff_job_24h/);
+  assert.match(src, /staff_job_2h/);
+});

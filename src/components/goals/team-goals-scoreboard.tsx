@@ -37,7 +37,7 @@ function AchievementBadge({ item, compact }: { item: StaffAchievement; compact?:
   const style = TIER_STYLES[item.tier ?? 'gold'] ?? TIER_STYLES.gold;
   return (
     <div
-      className={`rounded-xl border px-3 py-2 ${style} ${compact ? 'text-[9px]' : 'text-[10px]'} ${!item.seen_at ? 'ring-1 ring-gold/40 animate-pulse' : ''}`}
+      className={`rounded-xl border px-3 py-2 ${style} ${compact ? 'text-[9px]' : 'text-[10px]'} ${!item.seen_at ? 'ring-1 ring-gold/30' : ''}`}
       title={item.description ?? undefined}
     >
       <p className="font-black uppercase tracking-wide">{item.title}</p>
@@ -85,7 +85,7 @@ export function TeamGoalsScoreboard({
       {showWeeklyHero && weeklyTargetCents != null && weeklyTargetCents > 0 ? (
         <motion.div
           layout
-          className="rounded-3xl border border-gold/45 bg-gradient-to-r from-black via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(212,175,55,0.15)] relative overflow-hidden"
+          className="rounded-3xl border border-gold/35 bg-gradient-to-r from-black via-zinc-950 to-black p-6 relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 h-32 w-32 bg-gold/10 rounded-full blur-[60px] pointer-events-none" />
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">

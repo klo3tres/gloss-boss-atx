@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-cron';
+import { initialOpportunityFollowUpAt } from '@/lib/opportunity-follow-up-timing';
 import { createRevenueOpportunity } from '@/lib/titan/revenue-opportunities';
 import { loadBusinessById } from '@/lib/titan/business-context';
 import { logConnectionEvent } from '@/lib/titan/integrations';

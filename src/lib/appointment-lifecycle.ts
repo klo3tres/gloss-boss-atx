@@ -96,6 +96,13 @@ export async function cancelAppointmentLifecycle(
     .eq('id', id);
   if (error) return { ok: false, error: error.message };
 
+  try {
+    const { cancelAgreementRemindersForAppointment } = await import('@/lib/agreements/reminders');
+    await cancelAgreementRemindersForAppointment(admin, id);
+  } catch (e) {
+    console.warn('[lifecycle] cancel agreement reminders', e);
+  }
+
   const guest = str(row.guest_name) || 'Customer';
   const email = str(row.guest_email);
   const when = whenChicago(str(row.scheduled_start));
@@ -187,6 +194,18 @@ export async function rescheduleAppointmentLifecycle(
     })
     .eq('id', id);
   if (error) return { ok: false, error: error.message };
+
+  try {
+    const { rescheduleAgreementReminders } = await import('@/lib/agreements/reminders');
+    await rescheduleAgreementReminders(admin, {
+      appointmentId: id,
+      scheduledStart: newStart,
+      customerId: row.customer_id ? str(row.customer_id) : null,
+      accessToken: str(row.access_token) || null,
+    });
+  } catch (e) {
+    console.warn('[lifecycle] reschedule agreement reminders', e);
+  }
 
   const guest = str(row.guest_name) || 'Customer';
   const email = str(row.guest_email);

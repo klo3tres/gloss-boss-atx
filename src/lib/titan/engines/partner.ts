@@ -33,7 +33,8 @@ function toPartnerCard(p: TitanProspect): PartnerCard {
     partnershipReason: p.scoreReason,
     nextAction: p.status === 'new' ? 'Run outreach play' : 'Follow up on partnership thread',
     confidencePercent: Math.min(95, p.score),
-    href: `/admin/titan/opportunities?id=${encodeURIComponent(p.id)}`,
+    // Prospects are Lead Radar records — not opportunity board rows.
+    href: `/admin/titan/lead-radar`,
   };
 }
 

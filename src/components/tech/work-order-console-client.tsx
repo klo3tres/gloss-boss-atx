@@ -32,6 +32,7 @@ import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(da
 import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
 import { JobWeatherIndicator } from '@/components/weather/job-weather-indicator';
+import { WorkOrderAgreementPanel } from '@/components/tech/work-order-agreement-panel';
 
 const DeferredWorkOrderPanel = () => <div className='h-40 animate-pulse rounded-2xl border border-white/5 bg-white/[0.03]' />;
 const WorkOrderLedgerPanel = dynamic(
@@ -120,6 +121,7 @@ export type WorkOrderConsoleData = {
   paymentStatus: string;
   paymentComplete: boolean;
   agreementSigned: boolean;
+  agreementStatus?: string;
   agreementCaptureHref: string;
   agreementDetailHref: string;
   agreementPdfHref?: string;
@@ -128,6 +130,9 @@ export type WorkOrderConsoleData = {
   agreementSmsConsent?: boolean;
   agreementPhotoConsent?: boolean;
   agreementMediaConsent?: boolean;
+  accessToken?: string;
+  currentUserId?: string;
+  appointmentIdForAgreement?: string;
   requirements: Array<{ label: string; ok: boolean }>;
   timeline: Array<{ id: string; title: string; time: string }>;
   notes: Array<{ id: string; vehicleLabel: string; time: string; body: string }>;
@@ -666,6 +671,26 @@ export function WorkOrderConsoleClient({
             </div>
           )}
 
+          {/* Agreement — prominent near top of overview */}
+          <section id='wo-agreement-overview' className='scroll-mt-36'>
+            <WorkOrderAgreementPanel
+              appointmentId={data.appointmentIdForAgreement || (!data.isFallback ? data.canonicalId : '')}
+              workOrderId={data.canonicalId}
+              agreementSigned={data.agreementSigned}
+              agreementStatus={data.agreementStatus}
+              signerName={data.agreementSignerName}
+              signedAt={data.agreementSignedAt}
+              smsConsent={data.agreementSmsConsent}
+              photoConsent={data.agreementPhotoConsent}
+              mediaConsent={data.agreementMediaConsent}
+              agreementCaptureHref={data.agreementCaptureHref}
+              agreementDetailHref={data.agreementDetailHref}
+              agreementPdfHref={data.agreementPdfHref}
+              accessToken={data.accessToken}
+              userId={data.currentUserId}
+            />
+          </section>
+
           {/* Visual Job Timeline */}
           <div className="gb-glass rounded-3xl border border-white/10 p-6 bg-black/40">
             <SectionEyebrow>Operations pipeline</SectionEyebrow>
@@ -973,13 +998,13 @@ export function WorkOrderConsoleClient({
                 
                 {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
                 <div className="flex gap-2 items-center">
-                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><User className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gold bg-gold/10 text-gold-soft"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
                   <span className="h-5 w-[1px] bg-white/10 mx-1" />
-                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
                 </div>
               </div>
 
@@ -1206,13 +1231,13 @@ export function WorkOrderConsoleClient({
                 
                 {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
                 <div className="flex gap-2 items-center">
-                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Car className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gold bg-gold/10 text-gold-soft"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
                   <span className="h-5 w-[1px] bg-white/10 mx-1" />
-                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
                 </div>
               </div>
 
@@ -1556,13 +1581,13 @@ export function WorkOrderConsoleClient({
                 
                 {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
                 <div className="flex gap-2 items-center">
-                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Sparkles className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gold bg-gold/10 text-gold-soft"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
                   <span className="h-5 w-[1px] bg-white/10 mx-1" />
-                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
                 </div>
               </div>
 
@@ -1724,13 +1749,13 @@ export function WorkOrderConsoleClient({
                 
                 {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
                 <div className="flex gap-2 items-center">
-                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><MessageSquare className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gold bg-gold/10 text-gold-soft"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Wrench className="h-4 w-4" /></button>
                   <span className="h-5 w-[1px] bg-white/10 mx-1" />
-                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
                 </div>
               </div>
 
@@ -1928,87 +1953,48 @@ export function WorkOrderConsoleClient({
                 
                 {/* Secondary navigation tab icons inside drawer to quickly toggle between drawers */}
                 <div className="flex gap-2 items-center">
-                  <button type="button" onClick={() => setActiveDrawer('customer')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('notes')} className="p-1.5 rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="p-1.5 rounded-lg border border-gold bg-gold/10 text-gold-soft"><Wrench className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('customer')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><User className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('vehicle')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Car className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('loyalty')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><Sparkles className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('notes')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-zinc-400 hover:text-white"><MessageSquare className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer('advanced')} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gold bg-gold/10 text-gold-soft"><Wrench className="h-4 w-4" /></button>
                   <span className="h-5 w-[1px] bg-white/10 mx-1" />
-                  <button type="button" onClick={() => setActiveDrawer(null)} className="rounded-lg border border-white/10 p-1.5 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setActiveDrawer(null)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition"><X className="h-4 w-4" /></button>
                 </div>
               </div>
 
               <div className="space-y-6">
                 <div className="space-y-6 animate-in fade-in duration-200">
           <section id='wo-agreement' className='scroll-mt-28'>
-            <div className="gb-premium-card rounded-3xl border border-gold/15 bg-black/45 p-6 shadow-xl relative overflow-hidden">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
-                <SectionEyebrow>Agreement & Acknowledgement</SectionEyebrow>
-                <PremiumBadge tone={data.agreementSigned ? 'emerald' : 'amber'}>
-                  {data.agreementSigned ? 'Signed' : 'Required'}
-                </PremiumBadge>
-              </div>
-
-              <p className='text-sm text-zinc-300 leading-relaxed'>
-                {data.agreementSigned
-                  ? 'Legal liability agreement is signed and on file for this job.'
-                  : 'Capture liability and service intake acknowledgement before starting field work — this is step 1 in job progress.'}
-              </p>
-              {data.agreementSigned ? (
-                <div className="mt-5 grid gap-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4 text-xs text-zinc-300 sm:grid-cols-2">
-                  <p>
-                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Signer</span>
-                    <strong className="text-white">{data.agreementSignerName || 'Customer signature on file'}</strong>
-                  </p>
-                  <p>
-                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Signed</span>
-                    <strong className="text-white">{data.agreementSignedAt || 'Timestamp on agreement PDF'}</strong>
-                  </p>
-                  <div className="sm:col-span-2 flex flex-wrap gap-2">
-                    {[
-                      ['SMS consent', data.agreementSmsConsent],
-                      ['Photo consent', data.agreementPhotoConsent],
-                      ['Media consent', data.agreementMediaConsent],
-                    ].map(([label, ok]) => (
-                      <span
-                        key={String(label)}
-                        className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                          ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-zinc-500'
-                        }`}
-                      >
-                        {label}: {ok ? 'Yes' : 'Not captured'}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-100">
-                  No signed agreement is attached yet. Send or recapture the agreement before starting the job.
-                </div>
-              )}
-              <div className='mt-5 flex flex-wrap gap-2'>
-                <Link
-                  href={data.agreementCaptureHref}
-                  className='gb-premium-btn rounded-xl border border-gold/40 bg-gold/10 px-4 py-2.5 text-xs font-black uppercase text-gold-soft hover:bg-gold/20 transition'
-                >
-                  {data.agreementSigned ? 'Recapture agreement' : 'Capture agreement'}
-                </Link>
-                <Link
-                  href={data.agreementDetailHref}
-                  className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200 hover:bg-white/5 transition'
-                >
-                  View agreement
-                </Link>
-                {data.agreementPdfHref ? (
-                  <Link
-                    href={data.agreementPdfHref}
-                    className='gb-premium-btn rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black uppercase text-zinc-200 hover:bg-white/5 transition'
-                  >
-                    Download agreement PDF
-                  </Link>
-                ) : null}
-              </div>
-            </div>
+            <WorkOrderAgreementPanel
+              appointmentId={data.appointmentIdForAgreement || (!data.isFallback ? data.canonicalId : '')}
+              workOrderId={data.canonicalId}
+              agreementSigned={data.agreementSigned}
+              agreementStatus={data.agreementStatus}
+              signerName={data.agreementSignerName}
+              signedAt={data.agreementSignedAt}
+              smsConsent={data.agreementSmsConsent}
+              photoConsent={data.agreementPhotoConsent}
+              mediaConsent={data.agreementMediaConsent}
+              agreementCaptureHref={data.agreementCaptureHref}
+              agreementDetailHref={data.agreementDetailHref}
+              agreementPdfHref={data.agreementPdfHref}
+              accessToken={data.accessToken}
+              userId={data.currentUserId}
+            />
+            <p className='mt-2 text-[10px] text-zinc-500'>
+              Same controls as the overview Agreement card —{' '}
+              <button
+                type='button'
+                className='text-gold-soft underline'
+                onClick={() => {
+                  setActiveDrawer(null);
+                  setTimeout(() => scrollToSection('wo-agreement-overview'), 100);
+                }}
+              >
+                jump to overview
+              </button>
+            </p>
           </section>
 
           <div id='wo-advanced-ledger' className='scroll-mt-28'>

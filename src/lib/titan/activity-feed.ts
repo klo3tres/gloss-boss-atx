@@ -21,6 +21,7 @@ export type TitanActivityKind =
   | 'staff_role_changed'
   | 'staff_profile_repaired'
   | 'staff_account_verified'
+  | 'staff_auth_created'
   | 'staff_reset_link_sent'
   | 'referral_settings_changed'
   | 'tech_job_assigned'

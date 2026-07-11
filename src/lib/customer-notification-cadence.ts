@@ -40,6 +40,7 @@ export type CadenceVars = {
   portal_link?: string;
   referral_link?: string;
   review_link?: string;
+  agreement_link?: string;
 };
 
 const BOOK_LINK = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '') + '/book';
@@ -247,6 +248,7 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
   sent: number;
   skipped: number;
   failed: number;
+  agreementReminders?: { sent: number; skipped: number };
 }> {
   const probe = await admin.from('scheduled_messages').select('id').limit(1);
   if (probe.error && isMissingTable(probe.error.message)) return { sent: 0, skipped: 0, failed: 0 };
@@ -275,6 +277,12 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
     const appointmentId = str(r.appointment_id) || null;
     const ruleKey = str(r.rule_key) || 'scheduled';
     const attemptCount = Number(r.attempt_count ?? 0) + 1;
+
+    // Staff job reminders are processed by processDueStaffJobReminders.
+    if (channel === 'staff' || ruleKey.startsWith('staff_job_')) {
+      continue;
+    }
+
     await admin.from('scheduled_messages').update({ status: 'sending', attempt_count: attemptCount, last_attempt_at: now, updated_at: now }).eq('id', id);
 
     if (!recipient || !body) {
@@ -325,7 +333,27 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
     }
   }
 
-  return { sent, skipped, failed };
+  let agreementReminders: { sent: number; skipped: number } | undefined;
+  try {
+    const { processDueAgreementReminders } = await import('@/lib/agreements/reminders');
+    agreementReminders = await processDueAgreementReminders(admin);
+    sent += agreementReminders.sent;
+    skipped += agreementReminders.skipped;
+  } catch (e) {
+    console.warn('[cadence] agreement reminders skipped', e);
+  }
+
+  try {
+    const { processDueStaffJobReminders } = await import('@/lib/staff-notification-router');
+    const staffJobs = await processDueStaffJobReminders(admin);
+    sent += staffJobs.sent;
+    skipped += staffJobs.skipped;
+    failed += staffJobs.failed;
+  } catch (e) {
+    console.warn('[cadence] staff job reminders skipped', e);
+  }
+
+  return { sent, skipped, failed, agreementReminders };
 }
 
 async function enqueueRuleMessages(

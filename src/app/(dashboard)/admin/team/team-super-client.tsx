@@ -22,6 +22,17 @@ async function teamApi(body: object): Promise<{
   profileExists?: boolean;
   profileRole?: string | null;
   inviteStatus?: string | null;
+  auth?: { exists?: boolean; userId?: string | null };
+  profile?: { exists?: boolean; role?: string | null; active?: boolean; email?: string };
+  invite?: { status?: string | null; role?: string | null } | null;
+  delivery?: {
+    emailStatus?: string;
+    smsStatus?: string;
+    emailError?: string | null;
+    smsError?: string | null;
+    note?: string;
+  } | null;
+  alreadyExisted?: boolean;
 }> {
   const res = await fetchWithTimeout('/api/admin/team', {
     method: 'POST',
@@ -30,27 +41,43 @@ async function teamApi(body: object): Promise<{
     credentials: 'same-origin',
     timeoutMs: 120000,
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    ok?: boolean;
-    error?: string;
-    usedInvite?: boolean;
-    invitePending?: boolean;
-    emailStatus?: string;
-    smsStatus?: string;
-    emailError?: string | null;
-    smsError?: string | null;
-  };
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Request failed (${res.status})`, invitePending: data.invitePending };
+    return {
+      ok: false,
+      error: (data.error as string) ?? `Request failed (${res.status})`,
+      invitePending: Boolean(data.invitePending),
+      emailStatus: data.emailStatus as string | undefined,
+      smsStatus: data.smsStatus as string | undefined,
+      emailError: (data.emailError as string | null) ?? null,
+      smsError: (data.smsError as string | null) ?? null,
+    };
   }
   return {
     ok: true,
-    usedInvite: data.usedInvite,
-    invitePending: data.invitePending,
-    emailStatus: data.emailStatus,
-    smsStatus: data.smsStatus,
-    emailError: data.emailError,
-    smsError: data.smsError,
+    usedInvite: data.usedInvite as boolean | undefined,
+    invitePending: data.invitePending as boolean | undefined,
+    emailStatus: data.emailStatus as string | undefined,
+    smsStatus: data.smsStatus as string | undefined,
+    emailError: (data.emailError as string | null) ?? null,
+    smsError: (data.smsError as string | null) ?? null,
+    fixed: data.fixed as string[] | undefined,
+    role: data.role as string | undefined,
+    authUserExists: data.authUserExists as boolean | undefined,
+    profileExists: data.profileExists as boolean | undefined,
+    profileRole: (data.profileRole as string | null) ?? null,
+    inviteStatus: (data.inviteStatus as string | null) ?? null,
+    auth: data.auth as { exists?: boolean; userId?: string | null } | undefined,
+    profile: data.profile as { exists?: boolean; role?: string | null; active?: boolean; email?: string } | undefined,
+    invite: data.invite as { status?: string | null; role?: string | null } | null | undefined,
+    delivery: data.delivery as {
+      emailStatus?: string;
+      smsStatus?: string;
+      emailError?: string | null;
+      smsError?: string | null;
+      note?: string;
+    } | null | undefined,
+    alreadyExisted: data.alreadyExisted as boolean | undefined,
   };
 }
 
@@ -475,9 +502,10 @@ export function StaffRowSuperClient({
   const [email, setEmail] = useState(profileEmail ?? '');
   const [phone, setPhone] = useState(profilePhone ?? '');
   const [pwd, setPwd] = useState('');
-  const [busy, setBusy] = useState<'role' | 'name' | 'contact' | 'pwd' | 'pwd-link' | 'active' | 'remove' | 'verify' | 'repair' | null>(null);
+  const [busy, setBusy] = useState<'role' | 'name' | 'contact' | 'pwd' | 'pwd-link' | 'active' | 'remove' | 'verify' | 'repair' | 'create-auth' | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [authExists, setAuthExists] = useState<boolean | null>(null);
 
   useEffect(() => {
     setRole(initialRole);
@@ -486,6 +514,14 @@ export function StaffRowSuperClient({
     setEmail(profileEmail ?? '');
     setPhone(profilePhone ?? '');
   }, [initialRole, initialDisplayName, initialActive, profileEmail, profilePhone]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void (async () => {
+      const r = await teamApi({ intent: 'verify_staff_account', profileId });
+      if (r.ok) setAuthExists(r.auth?.exists ?? r.authUserExists ?? null);
+    })();
+  }, [isOpen, profileId]);
 
   return (
     <>
@@ -674,8 +710,9 @@ export function StaffRowSuperClient({
                           }
                           setMsg({
                             type: 'ok',
-                            text: `Auth: ${r.authUserExists ? 'ok' : 'missing'} · Profile: ${r.profileExists ? r.profileRole : 'missing'} · Invite: ${r.inviteStatus ?? 'none'}`,
+                            text: `Auth: ${r.auth?.exists ?? r.authUserExists ? 'ok' : 'missing'} · Profile: ${r.profile?.exists ?? r.profileExists ? r.profile?.role ?? r.profileRole : 'missing'} · Invite: ${r.invite?.status ?? r.inviteStatus ?? 'none'}`,
                           });
+                          setAuthExists(r.auth?.exists ?? r.authUserExists ?? null);
                         })();
                       }}
                       className="rounded-xl border border-white/15 px-3 py-2 text-[10px] font-black uppercase text-zinc-300"
@@ -695,7 +732,8 @@ export function StaffRowSuperClient({
                             setMsg({ type: 'err', text: r.error ?? 'Repair failed' });
                             return;
                           }
-                          setMsg({ type: 'ok', text: `Repaired: ${(r.fixed ?? []).join(', ')}` });
+                          setMsg({ type: 'ok', text: `Repaired: ${(r.fixed ?? []).join(', ') || 'no changes'}${r.auth ? ` · Auth ${r.auth.exists ? 'ok' : 'missing'}` : ''}` });
+                          if (r.auth?.exists != null) setAuthExists(r.auth.exists);
                           router.refresh();
                         })();
                       }}
@@ -730,13 +768,56 @@ export function StaffRowSuperClient({
                               setMsg({ type: 'err', text: r.error ?? 'Could not resend invite' });
                               return;
                             }
-                            setMsg({ type: 'ok', text: 'Team invite resent (SMS + email).' });
+                            const parts = [
+                              r.sent?.emailStatus ? `email ${r.sent.emailStatus}` : null,
+                              r.sent?.smsStatus ? `SMS ${r.sent.smsStatus}` : null,
+                            ].filter(Boolean);
+                            setMsg({
+                              type: r.sent?.smsStatus === 'failed' && r.sent?.emailStatus !== 'sent' ? 'err' : 'ok',
+                              text: `Invite resent${parts.length ? ` · ${parts.join(' · ')}` : ''}${r.sent?.emailError ? ` — ${r.sent.emailError}` : ''}${r.sent?.smsError ? ` — ${r.sent.smsError}` : ''}`,
+                            });
                             router.refresh();
                           })();
                         }}
                         className="rounded-xl border border-gold/30 bg-gold/10 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20 disabled:opacity-40 transition"
                       >
                         Resend team invite
+                      </button>
+                    </>
+                  ) : authExists === false ? (
+                    <>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                        <Lock className="h-3.5 w-3.5" /> Login missing
+                      </label>
+                      <p className="text-xs text-zinc-400">
+                        This roster row has no Supabase auth user. Create a login before sending a password reset.
+                        {profileEmail ? ` Email on file: ${profileEmail}.` : ' Add an email under Contact details first.'}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busy !== null || !profileEmail}
+                        onClick={() => {
+                          void (async () => {
+                            setBusy('create-auth');
+                            setMsg(null);
+                            const r = await teamApi({ intent: 'create_auth_for_staff', profileId });
+                            setBusy(null);
+                            if (!r.ok) {
+                              setMsg({ type: 'err', text: r.error ?? 'Could not create account' });
+                              return;
+                            }
+                            setAuthExists(true);
+                            const d = r.delivery;
+                            setMsg({
+                              type: 'ok',
+                              text: `Account created${r.alreadyExisted ? ' (already existed)' : ''}${d?.note ? ` · ${d.note}` : ''}${d?.emailStatus ? ` · email ${d.emailStatus}` : ''}${d?.smsError ? ` — ${d.smsError}` : ''}`,
+                            });
+                            router.refresh();
+                          })();
+                        }}
+                        className="rounded-xl border border-gold/30 bg-gold/10 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/20 disabled:opacity-40 transition"
+                      >
+                        {busy === 'create-auth' ? 'Creating…' : 'Create account'}
                       </button>
                     </>
                   ) : (
@@ -756,7 +837,7 @@ export function StaffRowSuperClient({
                     />
                     <button
                       type="button"
-                      disabled={busy !== null}
+                      disabled={busy !== null || authExists === null}
                       onClick={() => {
                         void (async () => {
                           setBusy('pwd-link');
@@ -786,7 +867,7 @@ export function StaffRowSuperClient({
                     </button>
                     <button
                       type="button"
-                      disabled={busy !== null}
+                      disabled={busy !== null || authExists === null}
                       onClick={() => {
                         void (async () => {
                           if (pwd.length < 8) {

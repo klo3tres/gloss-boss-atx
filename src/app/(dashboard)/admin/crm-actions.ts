@@ -121,6 +121,23 @@ export async function assignTechnicianAction(formData: FormData) {
     } catch (e) {
       console.warn('[crm] tech notification', e);
     }
+    try {
+      const { data: appt } = await gate.supabase
+        .from('appointments')
+        .select('scheduled_start, guest_name, service_slug')
+        .eq('id', appointmentId)
+        .maybeSingle();
+      const { enqueueStaffJobReminders } = await import('@/lib/staff-notification-router');
+      await enqueueStaffJobReminders(gate.supabase, {
+        appointmentId,
+        technicianId,
+        scheduledStart: (appt as { scheduled_start?: string } | null)?.scheduled_start,
+        guestName: (appt as { guest_name?: string } | null)?.guest_name,
+        serviceSlug: (appt as { service_slug?: string } | null)?.service_slug,
+      });
+    } catch (e) {
+      console.warn('[crm] staff job reminders', e);
+    }
   }
 
   revalidatePath('/admin');

@@ -84,7 +84,7 @@ export function TitanSystemHealthPanel({ health }: { health: TitanSystemHealth }
             {health.automationRuns.map((run) => (
               <li key={run.jobKey} className={`rounded-xl border px-3 py-2 text-xs ${statusClass(run.status === 'completed' ? 'ok' : run.status === 'failed' ? 'missing' : 'manual')}`}>
                 <p className="font-bold">{run.jobKey.replaceAll('_', ' ')}</p>
-                <p className="mt-1 text-[10px] opacity-80">{run.status} Â· {run.durationMs ?? 0}ms Â· {new Date(run.startedAt).toLocaleString()}</p>
+                <p className="mt-1 text-[10px] opacity-80">{run.status} · {run.durationMs ?? 0}ms · {new Date(run.startedAt).toLocaleString()}</p>
                 {run.error ? <p className="mt-1 text-[10px]">{run.error}</p> : null}
               </li>
             ))}

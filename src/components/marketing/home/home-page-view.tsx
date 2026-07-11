@@ -274,25 +274,25 @@ export function HomePageView({
       </section>
 
       {showMembershipSection ? (
-        <section className="relative overflow-hidden border-y border-white/5 py-0">
-          <div className="relative min-h-[420px]">
+        <section className="relative overflow-hidden border-y border-white/5">
+          <div className="relative min-h-[380px]">
             <img
               src={(visuals?.membership as { image?: string })?.image || mediaUrl(mediaRegistry, 'homepage.membershipCover')}
               alt=""
               style={getObjectStyle(visuals?.membership as { fit?: string; position?: string })}
-              className="absolute inset-0 h-full w-full object-cover opacity-30"
+              className="absolute inset-0 h-full w-full object-cover opacity-25"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/40" />
-            <div className="relative mx-auto flex max-w-7xl flex-col justify-center px-4 py-20 sm:px-6 lg:min-h-[420px] lg:px-8">
+            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/75 to-black/90" />
+            <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-16 text-center sm:px-6 lg:px-8">
               <PremiumEyebrow>Memberships</PremiumEyebrow>
-              <h2 className="mt-4 max-w-xl text-3xl font-black uppercase tracking-tight text-white sm:text-5xl">
+              <h2 className="mt-4 max-w-3xl text-balance text-3xl font-black uppercase tracking-tight text-white sm:text-4xl lg:text-5xl">
                 {(visuals?.membership as { title?: string })?.title || 'Save with recurring shine'}
               </h2>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-zinc-300">
+              <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-zinc-300 sm:text-base">
                 {(visuals?.membership as { desc?: string })?.desc ||
                   'Bronze, Silver, and Gold plans with priority scheduling and member pricing.'}
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <PremiumButton href={(visuals?.membership as { ctaLink?: string })?.ctaLink || '/memberships'}>
                   {(visuals?.membership as { ctaText?: string })?.ctaText || 'View memberships'}
                 </PremiumButton>
@@ -300,7 +300,9 @@ export function HomePageView({
                   Calculate savings
                 </PremiumButton>
               </div>
-              <MembershipComparisonSlim className="mt-10 max-w-4xl" />
+              <div className="mt-10 w-full max-w-4xl">
+                <MembershipComparisonSlim className="mx-auto w-full [&_.grid]:items-stretch" />
+              </div>
             </div>
           </div>
         </section>

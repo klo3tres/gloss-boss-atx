@@ -126,6 +126,38 @@ export async function POST() {
         });
         if (link.ok && link.customerId) {
           try {
+            if (user.user_metadata?.sms_consent === true) {
+              const { normalizeSmsConsentStatus, logSmsConsentChange } = await import('@/lib/sms-consent');
+              const { data: existingCustomer } = await admin
+                .from('customers')
+                .select('sms_consent')
+                .eq('id', link.customerId)
+                .maybeSingle();
+              const previous =
+                (existingCustomer as { sms_consent?: boolean | null } | null)?.sms_consent ?? null;
+              await admin
+                .from('customers')
+                .update({
+                  sms_consent: true,
+                  sms_status: normalizeSmsConsentStatus(true),
+                  sms_consent_source: 'account_signup',
+                  sms_consent_timestamp: now,
+                  updated_at: now,
+                })
+                .eq('id', link.customerId);
+              await logSmsConsentChange(admin, {
+                customerId: link.customerId,
+                changedBy: user.id,
+                source: 'account_signup',
+                previousConsent: previous,
+                newConsent: true,
+                note: 'Synced from signup user_metadata.sms_consent',
+              });
+            }
+          } catch (e) {
+            console.warn('[ensure-profile] sms consent sync skipped', e);
+          }
+          try {
             const { enqueueWelcomeCadence } = await import('@/lib/customer-notification-cadence');
             const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://glossbossatx.com';
             const portalLink = `${appBase}/dashboard`;
@@ -210,11 +242,45 @@ export async function POST() {
   if (String(existing.role) === 'customer') {
     try {
       const { linkAuthUserToCustomer } = await import('@/lib/customer-portal-access');
-      await linkAuthUserToCustomer(admin, {
+      const link = await linkAuthUserToCustomer(admin, {
         authUserId: user.id,
         email: emailNorm,
         fullName: fullName ?? undefined,
       });
+      if (link.ok && link.customerId && user.user_metadata?.sms_consent === true) {
+        try {
+          const { normalizeSmsConsentStatus, logSmsConsentChange } = await import('@/lib/sms-consent');
+          const { data: existingCustomer } = await admin
+            .from('customers')
+            .select('sms_consent')
+            .eq('id', link.customerId)
+            .maybeSingle();
+          const previous =
+            (existingCustomer as { sms_consent?: boolean | null } | null)?.sms_consent ?? null;
+          if (previous !== true) {
+            await admin
+              .from('customers')
+              .update({
+                sms_consent: true,
+                sms_status: normalizeSmsConsentStatus(true),
+                sms_consent_source: 'account_signup',
+                sms_consent_timestamp: now,
+                updated_at: now,
+              })
+              .eq('id', link.customerId);
+            await logSmsConsentChange(admin, {
+              customerId: link.customerId,
+              changedBy: user.id,
+              source: 'account_signup',
+              previousConsent: previous,
+              newConsent: true,
+              note: 'Synced from signup user_metadata.sms_consent on login',
+            });
+          }
+        } catch (e) {
+          console.warn('[ensure-profile] sms consent sync on login skipped', e);
+        }
+      }
     } catch (e) {
       console.warn('[ensure-profile] customer link on login', e);
     }

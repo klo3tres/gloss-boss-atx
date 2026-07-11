@@ -5,7 +5,7 @@ import { Activity, Bell, Calendar, ChevronRight, CloudRain, DollarSign, Trending
 import type { ExecutiveBriefingSnapshot } from '@/lib/titan/executive-briefing';
 import { BriefingOpportunityCard } from '@/components/titan/briefing-opportunity-card';
 import { BriefingCalendarPreview } from '@/components/titan/briefing-calendar-preview';
-import { DailyActionPlanPanel, TodaysMoneyMovesPanel } from '@/components/titan/daily-action-plan-panel';
+import { ActionCard, DailyActionPlanPanel, TodaysMoneyMovesPanel } from '@/components/titan/daily-action-plan-panel';
 import { TitanPowerstonePanel } from '@/components/titan/titan-powerstone-panel';
 import { WeatherReadinessWidget } from '@/components/widgets/weather-readiness-widget';
 import { TitanHealthPill } from '@/components/titan/titan-page-shell';
@@ -22,6 +22,31 @@ function StatChip({ label, value, hint, href }: { label: string; value: string; 
   return inner;
 }
 
+function topUniqueRoiActions(briefing: ExecutiveBriefingSnapshot) {
+  const byId = new Map(briefing.dailyActionPlan.actions.map((a) => [a.id, a]));
+  const seen = new Set<string>();
+  const out: typeof briefing.dailyActionPlan.actions = [];
+  for (const roi of briefing.roiActions) {
+    const action = byId.get(roi.id) ?? briefing.dailyActionPlan.actions.find((a) => a.actionKey === roi.id);
+    if (!action) continue;
+    const key = action.actionKey || action.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(action);
+    if (out.length >= 3) break;
+  }
+  if (out.length < 3) {
+    for (const a of briefing.dailyActionPlan.actions) {
+      const key = a.actionKey || a.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(a);
+      if (out.length >= 3) break;
+    }
+  }
+  return out;
+}
+
 export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBriefingSnapshot }) {
   const greeting = (() => {
     const h = new Date().getHours();
@@ -35,6 +60,9 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
     briefing.calendarConflict ? { label: briefing.calendarConflict, tone: 'text-rose-700 dark:text-rose-200' } : null,
     briefing.balanceDueLabel !== '$0.00' ? { label: `${briefing.balanceDueLabel} outstanding`, tone: 'text-gold-soft' } : null,
   ].filter(Boolean) as Array<{ label: string; tone: string }>;
+
+  const roiActions = topUniqueRoiActions(briefing);
+  const roiIds = roiActions.map((a) => a.id);
 
   return (
     <div className="w-full space-y-4">
@@ -75,41 +103,25 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
         moves={briefing.dailyActionPlan.fastestMoneyMoves}
       />
 
-      {briefing.roiActions.length > 0 ? (
+      {roiActions.length > 0 ? (
         <section className="rounded-2xl border border-border bg-card p-5">
           <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Highest ROI actions</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Confidence, revenue impact, and time — complete these first.
           </p>
-          <ul className="mt-3 space-y-2">
-            {briefing.roiActions.map((a) => (
-              <li key={a.id}>
-                <Link
-                  href={a.href}
-                  className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-border bg-background/60 px-3 py-2.5 transition hover:border-gold/30"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-foreground">{a.title}</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{a.why}</p>
-                    {a.dependencies ? (
-                      <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-200">{a.dependencies}</p>
-                    ) : null}
-                  </div>
-                  <div className="shrink-0 text-right text-[10px]">
-                    <p className="font-black uppercase text-gold-soft">{a.priority}</p>
-                    <p className="mt-0.5 font-mono text-foreground">{a.revenueImpactLabel}</p>
-                    <p className="text-muted-foreground">
-                      {a.confidence}% · ~{a.timeEstimateMinutes}m
-                    </p>
-                  </div>
-                </Link>
-              </li>
+          <div className="mt-3 grid gap-3 lg:grid-cols-1">
+            {roiActions.map((a) => (
+              <ActionCard key={a.id} action={a} />
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 
-      <DailyActionPlanPanel actions={briefing.dailyActionPlan.actions} />
+      <DailyActionPlanPanel
+        actions={briefing.dailyActionPlan.actions}
+        lastGeneratedAt={briefing.dailyActionPlan.lastGeneratedAt}
+        excludeIds={roiIds}
+      />
 
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <StatChip label="Yesterday" value={briefing.revenueYesterdayLabel} hint="Collected" href="/admin/revenue" />
@@ -121,9 +133,40 @@ export function ExecutiveBriefingClient({ briefing }: { briefing: ExecutiveBrief
           label="Ops signals"
           value={`${briefing.unsignedAcknowledgments + briefing.reviewsNeeded + briefing.inventoryAlerts + briefing.customersDue}`}
           hint={`Ack ${briefing.unsignedAcknowledgments} · Reviews ${briefing.reviewsNeeded} · Due ${briefing.customersDue}`}
-          href="/admin/exceptions"
+          href="/admin/communications"
         />
       </section>
+
+      {briefing.unsignedAgreementActions?.length ? (
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <p className="text-[10px] font-black uppercase tracking-wider text-gold-soft">Unsigned agreements</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {briefing.unsignedAcknowledgments} upcoming appointment(s) still need a signed acknowledgment.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {briefing.unsignedAgreementActions.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={a.href}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/60 px-3 py-2.5 transition hover:border-gold/30"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground">{a.customerName}</p>
+                    <p className="text-[11px] text-muted-foreground">{a.when}</p>
+                  </div>
+                  <span className="text-[10px] font-black uppercase text-gold-soft">Open work order</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/admin/communications"
+            className="mt-3 inline-flex text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:text-gold-soft"
+          >
+            Communications center →
+          </Link>
+        </section>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
         <div className="space-y-4">

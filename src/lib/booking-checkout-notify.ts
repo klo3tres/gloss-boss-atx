@@ -196,4 +196,18 @@ export async function notifyBookingCheckoutPaid(params: {
   } catch (e) {
     console.warn('[booking-checkout-notify] owner alert', e);
   }
+
+  if (isDeposit || paymentKind === 'booking_full') {
+    try {
+      const { enqueueAgreementReminderCadence } = await import('@/lib/agreements/reminders');
+      await enqueueAgreementReminderCadence(admin, {
+        appointmentId,
+        customerId: str(jobRow.customer_id) || null,
+        scheduledStart: whenIso,
+        accessToken: str(jobRow.access_token) || null,
+      });
+    } catch (e) {
+      console.warn('[booking-checkout-notify] agreement reminders skipped', e);
+    }
+  }
 }

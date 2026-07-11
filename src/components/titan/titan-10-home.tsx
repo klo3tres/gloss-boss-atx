@@ -4,19 +4,24 @@ import { TITAN_VERSION_LABEL, TITAN_PRODUCT_STAGE } from '@/lib/titan/branding';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  Copy,
   Crosshair,
   FlaskConical,
   GitBranch,
   Handshake,
+  Phone,
   RefreshCw,
   Target,
   TrendingUp,
   Wallet,
+  X,
 } from 'lucide-react';
 import type { Titan10Snapshot } from '@/lib/titan/engines/load';
 import type { TitanSystemHealth } from '@/lib/titan/system-health';
+import type { PartnerCard, TitanRevenueCard } from '@/lib/titan/engines/types';
 import { TITAN_ENGINES } from '@/lib/titan/branding';
 import { TitanSystemHealthPanel } from '@/components/titan/titan-system-health-panel';
 import { TitanSetupBanner } from '@/components/titan/titan-ui';
@@ -26,6 +31,7 @@ import {
   createExperimentAction,
   runAcquisitionHuntAction,
 } from '@/app/(dashboard)/admin/titan/titan-1-actions';
+import { markOpportunityStatusAction } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import { TitanProofPanels } from '@/components/titan/titan-proof-panels';
 import { TitanRevenueHuntPanel } from '@/components/titan/titan-revenue-hunt-panel';
 import { TitanLeadRadarTodayPanel } from '@/components/titan/titan-lead-radar-today-panel';
@@ -39,8 +45,175 @@ import type { ConversionGoalStats } from '@/lib/titan/lead-radar-hunt';
 import type { TitanExecutionRow } from '@/lib/titan/execution';
 import { TitanExecutionPanel } from '@/components/titan/titan-execution-panel';
 
+/** Graph + Memory stay hidden until NEXT_PUBLIC_TITAN_EXPERIMENTAL=1. */
+const showExperimental =
+  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_TITAN_EXPERIMENTAL === '1';
+
 function money(cents: number) {
   return displayMoney(cents);
+}
+
+function AcquisitionCard({
+  card,
+  dismissed,
+  onDismiss,
+}: {
+  card: TitanRevenueCard;
+  dismissed: boolean;
+  onDismiss: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [copied, setCopied] = useState(false);
+  if (dismissed) return null;
+
+  const openHref =
+    card.opportunityId != null && card.opportunityId !== ''
+      ? `/admin/titan/opportunities?open=${encodeURIComponent(card.opportunityId)}`
+      : card.href || '/admin/titan/lead-radar';
+
+  return (
+    <li className="rounded-xl border border-white/8 bg-black/40 p-4">
+      <div className="flex flex-wrap justify-between gap-2">
+        <p className="font-bold text-white">{card.title}</p>
+        <p className="font-mono text-sm font-black text-emerald-300">{money(card.expectedRevenueCents)}</p>
+      </div>
+      <p className="mt-1 text-xs text-zinc-500">{card.reason}</p>
+      <div className="mt-2 flex flex-wrap gap-3 text-[10px]">
+        <span className="text-cyan-300">{card.nextAction}</span>
+        <span className="text-zinc-600">{card.confidencePercent}% confidence</span>
+        {card.timeToCloseDays != null ? <span className="text-zinc-600">~{card.timeToCloseDays}d to close</span> : null}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href={openHref}
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-200"
+        >
+          Open <ArrowRight className="h-3 w-3" />
+        </Link>
+        {card.contactPhone ? (
+          <a
+            href={`tel:${card.contactPhone}`}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+          >
+            <Phone className="h-3 w-3" /> Call
+          </a>
+        ) : null}
+        {card.outreachRecommendation ? (
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard.writeText(card.outreachRecommendation ?? '');
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+          >
+            <Copy className="h-3 w-3" /> {copied ? 'Copied' : 'Copy script'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            onDismiss();
+            if (card.opportunityId) {
+              startTransition(async () => {
+                await markOpportunityStatusAction(card.opportunityId!, 'ignored');
+                router.refresh();
+              });
+            }
+          }}
+          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-500 hover:border-rose-500/30 hover:text-rose-300"
+        >
+          <X className="h-3 w-3" /> Dismiss
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function PartnerActionCard({
+  partner,
+  dismissed,
+  onDismiss,
+}: {
+  partner: PartnerCard;
+  dismissed: boolean;
+  onDismiss: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (dismissed) return null;
+
+  return (
+    <li className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+      <div className="flex flex-wrap justify-between gap-2">
+        <div>
+          <p className="text-lg font-black text-white">{partner.companyName}</p>
+          <p className="text-[10px] uppercase text-violet-300">{partner.partnerType}</p>
+        </div>
+        <p className="font-mono text-lg font-black text-violet-200">{money(partner.estimatedAnnualRevenueCents)}/yr</p>
+      </div>
+      <dl className="mt-3 grid gap-1 text-xs text-zinc-400 sm:grid-cols-2">
+        {partner.contactName ? (
+          <div>
+            <dt className="text-zinc-600">Contact</dt>
+            <dd>{partner.contactName}</dd>
+          </div>
+        ) : null}
+        {partner.contactPhone ? (
+          <div>
+            <dt className="text-zinc-600">Phone</dt>
+            <dd>{partner.contactPhone}</dd>
+          </div>
+        ) : null}
+        {partner.partnershipReason ? (
+          <div className="sm:col-span-2">
+            <dt className="text-zinc-600">Why</dt>
+            <dd>{partner.partnershipReason}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {partner.outreachScript ? <p className="mt-3 line-clamp-3 text-xs text-zinc-500">{partner.outreachScript}</p> : null}
+      <p className="mt-2 text-[10px] font-bold uppercase text-violet-200">{partner.nextAction}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href={partner.href || '/admin/titan/lead-radar'}
+          className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-violet-200"
+        >
+          Open <ArrowRight className="h-3 w-3" />
+        </Link>
+        {partner.contactPhone ? (
+          <a
+            href={`tel:${partner.contactPhone}`}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+          >
+            <Phone className="h-3 w-3" /> Call
+          </a>
+        ) : null}
+        {partner.outreachScript ? (
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard.writeText(partner.outreachScript);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-300"
+          >
+            <Copy className="h-3 w-3" /> {copied ? 'Copied' : 'Copy script'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-zinc-500 hover:border-rose-500/30 hover:text-rose-300"
+        >
+          <X className="h-3 w-3" /> Dismiss
+        </button>
+      </div>
+    </li>
+  );
 }
 
 function Section({
@@ -119,8 +292,14 @@ export function Titan10HomeClient({
   const [hypothesis, setHypothesis] = useState('');
   const [actions, setActions] = useState('');
   const [expectedDollars, setExpectedDollars] = useState('1200');
+  const [dismissedAcquisition, setDismissedAcquisition] = useState<Record<string, true>>({});
+  const [dismissedPartners, setDismissedPartners] = useState<Record<string, true>>({});
 
   const sb = snapshot.scoreboard;
+  const actionablePartners = snapshot.partners.partners.filter(
+    (p) => Boolean(p.contactPhone || p.outreachScript || p.href),
+  );
+  const visiblePartners = actionablePartners.filter((p) => !dismissedPartners[p.id]);
 
   const runHunt = () => {
     setHuntMsg(null);
@@ -165,7 +344,6 @@ export function Titan10HomeClient({
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{snapshot.ownerGreeting}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">{snapshot.mission}</p>
           </div>
-          <Link href="/admin/titan/settings" className="w-fit rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300 hover:border-emerald-500/30 hover:text-white">Settings & health</Link>
         </div>
         <nav className="mt-7 flex flex-wrap gap-2 border-t border-white/8 pt-5" aria-label="Titan workspace">
           {[
@@ -199,6 +377,7 @@ export function Titan10HomeClient({
             <span aria-hidden>🌐</span>
             Website Intelligence
           </Link>
+          {/* Single Settings entry — do not duplicate in header */}
           <Link href="/admin/titan/settings" className="inline-flex items-center gap-1.5 rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">
             <span aria-hidden>⚙️</span>
             Settings
@@ -328,20 +507,12 @@ export function Titan10HomeClient({
         <p className="mb-4 text-[10px] text-zinc-600">On demand — click to hunt. No waiting for cron.</p>
         <ul className="space-y-2">
           {snapshot.acquisition.opportunities.slice(0, 8).map((o) => (
-            <li key={o.id}>
-              <Link href={o.href} className="block rounded-xl border border-white/8 bg-black/40 p-4 hover:border-emerald-500/30">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <p className="font-bold text-white">{o.title}</p>
-                  <p className="font-mono text-sm font-black text-emerald-300">{money(o.expectedRevenueCents)}</p>
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">{o.reason}</p>
-                <div className="mt-2 flex flex-wrap gap-3 text-[10px]">
-                  <span className="text-cyan-300">{o.nextAction}</span>
-                  <span className="text-zinc-600">{o.confidencePercent}% confidence</span>
-                  {o.timeToCloseDays != null ? <span className="text-zinc-600">~{o.timeToCloseDays}d to close</span> : null}
-                </div>
-              </Link>
-            </li>
+            <AcquisitionCard
+              key={o.id}
+              card={o}
+              dismissed={Boolean(dismissedAcquisition[o.id])}
+              onDismiss={() => setDismissedAcquisition((prev) => ({ ...prev, [o.id]: true }))}
+            />
           ))}
         </ul>
           <Link href="/admin/titan/opportunities" className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-400 hover:text-white">
@@ -349,52 +520,26 @@ export function Titan10HomeClient({
           </Link>
       </Section>
 
+      {/* Partner Engine: hide when empty / no actionable controls (no phone, script, or open target). */}
+      {visiblePartners.length > 0 ? (
       <Section
         title={TITAN_ENGINES.partner}
-        subtitle={`${snapshot.partners.partners.length} partners · ${money(snapshot.partners.totalAnnualPotentialCents)}/yr potential`}
+        subtitle={`${visiblePartners.length} partners · ${money(snapshot.partners.totalAnnualPotentialCents)}/yr potential`}
         icon={Handshake}
         accent="violet"
       >
         <ul className="space-y-3">
-          {snapshot.partners.partners.length === 0 ? (
-            <li className="text-sm text-zinc-500">Run Hunt or add apartment/HOA targets in Command Center.</li>
-          ) : (
-            snapshot.partners.partners.slice(0, 5).map((p) => (
-              <li key={p.id} className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <div>
-                    <p className="text-lg font-black text-white">{p.companyName}</p>
-                    <p className="text-[10px] uppercase text-violet-300">{p.partnerType}</p>
-                  </div>
-                  <p className="font-mono text-lg font-black text-violet-200">{money(p.estimatedAnnualRevenueCents)}/yr</p>
-                </div>
-                <dl className="mt-3 grid gap-1 text-xs text-zinc-400 sm:grid-cols-2">
-                  {p.contactName ? (
-                    <div>
-                      <dt className="text-zinc-600">Contact</dt>
-                      <dd>{p.contactName}</dd>
-                    </div>
-                  ) : null}
-                  {p.contactPhone ? (
-                    <div>
-                      <dt className="text-zinc-600">Phone</dt>
-                      <dd>{p.contactPhone}</dd>
-                    </div>
-                  ) : null}
-                  {p.partnershipReason ? (
-                    <div className="sm:col-span-2">
-                      <dt className="text-zinc-600">Why</dt>
-                      <dd>{p.partnershipReason}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-                <p className="mt-3 line-clamp-3 text-xs text-zinc-500">{p.outreachScript}</p>
-                <p className="mt-2 text-[10px] font-bold uppercase text-violet-200">{p.nextAction}</p>
-              </li>
-            ))
-          )}
+          {visiblePartners.slice(0, 5).map((p) => (
+            <PartnerActionCard
+              key={p.id}
+              partner={p}
+              dismissed={Boolean(dismissedPartners[p.id])}
+              onDismiss={() => setDismissedPartners((prev) => ({ ...prev, [p.id]: true }))}
+            />
+          ))}
         </ul>
       </Section>
+      ) : null}
 
       <Section title={TITAN_ENGINES.experiment} subtitle="Learn what actually grows the business" icon={FlaskConical} accent="cyan">
         {!snapshot.experiments.tablesReady ? (
@@ -467,6 +612,7 @@ export function Titan10HomeClient({
         )}
       </Section>
 
+      {showExperimental ? (
       <Section title={TITAN_ENGINES.opportunityGraph} subtitle={snapshot.graph.insight} icon={GitBranch}>
         {snapshot.graph.edges.length === 0 ? (
           <p className="text-sm text-zinc-500">Graph builds as customers, territories, and partners connect.</p>
@@ -488,7 +634,9 @@ export function Titan10HomeClient({
           </ul>
         )}
       </Section>
+      ) : null}
 
+      {showExperimental ? (
       <Section title="Titan Memory" subtitle="What worked — Titan improves every month" icon={Target}>
         <ul className="space-y-2">
           {snapshot.memory.insights.map((m) => (
@@ -500,6 +648,7 @@ export function Titan10HomeClient({
           ))}
         </ul>
       </Section>
+      ) : null}
       </>
       ) : null}
 

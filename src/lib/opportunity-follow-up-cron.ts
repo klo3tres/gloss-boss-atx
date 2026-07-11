@@ -4,10 +4,12 @@ import {
   buildOpportunityScripts,
   nextOpportunityFollowUpDate,
   OPPORTUNITY_FOLLOW_UP_DAYS,
-  OPPORTUNITY_SNOOZE_DAYS,
 } from '@/lib/opportunity-pipeline-scripts';
+import { initialOpportunityFollowUpAt, snoozeOpportunityFollowUpUntil } from '@/lib/opportunity-follow-up-timing';
 import { sendCustomerSms } from '@/lib/sms-send';
 import type { RevenueOpportunity } from '@/lib/titan/revenue-opportunities';
+
+export { initialOpportunityFollowUpAt, snoozeOpportunityFollowUpUntil };
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -175,14 +177,4 @@ export async function processOpportunityFollowUps(admin: SupabaseClient): Promis
   }
 
   return { sent, skipped, failed };
-}
-
-export function initialOpportunityFollowUpAt(createdAt = new Date()): string {
-  return nextOpportunityFollowUpDate(0, createdAt)?.toISOString() ?? createdAt.toISOString();
-}
-
-export function snoozeOpportunityFollowUpUntil(from = new Date()): string {
-  const d = new Date(from);
-  d.setDate(d.getDate() + OPPORTUNITY_SNOOZE_DAYS);
-  return d.toISOString();
 }

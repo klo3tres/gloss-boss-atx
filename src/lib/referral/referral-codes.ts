@@ -36,6 +36,16 @@ export async function ensureCustomerReferralCode(
   return { code: fallback, created: true };
 }
 
+export function formatRewardSummary(type: string, value: number, label?: string): string {
+  if (label?.trim()) return label.trim();
+  if (type === 'percent') return `${value}% off`;
+  if (type === 'dollar') return `$${Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 })} off`;
+  if (type === 'free_service') return value > 0 ? `Free service ($${value} value)` : 'Free service';
+  if (type === 'custom') return value ? `Custom reward (${value})` : 'Custom reward';
+  return String(value);
+}
+
+/** Durable customer referral booking link — no expiry query params. */
 export function referralLinkForCode(code: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
   return `${base}/book?ref=${encodeURIComponent(code)}`;

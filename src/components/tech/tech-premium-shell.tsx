@@ -266,18 +266,27 @@ export function TechPremiumShell({
 
   const router = useRouter();
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'overview';
+    return new URLSearchParams(window.location.search).get('tab') || 'overview';
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    setActiveTab(params.get('tab') || 'overview');
-  }, [pathname]);
+    const onPop = () => {
+      setActiveTab(new URLSearchParams(window.location.search).get('tab') || 'overview');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const handleTabChange = (newTab: string) => {
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    setActiveTab(newTab);
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
     params.set('tab', newTab);
-    router.push(`${pathname}?${params.toString()}`);
+    const next = `${pathname}?${params.toString()}`;
+    window.history.replaceState(window.history.state, '', next);
   };
 
   const [mileageMsg, setMileageMsg] = useState<string | null>(null);

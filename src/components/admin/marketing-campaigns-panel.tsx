@@ -41,7 +41,12 @@ export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns
       const res = await sendMarketingCampaignAction(id);
       setSendingId(null);
       if (res.error) setMsg(res.error + (res.details ? ` — ${res.details}` : ''));
-      else setMsg(`Sent to ${res.sent ?? 0} recipients${res.skipped ? ` (${res.skipped} skipped)` : ''}.`);
+      else
+        setMsg(
+          `Sent to ${res.sent ?? 0} recipients${res.skipped ? ` (${res.skipped} skipped)` : ''}${
+            res.excluded ? ` · ${res.excluded} excluded (email opt-in)` : ''
+          }.`,
+        );
       router.refresh();
     });
   };

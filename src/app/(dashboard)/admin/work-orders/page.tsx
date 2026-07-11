@@ -9,6 +9,8 @@ import { adminRecordCashPaymentAction, archiveAppointmentWorkOrderAction, clearS
 import { workOrderPath, workOrderRecapturePath } from '@/lib/work-order-links';
 import { WorkOrderListCard } from '@/components/admin/work-order-list-card';
 import { WorkOrderLiveSearch } from '@/components/admin/work-order-live-search';
+import { AgreementStatusBadge } from '@/components/agreements/agreement-status-badge';
+import { agreementUrl } from '@/lib/auth/action-link-registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -372,6 +374,13 @@ export default async function AdminWorkOrdersPage({
                           ) : (
                             str(r.payment_status) || 'payment pending'
                           )}
+                          {' · '}
+                          <AgreementStatusBadge
+                            status={
+                              str(r.agreement_status) ||
+                              (agreement ? 'signed' : 'not_sent')
+                            }
+                          />
                         </>
                       }
                       amountBadge={
@@ -391,7 +400,13 @@ export default async function AdminWorkOrdersPage({
                         <p>{str(r.guest_email)}<br />{str(r.guest_phone)}</p>
                         <p>{vehicles(r)}<br />{fullAddress || 'No service address on file — contact customer.'}</p>
                         <p>Tech: {str(technicians.find((t) => str(t.id) === str(r.assigned_technician_id))?.full_name) || 'Unassigned'}</p>
-                        <p>Agreement: {agreement ? `Signed ${chicago(agreement.signed_at)}` : 'Missing'}</p>
+                        <p className='flex flex-wrap items-center gap-2'>
+                          Agreement:{' '}
+                          <AgreementStatusBadge
+                            status={str(r.agreement_status) || (agreement ? 'signed' : 'not_sent')}
+                          />
+                          {agreement ? ` · ${chicago(agreement.signed_at)}` : null}
+                        </p>
                       </div>
                       <form action={adminRecordCashPaymentFormAction} className='mt-3 grid gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs sm:grid-cols-4'>
                         <input type='hidden' name='id' value={str(r.id)} />
@@ -464,6 +479,17 @@ export default async function AdminWorkOrdersPage({
                         <Link href={workOrderPath(str(r.id), { source: isFallback ? 'fallback' : 'appointment', shell: 'admin' })} className='rounded border border-gold/40 bg-gold/10 px-3 py-1 text-[10px] font-bold uppercase text-gold-soft'>Open Work Order</Link>
                         {payment?.id ? <Link href={`/admin/receipts/${str(payment.id)}`} className='rounded border border-emerald-500/30 px-3 py-1 text-[10px] font-bold uppercase text-emerald-200'>Receipt</Link> : null}
                         {agreement ? <Link href={`/admin/agreements/${encodeURIComponent(`${str(agreement.source ?? 'signed_agreements')}:${str(agreement.id)}`)}`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>View Agreement</Link> : <Link href={workOrderRecapturePath(str(r.id), { source: isFallback ? 'fallback' : 'appointment', shell: 'admin' })} className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Recapture Agreement</Link>}
+                        {!isFallback && str(r.access_token) ? (
+                          <a
+                            href={agreementUrl({ appointmentId: str(r.id), token: str(r.access_token) })}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-100'
+                          >
+                            Preview agreement
+                          </a>
+                        ) : null}
+                        <Link href={`${workOrderPath(str(r.id), { source: isFallback ? 'fallback' : 'appointment', shell: 'admin' })}#agreement`} className='rounded border border-white/15 px-3 py-1 text-[10px] font-bold uppercase text-zinc-300'>Send agreement</Link>
                         {isFallback ? (
                           <>
                             <form action={archiveFallbackWorkOrderAction}><input type='hidden' name='id' value={str(r.id)} /><ConfirmSubmitButton message='Archive this fallback work order?' className='rounded border border-amber-500/30 px-3 py-1 text-[10px] font-bold uppercase text-amber-200'>Archive</ConfirmSubmitButton></form>

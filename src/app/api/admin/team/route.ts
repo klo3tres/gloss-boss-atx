@@ -25,7 +25,8 @@ type Body =
   | { intent: 'set_staff_active'; profileId: string; active: boolean }
   | { intent: 'remove_from_roster'; profileId: string }
   | { intent: 'repair_staff_profile'; profileId: string }
-  | { intent: 'verify_staff_account'; profileId: string };
+  | { intent: 'verify_staff_account'; profileId: string }
+  | { intent: 'create_auth_for_staff'; profileId: string };
 
 export async function POST(request: Request) {
   const gate = await requireAdminApiUser();
@@ -226,12 +227,18 @@ export async function POST(request: Request) {
             extraPayload: { staff_user_id: userId, reset_url: resetUrl },
           });
           smsStatus = sms.ok ? 'sent' : sms.skipped ? 'skipped' : 'failed';
-          smsError = sms.error ?? null;
+          smsError = sms.error ?? (sms.skipped_reason ? String(sms.skipped_reason) : null);
+        } else {
+          smsStatus = 'skipped';
+          smsError = 'SMS skipped — Twilio is not configured.';
         }
       } catch (e) {
         smsStatus = 'failed';
         smsError = e instanceof Error ? e.message : String(e);
       }
+    } else {
+      smsStatus = 'skipped';
+      smsError = 'SMS skipped — missing phone number.';
     }
 
     try {
@@ -453,7 +460,35 @@ export async function POST(request: Request) {
       href: '/admin/team',
     });
     revalidatePath('/admin/team');
-    return NextResponse.json({ ok: true, fixed: repaired.fixed, role: repaired.role });
+    const { data: authUser } = await admin.auth.admin.getUserById(profileId);
+    const { data: profile } = await admin.from('profiles').select('id, role, email, active').eq('id', profileId).maybeSingle();
+    const email = String((profile as { email?: string } | null)?.email ?? '');
+    const { data: invite } = email
+      ? await admin
+          .from('staff_invites')
+          .select('status, role')
+          .ilike('email', email)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    return NextResponse.json({
+      ok: true,
+      fixed: repaired.fixed,
+      role: repaired.role,
+      auth: { exists: Boolean(authUser?.user), userId: authUser?.user?.id ?? null },
+      profile: {
+        exists: Boolean(profile),
+        role: (profile as { role?: string } | null)?.role ?? null,
+        active: (profile as { active?: boolean } | null)?.active !== false,
+        email,
+      },
+      invite: {
+        status: (invite as { status?: string } | null)?.status ?? null,
+        role: (invite as { role?: string } | null)?.role ?? null,
+      },
+      delivery: null,
+    });
   }
 
   if (body.intent === 'verify_staff_account') {
@@ -471,15 +506,190 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+    const authExists = Boolean(authUser?.user && !authErr);
     return NextResponse.json({
       ok: true,
-      authUserExists: Boolean(authUser?.user && !authErr),
+      authUserExists: authExists,
       profileExists: Boolean(profile),
       profileRole: (profile as { role?: string } | null)?.role ?? null,
       profileActive: (profile as { active?: boolean } | null)?.active !== false,
       inviteStatus: (invite as { status?: string } | null)?.status ?? null,
       inviteRole: (invite as { role?: string } | null)?.role ?? null,
       email,
+      auth: { exists: authExists, userId: authUser?.user?.id ?? null },
+      profile: {
+        exists: Boolean(profile),
+        role: (profile as { role?: string } | null)?.role ?? null,
+        active: (profile as { active?: boolean } | null)?.active !== false,
+        email,
+      },
+      invite: {
+        status: (invite as { status?: string } | null)?.status ?? null,
+        role: (invite as { role?: string } | null)?.role ?? null,
+      },
+      delivery: null,
+    });
+  }
+
+  if (body.intent === 'create_auth_for_staff') {
+    const profileId = String(body.profileId ?? '').trim();
+    if (!profileId) {
+      return NextResponse.json({ ok: false, error: 'Profile id required.' }, { status: 400 });
+    }
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('id, role, email, phone, full_name, display_name, active')
+      .eq('id', profileId)
+      .maybeSingle();
+    if (!profile) {
+      return NextResponse.json({ ok: false, error: 'Staff profile not found.' }, { status: 404 });
+    }
+    const email = String((profile as { email?: string }).email ?? '').trim().toLowerCase();
+    const fullName = String(
+      (profile as { display_name?: string; full_name?: string }).display_name ||
+        (profile as { full_name?: string }).full_name ||
+        email.split('@')[0] ||
+        'Staff',
+    ).trim();
+    const phone = String((profile as { phone?: string }).phone ?? '').trim();
+    const role = String((profile as { role?: string }).role ?? 'technician');
+    if (!canModifyStaffProfile(gate.role, gate.userId, profileId, email)) {
+      return NextResponse.json({ ok: false, error: 'You cannot create auth for this account.' }, { status: 403 });
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return NextResponse.json(
+        { ok: false, error: 'Add a valid email under Contact details before creating a login.' },
+        { status: 400 },
+      );
+    }
+
+    const existingAuth = await admin.auth.admin.getUserById(profileId);
+    if (existingAuth.data?.user && !existingAuth.error) {
+      return NextResponse.json({
+        ok: true,
+        alreadyExisted: true,
+        auth: { exists: true, userId: profileId },
+        profile: { exists: true, role, active: (profile as { active?: boolean }).active !== false, email },
+        invite: null,
+        delivery: { emailStatus: 'skipped', smsStatus: 'skipped', note: 'Auth user already exists.' },
+      });
+    }
+
+    const tempPassword = `Gb${Math.random().toString(36).slice(2, 10)}!${Date.now().toString(36).slice(-4)}`;
+    let userId: string | null = null;
+    let usedInvite = false;
+    let delivery: { emailStatus: string; smsStatus: string; emailError?: string | null; smsError?: string | null; note?: string } = {
+      emailStatus: 'skipped',
+      smsStatus: 'skipped',
+    };
+
+    const created = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+      phone: phone || undefined,
+      user_metadata: { full_name: fullName },
+    });
+
+    if (created.data?.user?.id && !created.error) {
+      userId = created.data.user.id;
+    } else {
+      const em = created.error?.message ?? '';
+      if (/already|registered|exists|duplicate/i.test(em)) {
+        const invited = await admin.auth.admin.inviteUserByEmail(email, {
+          data: { full_name: fullName },
+        });
+        if (invited.error || !invited.data?.user?.id) {
+          // Try listing by email
+          const listed = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+          const match = listed.data?.users?.find((u) => (u.email ?? '').toLowerCase() === email);
+          if (!match?.id) {
+            return NextResponse.json(
+              { ok: false, error: `Auth create failed: ${em || invited.error?.message || 'unknown'}` },
+              { status: 400 },
+            );
+          }
+          userId = match.id;
+          usedInvite = false;
+          delivery.note = 'Linked existing auth user by email.';
+        } else {
+          userId = invited.data.user.id;
+          usedInvite = true;
+          delivery.emailStatus = 'sent';
+          delivery.note = 'Invite email sent via Supabase.';
+        }
+      } else {
+        const invited = await admin.auth.admin.inviteUserByEmail(email, {
+          data: { full_name: fullName },
+        });
+        if (invited.error || !invited.data?.user?.id) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `${em || 'createUser failed'} — invite fallback failed: ${invited.error?.message ?? 'unknown'}`,
+            },
+            { status: 400 },
+          );
+        }
+        userId = invited.data.user.id;
+        usedInvite = true;
+        delivery.emailStatus = 'sent';
+        delivery.note = 'Invite email sent via Supabase.';
+      }
+    }
+
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: 'Could not create or locate auth user.' }, { status: 400 });
+    }
+
+    // If auth id differs from orphan profile id, upsert profile onto auth id and deactivate orphan.
+    if (userId !== profileId) {
+      const now = new Date().toISOString();
+      const payload: Record<string, unknown> = {
+        id: userId,
+        full_name: fullName,
+        display_name: fullName,
+        role,
+        email,
+        phone: phone || null,
+        active: true,
+        updated_at: now,
+      };
+      let up = await admin.from('profiles').upsert(payload, { onConflict: 'id' });
+      if (up.error) {
+        up = await admin.from('profiles').upsert({ id: userId, full_name: fullName, role, email }, { onConflict: 'id' });
+      }
+      if (up.error) {
+        return NextResponse.json({ ok: false, error: `Auth created but profile sync failed: ${up.error.message}` }, { status: 400 });
+      }
+      await admin.from('profiles').update({ active: false, updated_at: now }).eq('id', profileId);
+    } else {
+      await admin.auth.admin.updateUserById(userId, { email_confirm: true });
+    }
+
+    await logAuthEvent(admin, {
+      eventType: 'staff_auth_created',
+      actorUserId: gate.userId,
+      subjectUserId: userId,
+      subjectEmail: email,
+      detail: usedInvite ? 'inviteUserByEmail' : 'createUser',
+    });
+    await logTitanActivity(admin, {
+      kind: 'staff_auth_created',
+      title: `Login created: ${fullName}`,
+      detail: usedInvite ? 'Supabase invite sent' : 'Auth user created with confirmed email',
+      href: '/admin/team',
+    });
+
+    revalidatePath('/admin/team');
+    return NextResponse.json({
+      ok: true,
+      usedInvite,
+      authUserId: userId,
+      auth: { exists: true, userId },
+      profile: { exists: true, role, active: true, email },
+      invite: null,
+      delivery,
     });
   }
 

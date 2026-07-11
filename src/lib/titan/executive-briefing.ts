@@ -55,6 +55,13 @@ export type BriefingRoiAction = {
   dependencies?: string;
 };
 
+export type BriefingUnsignedAgreement = {
+  id: string;
+  customerName: string;
+  when: string;
+  href: string;
+};
+
 export type ExecutiveBriefingSnapshot = {
   ownerName: string;
   narrative: string;
@@ -77,6 +84,7 @@ export type ExecutiveBriefingSnapshot = {
   opportunities: BriefingOpportunity[];
   roiActions: BriefingRoiAction[];
   unsignedAcknowledgments: number;
+  unsignedAgreementActions: BriefingUnsignedAgreement[];
   reviewsNeeded: number;
   inventoryAlerts: number;
   customersDue: number;
@@ -158,20 +166,48 @@ export async function loadExecutiveBriefing(
   const revenueYesterday = yesterdayPay.grossCents;
 
   let unsignedAcknowledgments = 0;
+  let unsignedAgreementActions: BriefingUnsignedAgreement[] = [];
   let reviewsNeeded = 0;
   let inventoryAlerts = 0;
   let customersDue = 0;
   try {
     const activeAppts = await admin
       .from('appointments')
-      .select('id')
-      .in('status', ['confirmed', 'assigned', 'in_progress'])
+      .select('id, guest_name, scheduled_start')
+      .in('status', ['confirmed', 'assigned', 'in_progress', 'scheduled'])
+      .gte('scheduled_start', new Date().toISOString())
+      .order('scheduled_start', { ascending: true })
       .limit(40);
-    const ids = (activeAppts.data ?? []).map((r) => String((r as { id: string }).id));
+    const rows = (activeAppts.data ?? []) as Array<{
+      id: string;
+      guest_name?: string | null;
+      scheduled_start?: string | null;
+    }>;
+    const ids = rows.map((r) => String(r.id));
     if (ids.length) {
       const signed = await admin.from('signed_agreements').select('appointment_id').in('appointment_id', ids);
       const signedSet = new Set((signed.data ?? []).map((r) => String((r as { appointment_id: string }).appointment_id)));
-      unsignedAcknowledgments = ids.filter((id) => !signedSet.has(id)).length;
+      const unsigned = rows.filter((r) => !signedSet.has(String(r.id)));
+      unsignedAcknowledgments = unsigned.length;
+      unsignedAgreementActions = unsigned.slice(0, 5).map((r) => {
+        const whenIso = r.scheduled_start ? String(r.scheduled_start) : '';
+        const when = whenIso
+          ? new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/Chicago',
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            }).format(new Date(whenIso))
+          : 'Upcoming';
+        return {
+          id: String(r.id),
+          customerName: String(r.guest_name || 'Customer').trim() || 'Customer',
+          when,
+          href: `/tech/work-orders/${encodeURIComponent(String(r.id))}?shell=admin#agreement`,
+        };
+      });
     }
   } catch {
     /* optional */
@@ -345,23 +381,34 @@ export async function loadExecutiveBriefing(
     });
   }
 
-  const roiActions: BriefingRoiAction[] = (dailyActionPlan.actions ?? []).slice(0, 5).map((a) => ({
-    id: a.id,
-    title: a.title,
-    why: a.valueExplanation || a.reason,
-    confidence: a.confidence,
-    revenueImpactCents: a.expectedValueCents,
-    revenueImpactLabel: a.expectedValueLabel,
-    timeEstimateMinutes: a.actionType === 'balance' ? 3 : a.actionType === 'review' ? 2 : 5,
-    priority:
-      a.expectedValueCents >= 20000 || a.actionType === 'balance'
-        ? 'critical'
-        : a.expectedValueCents >= 10000
-          ? 'high'
-          : 'medium',
-    href: a.href,
-    dependencies: a.canSend ? undefined : a.sendBlocker || 'Open record to complete',
-  }));
+  const roiActions: BriefingRoiAction[] = (() => {
+    const seen = new Set<string>();
+    const unique: typeof dailyActionPlan.actions = [];
+    for (const a of dailyActionPlan.actions ?? []) {
+      const key = a.actionKey || a.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(a);
+      if (unique.length >= 3) break;
+    }
+    return unique.map((a) => ({
+      id: a.id,
+      title: a.title,
+      why: a.valueExplanation || a.reason,
+      confidence: a.confidence,
+      revenueImpactCents: a.expectedValueCents,
+      revenueImpactLabel: a.expectedValueLabel,
+      timeEstimateMinutes: a.actionType === 'balance' ? 3 : a.actionType === 'review' ? 2 : 5,
+      priority:
+        a.expectedValueCents >= 20000 || a.actionType === 'balance'
+          ? 'critical'
+          : a.expectedValueCents >= 10000
+            ? 'high'
+            : 'medium',
+      href: a.href,
+      dependencies: a.canSend ? undefined : a.sendBlocker || 'Open record to complete',
+    }));
+  })();
 
   const expectedIfCompleted = roiActions.reduce((s, a) => s + a.revenueImpactCents, 0);
   const narrativeParts = [
@@ -401,6 +448,7 @@ export async function loadExecutiveBriefing(
     opportunities: opportunities.slice(0, 3),
     roiActions,
     unsignedAcknowledgments,
+    unsignedAgreementActions,
     reviewsNeeded,
     inventoryAlerts,
     customersDue,

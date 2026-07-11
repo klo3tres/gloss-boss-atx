@@ -14,7 +14,7 @@ import { UpcomingScheduleWidget } from '@/components/widgets/upcoming-schedule-w
 import type { ScheduleWidgetItem } from '@/lib/widgets/schedule-types';
 import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
 import { CustomerPortalTimeline } from '@/components/customer/customer-portal-timeline';
-import { SocialLinksRow } from '@/components/marketing/social-links';
+import { SocialLinksRow, hasConfiguredSocialLinks } from '@/components/marketing/social-links';
 import { LoyaltyClaimButton } from '@/components/dashboard/loyalty-claim-button';
 
 export type CustomerAppt = {
@@ -741,10 +741,12 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             </Link>
           </GlassCard>
 
-          <GlassCard>
-            <SectionEyebrow>Follow us</SectionEyebrow>
-            <SocialLinksRow links={socialLinks} className="mt-3" />
-          </GlassCard>
+          {hasConfiguredSocialLinks(socialLinks) ? (
+            <GlassCard>
+              <SectionEyebrow>Follow us</SectionEyebrow>
+              <SocialLinksRow links={socialLinks} className="mt-3" />
+            </GlassCard>
+          ) : null}
         </div>
       </div>
 

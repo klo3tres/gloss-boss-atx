@@ -45,12 +45,12 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
     opportunities: revenueHunt.opportunities,
     leadRadar: leadRadar.items,
   });
-  const workspace: TitanWorkspace = ['growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
+  const workspace: TitanWorkspace = ['today', 'growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
     ? (requestedWorkspace as TitanWorkspace)
-    : 'growth';
+    : 'today';
 
   return (
-    <DashboardShell title="Titan" subtitle="Growth, outreach, and reports." role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
+    <DashboardShell title="Titan" subtitle="Today's plan, growth, outreach, and reports." role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
       <Titan10HomeClient
         snapshot={snapshot}
         health={health}
