@@ -456,6 +456,7 @@ export function StaffRowSuperClient({
   initialActive,
   currentUserId,
   profileEmail,
+  profilePhone,
   pendingInviteId,
 }: {
   profileId: string;
@@ -464,14 +465,17 @@ export function StaffRowSuperClient({
   initialActive: boolean;
   currentUserId: string;
   profileEmail?: string | null;
+  profilePhone?: string | null;
   pendingInviteId?: string | null;
 }) {
   const router = useRouter();
   const [role, setRole] = useState(initialRole);
   const [name, setName] = useState(initialDisplayName);
   const [active, setActive] = useState(initialActive);
+  const [email, setEmail] = useState(profileEmail ?? '');
+  const [phone, setPhone] = useState(profilePhone ?? '');
   const [pwd, setPwd] = useState('');
-  const [busy, setBusy] = useState<'role' | 'name' | 'pwd' | 'pwd-link' | 'active' | 'remove' | 'verify' | 'repair' | null>(null);
+  const [busy, setBusy] = useState<'role' | 'name' | 'contact' | 'pwd' | 'pwd-link' | 'active' | 'remove' | 'verify' | 'repair' | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -479,7 +483,9 @@ export function StaffRowSuperClient({
     setRole(initialRole);
     setName(initialDisplayName);
     setActive(initialActive);
-  }, [initialRole, initialDisplayName, initialActive]);
+    setEmail(profileEmail ?? '');
+    setPhone(profilePhone ?? '');
+  }, [initialRole, initialDisplayName, initialActive, profileEmail, profilePhone]);
 
   return (
     <>
@@ -567,6 +573,46 @@ export function StaffRowSuperClient({
                       Save
                     </button>
                   </div>
+                </div>
+
+                {/* Contact details used for login, password recovery, and dispatch alerts. */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Contact details</label>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    type="email"
+                    placeholder="Email address"
+                    className="w-full text-xs rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-white focus:outline-none focus:border-gold/40"
+                  />
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    type="tel"
+                    placeholder="Phone number"
+                    className="w-full text-xs rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-white focus:outline-none focus:border-gold/40"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy !== null || !email.trim()}
+                    onClick={() => {
+                      void (async () => {
+                        setBusy('contact');
+                        setMsg(null);
+                        const r = await teamApi({ intent: 'contact_details', profileId, email: email.trim(), phone: phone.trim() });
+                        setBusy(null);
+                        if (!r.ok) {
+                          setMsg({ type: 'err', text: r.error ?? 'Could not save contact details' });
+                          return;
+                        }
+                        setMsg({ type: 'ok', text: 'Email and phone saved.' });
+                        router.refresh();
+                      })();
+                    }}
+                    className="rounded-xl border border-gold/40 px-3.5 py-2 text-[10px] font-black uppercase text-gold-soft hover:bg-gold/5 disabled:opacity-40 transition"
+                  >
+                    {busy === 'contact' ? 'Saving…' : 'Save contact details'}
+                  </button>
                 </div>
 
                 {/* 2. Assign Role */}

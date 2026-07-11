@@ -14,6 +14,7 @@ type ProfileRow = {
   full_name: string | null;
   display_name: string | null;
   email: string | null;
+  phone: string | null;
   role: string;
   created_at: string;
   active: boolean;
@@ -32,6 +33,7 @@ function mapProfileRow(raw: Record<string, unknown>): ProfileRow | null {
     full_name: typeof raw.full_name === 'string' ? raw.full_name : null,
     display_name: typeof raw.display_name === 'string' ? raw.display_name : null,
     email: typeof raw.email === 'string' ? raw.email : null,
+    phone: typeof raw.phone === 'string' ? raw.phone : null,
     role: String(raw.role ?? 'customer'),
     created_at: typeof raw.created_at === 'string' ? raw.created_at : '',
     active: raw.active === false ? false : true,
@@ -75,7 +77,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
     if (full.error) {
       const lean = await db
         .from('profiles')
-        .select('id, role, created_at, full_name, display_name, email')
+        .select('id, role, created_at, full_name, display_name, email, phone')
         .in('role', staffRoles)
         .order('role', { ascending: true })
         .order('created_at', { ascending: true })
@@ -227,6 +229,7 @@ export default async function AdminTeamPage({ searchParams }: { searchParams: Pr
                         initialActive={p.active}
                         currentUserId={session.user?.id ?? ''}
                         profileEmail={p.email}
+                        profilePhone={p.phone}
                         pendingInviteId={p.email ? pendingByEmail.get(p.email.trim().toLowerCase()) ?? null : null}
                       />
                     </div>

@@ -19,6 +19,7 @@ type Body =
   | { intent: 'send_password_reset_link'; userId: string }
   | { intent: 'assign_role'; profileId: string; role: string }
   | { intent: 'display_name'; profileId: string; fullName: string }
+  | { intent: 'contact_details'; profileId: string; email: string; phone: string }
   | { intent: 'set_staff_active'; profileId: string; active: boolean }
   | { intent: 'remove_from_roster'; profileId: string }
   | { intent: 'repair_staff_profile'; profileId: string }
@@ -130,10 +131,15 @@ export async function POST(request: Request) {
     if (!userId) {
       return NextResponse.json({ ok: false, error: 'User id required.' }, { status: 400 });
     }
-    const { data: profile } = await admin.from('profiles').select('email, full_name, phone').eq('id', userId).maybeSingle();
-    const email = String((profile as { email?: string } | null)?.email ?? '').trim().toLowerCase();
+    const [{ data: profile }, { data: authUser }] = await Promise.all([
+      admin.from('profiles').select('email, full_name, phone').eq('id', userId).maybeSingle(),
+      admin.auth.admin.getUserById(userId),
+    ]);
+    const email = String(
+      (profile as { email?: string } | null)?.email ?? authUser?.user?.email ?? '',
+    ).trim().toLowerCase();
     if (!email) {
-      return NextResponse.json({ ok: false, error: 'No email on staff profile.' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'No email is saved on this staff account. Add one under Contact details.' }, { status: 400 });
     }
 
     const pendingInvite = await findPendingInviteByProfileEmail(admin, email);
@@ -296,6 +302,42 @@ export async function POST(request: Request) {
     }
     revalidatePath('/admin/team');
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.intent === 'contact_details') {
+    const profileId = String(body.profileId ?? '').trim();
+    const email = String(body.email ?? '').trim().toLowerCase();
+    const phone = String(body.phone ?? '').trim();
+    if (!profileId || !email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return NextResponse.json({ ok: false, error: 'A valid email address is required.' }, { status: 400 });
+    }
+    const { data: targetProfile } = await admin.from('profiles').select('email').eq('id', profileId).maybeSingle();
+    const currentEmail = String((targetProfile as { email?: string } | null)?.email ?? '');
+    if (!canModifyStaffProfile(gate.role, gate.userId, profileId, currentEmail)) {
+      return NextResponse.json({ ok: false, error: 'You cannot modify this protected account.' }, { status: 403 });
+    }
+
+    const authUpdate = await admin.auth.admin.updateUserById(profileId, {
+      email,
+      email_confirm: true,
+      phone: phone || undefined,
+      phone_confirm: Boolean(phone),
+    });
+    if (authUpdate.error) {
+      return NextResponse.json({ ok: false, error: authUpdate.error.message }, { status: 400 });
+    }
+
+    const now = new Date().toISOString();
+    let { error } = await admin.from('profiles').update({ email, phone: phone || null, updated_at: now }).eq('id', profileId);
+    if (error && /updated_at|column .* does not exist|schema cache/i.test(error.message)) {
+      const fallback = await admin.from('profiles').update({ email, phone: phone || null }).eq('id', profileId);
+      error = fallback.error;
+    }
+    if (error) {
+      return NextResponse.json({ ok: false, error: `Login contact updated, but profile sync failed: ${error.message}` }, { status: 400 });
+    }
+    revalidatePath('/admin/team');
+    return NextResponse.json({ ok: true, email, phone });
   }
 
   if (body.intent === 'set_staff_active') {
