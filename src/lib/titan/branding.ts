@@ -2,13 +2,23 @@
 
 export const TITAN_PRODUCT_NAME = 'Titan';
 /** Pre-release platform — expandable AI business operations layer for Gloss Boss. */
-export const TITAN_VERSION = '0.5.0';
-export const TITAN_VERSION_LABEL = 'Beta v0.5';
+export const TITAN_VERSION = '0.6.0';
+export const TITAN_VERSION_LABEL = 'Beta v0.6';
 export const TITAN_PRODUCT_STAGE = 'beta' as const;
 export const TITAN_PRODUCT_TAGLINE = 'AI Business Operations Platform (beta)';
 export const TITAN_TAGLINE = 'Business Development Department';
 export const TITAN_MISSION =
   'Create revenue. Recover revenue. Increase revenue. Everything else is secondary.';
+
+export const TITAN_RELEASE = {
+  version: TITAN_VERSION,
+  releaseDate: '2026-07-11',
+  migration: '000127_titan_functional_core.sql',
+  shipped: ['Tracked and locked automations', 'Execution dashboard', 'Opportunity enrichment', 'Structured Hunt results', 'Outbound action events', 'Day-60 reactivation', 'Minimizable forecast'],
+  knownBlockers: ['Google Places requires a valid API key and quota', 'CRON_SECRET must be configured in Vercel', 'Live provider delivery callbacks require production webhook testing'],
+  qaStatus: 'TypeScript, production build, migration parity, schema probes, and unauthenticated route guards passed; signed-in provider workflows require production QA',
+  rollback: 'Revert application changes and migration 000127 tables; existing CRM and opportunity records are not modified by the migration.',
+} as const;
 
 export const TITAN_ENGINES = {
   revenueMission: 'Titan Revenue Mission Engine™',

@@ -138,11 +138,26 @@ export async function runPlacesDiscoveryAction(): Promise<{
   discovered?: number;
   newCount?: number;
   potentialMonthlyCents?: number;
+  searchesAttempted?: number;
+  searchesCompleted?: number;
+  searchesFailed?: number;
+  rawResultsFound?: number;
+  skippedDuplicates?: number;
+  remaining?: number;
 }> {
   const gate = await requireSuperAdmin();
   if (!gate) return { error: 'Unauthorized' };
 
+  const { loadOwnerNotificationPreferences } = await import('@/lib/titan/notification-preferences');
+  const { canSpendScanCredits, consumeScanCredits, LEAD_RADAR_ESTIMATED_REQUESTS } = await import('@/lib/titan/scan-budget');
+  const prefs = await loadOwnerNotificationPreferences(gate.admin);
+  const budget = await canSpendScanCredits(gate.admin, { provider: 'google_places', scanType: 'places_prospects', estimatedRequests: LEAD_RADAR_ESTIMATED_REQUESTS, dailyLimit: prefs.maxPlacesRequestsPerDay });
+  if (!budget.allowed) return { error: budget.message ?? 'Daily scan budget reached.', remaining: budget.remaining };
+
   const result = await discoverPlacesProspects(gate.admin);
+  if (!result.skipped && result.searchesCompleted > 0) {
+    await consumeScanCredits(gate.admin, { provider: 'google_places', scanType: 'places_prospects', requestsUsed: LEAD_RADAR_ESTIMATED_REQUESTS, dailyLimit: prefs.maxPlacesRequestsPerDay, cooldownMinutes: 30 });
+  }
   revalidateTitan();
   if (result.error && result.skipped) return { error: result.error };
   return {
@@ -151,6 +166,12 @@ export async function runPlacesDiscoveryAction(): Promise<{
     newCount: result.newCount,
     potentialMonthlyCents: result.potentialMonthlyCents,
     error: result.error,
+    searchesAttempted: result.searchesAttempted,
+    searchesCompleted: result.searchesCompleted,
+    searchesFailed: result.searchesFailed,
+    rawResultsFound: result.rawResultsFound,
+    skippedDuplicates: result.skippedDuplicates,
+    remaining: Math.max(0, budget.remaining - (result.searchesCompleted > 0 ? LEAD_RADAR_ESTIMATED_REQUESTS : 0)),
   };
 }
 

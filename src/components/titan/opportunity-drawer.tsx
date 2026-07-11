@@ -11,13 +11,16 @@ import {
   logOpportunityCallAction,
   markOpportunityStatusAction,
   scheduleFollowUpAction,
+  setOpportunityCadencePausedAction,
   seedOpportunityAction,
   snoozeOpportunityAction,
   updateOpportunityContactAction,
+  convertOpportunityToCustomerAction,
 } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import { sendPreviewedEmailAction, sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildOpportunityScripts, explainOpportunityValue, type OpportunityScriptKey } from '@/lib/opportunity-pipeline-scripts';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
 import { brandingToScriptContext, type ScriptBranding } from '@/lib/titan/script-branding-types';
 import { FleetQuoteWizard } from '@/components/admin/fleet-quote-wizard';
 import { QuoteBuilderPanel } from '@/components/admin/quote-builder-panel';
@@ -112,11 +115,13 @@ export function OpportunityDrawer({
       return;
     }
     const body = scripts[scriptKey];
+    const toneVariants = buildToneVariants(body, { name: opp.contactName ?? undefined, businessName: ext.businessName ?? opp.title });
     openPreview({
       title: SCRIPT_LABELS[scriptKey],
       channel,
       recipient,
       body,
+      toneVariants,
       subject: channel === 'email' ? `Gloss Boss ATX — ${opp.title}` : undefined,
       contextLabel: `Opportunity · ${opp.title}`,
       priceCents: opp.estimatedRevenueCents,
@@ -130,6 +135,7 @@ export function OpportunityDrawer({
                 templateKey: scriptKey,
                 entityType: 'opportunity',
                 entityId: opp.id,
+                tone: final.tone,
               })
             : await sendPreviewedEmailAction({
                 to: recipient,
@@ -138,6 +144,7 @@ export function OpportunityDrawer({
                 kind: 'opportunity_outreach',
                 entityType: 'opportunity',
                 entityId: opp.id,
+                tone: final.tone,
               });
         if (!res.error) await markOpportunityStatusAction(opp.id, 'contacted', `${SCRIPT_LABELS[scriptKey]} sent`);
         router.refresh();
@@ -362,8 +369,8 @@ export function OpportunityDrawer({
               </div>
 
               <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-                <button type="button" disabled={pending} onClick={() => act(() => seedOpportunityAction(opp.id), 'Seeded as warm lead')} className="rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50">
-                  Seed warm lead
+                <button type="button" disabled={pending} onClick={() => act(() => seedOpportunityAction(opp.id), 'Added to pipeline')} className="rounded-lg bg-gold px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50">
+                  Add to pipeline
                 </button>
                 <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'quoted'), 'Marked quoted')} className="rounded-lg border border-cyan-500/30 px-3 py-2 text-[10px] font-black uppercase text-cyan-700 disabled:opacity-50">
                   Quoted
@@ -371,11 +378,19 @@ export function OpportunityDrawer({
                 <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'booked'), 'Marked booked')} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-700 disabled:opacity-50">
                   Booked
                 </button>
+                <button type="button" disabled={pending} onClick={() => act(() => convertOpportunityToCustomerAction(opp.id), 'Converted to customer')} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-700 disabled:opacity-50">Convert to customer</button>
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'won'), 'Marked won')} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">Won</button>
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Marked lost')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-300 disabled:opacity-50">Lost</button>
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'ignored'), 'Dismissed')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">Dismiss</button>
+                <a href={`/book?name=${encodeURIComponent(opp.contactName ?? '')}&email=${encodeURIComponent(opp.contactEmail ?? '')}&phone=${encodeURIComponent(opp.contactPhone ?? '')}&source=titan&opportunity_id=${encodeURIComponent(opp.id)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft">Open booking</a>
                 <button type="button" disabled={pending} onClick={() => act(() => snoozeOpportunityAction(opp.id), 'Snoozed 60 days')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">
                   Snooze
                 </button>
                 <button type="button" disabled={pending} onClick={() => act(() => scheduleFollowUpAction(opp.id, '2days'), 'Follow-up scheduled')} className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-foreground disabled:opacity-50">
                   <Calendar className="h-3 w-3" /> Schedule follow-up
+                </button>
+                <button type="button" disabled={pending} onClick={() => act(() => setOpportunityCadencePausedAction(opp.id, !ext.followUpCadencePaused), ext.followUpCadencePaused ? 'Cadence resumed' : 'Cadence paused')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">
+                  {ext.followUpCadencePaused ? 'Resume cadence' : 'Pause cadence'}
                 </button>
               </div>
 

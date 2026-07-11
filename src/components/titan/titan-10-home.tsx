@@ -36,6 +36,8 @@ import type { TodaysMoneyPlan } from '@/lib/titan/todays-money-plan';
 import type { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import type { LeadRadarItem } from '@/lib/titan/lead-radar-engine';
 import type { ConversionGoalStats } from '@/lib/titan/lead-radar-hunt';
+import type { TitanExecutionRow } from '@/lib/titan/execution';
+import { TitanExecutionPanel } from '@/components/titan/titan-execution-panel';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -95,6 +97,7 @@ export function Titan10HomeClient({
   dailyHuntDate,
   conversionGoal,
   moneyPlan,
+  executions,
 }: {
   snapshot: Titan10Snapshot;
   health: TitanSystemHealth;
@@ -108,6 +111,7 @@ export function Titan10HomeClient({
   dailyHuntDate: string;
   conversionGoal: ConversionGoalStats;
   moneyPlan: TodaysMoneyPlan;
+  executions: TitanExecutionRow[];
 }) {
   const [pending, startTransition] = useTransition();
   const [huntMsg, setHuntMsg] = useState<string | null>(null);
@@ -299,6 +303,8 @@ export function Titan10HomeClient({
         </div>
       </Section>
       ) : null}
+
+      {workspace === 'outreach' ? <TitanExecutionPanel rows={executions} /> : null}
 
       {workspace === 'growth' ? (
       <>

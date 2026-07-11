@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runTitanNightlyEngine } from '@/lib/titan';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { titanConfig } from '@/lib/titan/config';
+import { runTrackedAutomation } from '@/lib/titan/automation-run';
 
 /** Vercel Hobby: once daily at 06:00 UTC (see vercel.json). Use Command Center → Run Titan nightly between runs. */
 
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = titanConfig.cronSecret();
   if (!secret) return false;
   const auth = request.headers.get('authorization') ?? '';
   if (auth === `Bearer ${secret}`) return true;
@@ -27,8 +29,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await runTitanNightlyEngine(admin);
-    return NextResponse.json(result);
+    const tracked = await runTrackedAutomation(admin, 'titan_nightly', 'cron', () => runTitanNightlyEngine(admin));
+    return NextResponse.json(tracked, { status: tracked.ok ? 200 : tracked.alreadyRunning ? 409 : 500 });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Titan nightly failed' },

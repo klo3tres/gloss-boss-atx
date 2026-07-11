@@ -72,9 +72,6 @@ export function TitanProofPanels({ snapshot }: { snapshot: Titan10Snapshot }) {
           <Link href="/admin/titan/onboarding" className="rounded-lg border border-white/10 px-3 py-1.5 text-zinc-400 hover:text-white">
             {TITAN_ENGINES.onboarding}
           </Link>
-          <Link href="/admin/titan/billing" className="rounded-lg border border-white/10 px-3 py-1.5 text-zinc-400 hover:text-white">
-            {TITAN_ENGINES.billing}
-          </Link>
           <button
             type="button"
             disabled={pending}

@@ -7,6 +7,8 @@ import type { TitanSystemHealth } from '@/lib/titan/system-health';
 import { TitanWorkspaceForm } from '@/components/admin/titan-workspace-form';
 import { TitanSystemHealthPanel } from '@/components/titan/titan-system-health-panel';
 import { saveTitanProductSettingsAction } from '@/app/(dashboard)/admin/titan/titan-settings-actions';
+import { runTitanAutomationNowAction } from '@/app/(dashboard)/admin/titan/titan-settings-actions';
+import { TITAN_RELEASE } from '@/lib/titan/branding';
 
 export function TitanSettingsClient({
   workspace,
@@ -23,6 +25,7 @@ export function TitanSettingsClient({
     poweredByBrandingEnabled: workspace.poweredByBrandingEnabled,
   });
   const [msg, setMsg] = useState<string | null>(null);
+  const [runningJob, setRunningJob] = useState<string | null>(null);
 
   const saveToggles = () => {
     setMsg(null);
@@ -38,6 +41,36 @@ export function TitanSettingsClient({
 
   return (
     <div className="space-y-8">
+      <section className="rounded-3xl border border-emerald-500/20 bg-zinc-950/50 p-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-300">Automation controls</p>
+        <p className="mt-2 text-xs text-zinc-500">Safe, idempotent jobs. Each run is locked, timed, and recorded below.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {([
+            ['titan_nightly', 'Run Titan nightly'],
+            ['process_follow_ups', 'Run follow-ups'],
+            ['sync_exceptions', 'Sync exceptions'],
+          ] as const).map(([jobKey, label]) => (
+            <button
+              key={jobKey}
+              type="button"
+              disabled={runningJob !== null}
+              onClick={() => {
+                setRunningJob(jobKey);
+                setMsg(null);
+                startTransition(async () => {
+                  const result = await runTitanAutomationNowAction(jobKey);
+                  setRunningJob(null);
+                  setMsg(result.error ?? `${label} completed in ${result.durationMs ?? 0}ms`);
+                  router.refresh();
+                });
+              }}
+              className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase text-emerald-200 disabled:opacity-40"
+            >
+              {runningJob === jobKey ? 'Runningâ€¦' : label}
+            </button>
+          ))}
+        </div>
+      </section>
       <section className="rounded-3xl border border-white/8 bg-zinc-950/50 p-6">
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">Titan feature toggles</p>
         <div className="mt-4 space-y-3">
@@ -73,6 +106,13 @@ export function TitanSettingsClient({
 
       <TitanWorkspaceForm workspace={workspace} />
       <TitanSystemHealthPanel health={health} />
+      <section className="rounded-3xl border border-white/8 bg-zinc-950/50 p-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gold-soft">Patch notes Â· v{TITAN_RELEASE.version}</p>
+        <p className="mt-2 text-xs text-zinc-500">Released {TITAN_RELEASE.releaseDate} Â· Migration {TITAN_RELEASE.migration}</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2"><div><p className="text-[10px] font-black uppercase text-emerald-300">Shipped workflows</p><ul className="mt-2 space-y-1 text-xs text-zinc-300">{TITAN_RELEASE.shipped.map((item) => <li key={item}>Â· {item}</li>)}</ul></div><div><p className="text-[10px] font-black uppercase text-amber-300">Known blockers</p><ul className="mt-2 space-y-1 text-xs text-zinc-400">{TITAN_RELEASE.knownBlockers.map((item) => <li key={item}>Â· {item}</li>)}</ul></div></div>
+        <p className="mt-4 text-[10px] text-zinc-500">QA: {TITAN_RELEASE.qaStatus}</p>
+        <p className="mt-1 text-[10px] text-zinc-600">Rollback: {TITAN_RELEASE.rollback}</p>
+      </section>
     </div>
   );
 }

@@ -77,6 +77,20 @@ export function TitanSystemHealthPanel({ health }: { health: TitanSystemHealth }
           </p>
         </div>
       </div>
+      <div className="mt-5">
+        <p className="text-[10px] font-black uppercase text-zinc-600">Latest automation runs</p>
+        {health.automationRuns.length ? (
+          <ul className="mt-2 grid gap-2 md:grid-cols-3">
+            {health.automationRuns.map((run) => (
+              <li key={run.jobKey} className={`rounded-xl border px-3 py-2 text-xs ${statusClass(run.status === 'completed' ? 'ok' : run.status === 'failed' ? 'missing' : 'manual')}`}>
+                <p className="font-bold">{run.jobKey.replaceAll('_', ' ')}</p>
+                <p className="mt-1 text-[10px] opacity-80">{run.status} Â· {run.durationMs ?? 0}ms Â· {new Date(run.startedAt).toLocaleString()}</p>
+                {run.error ? <p className="mt-1 text-[10px]">{run.error}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-2 text-xs text-amber-300">No recorded automation run yet. Apply migration 000127, then use Run Now.</p>}
+      </div>
     </section>
   );
 }

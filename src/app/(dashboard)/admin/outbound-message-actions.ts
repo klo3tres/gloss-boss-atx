@@ -25,7 +25,7 @@ export async function logOutboundMessage(
 ) {
   const now = new Date().toISOString();
   try {
-    await admin.from('notification_outbox').insert({
+    const { data } = await admin.from('notification_outbox').insert({
       kind: row.kind,
       channel: row.channel,
       status: row.status,
@@ -44,10 +44,24 @@ export async function logOutboundMessage(
         entity_id: row.entity_id ?? null,
       },
       created_at: now,
-    });
+    }).select('id').maybeSingle();
+    return data?.id ? String(data.id) : null;
   } catch (e) {
     console.warn('[outbound-message] log failed', e);
+    return null;
   }
+}
+
+async function logTitanActionEvent(admin: SupabaseClient, input: {
+  eventType: string; actionType: string; entityType?: string; entityId?: string; customerId?: string;
+  appointmentId?: string; messageId?: string | null; channel?: string; tone?: string; status?: string; metadata?: Record<string, unknown>;
+}) {
+  await admin.from('titan_action_events').insert({
+    event_type: input.eventType, action_type: input.actionType, entity_type: input.entityType ?? null, entity_id: input.entityId ?? null,
+    opportunity_id: input.entityType === 'opportunity' ? input.entityId ?? null : null,
+    customer_id: input.customerId ?? null, appointment_id: input.appointmentId ?? null, message_id: input.messageId ?? null,
+    channel: input.channel ?? null, tone: input.tone ?? null, status: input.status ?? null, metadata: input.metadata ?? {},
+  });
 }
 
 async function requireStaffAdmin() {
@@ -66,6 +80,7 @@ export async function sendPreviewedSmsAction(input: {
   customerId?: string;
   entityType?: string;
   entityId?: string;
+  tone?: string;
 }): Promise<{
   ok?: boolean;
   error?: string;
@@ -93,7 +108,7 @@ export async function sendPreviewedSmsAction(input: {
     extraPayload: { entity_type: input.entityType, entity_id: input.entityId },
   });
 
-  await logOutboundMessage(gate.admin, {
+  const messageId = await logOutboundMessage(gate.admin, {
     kind: input.kind,
     channel: 'sms',
     status: sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed',
@@ -105,6 +120,12 @@ export async function sendPreviewedSmsAction(input: {
     customer_id: input.customerId ?? null,
     entity_type: input.entityType ?? null,
     entity_id: input.entityId ?? null,
+  });
+  await logTitanActionEvent(gate.admin, {
+    eventType: sent.ok ? 'message_sent' : 'message_failed', actionType: input.kind, entityType: input.entityType,
+    entityId: input.entityId, customerId: input.customerId, appointmentId: input.appointmentId, messageId,
+    channel: 'sms', tone: input.tone ?? input.templateKey, status: sent.ok ? 'sent' : sent.skipped ? 'skipped' : 'failed',
+    metadata: { provider_message_id: sent.sid ?? null, failure_reason: sent.error ?? null },
   });
 
   if (!sent.ok) {
@@ -151,6 +172,7 @@ export async function sendPreviewedEmailAction(input: {
   customerId?: string;
   entityType?: string;
   entityId?: string;
+  tone?: string;
 }): Promise<{
   ok?: boolean;
   error?: string;
@@ -184,7 +206,7 @@ export async function sendPreviewedEmailAction(input: {
     err = 'Resend not configured';
   }
 
-  await logOutboundMessage(gate.admin, {
+  const messageId = await logOutboundMessage(gate.admin, {
     kind: input.kind,
     channel: 'email',
     status,
@@ -197,6 +219,11 @@ export async function sendPreviewedEmailAction(input: {
     customer_id: input.customerId ?? null,
     entity_type: input.entityType ?? null,
     entity_id: input.entityId ?? null,
+  });
+  await logTitanActionEvent(gate.admin, {
+    eventType: status === 'sent' ? 'message_sent' : 'message_failed', actionType: input.kind, entityType: input.entityType,
+    entityId: input.entityId, customerId: input.customerId, appointmentId: input.appointmentId, messageId,
+    channel: 'email', tone: input.tone, status, metadata: { provider_message_id: providerId, failure_reason: err },
   });
 
   if (status !== 'sent') return { error: err ?? 'Email failed' };
@@ -236,6 +263,7 @@ export async function schedulePreviewedMessageAction(input: {
   opportunityId?: string;
   entityType?: string;
   entityId?: string;
+  tone?: string;
 }): Promise<{ ok?: boolean; error?: string; scheduledId?: string }> {
   const gate = await requireStaffAdmin();
   if (!gate) return { error: 'Unauthorized' };
@@ -265,5 +293,10 @@ export async function schedulePreviewedMessageAction(input: {
   });
 
   if (!res.ok) return { error: res.error ?? 'Schedule failed' };
+  await logTitanActionEvent(gate.admin, {
+    eventType: 'message_scheduled', actionType: input.kind, entityType: input.entityType, entityId: input.entityId,
+    customerId: input.customerId, appointmentId: input.appointmentId, channel: input.channel, tone: input.tone,
+    status: 'scheduled', metadata: { scheduled_message_id: res.id, scheduled_for: scheduledFor.toISOString() },
+  });
   return { ok: true, scheduledId: res.id };
 }

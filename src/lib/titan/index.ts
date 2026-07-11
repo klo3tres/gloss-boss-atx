@@ -47,7 +47,7 @@ export async function loadTitanIntelligence(admin: SupabaseClient): Promise<Tita
   };
 }
 
-export async function runTitanNightlyEngine(admin: SupabaseClient) {
+export async function runTitanNightlyEngine(admin: SupabaseClient, options?: { skipPlacesDiscovery?: boolean }) {
   const startedAt = new Date().toISOString();
   const { runOpportunityEngine } = await import('@/lib/titan/opportunity-engine');
   const { loadAdminGoalsMetrics } = await import('@/lib/admin-goals-metrics');
@@ -68,7 +68,9 @@ export async function runTitanNightlyEngine(admin: SupabaseClient) {
     const { discoverPlacesProspects } = await import('@/lib/titan/places-discovery');
     const { computeTerritoryIntelligence } = await import('@/lib/titan/territory-intelligence');
     const prospectsSynced = await syncFleetInquiriesToProspects(admin);
-    const placesDiscovery = await discoverPlacesProspects(admin);
+    const placesDiscovery = options?.skipPlacesDiscovery
+      ? { discovered: 0, newCount: 0, error: undefined }
+      : await discoverPlacesProspects(admin);
     await computeTerritoryIntelligence(admin);
     const { loadOpportunityScanner } = await import('@/lib/titan/opportunity-scanner');
     const hunt = await loadOpportunityScanner(admin);

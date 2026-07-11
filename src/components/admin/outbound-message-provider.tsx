@@ -32,6 +32,7 @@ export type OutboundPreviewConfig = {
     body: string;
     subject?: string;
     channel: 'sms' | 'email';
+    tone: MessageTone;
   }) => Promise<{
     ok?: boolean;
     error?: string;
@@ -42,7 +43,7 @@ export type OutboundPreviewConfig = {
       suggestedImprovement: string;
     };
   }>;
-  onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string }) => Promise<{ ok?: boolean; error?: string }>;
+  onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string; tone: MessageTone }) => Promise<{ ok?: boolean; error?: string }>;
 };
 
 type Ctx = {
@@ -67,7 +68,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({ openPreview }), [openPreview]);
 
-  const defaultOnSend = async (final: { body: string; subject?: string; channel: 'sms' | 'email' }) => {
+  const defaultOnSend = async (final: { body: string; subject?: string; channel: 'sms' | 'email'; tone: MessageTone }) => {
     if (!config) return { error: 'No config' };
     const kind = config.kind ?? `manual_${final.channel}`;
     if (final.channel === 'sms') {
@@ -79,6 +80,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
         customerId: config.customerId,
         entityType: config.entityType,
         entityId: config.entityId,
+        tone: final.tone,
       });
     }
     return sendPreviewedEmailAction({
@@ -90,6 +92,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
       customerId: config.customerId,
       entityType: config.entityType,
       entityId: config.entityId,
+      tone: final.tone,
     });
   };
 
@@ -98,6 +101,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
     subject?: string;
     channel: 'sms' | 'email';
     scheduledFor: string;
+    tone: MessageTone;
   }) => {
     if (!config) return { error: 'No config' };
     return schedulePreviewedMessageAction({
@@ -112,6 +116,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
       opportunityId: config.opportunityId,
       entityType: config.entityType,
       entityId: config.entityId,
+      tone: final.tone,
     });
   };
 

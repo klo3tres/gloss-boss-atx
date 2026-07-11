@@ -274,6 +274,8 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
     const customerId = str(r.customer_id) || null;
     const appointmentId = str(r.appointment_id) || null;
     const ruleKey = str(r.rule_key) || 'scheduled';
+    const attemptCount = Number(r.attempt_count ?? 0) + 1;
+    await admin.from('scheduled_messages').update({ status: 'sending', attempt_count: attemptCount, last_attempt_at: now, updated_at: now }).eq('id', id);
 
     if (!recipient || !body) {
       await admin.from('scheduled_messages').update({ status: 'skipped', skipped_reason: 'Missing recipient or body', updated_at: now }).eq('id', id);
@@ -293,7 +295,7 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
           template_key: ruleKey,
         });
         if (res.ok) {
-          await admin.from('scheduled_messages').update({ status: 'sent', sent_at: now, updated_at: now }).eq('id', id);
+          await admin.from('scheduled_messages').update({ status: 'sent', sent_at: now, provider: 'twilio', provider_message_id: res.sid ?? null, updated_at: now }).eq('id', id);
           sent++;
         } else if (res.skipped) {
           await admin.from('scheduled_messages').update({ status: 'skipped', skipped_reason: res.error ?? 'skipped', updated_at: now }).eq('id', id);
@@ -309,7 +311,7 @@ export async function processDueScheduledMessages(admin: SupabaseClient): Promis
         });
         const res = await sendResendHtml({ to: recipient, subject: subject || 'Gloss Boss ATX', html });
         if (res.ok) {
-          await admin.from('scheduled_messages').update({ status: 'sent', sent_at: now, updated_at: now }).eq('id', id);
+          await admin.from('scheduled_messages').update({ status: 'sent', sent_at: now, provider: 'resend', provider_message_id: res.emailId ?? null, updated_at: now }).eq('id', id);
           sent++;
         } else {
           await admin.from('scheduled_messages').update({ status: 'failed', skipped_reason: res.error ?? 'email failed', updated_at: now }).eq('id', id);

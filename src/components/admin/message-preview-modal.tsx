@@ -46,8 +46,8 @@ export function MessagePreviewModal({
   allowSchedule?: boolean;
   sendLabel?: string;
   onCancel: () => void;
-  onSend: (final: { body: string; subject?: string; channel: 'sms' | 'email' }) => void;
-  onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string }) => void;
+  onSend: (final: { body: string; subject?: string; channel: 'sms' | 'email'; tone: MessageTone }) => void;
+  onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string; tone: MessageTone }) => void;
   onCopy?: (text: string) => void;
 }) {
   const [editBody, setEditBody] = useState(body);
@@ -93,6 +93,7 @@ export function MessagePreviewModal({
     body: editBody.trim(),
     subject: activeChannel === 'email' ? editSubject.trim() : undefined,
     channel: activeChannel,
+    tone,
   };
 
   const canSubmit = Boolean(editBody.trim()) && Boolean(recipient) && (activeChannel !== 'email' || editSubject.trim());

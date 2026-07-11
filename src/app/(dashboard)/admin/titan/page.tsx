@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { Titan10HomeClient } from '@/components/titan/titan-10-home';
 import { getSessionWithProfile } from '@/lib/auth/session';
@@ -12,6 +12,7 @@ import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { buildTodaysMoneyPlan } from '@/lib/titan/todays-money-plan';
 import { resolveOwnerFirstName } from '@/lib/owner-identity';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { loadTitanExecutions } from '@/lib/titan/execution';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,9 +21,6 @@ type TitanWorkspace = 'today' | 'growth' | 'outreach' | 'reports';
 export default async function TitanHomePage({ searchParams }: { searchParams: Promise<{ workspace?: string }> }) {
   const params = await searchParams;
   const requestedWorkspace = params.workspace;
-  if (!requestedWorkspace || requestedWorkspace === 'today') {
-    redirect('/admin');
-  }
 
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
@@ -34,19 +32,20 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
     profileFullName: session.profile?.full_name,
     profileEmail: session.user.email,
   });
-  const [snapshot, health, revenueHunt, leadRadar, dailyHunt, conversionGoal] = await Promise.all([
+  const [snapshot, health, revenueHunt, leadRadar, dailyHunt, conversionGoal, executions] = await Promise.all([
     loadTitan10Snapshot(admin, ownerName),
     loadTitanSystemHealth(admin),
     loadRevenueHuntBundle(admin),
     loadLeadRadarItems(admin),
     loadDailyHuntTasks(admin),
     loadConversionGoalStats(admin),
+    loadTitanExecutions(admin),
   ]);
   const moneyPlan = await buildTodaysMoneyPlan(admin, {
     opportunities: revenueHunt.opportunities,
     leadRadar: leadRadar.items,
   });
-  const workspace: TitanWorkspace = ['growth', 'outreach', 'reports'].includes(requestedWorkspace)
+  const workspace: TitanWorkspace = ['growth', 'outreach', 'reports'].includes(requestedWorkspace ?? '')
     ? (requestedWorkspace as TitanWorkspace)
     : 'growth';
 
@@ -65,6 +64,7 @@ export default async function TitanHomePage({ searchParams }: { searchParams: Pr
         dailyHuntDate={dailyHunt.taskDate ?? new Date().toISOString().slice(0, 10)}
         conversionGoal={conversionGoal}
         moneyPlan={moneyPlan}
+        executions={executions}
       />
     </DashboardShell>
   );

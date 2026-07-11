@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runFollowUpEngine } from '@/lib/follow-up-engine';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { titanConfig } from '@/lib/titan/config';
+import { runTrackedAutomation } from '@/lib/titan/automation-run';
 
 /** Vercel Hobby: once daily at 14:00 UTC (see vercel.json). Use Follow-ups → Run engine now between runs. */
 
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = titanConfig.cronSecret();
   if (!secret) return false;
   const auth = request.headers.get('authorization') ?? '';
   if (auth === `Bearer ${secret}`) return true;
@@ -27,13 +29,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await runFollowUpEngine(admin);
-    const { processDueScheduledMessages, processAppointmentReminders } = await import('@/lib/customer-notification-cadence');
-    const { processOpportunityFollowUps } = await import('@/lib/opportunity-follow-up-cron');
-    const scheduled = await processDueScheduledMessages(admin);
-    const reminders = await processAppointmentReminders(admin);
-    const opportunityFollowUps = await processOpportunityFollowUps(admin);
-    return NextResponse.json({ ...result, scheduled, reminders, opportunityFollowUps });
+    const tracked = await runTrackedAutomation(admin, 'process_follow_ups', 'cron', async () => {
+      const result = await runFollowUpEngine(admin);
+      const { processDueScheduledMessages, processAppointmentReminders } = await import('@/lib/customer-notification-cadence');
+      const { processOpportunityFollowUps } = await import('@/lib/opportunity-follow-up-cron');
+      const [scheduled, reminders, opportunityFollowUps] = await Promise.all([
+        processDueScheduledMessages(admin), processAppointmentReminders(admin), processOpportunityFollowUps(admin),
+      ]);
+      return { ...result, scheduled, reminders, opportunityFollowUps };
+    });
+    return NextResponse.json(tracked, { status: tracked.ok ? 200 : tracked.alreadyRunning ? 409 : 500 });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Follow-up engine failed' },

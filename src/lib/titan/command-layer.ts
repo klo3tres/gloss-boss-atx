@@ -47,10 +47,9 @@ function parseCustomerGoal(prompt: string): number {
 
 export async function buildCommandPlan(admin: SupabaseClient, prompt: string): Promise<CommandPlan> {
   const targetCustomers = parseCustomerGoal(prompt);
-  const [intel, radar, content] = await Promise.all([
+  const [intel, radar] = await Promise.all([
     loadTitanIntelligence(admin),
     loadLeadRadar(admin),
-    loadContentEngine(admin),
   ]);
 
   const avgJob = 18000;
@@ -101,54 +100,8 @@ export async function buildCommandPlan(admin: SupabaseClient, prompt: string): P
       detail: `${p.scoreReason ?? 'High-score B2B prospect'} · est. ${(p.estimatedMonthlyCents / 100).toFixed(0)}/mo`,
       prospectId: p.id,
       potentialCents: Math.round(p.estimatedMonthlyCents * 0.15),
-      href: '/admin/super',
+      href: '/admin/titan/opportunities',
     });
-  }
-
-  if (intel.revenueLeaks.length) {
-    const leak = intel.revenueLeaks[0];
-    potential += leak.potentialCents * 0.2;
-    actions.push({
-      id: `leak-${leak.id}`,
-      type: 'revenue_leak',
-      title: `Close leak: ${leak.title}`,
-      detail: leak.detail,
-      potentialCents: Math.round(leak.potentialCents * 0.2),
-      href: leak.href,
-    });
-  }
-
-  actions.push({
-    id: 'membership-promo',
-    type: 'membership_promo',
-    title: 'Run membership promotion to past customers',
-    detail: 'Target completed jobs for recurring maintenance plans.',
-    potentialCents: avgJob * 2,
-    href: '/admin/memberships',
-  });
-  potential += avgJob * 2;
-
-  actions.push({
-    id: 'review-requests',
-    type: 'review_requests',
-    title: 'Send review requests to recent completions',
-    detail: 'Social proof fuels Lead Radar and content engine.',
-    potentialCents: avgJob,
-    href: '/admin/notifications',
-  });
-  potential += avgJob;
-
-  if (content.topPost) {
-    actions.push({
-      id: 'content-boost',
-      type: 'content_boost',
-      title: `Boost top reel: ${content.topPost.title}`,
-      detail: content.recommendation?.reason ?? 'Republish winning content format.',
-      contentPostId: content.topPost.id,
-      potentialCents: content.topPost.revenueCents || avgJob,
-      href: '/admin/cms',
-    });
-    potential += content.topPost.revenueCents || avgJob;
   }
 
   return {
@@ -220,7 +173,7 @@ export async function executeCommandPlan(admin: SupabaseClient, planId: string):
         }
         log.push(`Lead follow-ups sent: ${sent}`);
       } else {
-        log.push(`Queued: ${action.title}`);
+        throw new Error(`Unsupported command action was blocked: ${action.type}`);
       }
     } catch (e) {
       log.push(`Error on ${action.title}: ${e instanceof Error ? e.message : 'failed'}`);

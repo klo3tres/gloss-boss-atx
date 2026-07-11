@@ -101,7 +101,9 @@ function isMissingTable(message: string) {
 
 function normalizeStatus(raw: string): RevenueOpportunityStatus {
   const s = raw.toLowerCase();
-  if (s === 'won' || s === 'pipeline' || s === 'replied') return 'booked';
+  if (s === 'won') return 'won';
+  if (s === 'pipeline') return 'seeded';
+  if (s === 'replied') return 'contacted';
   if (s === 'dismissed') return 'ignored';
   if (s === 'quoted') return 'quoted';
   if (s === 'seeded') return 'seeded';
@@ -826,6 +828,90 @@ export async function syncDerivedRevenueOpportunities(admin: SupabaseClient, wor
     }
   } catch {
     /* graceful */
+  }
+
+  // Google Places / fleet prospect enrichment -> actionable Opportunity Board records.
+  try {
+    const prospects = await admin
+      .from('titan_prospects')
+      .select('id, company_name, prospect_type, contact_name, contact_role, email, phone, address, website, distance_miles, estimated_monthly_cents, vehicle_count, score, score_reason, status, source, notes')
+      .in('status', ['new', 'contacted', 'qualified', 'pipeline'])
+      .order('score', { ascending: false })
+      .limit(80);
+    for (const raw of prospects.data ?? []) {
+      const row = raw as Record<string, unknown>;
+      const prospectId = str(row.id);
+      const company = str(row.company_name);
+      if (!prospectId || !company) continue;
+      const type = str(row.prospect_type);
+      const opportunityType = /apartment|hoa|property/.test(type) ? 'apartment_hoa' : /dealer/.test(type) ? 'dealership' : 'fleet';
+      const monthly = Number(row.estimated_monthly_cents ?? 0) || 0;
+      const result = await createRevenueOpportunity(admin, {
+        title: company,
+        opportunityType,
+        estimatedRevenueCents: monthly,
+        contactName: str(row.contact_name) || str(row.contact_role) || undefined,
+        contactPhone: str(row.phone) || undefined,
+        contactEmail: str(row.email) || undefined,
+        businessName: company,
+        businessCategory: type.replaceAll('_', ' '),
+        businessAddress: str(row.address) || undefined,
+        websiteUrl: str(row.website) || undefined,
+        estimatedVehicleCount: Number(row.vehicle_count ?? 0) || undefined,
+        distanceMiles: row.distance_miles != null ? Number(row.distance_miles) : undefined,
+        notes: str(row.notes) || `Decision-maker target: ${str(row.contact_role) || 'manager'}`,
+        recommendedAction: str(row.phone) ? 'Call the decision maker and offer an on-site fleet quote.' : 'Research or add a decision-maker phone/email before outreach.',
+        source: str(row.source) || 'Google Places',
+        confidenceScore: Number(row.score ?? 50) || 50,
+        whySurfaced: str(row.score_reason) || 'Local business with repeat on-site detailing potential.',
+        valueExplanation: monthly > 0 ? `Estimated monthly opportunity based on the prospect category, likely vehicle count, and local recurring-detail pricing.` : 'Value pending vehicle-count qualification.',
+        sourceUrl: str(row.website) || undefined,
+        keywordMatched: `prospect:${prospectId}`,
+      }, workspaceKey);
+      if (result.ok && !result.duplicate) created += 1;
+    }
+  } catch {
+    /* prospect tables are optional until migrations are applied */
+  }
+
+  // High-intent web/social inquiries become mini-CRM opportunities automatically.
+  try {
+    const radar = await admin
+      .from('titan_lead_radar_items')
+      .select('id, source_type, source_name, source_url, author_name, contact_name, phone, email, location_text, raw_text, detected_intent, service_match, estimated_revenue, confidence_score, urgency_score, recommended_reply, why_titan_flagged, status')
+      .in('status', ['new', 'reviewed', 'replied'])
+      .gte('confidence_score', 60)
+      .order('created_at', { ascending: false })
+      .limit(60);
+    for (const raw of radar.data ?? []) {
+      const row = raw as Record<string, unknown>;
+      const radarId = str(row.id);
+      if (!radarId) continue;
+      const contact = str(row.contact_name) || str(row.author_name) || 'Online inquiry';
+      const sourceType = str(row.source_type) || 'social';
+      const result = await createRevenueOpportunity(admin, {
+        title: `${contact} â€” ${str(row.service_match) || 'detail inquiry'}`,
+        opportunityType: sourceType.includes('facebook') ? 'facebook_group' : sourceType.includes('nextdoor') ? 'nextdoor' : 'warm_lead',
+        estimatedRevenueCents: Math.round(Number(row.estimated_revenue ?? 0) * 100) || 17500,
+        contactName: contact,
+        contactPhone: str(row.phone) || undefined,
+        contactEmail: str(row.email) || undefined,
+        socialUrl: str(row.source_url) || undefined,
+        notes: [str(row.raw_text), str(row.location_text) ? `Location: ${str(row.location_text)}` : ''].filter(Boolean).join('\n'),
+        recommendedAction: str(row.phone) || str(row.email) ? 'Respond now while purchase intent is fresh.' : 'Open the source thread and respond publicly or add contact information.',
+        source: str(row.source_name) || sourceType,
+        confidenceScore: Math.max(Number(row.confidence_score ?? 60), Number(row.urgency_score ?? 0)),
+        whySurfaced: str(row.why_titan_flagged) || 'High-intent public inquiry that may not have received a response.',
+        sourceUrl: str(row.source_url) || undefined,
+        keywordMatched: `radar:${radarId}`,
+      }, workspaceKey);
+      if (result.ok && result.id) {
+        await admin.from('titan_lead_radar_items').update({ opportunity_id: result.id, status: 'converted_to_opportunity', updated_at: new Date().toISOString() }).eq('id', radarId);
+        if (!result.duplicate) created += 1;
+      }
+    }
+  } catch {
+    /* radar tables are optional until migrations are applied */
   }
 
   return created;

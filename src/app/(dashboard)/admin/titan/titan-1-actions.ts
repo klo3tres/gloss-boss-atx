@@ -33,13 +33,23 @@ export async function runAcquisitionHuntAction() {
   const g = await gate();
   if (!g) return { error: 'Unauthorized' };
   const discovery = await runPlacesDiscoveryAction();
-  const nightly = await runTitanNightlyNowAction();
+  const { runTitanNightlyEngine } = await import('@/lib/titan');
+  let nightlyError: string | undefined;
+  try { await runTitanNightlyEngine(g.admin, { skipPlacesDiscovery: true }); } catch (error) { nightlyError = error instanceof Error ? error.message : String(error); }
   revalidate();
   return {
-    ok: true,
+    ok: !discovery.error && !nightlyError,
     discoveryError: discovery.error,
     discovered: discovery.discovered,
-    nightlyError: nightly.error,
+    inserted: discovery.newCount,
+    searchesAttempted: discovery.searchesAttempted,
+    searchesCompleted: discovery.searchesCompleted,
+    searchesFailed: discovery.searchesFailed,
+    rawResultsFound: discovery.rawResultsFound,
+    skippedDuplicates: discovery.skippedDuplicates,
+    remaining: discovery.remaining,
+    nightlyError,
+    error: discovery.error || nightlyError,
   };
 }
 

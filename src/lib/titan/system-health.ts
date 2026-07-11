@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CRON_SCHEDULES, HOBBY_MODE_AUTOMATION_WARNING } from '@/lib/cron-schedules';
+import { titanConfigSummary } from '@/lib/titan/config';
 
 export type HealthStatus = 'ok' | 'missing' | 'manual' | 'error';
 
@@ -28,6 +29,7 @@ export type TitanSystemHealth = {
   hobbyMode: boolean;
   hobbyModeWarning: string;
   cronSchedules: TitanCronSchedule[];
+  automationRuns: Array<{ jobKey: string; status: string; startedAt: string; durationMs: number | null; error: string | null }>;
 };
 
 const TABLE_CHECKS: { id: string; table: string; label: string }[] = [
@@ -88,9 +90,10 @@ const CRON_SCHEDULE_ITEMS: TitanCronSchedule[] = [
 ];
 
 export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promise<TitanSystemHealth> {
-  const latestMigration = '000098';
+  const latestMigration = '000127';
   const hobbyMode = true;
   const hobbyModeWarning = HOBBY_MODE_AUTOMATION_WARNING;
+  const cfg = titanConfigSummary();
   const integrations: TitanHealthItem[] = [
     {
       id: 'supabase_url',
@@ -115,42 +118,38 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
     {
       id: 'places',
       label: 'Google Places API',
-      status: envOk('GOOGLE_PLACES_API_KEY') || envOk('GOOGLE_MAPS_API_KEY') ? 'ok' : 'missing',
-      detail:
-        envOk('GOOGLE_PLACES_API_KEY') || envOk('GOOGLE_MAPS_API_KEY')
-          ? 'Connected — Lead Radar discovery enabled'
-          : 'Discovery disabled until Google Places API is connected',
+      status: cfg.places ? 'manual' : 'missing',
+      detail: cfg.places ? 'Configured — the latest Hunt result verifies permissions and quota' : 'Discovery disabled until Google Places API is connected',
     },
     {
       id: 'google_maps',
       label: 'Google Maps (render)',
-      status: envOk('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY') ? 'ok' : 'missing',
-      detail: envOk('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY')
-        ? 'Connected — map view available'
-        : 'Map view disabled — set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY',
+      status: cfg.maps ? 'manual' : 'missing',
+      detail: cfg.maps ? 'Configured — map rendering is available' : 'Map view disabled — set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY',
     },
     {
       id: 'stripe',
       label: 'Stripe',
-      status: envOk('STRIPE_SECRET_KEY') || envOk('STRIPE_SECRET_KEY_LIVE') ? 'ok' : 'manual',
-      detail: envOk('STRIPE_SECRET_KEY') || envOk('STRIPE_SECRET_KEY_LIVE') ? 'Connected' : 'Manual / not configured in env',
+      status: cfg.stripe ? 'manual' : 'missing',
+      detail: cfg.stripe ? `Configured${cfg.stripeWebhook ? ' with webhook secret' : ' — webhook secret missing'}` : 'Not configured',
     },
     {
       id: 'twilio',
       label: 'Twilio SMS',
       status:
-        envOk('TWILIO_ACCOUNT_SID') && envOk('TWILIO_AUTH_TOKEN') && envOk('TWILIO_PHONE_NUMBER') ? 'ok' : 'manual',
-      detail:
-        envOk('TWILIO_ACCOUNT_SID') && envOk('TWILIO_AUTH_TOKEN')
-          ? 'Connected'
-          : 'Manual mode — SMS outreach unavailable',
+        cfg.twilio ? 'manual' : 'missing',
+      detail: cfg.twilio ? 'Configured — TWILIO_FROM_NUMBER, legacy phone alias, and Messaging Service are supported' : 'SMS outreach unavailable',
     },
     {
       id: 'weather',
       label: 'Weather API',
-      status: envOk('OPENWEATHER_API_KEY') ? 'ok' : 'manual',
-      detail: envOk('OPENWEATHER_API_KEY') ? 'Connected' : 'Manual mode — weather intelligence disabled',
+      status: cfg.weather ? 'manual' : 'missing',
+      detail: cfg.weather ? 'Configured — OPENWEATHER_API_KEY and legacy OPENWEATHER_API_KE are supported' : 'Weather intelligence disabled',
     },
+    { id: 'cron_secret', label: 'Cron authorization', status: cfg.cron ? 'ok' : 'missing', detail: cfg.cron ? 'CRON_SECRET configured' : 'CRON_SECRET missing; scheduled routes return 401' },
+    { id: 'resend', label: 'Resend email', status: cfg.resend ? 'manual' : 'missing', detail: cfg.resend ? 'Configured; provider results are recorded per send' : 'Email sends unavailable' },
+    { id: 'calendar', label: 'Google Calendar', status: cfg.googleCalendar ? 'manual' : 'missing', detail: cfg.googleCalendar ? 'OAuth configured; connection verified at runtime' : 'OAuth client configuration missing' },
+    { id: 'app_url', label: 'Public app URL', status: cfg.appUrl ? 'ok' : 'missing', detail: cfg.appUrl ? 'Configured' : 'NEXT_PUBLIC_APP_URL missing' },
   ];
 
   if (!admin) {
@@ -169,6 +168,7 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
       hobbyMode,
       hobbyModeWarning,
       cronSchedules: CRON_SCHEDULE_ITEMS,
+      automationRuns: [],
     };
   }
 
@@ -189,15 +189,28 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
     }),
   );
 
+  const { data: recentRuns } = await admin.from('titan_automation_runs').select('job_key, status, started_at, duration_ms, error_message').order('started_at', { ascending: false }).limit(12);
+  const latestByJob = new Map<string, Record<string, unknown>>();
+  for (const raw of recentRuns ?? []) {
+    const row = raw as Record<string, unknown>;
+    const key = String(row.job_key ?? '');
+    if (key && !latestByJob.has(key)) latestByJob.set(key, row);
+  }
+  const automationRuns = [...latestByJob.values()].map((row) => ({
+    jobKey: String(row.job_key ?? ''), status: String(row.status ?? ''), startedAt: String(row.started_at ?? ''),
+    durationMs: typeof row.duration_ms === 'number' ? row.duration_ms : null,
+    error: row.error_message ? String(row.error_message) : null,
+  }));
+
   const oppReady = tableResults.find((t) => t.id === 'titan_opportunities')?.status === 'ok';
   const leadsReady = tableResults.find((t) => t.id === 'leads')?.status === 'ok';
   const migrationReady = oppReady && tableResults.find((t) => t.id === 'titan_activity_events')?.status === 'ok';
-  const leadCaptureReady = leadsReady && envOk('SUPABASE_SERVICE_ROLE_KEY');
+  const leadCaptureReady = leadsReady && cfg.serviceRole;
 
   const missingCount = tableResults.filter((t) => t.status === 'missing').length;
   const integrationIssues = integrations.filter((i) => i.status !== 'ok').length;
   const overall =
-    missingCount > 3 || !envOk('SUPABASE_SERVICE_ROLE_KEY')
+    missingCount > 3 || !cfg.serviceRole || !cfg.cron
       ? 'critical'
       : missingCount > 0 || integrationIssues > 2
         ? 'degraded'
@@ -213,5 +226,6 @@ export async function loadTitanSystemHealth(admin: SupabaseClient | null): Promi
     hobbyMode,
     hobbyModeWarning,
     cronSchedules: CRON_SCHEDULE_ITEMS,
+    automationRuns,
   };
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { resolveBusinessContext } from '@/lib/titan/business-context';
 import { loadBusinessIntegrations } from '@/lib/titan/integrations';
@@ -11,6 +12,7 @@ export default async function TitanHomePage() {
   const admin = tryCreateAdminSupabase();
   const ctx = admin ? await resolveBusinessContext(admin) : null;
   if (!ctx || !admin) return null;
+  if (ctx.business.isPlatformTenant) redirect('/admin/titan?workspace=growth');
 
   const [integrations, opps] = await Promise.all([
     loadBusinessIntegrations(admin, ctx.businessId),

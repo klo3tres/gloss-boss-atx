@@ -29,6 +29,15 @@ function revalidate() {
   revalidatePath('/admin/titan/opportunities');
 }
 
+async function logActionEvent(admin: NonNullable<Awaited<ReturnType<typeof gate>>>['admin'], input: {
+  eventType: string; actionType: string; opportunityId: string; status?: string; metadata?: Record<string, unknown>;
+}) {
+  await admin.from('titan_action_events').insert({
+    event_type: input.eventType, action_type: input.actionType, entity_type: 'opportunity', entity_id: input.opportunityId,
+    opportunity_id: input.opportunityId, status: input.status ?? null, metadata: input.metadata ?? {},
+  });
+}
+
 export async function createOpportunityAction(input: {
   title: string;
   opportunityType: string;
@@ -70,6 +79,7 @@ export async function markOpportunityStatusAction(
   if (!g) return { error: 'Unauthorized' };
   const res = await updateOpportunityStatus(g.admin, id, status, notes);
   if (!res.ok) return { error: res.error };
+  await logActionEvent(g.admin, { eventType: status === 'booked' || status === 'won' ? 'booking_recorded' : 'status_changed', actionType: 'opportunity', opportunityId: id, status, metadata: { notes: notes ?? null } });
 
   if (status === 'booked') {
     const { createProjectFromBookedOpportunity } = await import('@/lib/titan/won-opportunity-project');
@@ -102,6 +112,7 @@ export async function logOpportunityCallAction(
     notes: note,
     workspace_key: 'default',
   });
+  await logActionEvent(g.admin, { eventType: 'call_initiated', actionType: 'opportunity_call', opportunityId, status: 'completed', metadata: { outcome: outcome ?? null, phone_present: Boolean(phone) } });
 
   if (String(row.status) === 'new') {
     await updateOpportunityStatus(g.admin, opportunityId, 'contacted', 'Call logged');
@@ -138,6 +149,7 @@ export async function scheduleFollowUpAction(
 
   const res = await scheduleOpportunityFollowUp(g.admin, id, base.toISOString());
   if (!res.ok) return { error: res.error };
+  await logActionEvent(g.admin, { eventType: 'follow_up_scheduled', actionType: 'opportunity_follow_up', opportunityId: id, status: 'scheduled', metadata: { scheduled_for: base.toISOString(), preset } });
   revalidate();
   return { ok: true };
 }
@@ -279,6 +291,41 @@ export async function updateOpportunityContactAction(
   if (!g) return { error: 'Unauthorized' };
   const res = await updateOpportunityContact(g.admin, id, contact);
   if (!res.ok) return { error: res.error };
+  await logActionEvent(g.admin, { eventType: 'contact_updated', actionType: 'opportunity', opportunityId: id, status: 'completed', metadata: { has_phone: Boolean(contact.contactPhone), has_email: Boolean(contact.contactEmail) } });
   revalidate();
   return { ok: true };
+}
+
+export async function setOpportunityCadencePausedAction(id: string, paused: boolean): Promise<{ ok?: boolean; error?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  const { error } = await g.admin.from('titan_opportunities').update({ follow_up_cadence_paused: paused, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) return { error: error.message };
+  await logActionEvent(g.admin, { eventType: paused ? 'cadence_paused' : 'cadence_resumed', actionType: 'opportunity_follow_up', opportunityId: id, status: paused ? 'paused' : 'scheduled' });
+  revalidate();
+  return { ok: true };
+}
+
+export async function convertOpportunityToCustomerAction(id: string): Promise<{ ok?: boolean; error?: string; customerId?: string }> {
+  const g = await gate();
+  if (!g) return { error: 'Unauthorized' };
+  const { data: raw } = await g.admin.from('titan_opportunities').select('author_name, contact_email, contact_phone, business_name, title').eq('id', id).maybeSingle();
+  if (!raw) return { error: 'Opportunity not found.' };
+  const row = raw as Record<string, unknown>;
+  const email = String(row.contact_email ?? '').trim().toLowerCase();
+  if (!email) return { error: 'Add an email before converting this opportunity to a customer.' };
+  const name = String(row.author_name ?? row.business_name ?? row.title ?? 'Customer').trim();
+  const phone = String(row.contact_phone ?? '').trim() || null;
+  const existing = await g.admin.from('customers').select('id').ilike('email', email).maybeSingle();
+  let customerId = existing.data?.id ? String(existing.data.id) : '';
+  if (!customerId) {
+    const inserted = await g.admin.from('customers').insert({ email, full_name: name, phone }).select('id').maybeSingle();
+    if (inserted.error || !inserted.data?.id) return { error: inserted.error?.message ?? 'Could not create customer.' };
+    customerId = String(inserted.data.id);
+  }
+  await updateOpportunityStatus(g.admin, id, 'won', `Converted to customer ${customerId}`);
+  await logActionEvent(g.admin, { eventType: 'customer_created', actionType: 'opportunity_conversion', opportunityId: id, status: 'won', metadata: { customer_id: customerId } });
+  revalidate();
+  revalidatePath(`/admin/customers/${customerId}`);
+  return { ok: true, customerId };
 }

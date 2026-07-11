@@ -1,9 +1,8 @@
 import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
-import { TitanBillingClient } from '@/components/titan/titan-billing-client';
+import Link from 'next/link';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
-import { loadTitanWorkspace } from '@/lib/titan/workspace';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -13,37 +12,14 @@ export default async function TitanBillingPage() {
   const admin = tryCreateAdminSupabase();
   if (!session.user || !isAdminLevel(session.profile?.role) || !admin) notFound();
 
-  const workspace = await loadTitanWorkspace(admin);
-
-  const { data: plans } = await admin
-    .from('titan_subscription_plans')
-    .select('*')
-    .order('sort_order', { ascending: true });
-
-  const mapped = (plans ?? []).map((p) => {
-    const row = p as Record<string, unknown>;
-    const features = row.features;
-    return {
-      id: String(row.id),
-      name: String(row.name),
-      priceCents: Number(row.price_cents ?? 0),
-      features: Array.isArray(features) ? features.map(String) : [],
-    };
-  });
-
-  const fallback = [
-    { id: 'starter', name: 'Titan Starter', priceCents: 4900, features: ['Daily Manager', 'Outreach Engine', 'Goal Engine'] },
-    { id: 'growth', name: 'Titan Growth', priceCents: 14900, features: ['Everything in Starter', 'Deal Room', 'Attribution', 'Territory'] },
-    { id: 'scale', name: 'Titan Scale', priceCents: 29900, features: ['Everything in Growth', 'Fleet Engine', 'Multi-user', 'White label'] },
-  ];
-
   return (
-    <DashboardShell title="Titan Billing" subtitle="Subscription plans" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
-      <TitanBillingClient
-        currentTier={workspace.subscriptionTier}
-        subscriptionStatus={workspace.subscriptionStatus}
-        plans={mapped.length ? mapped : fallback}
-      />
+    <DashboardShell title="Titan Billing" subtitle="Internal workspace status" role={session.profile!.role as 'admin' | 'super_admin'} titanMode>
+      <section className="max-w-2xl rounded-3xl border border-gold/20 bg-black/55 p-7">
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-gold-soft">Internal workspace</p>
+        <h1 className="mt-3 text-2xl font-black text-white">Billing is not active for Gloss Boss ATX</h1>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">Gloss Boss is Titan's internal production workspace. Subscription checkout, tiers, territory sales, and white-label entitlements are hidden until the commercial billing system completes production QA.</p>
+        <Link href="/admin/titan/settings" className="mt-5 inline-flex rounded-xl border border-white/10 px-4 py-2 text-[10px] font-black uppercase text-zinc-200">Health & settings</Link>
+      </section>
     </DashboardShell>
   );
 }

@@ -32,6 +32,11 @@ export type PlacesDiscoveryResult = {
   radiusMiles: number;
   center: GeoPoint | null;
   error?: string;
+  searchesAttempted: number;
+  searchesCompleted: number;
+  searchesFailed: number;
+  rawResultsFound: number;
+  skippedDuplicates: number;
 };
 
 export type DiscoverySummary = {
@@ -127,6 +132,11 @@ export async function discoverPlacesProspects(
     potentialMonthlyCents: 0,
     radiusMiles,
     center: null,
+    searchesAttempted: 0,
+    searchesCompleted: 0,
+    searchesFailed: 0,
+    rawResultsFound: 0,
+    skippedDuplicates: 0,
   };
 
   if (!placesApiConfigured()) {
@@ -164,9 +174,15 @@ export async function discoverPlacesProspects(
   let newCount = 0;
   let potentialMonthlyCents = 0;
   let lastError: string | undefined;
+  let searchesAttempted = 0;
+  let searchesCompleted = 0;
+  let searchesFailed = 0;
+  let rawResultsFound = 0;
+  let skippedDuplicates = 0;
 
   try {
     for (const query of DISCOVERY_QUERIES) {
+      searchesAttempted += 1;
       const result =
         query.mode === 'nearby' && query.nearbyType
           ? await searchNearbyPlaces({ center, radiusMeters, includedType: query.nearbyType })
@@ -174,11 +190,14 @@ export async function discoverPlacesProspects(
 
       if (!result.ok) {
         lastError = result.error;
+        searchesFailed += 1;
         continue;
       }
+      searchesCompleted += 1;
+      rawResultsFound += result.places.length;
 
       for (const place of result.places) {
-        if (seenPlaceIds.has(place.placeId)) continue;
+        if (seenPlaceIds.has(place.placeId)) { skippedDuplicates += 1; continue; }
         seenPlaceIds.add(place.placeId);
 
         const distance = haversineMiles(center, { lat: place.lat, lng: place.lng });
@@ -196,7 +215,7 @@ export async function discoverPlacesProspects(
           .eq('google_place_id', place.placeId)
           .maybeSingle();
 
-        if (existing?.id) continue;
+        if (existing?.id) { skippedDuplicates += 1; continue; }
 
         if (place.phone) {
           const digits = place.phone.replace(/\D/g, '').slice(-10);
@@ -209,7 +228,7 @@ export async function discoverPlacesProspects(
             const phoneHit = (byPhone ?? []).find(
               (r) => String((r as { phone?: string }).phone ?? '').replace(/\D/g, '').slice(-10) === digits,
             );
-            if (phoneHit?.id) continue;
+            if (phoneHit?.id) { skippedDuplicates += 1; continue; }
           }
         }
 
@@ -220,7 +239,7 @@ export async function discoverPlacesProspects(
             .ilike('company_name', place.name)
             .ilike('address', place.address)
             .maybeSingle();
-          if (byName?.id) continue;
+          if (byName?.id) { skippedDuplicates += 1; continue; }
         }
 
         const score = computeScore(prospectType, monthly, distance, 'new');
@@ -292,6 +311,11 @@ export async function discoverPlacesProspects(
       radiusMiles,
       center,
       error: lastError,
+      searchesAttempted,
+      searchesCompleted,
+      searchesFailed,
+      rawResultsFound,
+      skippedDuplicates,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Places discovery failed';
@@ -301,7 +325,7 @@ export async function discoverPlacesProspects(
         .update({ finished_at: new Date().toISOString(), error_message: message })
         .eq('id', runRow.id);
     }
-    return { ...empty, center, error: message };
+    return { ...empty, center, error: message, searchesAttempted, searchesCompleted, searchesFailed, rawResultsFound, skippedDuplicates };
   }
 }
 
