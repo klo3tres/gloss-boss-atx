@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { agreementUrl, appOrigin } from '@/lib/auth/action-link-registry';
 import type { AgreementStatus } from '@/lib/agreements/status';
 import { resolveDisplayStatus } from '@/lib/agreements/status';
+import { logTitanActivity } from '@/lib/titan/activity-feed';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -19,6 +20,7 @@ export function generateAgreementToken(): string {
 export type AgreementRequestRow = {
   id: string;
   appointmentId: string | null;
+  workOrderId: string | null;
   customerId: string | null;
   status: AgreementStatus;
   tokenExpiresAt: string;
@@ -41,6 +43,7 @@ function mapRequest(row: Record<string, unknown>): AgreementRequestRow {
   return {
     id: str(row.id),
     appointmentId: str(row.appointment_id) || null,
+    workOrderId: str(row.work_order_id) || null,
     customerId: str(row.customer_id) || null,
     status: resolveDisplayStatus({ requestStatus: str(row.status) }),
     tokenExpiresAt: str(row.token_expires_at),
@@ -144,17 +147,16 @@ export async function ensureAgreementRequest(
 
   if (existing && !input.rotateToken) {
     const request = mapRequest(existing as Record<string, unknown>);
-    const url = agreementUrl({
-      appointmentId: input.appointmentId,
-      token: input.accessToken,
-    });
+    const url = request.securePath
+      ? `${appOrigin()}${request.securePath}`
+      : agreementUrl({ appointmentId: input.appointmentId, token: input.accessToken });
     return { ok: true, request, url };
   }
 
   const token = generateAgreementToken();
   const expires = new Date();
   expires.setDate(expires.getDate() + 14);
-  const path = `/agreement?appointment_id=${encodeURIComponent(input.appointmentId)}&token=${encodeURIComponent(input.accessToken)}`;
+  const path = `/agreement?token=${encodeURIComponent(token)}`;
 
   const { data, error } = await admin
     .from('agreement_requests')
@@ -197,6 +199,21 @@ export async function ensureAgreementRequest(
     token,
     url: `${appOrigin()}${path}`,
   };
+}
+
+/** Resolve a customer agreement link independently from checkout/session state. */
+export async function getAgreementRequestByToken(
+  admin: SupabaseClient,
+  token: string,
+): Promise<AgreementRequestRow | null> {
+  const normalized = token.trim();
+  if (!normalized) return null;
+  const { data } = await admin
+    .from('agreement_requests')
+    .select('*')
+    .eq('token_hash', hashAgreementToken(normalized))
+    .maybeSingle();
+  return data ? mapRequest(data as Record<string, unknown>) : null;
 }
 
 export async function getLatestAgreementRequest(
@@ -278,6 +295,38 @@ export async function markAgreementSigned(
     eventType: status === 'verbal' ? 'verbal_acknowledgment_recorded' : 'agreement_signed',
     detail: input.signerName ?? undefined,
   });
+
+  if (latest?.customerId) {
+    try {
+      await admin.from('customer_timeline_events').insert({
+        customer_id: latest.customerId,
+        event_type: status === 'verbal' ? 'agreement_verbal' : 'agreement_signed',
+        title: status === 'verbal' ? 'Service acknowledgment recorded verbally' : 'Service agreement signed',
+        detail: input.signerName ?? null,
+        href: `/admin/work-orders/${encodeURIComponent(input.appointmentId)}`,
+      });
+    } catch {
+      /* optional timeline table */
+    }
+  }
+  try {
+    await admin.from('activity_logs').insert({
+      action: status === 'verbal' ? 'agreement_verbal' : 'agreement_signed',
+      entity_type: 'appointment',
+      entity_id: input.appointmentId,
+      meta: { requestId: latest?.id ?? null, signerName: input.signerName ?? null },
+      created_at: now,
+    });
+    await logTitanActivity(admin, {
+      kind: 'agreement_signed',
+      title: status === 'verbal' ? 'Agreement acknowledged verbally' : 'Agreement signed',
+      detail: input.signerName ?? undefined,
+      href: `/admin/work-orders/${encodeURIComponent(input.appointmentId)}`,
+      metadata: { appointmentId: input.appointmentId, requestId: latest?.id ?? null },
+    });
+  } catch {
+    /* activity feeds are best effort */
+  }
 
   // Cancel pending agreement reminder messages
   try {

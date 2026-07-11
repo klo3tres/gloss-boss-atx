@@ -11,8 +11,11 @@ export const runtime = 'nodejs';
 type Body = {
   intent?: 'send' | 'schedule' | 'preview' | 'ensure' | 'status';
   appointmentId?: string;
+  workOrderId?: string;
   channel?: 'sms' | 'email' | 'both';
   tone?: AgreementMessageTone;
+  messageOverride?: string | null;
+  emailSubject?: string | null;
   scheduleAt?: string | null;
   actorUserId?: string | null;
 };
@@ -53,6 +56,7 @@ export async function POST(request: Request) {
     const ensured = await ensureAgreementRequest(admin, {
       appointmentId,
       customerId: String(row.customer_id ?? '') || null,
+      workOrderId: String(body.workOrderId ?? '') || null,
       accessToken: token,
       createdBy: body.actorUserId ?? null,
     });
@@ -76,8 +80,11 @@ export async function POST(request: Request) {
   const channel = body.channel ?? 'both';
   const result = await sendAgreementLink(admin, {
     appointmentId,
+    workOrderId: String(body.workOrderId ?? '') || null,
     channel,
     tone: body.tone ?? 'professional',
+    messageOverride: body.messageOverride,
+    emailSubject: body.emailSubject,
     actorUserId: body.actorUserId,
     scheduleAt: intent === 'schedule' ? body.scheduleAt ?? null : null,
   });

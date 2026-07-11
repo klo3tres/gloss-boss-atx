@@ -37,7 +37,11 @@ export type WorkOrderAgreementPanelProps = {
   agreementDetailHref: string;
   agreementPdfHref?: string;
   accessToken?: string;
-  userId?: string;
+  userId?: string;
+
+  customerEmail?: string;
+
+  customerPhone?: string;
 };
 
 type LocalStatus = {
@@ -73,7 +77,11 @@ export function WorkOrderAgreementPanel({
   agreementDetailHref,
   agreementPdfHref,
   accessToken,
-  userId,
+  userId,
+
+  customerEmail,
+
+  customerPhone,
 }: WorkOrderAgreementPanelProps) {
   const initialStatus: AgreementStatus = agreementSigned
     ? parseAgreementStatus(agreementStatus) === 'verbal'
@@ -96,7 +104,21 @@ export function WorkOrderAgreementPanel({
   const [copied, setCopied] = useState(false);
   const [scheduleAt, setScheduleAt] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
-  const [showVerbal, setShowVerbal] = useState(false);
+  const [showVerbal, setShowVerbal] = useState(false);
+
+  const [sendComposer, setSendComposer] = useState<{
+
+    channel: 'sms' | 'email' | 'both';
+
+    tone: 'quick' | 'professional' | 'warm';
+
+    messages: Record<'quick' | 'professional' | 'warm', string>;
+
+    body: string;
+
+    emailSubject: string;
+
+  } | null>(null);
   const [verbal, setVerbal] = useState({
     customerName: signerName ?? '',
     reason: '',
@@ -164,9 +186,15 @@ export function WorkOrderAgreementPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intent,
-          appointmentId,
+          appointmentId,
+
+          workOrderId,
           channel,
-          tone: 'professional',
+          tone: sendComposer?.tone ?? 'professional',
+
+          messageOverride: sendComposer?.body ?? null,
+
+          emailSubject: sendComposer?.emailSubject ?? null,
           scheduleAt: intent === 'schedule' ? scheduleAt || null : null,
           actorUserId: userId ?? null,
         }),
@@ -177,14 +205,70 @@ export function WorkOrderAgreementPanel({
         return;
       }
       if (json.url) setLocal((p) => ({ ...p, secureUrl: json.url }));
-      setMessage(intent === 'schedule' ? 'Send scheduled.' : `Agreement sent via ${channel}.`);
+      setMessage(intent === 'schedule' ? 'Send scheduled.' : `Agreement sent via ${channel}.`);
+
+      setSendComposer(null);
       await refreshStatus();
     } catch {
       setError('Network error while sending.');
     } finally {
       setBusy(null);
     }
-  };
+  };
+
+  const openSendComposer = async (channel: 'sms' | 'email' | 'both') => {
+
+    setBusy('compose');
+
+    setError(null);
+
+    try {
+
+      const res = await fetch('/api/agreements/send', {
+
+        method: 'POST',
+
+        headers: { 'Content-Type': 'application/json' },
+
+        body: JSON.stringify({ intent: 'preview', appointmentId, workOrderId, actorUserId: userId ?? null }),
+
+      });
+
+      const json = (await res.json()) as { ok?: boolean; error?: string; messages?: Record<'quick' | 'professional' | 'warm', string> };
+
+      if (!res.ok || !json.ok || !json.messages) {
+
+        setError(json.error ?? 'Could not prepare agreement message.');
+
+        return;
+
+      }
+
+      setSendComposer({
+
+        channel,
+
+        tone: 'professional',
+
+        messages: json.messages,
+
+        body: json.messages.professional,
+
+        emailSubject: 'Please sign your Gloss Boss ATX service acknowledgment',
+
+      });
+
+    } catch {
+
+      setError('Network error while preparing the message.');
+
+    } finally {
+
+      setBusy(null);
+
+    }
+
+  };
 
   const previewLink = async () => {
     if (!appointmentId) {
@@ -205,7 +289,7 @@ export function WorkOrderAgreementPanel({
       const res = await fetch('/api/agreements/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent: 'preview', appointmentId, actorUserId: userId ?? null }),
+        body: JSON.stringify({ intent: 'preview', appointmentId, workOrderId, actorUserId: userId ?? null }),
       });
       const json = (await res.json()) as { ok?: boolean; url?: string; error?: string };
       if (!res.ok || !json.ok || !json.url) {
@@ -231,7 +315,7 @@ export function WorkOrderAgreementPanel({
         const res = await fetch('/api/agreements/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ intent: 'ensure', appointmentId, actorUserId: userId ?? null }),
+          body: JSON.stringify({ intent: 'ensure', appointmentId, workOrderId, actorUserId: userId ?? null }),
         });
         const json = (await res.json()) as { ok?: boolean; url?: string; error?: string };
         if (!res.ok || !json.ok || !json.url) {
@@ -384,15 +468,15 @@ export function WorkOrderAgreementPanel({
           <ExternalLink className='h-4 w-4' />
           Preview
         </button>
-        <button type='button' disabled={!!busy || !appointmentId} onClick={() => runSend('sms')} className={btnGhost}>
+        <button type='button' disabled={!!busy || !appointmentId} onClick={() => void openSendComposer('sms')} className={btnGhost}>
           <MessageSquare className='h-4 w-4' />
           {busy === 'sms' ? 'Sending…' : 'SMS'}
         </button>
-        <button type='button' disabled={!!busy || !appointmentId} onClick={() => runSend('email')} className={btnGhost}>
+        <button type='button' disabled={!!busy || !appointmentId} onClick={() => void openSendComposer('email')} className={btnGhost}>
           <Mail className='h-4 w-4' />
           Email
         </button>
-        <button type='button' disabled={!!busy || !appointmentId} onClick={() => runSend('both')} className={btnGhost}>
+        <button type='button' disabled={!!busy || !appointmentId} onClick={() => void openSendComposer('both')} className={btnGhost}>
           <Phone className='h-4 w-4' />
           Both
         </button>
@@ -457,7 +541,87 @@ export function WorkOrderAgreementPanel({
         </div>
       ) : null}
 
-      {showVerbal ? (
+      {sendComposer ? (
+
+        <div className='fixed inset-0 z-[125] flex items-end justify-center bg-black/75 p-4 backdrop-blur-sm sm:items-center'>
+
+          <div className='max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-gold/25 bg-zinc-950 p-5 shadow-2xl'>
+
+            <SectionEyebrow>Preview agreement message</SectionEyebrow>
+
+            <h3 className='mt-2 text-lg font-black text-white'>Confirm, edit, or schedule</h3>
+
+            <div className='mt-4 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2'>
+
+              <p className='rounded-xl border border-white/10 bg-black/40 p-3'><strong>Channel:</strong> {sendComposer.channel.toUpperCase()}</p>
+
+              <p className='rounded-xl border border-white/10 bg-black/40 p-3'><strong>Recipient:</strong> {sendComposer.channel === 'sms' ? customerPhone || 'Missing phone' : sendComposer.channel === 'email' ? customerEmail || 'Missing email' : `${customerPhone || 'Missing phone'} / ${customerEmail || 'Missing email'}`}</p>
+
+            </div>
+
+            <div className='mt-4 flex flex-wrap gap-2'>
+
+              {(['quick', 'professional', 'warm'] as const).map((tone) => (
+
+                <button key={tone} type='button' onClick={() => setSendComposer((value) => value ? { ...value, tone, body: value.messages[tone] } : value)} className={sendComposer.tone === tone ? btnGold : btnGhost}>
+
+                  {tone}
+
+                </button>
+
+              ))}
+
+            </div>
+
+            {(sendComposer.channel === 'email' || sendComposer.channel === 'both') ? (
+
+              <label className='mt-4 block text-xs text-zinc-400'>Email subject
+
+                <input value={sendComposer.emailSubject} onChange={(event) => setSendComposer((value) => value ? { ...value, emailSubject: event.target.value } : value)} className='mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-black px-3 text-sm text-white' />
+
+              </label>
+
+            ) : null}
+
+            <label className='mt-4 block text-xs text-zinc-400'>Message
+
+              <textarea rows={7} value={sendComposer.body} onChange={(event) => setSendComposer((value) => value ? { ...value, body: event.target.value } : value)} className='mt-1 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-sm text-white' />
+
+            </label>
+
+            <div className='mt-5 flex flex-wrap justify-end gap-2'>
+
+              <button type='button' onClick={() => setSendComposer(null)} className={btnGhost}>Cancel</button>
+
+              <button type='button' onClick={() => setShowSchedule((value) => !value)} className={btnGhost}>Schedule</button>
+
+              <button type='button' disabled={!!busy || !sendComposer.body.trim()} onClick={() => void runSend(sendComposer.channel)} className={btnGold}>{busy ? 'Sendingâ€¦' : 'Send now'}</button>
+
+            </div>
+
+            {showSchedule ? (
+
+              <div className='mt-3 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 p-3 sm:flex-row sm:items-end'>
+
+                <label className='flex-1 text-xs text-zinc-400'>Send at (local)
+
+                  <input type='datetime-local' value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} className='mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white' />
+
+                </label>
+
+                <button type='button' disabled={!!busy || !scheduleAt || !sendComposer.body.trim()} onClick={() => void runSend(sendComposer.channel, 'schedule')} className={btnGold}>Confirm schedule</button>
+
+              </div>
+
+            ) : null}
+
+          </div>
+
+        </div>
+
+      ) : null}
+
+      {showVerbal ? (
         <div className='fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center'>
           <div className='w-full max-w-md rounded-3xl border border-gold/20 bg-zinc-950 p-5 shadow-2xl'>
             <h3 className='text-sm font-black uppercase tracking-[0.16em] text-gold-soft'>Verbal acknowledgment</h3>
@@ -550,4 +714,4 @@ export function WorkOrderAgreementPanel({
     </div>
   );
 }
-
+

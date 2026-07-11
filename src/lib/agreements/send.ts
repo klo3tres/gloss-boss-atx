@@ -35,8 +35,11 @@ export async function sendAgreementLink(
   admin: SupabaseClient,
   input: {
     appointmentId: string;
+    workOrderId?: string | null;
     channel: 'sms' | 'email' | 'both';
     tone?: AgreementMessageTone;
+    messageOverride?: string | null;
+    emailSubject?: string | null;
     actorUserId?: string | null;
     scheduleAt?: string | null;
   },
@@ -58,12 +61,14 @@ export async function sendAgreementLink(
   const ensured = await ensureAgreementRequest(admin, {
     appointmentId: input.appointmentId,
     customerId: str(row.customer_id) || null,
+    workOrderId: input.workOrderId ?? null,
     accessToken,
     createdBy: input.actorUserId,
   });
   if (!ensured.ok || !ensured.request) {
     return { ok: false, error: ensured.error ?? 'Could not create agreement request.' };
   }
+  const agreementRequest = ensured.request;
 
   const url = ensured.url ?? agreementUrl({ appointmentId: input.appointmentId, token: accessToken });
   const tone = input.tone ?? 'professional';
@@ -73,7 +78,16 @@ export async function sendAgreementLink(
     appointmentWhen: formatWhen(str(row.scheduled_start) || null),
     agreementLink: url,
   });
-  const body = messages[tone];
+  const body = input.messageOverride?.trim() || messages[tone];
+  const emailSubject = input.emailSubject?.trim() || 'Please sign your Gloss Boss ATX service acknowledgment';
+
+  const missingRecipients = [
+    (input.channel === 'sms' || input.channel === 'both') && !str(row.guest_phone) ? 'phone number' : '',
+    (input.channel === 'email' || input.channel === 'both') && !str(row.guest_email) ? 'email address' : '',
+  ].filter(Boolean);
+  if (missingRecipients.length) {
+    return { ok: false, url, error: `Customer is missing ${missingRecipients.join(' and ')}.` };
+  }
 
   if (input.scheduleAt) {
     const when = new Date(input.scheduleAt);
@@ -91,25 +105,29 @@ export async function sendAgreementLink(
       })
       .eq('id', ensured.request.id);
 
-    // Also enqueue into scheduled_messages when table supports it
-    try {
-      await admin.from('scheduled_messages').insert({
-        rule_key: 'agreement_scheduled_manual',
-        appointment_id: input.appointmentId,
-        customer_id: str(row.customer_id) || null,
-        channel: input.channel === 'both' ? 'sms' : input.channel,
-        status: 'pending',
-        scheduled_for: when.toISOString(),
-        payload: {
-          body,
-          email_subject: 'Please sign your Gloss Boss ATX service acknowledgment',
-          email_body: body,
-          agreement_link: url,
-          agreement_request_id: ensured.request.id,
-        },
-      });
-    } catch (e) {
-      console.warn('[sendAgreementLink] schedule insert', e);
+    const channels = input.channel === 'both' ? ['sms', 'email'] : [input.channel];
+    const scheduledRows = channels.map((channel) => ({
+      rule_key: 'agreement_scheduled_manual',
+      appointment_id: input.appointmentId,
+      customer_id: str(row.customer_id) || null,
+      channel,
+      status: 'pending',
+      scheduled_for: when.toISOString(),
+      payload: {
+        body,
+        email_subject: emailSubject,
+        email_body: body,
+        agreement_link: url,
+        agreement_request_id: agreementRequest.id,
+      },
+    }));
+    const scheduled = await admin.from('scheduled_messages').insert(scheduledRows);
+    if (scheduled.error) {
+      await admin
+        .from('agreement_requests')
+        .update({ status: 'failed_delivery', failure_reason: scheduled.error.message, updated_at: new Date().toISOString() })
+        .eq('id', agreementRequest.id);
+      return { ok: false, url, error: `Could not schedule agreement: ${scheduled.error.message}` };
     }
 
     await syncDenormalizedAgreementStatus(admin, {
@@ -164,7 +182,7 @@ export async function sendAgreementLink(
       });
       const sent = await sendResendHtml({
         to: email,
-        subject: 'Please sign your Gloss Boss ATX service acknowledgment',
+        subject: emailSubject,
         html,
       });
       emailStatus = sent.ok ? 'sent' : 'failed';

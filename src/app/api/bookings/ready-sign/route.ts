@@ -3,6 +3,8 @@ import Stripe from 'stripe';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
+import { getAgreementRequestByToken } from '@/lib/agreements/requests';
+import { buildAgreementSnapshotForOrder } from '@/lib/agreements/snapshot';
 
 const APPT_SELECT =
   'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     let appointmentId = searchParams.get('appointmentId') ?? searchParams.get('appointment_id') ?? '';
     let fallbackBookingId = searchParams.get('fallbackBookingId') ?? searchParams.get('fallback_booking_id') ?? '';
-    const workOrderId = searchParams.get('workOrderId') ?? searchParams.get('work_order_id') ?? '';
+    let workOrderId = searchParams.get('workOrderId') ?? searchParams.get('work_order_id') ?? '';
     const customerId = searchParams.get('customerId') ?? searchParams.get('customer_id') ?? '';
     const paymentId = searchParams.get('paymentId') ?? searchParams.get('payment_id') ?? '';
     const email = (searchParams.get('email') ?? '').trim().toLowerCase();
@@ -34,6 +36,22 @@ export async function GET(request: Request) {
     const admin = tryCreateAdminSupabase();
     if (!admin) {
       return NextResponse.json({ error: 'Database not configured', code: 'SUPABASE_NOT_READY' }, { status: 503 });
+    }
+
+    let agreementTokenValidated = false;
+    if (token) {
+      const agreementRequest = await getAgreementRequestByToken(admin, token);
+      if (agreementRequest) {
+        if (new Date(agreementRequest.tokenExpiresAt).getTime() <= Date.now()) {
+          return NextResponse.json({ error: 'This agreement link has expired. Please request a new one.' }, { status: 410 });
+        }
+        if (agreementRequest.status === 'voided') {
+          return NextResponse.json({ error: 'This agreement request was voided. Please request a new one.' }, { status: 410 });
+        }
+        appointmentId = agreementRequest.appointmentId ?? appointmentId;
+        workOrderId = agreementRequest.workOrderId ?? workOrderId;
+        agreementTokenValidated = true;
+      }
     }
 
     if (workOrderId && !appointmentId && !fallbackBookingId) {
@@ -128,7 +146,7 @@ export async function GET(request: Request) {
     token ||= str(appt.access_token);
     sessionId ||= str(appt.stripe_checkout_session_id);
     const rowToken = str(appt.access_token);
-    if (token && rowToken && rowToken !== token) {
+    if (!agreementTokenValidated && token && rowToken && rowToken !== token) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
@@ -169,6 +187,11 @@ export async function GET(request: Request) {
       existingSign = (data ?? null) as Record<string, unknown> | null;
     }
 
+    const agreementSnapshot = await buildAgreementSnapshotForOrder(admin, {
+      appointmentId,
+      workOrderId: workOrderId || appointmentId,
+    });
+
     return NextResponse.json({
       appointment: appt,
       appointmentId,
@@ -176,6 +199,7 @@ export async function GET(request: Request) {
       accessToken: token,
       sessionId,
       template: template ?? null,
+      agreementSnapshot,
       useNativeAgreementFallback: !template,
       paymentVerified,
       alreadySigned: Boolean(existingSign),

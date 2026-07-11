@@ -688,6 +688,8 @@ export function WorkOrderConsoleClient({
               agreementPdfHref={data.agreementPdfHref}
               accessToken={data.accessToken}
               userId={data.currentUserId}
+              customerEmail={data.guestEmail}
+              customerPhone={data.guestPhone}
             />
           </section>
 
@@ -1981,6 +1983,8 @@ export function WorkOrderConsoleClient({
               agreementPdfHref={data.agreementPdfHref}
               accessToken={data.accessToken}
               userId={data.currentUserId}
+              customerEmail={data.guestEmail}
+              customerPhone={data.guestPhone}
             />
             <p className='mt-2 text-[10px] text-zinc-500'>
               Same controls as the overview Agreement card —{' '}

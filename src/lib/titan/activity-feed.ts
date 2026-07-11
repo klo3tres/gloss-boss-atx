@@ -26,7 +26,8 @@ export type TitanActivityKind =
   | 'referral_settings_changed'
   | 'tech_job_assigned'
   | 'payment_link_clicked'
-  | 'payment_received';
+  | 'payment_received'
+  | 'agreement_signed';
 
 export type TitanActivityEvent = {
   id: string;

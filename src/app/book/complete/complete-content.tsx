@@ -78,7 +78,9 @@ export default function CompleteContent() {
   const [resolvedFallbackBookingId, setResolvedFallbackBookingId] = useState(fallbackBookingId);
   const [resolvedToken, setResolvedToken] = useState(token);
   const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
-  const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
+  const [template, setTemplate] = useState<{ id: string; title: string; body: string; version: number } | null>(null);
+
+  const [authoritativeAgreementSnapshot, setAuthoritativeAgreementSnapshot] = useState<string | null>(null);
   const [alreadySigned, setAlreadySigned] = useState(false);
   const [paymentVerified, setPaymentVerified] = useState(false);
   const [legalName, setLegalName] = useState('');
@@ -94,7 +96,9 @@ export default function CompleteContent() {
   const viewedMarked = useRef(false);
 
   const agreementBody = useMemo(() => {
-    if (template?.body?.trim()) return template.body;
+    if (authoritativeAgreementSnapshot?.trim()) return authoritativeAgreementSnapshot;
+
+    if (template?.body?.trim()) return template.body;
     const a = appointment;
     if (!a) return '';
     const totalCents = typeof a.base_price_cents === 'number' ? a.base_price_cents : 0;
@@ -117,7 +121,7 @@ export default function CompleteContent() {
       depositNote,
       technicianName: null,
     });
-  }, [template, appointment, paymentVerified]);
+  }, [authoritativeAgreementSnapshot, template, appointment, paymentVerified]);
 
   const agreementTitle = template?.title?.trim() ? template.title : DEFAULT_AGREEMENT_TITLE;
   const sections = useMemo(() => parseAgreementSnapshotSections(agreementBody), [agreementBody]);
@@ -150,7 +154,9 @@ export default function CompleteContent() {
         appointmentId?: string;
         accessToken?: string;
         sessionId?: string;
-        template?: { id: string; title: string; body: string; version: number } | null;
+        template?: { id: string; title: string; body: string; version: number } | null;
+
+        agreementSnapshot?: string | null;
         alreadySigned?: boolean;
         paymentVerified?: boolean;
         fallbackBookingId?: string;
@@ -169,7 +175,9 @@ export default function CompleteContent() {
         setResolvedFallbackBookingId(data.fallbackBookingId ?? fallbackBookingId);
         setResolvedToken(data.accessToken ?? token);
         setResolvedSessionId(data.sessionId ?? sessionId);
-        setTemplate(data.template ?? null);
+        setTemplate(data.template ?? null);
+
+        setAuthoritativeAgreementSnapshot(data.agreementSnapshot ?? null);
         setAlreadySigned(Boolean(data.alreadySigned));
         setPaymentVerified(Boolean(data.paymentVerified));
         if (data.alreadySigned) setDone(true);
@@ -195,11 +203,11 @@ export default function CompleteContent() {
     void fetch('/api/agreements/view', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appointmentId: id }),
+      body: JSON.stringify({ appointmentId: id, token: resolvedToken || token }),
     }).catch(() => {
       /* non-blocking */
     });
-  }, [resolvedAppointmentId, appointmentId, alreadySigned, done]);
+  }, [resolvedAppointmentId, appointmentId, resolvedToken, token, alreadySigned, done]);
 
   const resizeCanvas = () => {
     const canvas = canvasRef.current;
@@ -644,4 +652,4 @@ export default function CompleteContent() {
     </div>
   );
 }
-
+

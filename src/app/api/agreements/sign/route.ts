@@ -3,7 +3,8 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 import { insertJobAgreementFlexible, insertSignedAgreementFlexible } from '@/lib/signed-agreement-insert';
-import { markAgreementSigned } from '@/lib/agreements/requests';
+import { getAgreementRequestByToken, markAgreementSigned } from '@/lib/agreements/requests';
+import { buildAgreementSnapshotForOrder } from '@/lib/agreements/snapshot';
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     };
 
     const {
-      appointmentId,
+      appointmentId: submittedAppointmentId,
       fallbackBookingId,
       accessToken,
       sessionId,
@@ -37,16 +38,33 @@ export async function POST(request: Request) {
       smsConsent,
     } = body;
 
+    let appointmentId = submittedAppointmentId;
+
     const marketingOk = Boolean(marketingMediaConsent);
     const smsOk = Boolean(smsConsent);
 
-    if ((!appointmentId && !fallbackBookingId) || !signerLegalName || !signatureType || !acknowledged) {
+    if ((!appointmentId && !fallbackBookingId && !accessToken) || !signerLegalName || !signatureType || !acknowledged) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const admin = tryCreateAdminSupabase();
     if (!admin) {
       return NextResponse.json({ error: 'Database not configured', code: 'SUPABASE_NOT_READY' }, { status: 503 });
+    }
+
+    let agreementTokenValidated = false;
+    if (accessToken) {
+      const agreementRequest = await getAgreementRequestByToken(admin, accessToken);
+      if (agreementRequest) {
+        if (new Date(agreementRequest.tokenExpiresAt).getTime() <= Date.now() || agreementRequest.status === 'voided') {
+          return NextResponse.json({ error: 'This agreement link is no longer valid.' }, { status: 410 });
+        }
+        if (appointmentId && agreementRequest.appointmentId && agreementRequest.appointmentId !== appointmentId) {
+          return NextResponse.json({ error: 'Agreement request does not match this work order.' }, { status: 403 });
+        }
+        appointmentId = agreementRequest.appointmentId ?? appointmentId;
+        agreementTokenValidated = true;
+      }
     }
 
     if (sessionId) {
@@ -87,7 +105,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
     const rowToken = appt.access_token ? String(appt.access_token) : '';
-    if (accessToken && rowToken && rowToken !== accessToken) {
+    if (!agreementTokenValidated && accessToken && rowToken && rowToken !== accessToken) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
@@ -173,10 +191,12 @@ export async function POST(request: Request) {
       technicianName: techName,
     });
 
+    const authoritativeSnapshot = appointmentId
+      ? await buildAgreementSnapshotForOrder(admin, { appointmentId, workOrderId: appointmentId })
+      : null;
     const snapshot =
-      (typeof agreementSnapshot === 'string' && agreementSnapshot.trim().length > 2
-        ? agreementSnapshot
-        : null) ??
+      authoritativeSnapshot ??
+      (typeof agreementSnapshot === 'string' && agreementSnapshot.trim().length > 2 ? agreementSnapshot : null) ??
       (template?.body?.trim() ? String(template.body) : null) ??
       nativeSnap;
     const forwarded = request.headers.get('x-forwarded-for');
