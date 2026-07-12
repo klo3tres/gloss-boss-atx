@@ -94,6 +94,13 @@ function buildMessages(
         body: `2h reminder · ${service} · ${when}${addrPart}${notePart}`,
         kind: 'tech_job_reminder_2h',
       };
+    case 'job_start_overdue':
+      return {
+        title: `Job has not started: ${guest}`,
+        sms: `Gloss Boss ATX: ${guest}'s job was scheduled for ${when} and has not been started. Open: ${url}`,
+        body: `Start time passed 15+ minutes ago Â· ${service} Â· ${when}${addrPart}${notePart}`,
+        kind: 'tech_job_start_overdue',
+      };
     default:
       return {
         title: `Job update: ${guest}`,
@@ -497,4 +504,81 @@ export async function processDueStaffJobReminders(
   }
 
   return { sent, skipped, failed };
+}
+
+/** Alert owner and assigned technician once when a job is still not started 15 minutes after start time. */
+export async function processMissedJobStartAlerts(
+  admin: SupabaseClient,
+): Promise<{ alerted: number; skipped: number; failed: number }> {
+  const now = Date.now();
+  const cutoff = new Date(now - 15 * 60_000).toISOString();
+  const oldest = new Date(now - 24 * 60 * 60_000).toISOString();
+  const { data, error } = await admin
+    .from('appointments')
+    .select('id, guest_name, service_slug, scheduled_start, status, job_started_at, assigned_technician_id')
+    .gte('scheduled_start', oldest)
+    .lte('scheduled_start', cutoff)
+    .is('job_started_at', null)
+    .not('status', 'in', '(cancelled,canceled,completed,archived,in_progress)')
+    .order('scheduled_start', { ascending: true })
+    .limit(50);
+
+  if (error || !data?.length) return { alerted: 0, skipped: 0, failed: error ? 1 : 0 };
+  let alerted = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const row of data) {
+    const appointmentId = str(row.id);
+    const guest = str(row.guest_name) || 'Customer';
+    const scheduledStart = str(row.scheduled_start);
+    const marker = await admin.from('scheduled_messages').insert({
+      rule_key: 'job_start_overdue_15m',
+      channel: 'email',
+      recipient: 'owner',
+      subject: `Job has not started: ${guest}`,
+      body: `${guest}'s appointment has not started 15 minutes after its scheduled time.`,
+      status: 'sent',
+      scheduled_for: new Date().toISOString(),
+      sent_at: new Date().toISOString(),
+      appointment_id: appointmentId,
+      entity_type: 'appointment',
+      entity_id: appointmentId,
+      metadata: { alert_only: true, threshold_minutes: 15 },
+    });
+    if (marker.error) {
+      if (/duplicate|unique/i.test(marker.error.message)) skipped++;
+      else failed++;
+      continue;
+    }
+
+    try {
+      const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+      await emitOwnerNotification(admin, {
+        eventType: 'job_start_overdue',
+        title: `Job has not started: ${guest}`,
+        body: `${guest}'s appointment was scheduled for ${formatApptTime(scheduledStart)} and is now more than 15 minutes late without a recorded job start.`,
+        source: 'missed_job_start_monitor',
+        priority: 'high',
+        relatedType: 'appointment',
+        relatedId: appointmentId,
+        relatedUrl: `/admin/work-orders/${encodeURIComponent(appointmentId)}`,
+        bypassQuietHours: true,
+      });
+      const technicianId = str(row.assigned_technician_id);
+      if (technicianId) {
+        await emitStaffNotification(admin, {
+          technicianId,
+          appointmentId,
+          eventType: 'job_start_overdue',
+          extraNote: 'Please start the job or contact the owner.',
+          bypassQuietHours: true,
+        });
+      }
+      alerted++;
+    } catch {
+      failed++;
+    }
+  }
+  return { alerted, skipped, failed };
 }

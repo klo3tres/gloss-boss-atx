@@ -6,7 +6,8 @@ export type StaffNotificationEventType =
   | 'job_cancelled'
   | 'new_booking_assigned'
   | 'job_reminder_24h'
-  | 'job_reminder_2h';
+  | 'job_reminder_2h'
+  | 'job_start_overdue';
 
 export type StaffNotificationPreferences = {
   notifyEmailEnabled: boolean;
@@ -103,6 +104,7 @@ export function staffEventAllowed(prefs: StaffNotificationPreferences, eventType
     case 'job_assigned':
     case 'job_reminder_24h':
     case 'job_reminder_2h':
+    case 'job_start_overdue':
       return prefs.notifyJobAssigned;
     case 'new_booking_assigned':
       return prefs.notifyNewBookingAssigned;

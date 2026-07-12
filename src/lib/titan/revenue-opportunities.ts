@@ -252,6 +252,9 @@ export async function loadRevenueOpportunities(
   }
   if (resolvedBusinessId) query = query.eq('business_id', resolvedBusinessId);
 
+  // The board is an active work queue; closed outcomes stay available to reports and learning.
+  query = query.not('status', 'in', '(lost,ignored,dismissed,booked,won)');
+
   const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
 
   if (error) {

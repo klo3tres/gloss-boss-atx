@@ -377,7 +377,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
     messageScript: `Gloss Boss ATX has openings this week. Book: ${bookUrl}`,
     contactPhone: null,
     contactEmail: null,
-    href: '/admin/dispatch',
+    href: '/admin/calendar',
     canSend: false,
   });
 

@@ -93,13 +93,14 @@ export function OpportunityDrawer({
   const valueExplain = ext.valueExplanation || explainOpportunityValue(opp);
   const isFleet = ['fleet', 'dealership', 'apartment_hoa', 'google_places'].includes(String(opp.opportunityType));
 
-  const act = (fn: () => Promise<{ ok?: boolean; error?: string; projectId?: string }>, success: string) => {
+  const act = (fn: () => Promise<{ ok?: boolean; error?: string; projectId?: string }>, success: string, closeAfter = false) => {
     setMsg(null);
     startTransition(async () => {
       const res = await fn();
       if (res.error) setMsg(res.error);
       else {
         setMsg(res.projectId ? `${success} · Project ${res.projectId.slice(0, 8)}… created` : success);
+        if (closeAfter) onClose();
         router.refresh();
       }
     });
@@ -270,8 +271,9 @@ export function OpportunityDrawer({
                     {opp.contactPhone ? (
                       <div className="flex gap-2">
                         <dt className="shrink-0 text-muted-foreground">Phone</dt>
-                        <dd>
-                          <a href={`tel:${opp.contactPhone}`} className="text-emerald-600 hover:underline">{opp.contactPhone}</a>
+                        <dd className="flex flex-wrap items-center gap-2">
+                          <a href={`tel:${opp.contactPhone}`} onClick={() => setMsg('Opening your phone appâ€¦')} className="text-emerald-600 hover:underline">{opp.contactPhone}</a>
+                          <button type="button" onClick={() => { void navigator.clipboard.writeText(opp.contactPhone!); setMsg('Phone number copied.'); }} className="text-[9px] font-black uppercase text-gold-soft hover:underline">Copy</button>
                         </dd>
                       </div>
                     ) : null}
@@ -383,8 +385,8 @@ export function OpportunityDrawer({
                 </button>
                 <button type="button" disabled={pending} onClick={() => act(() => convertOpportunityToCustomerAction(opp.id), 'Converted to customer')} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase text-emerald-700 disabled:opacity-50">Convert to customer</button>
                 <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'won'), 'Marked won')} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">Won</button>
-                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Marked lost')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-300 disabled:opacity-50">Lost</button>
-                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'ignored'), 'Dismissed')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">Dismiss</button>
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Marked lost and removed from board', true)} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-300 disabled:opacity-50">Lost</button>
+                <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'ignored'), 'Dismissed and removed from board', true)} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">Dismiss</button>
                 <a href={`/book?name=${encodeURIComponent(opp.contactName ?? '')}&email=${encodeURIComponent(opp.contactEmail ?? '')}&phone=${encodeURIComponent(opp.contactPhone ?? '')}&source=titan&opportunity_id=${encodeURIComponent(opp.id)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft">Open booking</a>
                 <button type="button" disabled={pending} onClick={() => act(() => snoozeOpportunityAction(opp.id), 'Snoozed 60 days')} className="rounded-lg border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground disabled:opacity-50">
                   Snooze

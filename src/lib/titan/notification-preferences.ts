@@ -31,7 +31,8 @@ export type OwnerNotificationEventType =
   | 'delivery_failed'
   | 'low_inventory'
   | 'weather_risk'
-  | 'calendar_sync_failed';
+  | 'calendar_sync_failed'
+  | 'job_start_overdue';
 
 const DEFAULTS: OwnerNotificationPreferences = {
   notifyEmailEnabled: true,
@@ -116,6 +117,7 @@ export function eventAllowed(prefs: OwnerNotificationPreferences, eventType: Own
     case 'booking_canceled':
     case 'work_order_created':
     case 'work_order_completed':
+    case 'job_start_overdue':
       return prefs.notifyBookings;
     case 'payment_received':
       return prefs.notifyPayments;
@@ -141,6 +143,7 @@ export function priorityForEvent(eventType: OwnerNotificationEventType): 'low' |
     case 'calendar_sync_failed':
     case 'payment_received':
     case 'new_booking':
+    case 'job_start_overdue':
       return 'high';
     case 'weather_risk':
     case 'low_inventory':

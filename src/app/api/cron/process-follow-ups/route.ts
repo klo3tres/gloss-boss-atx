@@ -33,10 +33,11 @@ export async function GET(request: Request) {
       const result = await runFollowUpEngine(admin);
       const { processDueScheduledMessages, processAppointmentReminders } = await import('@/lib/customer-notification-cadence');
       const { processOpportunityFollowUps } = await import('@/lib/opportunity-follow-up-cron');
-      const [scheduled, reminders, opportunityFollowUps] = await Promise.all([
-        processDueScheduledMessages(admin), processAppointmentReminders(admin), processOpportunityFollowUps(admin),
+      const { processMissedJobStartAlerts } = await import('@/lib/staff-notification-router');
+      const [scheduled, reminders, opportunityFollowUps, missedJobStarts] = await Promise.all([
+        processDueScheduledMessages(admin), processAppointmentReminders(admin), processOpportunityFollowUps(admin), processMissedJobStartAlerts(admin),
       ]);
-      return { ...result, scheduled, reminders, opportunityFollowUps };
+      return { ...result, scheduled, reminders, opportunityFollowUps, missedJobStarts };
     });
     return NextResponse.json(tracked, { status: tracked.ok ? 200 : tracked.alreadyRunning ? 409 : 500 });
   } catch (e) {
