@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Gift, Link2, Mail, MessageSquare, QrCode, Share2, Trophy } from 'lucide-react';
+import { Copy, Download, Gift, Link2, Mail, MessageSquare, QrCode, Share2, Trophy } from 'lucide-react';
 import type { ReferralRewardLadderTier } from '@/lib/referral/referral-codes';
 
 export function CustomerReferralCard({
@@ -60,6 +60,18 @@ export function CustomerReferralCard({
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
+  const nativeShare = async () => {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'Gloss Boss ATX referral',
+        text: rewardRules ?? 'Book Gloss Boss ATX with my referral link.',
+        url: referralLink,
+      });
+      return;
+    }
+    await copy();
+  };
+
   const shareFacebook = () => {
     const u = encodeURIComponent(referralLink);
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${u}`, '_blank', 'noopener,noreferrer');
@@ -75,7 +87,7 @@ export function CustomerReferralCard({
     }
   };
 
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(referralLink)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(referralLink)}`;
 
   const ladder = rewardLadder.length > 0
     ? rewardLadder
@@ -93,46 +105,47 @@ export function CustomerReferralCard({
       <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">
         <Gift className="h-4 w-4" /> Rewards center · Refer friends
       </div>
-      <p className="mt-2 text-lg font-black text-white">
-        Give {givePercent ?? 10}%, get {getPercent ?? 15}%
+      <p className="mt-2 text-xl font-black text-white">
+        {rewardRules ?? 'Share your link. Your friend saves and you earn a reward after their completed paid appointment.'}
       </p>
-      <p className="mt-1 text-sm text-zinc-400">
-        {rewardRules ?? 'Share your link. When friends book and complete, you unlock Gloss Boss rewards automatically.'}
-      </p>
+      <p className="mt-1 text-sm text-zinc-400">The saved program rules power this message, booking discounts, and reward issuance.</p>
 
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="shrink-0 rounded-2xl border border-white/10 bg-white p-2">
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(220px,320px)_1fr] lg:items-start">
+        <div className="mx-auto w-full max-w-xs rounded-3xl border border-white/10 bg-white p-4 shadow-2xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qrUrl} alt="Referral QR code" width={140} height={140} className="rounded-lg" />
+          <img src={qrUrl} alt="Referral QR code" width={320} height={320} className="aspect-square h-auto w-full rounded-xl object-contain" />
           <p className="mt-1 flex items-center justify-center gap-1 text-[9px] font-black uppercase text-zinc-600">
             <QrCode className="h-3 w-3" /> Scan to book
           </p>
+          <a href={qrUrl} download={`gloss-boss-referral-${referralCode}.png`} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-3 text-[10px] font-black uppercase text-white">
+            <Download className="h-4 w-4" /> Download QR
+          </a>
         </div>
-        <div className="min-w-0 flex-1">
-      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 rounded-3xl border border-white/10 bg-black/30 p-4 sm:p-5">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <code className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs font-mono text-gold-soft">{referralCode}</code>
-        <button type="button" onClick={copy} className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
+        <button type="button" onClick={copy} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-gold px-3 py-2 text-[10px] font-black uppercase text-black">
           <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied' : 'Copy link'}
         </button>
-        <button type="button" onClick={shareSms} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+        <button type="button" onClick={shareSms} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
           <MessageSquare className="h-3.5 w-3.5" /> SMS
         </button>
-        <button type="button" onClick={shareEmail} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+        <button type="button" onClick={shareEmail} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
           <Mail className="h-3.5 w-3.5" /> Email
         </button>
-        <button type="button" onClick={shareInstagram} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+        <button type="button" onClick={shareInstagram} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
           IG copy
         </button>
-        <button type="button" onClick={shareFacebook} className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
+        <button type="button" onClick={shareFacebook} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[10px] font-bold uppercase text-zinc-300">
           Facebook
         </button>
-        <button type="button" onClick={copy} className="inline-flex items-center gap-1.5 rounded-xl border border-gold/25 px-3 py-2 text-[10px] font-bold uppercase text-gold-soft">
+        <button type="button" onClick={nativeShare} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-gold/25 px-3 py-2 text-[10px] font-bold uppercase text-gold-soft">
           <Share2 className="h-3.5 w-3.5" /> Share
         </button>
       </div>
-      <p className="mt-3 flex items-center gap-1.5 truncate text-[11px] text-zinc-500">
-        <Link2 className="h-3.5 w-3.5 shrink-0" /> {referralLink}
-      </p>
+      <div className="mt-4 rounded-xl border border-white/10 bg-zinc-950 p-3">
+        <p className="flex min-w-0 items-start gap-1.5 break-all text-[11px] text-zinc-400"><Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {referralLink}</p>
+      </div>
         </div>
       </div>
 

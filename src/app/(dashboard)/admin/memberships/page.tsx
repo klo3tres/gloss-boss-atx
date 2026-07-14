@@ -185,6 +185,15 @@ export default async function MembershipsAdminPage() {
                   Free service slug (if applicable)
                   <input name="free_service_slug" defaultValue={String(rulePayload.free_service_slug ?? '')} placeholder="e.g. maintenance-exterior-wash" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white" />
                 </label>
+                <label className="block text-xs text-zinc-400">
+                  Eligible service slugs (comma separated)
+                  <input name="eligible_service_slugs" defaultValue={Array.isArray(rulePayload.eligible_service_slugs) ? rulePayload.eligible_service_slugs.join(', ') : ''} placeholder="exterior-wash, full-detail" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white" />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-xs text-zinc-400">Maximum value (cents)<input name="maximum_value_cents" type="number" defaultValue={Number(rulePayload.maximum_value_cents ?? rulePayload.reward_cents ?? 7500)} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono" /></label>
+                  <label className="block text-xs text-zinc-400">Expiration (days)<input name="expiration_days" type="number" min="1" defaultValue={Number(rulePayload.expiration_days ?? 365)} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono" /></label>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" name="customer_pays_difference" defaultChecked={rulePayload.customer_pays_difference === true} className="accent-gold" /> Customer pays the difference above maximum value</label>
                 
                 <label className='flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1'>
                   <input type='checkbox' name='active' defaultChecked={rules[0]?.active !== false} className='accent-gold' />

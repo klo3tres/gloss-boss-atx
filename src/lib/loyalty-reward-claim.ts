@@ -9,6 +9,10 @@ export type LoyaltyRewardConfig = {
   rewardCents: number;
   rewardType: string;
   freeServiceSlug: string | null;
+  eligibleServiceSlugs: string[];
+  expirationDays: number;
+  customerPaysDifference: boolean;
+  maximumValueCents: number;
 };
 
 export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<LoyaltyRewardConfig> {
@@ -35,6 +39,10 @@ export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<Lo
     rewardCents,
     rewardType: String(payload.reward_type ?? 'credit'),
     freeServiceSlug: payload.free_service_slug ? String(payload.free_service_slug) : null,
+    eligibleServiceSlugs: Array.isArray(payload.eligible_service_slugs) ? payload.eligible_service_slugs.map(String).filter(Boolean) : [],
+    expirationDays: Math.max(1, Number(payload.expiration_days ?? 365) || 365),
+    customerPaysDifference: payload.customer_pays_difference === true,
+    maximumValueCents: Math.max(0, Number(payload.maximum_value_cents ?? rewardCents) || rewardCents),
   };
 }
 

@@ -279,7 +279,8 @@ export default async function CustomerDashboardRootPage({
         referralGivePercent = settings.referredRewardValue;
         referralGetPercent = settings.referrerRewardValue;
         referralRewardLadder = settings.rewardLadder ?? [];
-        referralRewardRules = `Give ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : ''}, get ${settings.referrerRewardValue}${settings.referrerRewardType === 'percent' ? '%' : ''} when friends complete their detail.`;
+        const { formatReferralHeadline } = await import('@/lib/referral/referral-codes');
+        referralRewardRules = `${formatReferralHeadline(settings)} Your reward unlocks after your friend's completed paid appointment.`;
         const codeRow = await ensureCustomerReferralCode(adminDb, customerId);
         referralCode = codeRow.code;
         referralLink = referralLinkForCode(codeRow.code);
@@ -413,6 +414,12 @@ export default async function CustomerDashboardRootPage({
 
   const now = Date.now();
   const history = appointments.filter((a) => ['completed', 'cancelled'].includes(a.status)).slice(0, 12);
+  let reviewEligible = false;
+  const completedAppointments = appointments.filter((a) => a.status === 'completed');
+  if (adminDb && userEmail && completedAppointments.length > 0) {
+    const reviewed = await adminDb.from('customer_reviews').select('id').or(`customer_email.ilike.${userEmail},appointment_id.in.(${completedAppointments.map((a) => a.id).join(',')})`).limit(1);
+    reviewEligible = !reviewed.error && (reviewed.data?.length ?? 0) === 0;
+  }
   const inFlight = appointments.filter(
     (a) => !['completed', 'cancelled'].includes(a.status) && (a.status === 'in_progress' || (a.job_started_at && !a.job_completed_at)),
   );
@@ -439,8 +446,11 @@ export default async function CustomerDashboardRootPage({
   let loyaltyClaimableCount = 0;
   let loyaltyRewardDescription = '';
   let loyaltyRewardCents = 0;
+  let loyaltyRewardType = 'credit';
+  let loyaltyEligibleServices: Array<{ slug: string; name: string; priceCents: number }> = [];
   let customerMembership: CustomerMembershipView | null = null;
   let accountCreditBalanceCents = 0;
+  let rewardWalletItems: import('@/components/customer/customer-reward-wallet').CustomerRewardWalletItem[] = [];
   let activeDeals: ActiveDealView[] = [];
   let activeCardDesign = null;
   if (adminDb && userEmail) {
@@ -460,20 +470,64 @@ export default async function CustomerDashboardRootPage({
       loyaltyClaimableCount = loyaltyView.claimableRewards;
       loyaltyRewardDescription = rewardConfig.rewardDescription;
       loyaltyRewardCents = rewardConfig.rewardCents;
+      loyaltyRewardType = rewardConfig.rewardType;
+      if (['free_service', 'free_wash'].includes(rewardConfig.rewardType)) {
+        const serviceRows = await adminDb.from('services').select('id, slug, name, base_price_cents').eq('active', true).order('sort_order', { ascending: true });
+        const allowed = new Set(rewardConfig.eligibleServiceSlugs.length > 0 ? rewardConfig.eligibleServiceSlugs : rewardConfig.freeServiceSlug ? [rewardConfig.freeServiceSlug] : []);
+        loyaltyEligibleServices = (serviceRows.data ?? [])
+          .filter((service) => allowed.size === 0 || allowed.has(String(service.slug)))
+          .map((service) => ({ slug: String(service.slug), name: String(service.name), priceCents: Number(service.base_price_cents ?? 0) }));
+      }
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
       const creditRes = await adminDb
         .from('customer_credits')
-        .select('remaining_cents, status, expires_at')
+        .select('id, amount_cents, remaining_cents, type, reason, source, status, expires_at, redeemed_at')
         .eq('customer_id', cust.id)
-        .in('status', ['active', 'partially_used'])
+        .order('issued_at', { ascending: false })
         .limit(500);
       if (!creditRes.error) {
         const nowIso = new Date().toISOString();
         accountCreditBalanceCents = (creditRes.data ?? []).reduce((sum, row) => {
+          if (!['active', 'partially_used'].includes(String(row.status))) return sum;
           const expiresAt = typeof row.expires_at === 'string' ? row.expires_at : '';
           if (expiresAt && expiresAt < nowIso) return sum;
           return sum + (typeof row.remaining_cents === 'number' ? Math.max(0, row.remaining_cents) : 0);
         }, 0);
+        rewardWalletItems = (creditRes.data ?? []).map((row) => {
+          const status = String(row.status ?? 'active');
+          const expired = Boolean(row.expires_at && String(row.expires_at) < nowIso);
+          const usable = ['active', 'partially_used'].includes(status) && !expired && Number(row.remaining_cents ?? 0) > 0;
+          return {
+            id: `credit:${row.id}`,
+            source: String(row.type ?? row.source ?? 'Account credit').replace(/_/g, ' '),
+            title: String(row.reason ?? 'Gloss Boss credit'),
+            valueLabel: `$${(Math.max(0, Number(row.remaining_cents ?? row.amount_cents ?? 0)) / 100).toFixed(2)}`,
+            status: expired ? 'expired' : status,
+            expiresAt: row.expires_at ? String(row.expires_at) : null,
+            usable,
+            terms: usable ? 'Choose how much credit to apply during booking. One-time balance; any remainder stays in your wallet.' : null,
+          };
+        });
+      }
+      const referralWallet = await adminDb.from('referral_rewards').select('id, reward_type, reward_value, reward_label, status, expires_at, metadata').eq('customer_id', cust.id).neq('reward_type', 'dollar').order('created_at', { ascending: false }).limit(100);
+      if (!referralWallet.error) {
+        const { formatRewardSummary } = await import('@/lib/referral/referral-codes');
+        rewardWalletItems.push(...(referralWallet.data ?? []).map((row) => {
+          const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {};
+          const expiresAt = row.expires_at ? String(row.expires_at) : typeof metadata.expires_at === 'string' ? metadata.expires_at : null;
+          const expired = Boolean(expiresAt && expiresAt < new Date().toISOString());
+          const status = expired ? 'expired' : String(row.status ?? 'pending');
+          return {
+            id: `referral:${row.id}`,
+            source: 'Referral reward',
+            title: String(row.reward_label ?? formatRewardSummary(String(row.reward_type), Number(row.reward_value ?? 0))),
+            valueLabel: formatRewardSummary(String(row.reward_type), Number(row.reward_value ?? 0)),
+            status,
+            expiresAt,
+            usable: ['issued', 'available'].includes(status),
+            terms: 'Eligible service selection is confirmed during booking. One-time use.',
+          };
+        }));
       }
       activeDeals = await loadCustomerDeals(adminDb);
 
@@ -580,6 +634,7 @@ export default async function CustomerDashboardRootPage({
     <DashboardShell title='Your dashboard' subtitle='Garage, appointments, receipts, agreements, and live updates.' role='customer'>
       <CustomerDashboardClient
         googleReviewUrl={resolveGoogleReviewUrl(googleReviewUrl)}
+        reviewEligible={reviewEligible}
         liveJob={liveJob ?? null}
         liveEvents={liveEvents}
         upcoming={upcoming}
@@ -604,9 +659,12 @@ export default async function CustomerDashboardRootPage({
         loyaltyClaimableCount={loyaltyClaimableCount}
         loyaltyRewardDescription={loyaltyRewardDescription}
         loyaltyRewardCents={loyaltyRewardCents}
+        loyaltyRewardType={loyaltyRewardType}
+        loyaltyEligibleServices={loyaltyEligibleServices}
         activeCardDesign={activeCardDesign}
         membership={customerMembership}
         accountCreditBalanceCents={accountCreditBalanceCents}
+        rewardWalletItems={rewardWalletItems}
         activeDeals={activeDeals}
         weatherForecast={weatherForecast}
         weatherLocationLabel={weatherLocationLabel}

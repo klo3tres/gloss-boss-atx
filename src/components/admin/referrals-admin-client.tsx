@@ -58,7 +58,9 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
             >
               <option value="percent">Percent off</option>
               <option value="dollar">Dollar off</option>
+              <option value="free_addon">Free add-on</option>
               <option value="free_service">Free service</option>
+              <option value="membership_credit">Membership credit</option>
               <option value="custom">Custom label</option>
             </select>
           </label>
@@ -179,9 +181,9 @@ export function ReferralsAdminClient({
           <input type="checkbox" name="enabled" defaultChecked={settings.enabled} className="accent-[var(--gb-gold)]" /> Enable referral program
         </label>
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-xs text-muted-foreground">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
+          <label className="text-xs text-muted-foreground">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar credit</option><option value="free_addon">Free add-on</option><option value="free_service">Free service</option><option value="membership_credit">Membership credit</option><option value="custom">Custom</option></select></label>
           <label className="text-xs text-muted-foreground">Referrer reward value<input name="referrer_reward_value" type="number" defaultValue={settings.referrerRewardValue} className={inputClass} /></label>
-          <label className="text-xs text-muted-foreground">Referred customer reward type<select name="referred_reward_type" defaultValue={settings.referredRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar</option><option value="free_service">Free service</option><option value="custom">Custom</option></select></label>
+          <label className="text-xs text-muted-foreground">Referred customer reward type<select name="referred_reward_type" defaultValue={settings.referredRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar discount</option><option value="free_addon">Free add-on</option><option value="free_service">Free service</option><option value="membership_credit">Membership credit</option><option value="custom">Custom</option></select></label>
           <label className="text-xs text-muted-foreground">Referred reward value<input name="referred_reward_value" type="number" defaultValue={settings.referredRewardValue} className={inputClass} /></label>
           <label className="text-xs text-muted-foreground">Min completed bookings before unlock<input name="min_completed_bookings" type="number" defaultValue={settings.minCompletedBookings} className={inputClass} /></label>
           <label className="text-xs text-muted-foreground">Max rewards per customer<input name="max_rewards_per_customer" type="number" defaultValue={settings.maxRewardsPerCustomer} className={inputClass} /></label>
@@ -193,6 +195,7 @@ export function ReferralsAdminClient({
               <option value="booked">On booking only</option>
             </select>
           </label>
+          <label className="text-xs text-muted-foreground">Reward expiration (days; 0 = no expiration)<input name="reward_expiration_days" type="number" min="0" defaultValue={settings.rewardExpirationDays ?? 0} className={inputClass} /></label>
         </div>
         <RewardLadderEditor initial={settings.rewardLadder ?? []} />
         <label className="flex items-center gap-2 text-sm text-foreground md:col-span-2">

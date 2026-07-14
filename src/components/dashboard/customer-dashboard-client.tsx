@@ -16,6 +16,7 @@ import { CustomerReferralCard } from '@/components/customer/customer-referral-ca
 import { CustomerPortalTimeline } from '@/components/customer/customer-portal-timeline';
 import { SocialLinksRow, hasConfiguredSocialLinks } from '@/components/marketing/social-links';
 import { LoyaltyClaimButton } from '@/components/dashboard/loyalty-claim-button';
+import { CustomerRewardWallet, type CustomerRewardWalletItem } from '@/components/customer/customer-reward-wallet';
 
 export type CustomerAppt = {
   id: string;
@@ -37,6 +38,7 @@ export type CustomerAppt = {
 
 export type CustomerDashboardProps = {
   googleReviewUrl?: string;
+  reviewEligible?: boolean;
   liveJob: CustomerAppt | null;
   liveEvents: Array<{ event_type: string; created_at: string }>;
   upcoming: CustomerAppt[];
@@ -61,9 +63,12 @@ export type CustomerDashboardProps = {
   loyaltyRewardDescription?: string;
   loyaltyRewardThreshold?: number;
   loyaltyRewardCents?: number;
+  loyaltyRewardType?: string;
+  loyaltyEligibleServices?: Array<{ slug: string; name: string; priceCents: number }>;
   activeCardDesign?: any;
   membership?: CustomerMembershipView | null;
   accountCreditBalanceCents?: number;
+  rewardWalletItems?: CustomerRewardWalletItem[];
   activeDeals?: Array<{ id: string; title: string; description: string; discount: string }>;
   weatherForecast?: WeatherSnapshot | null;
   weatherLocationLabel?: string;
@@ -349,6 +354,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           enabled={props.referralProgramEnabled !== false}
         />
       ) : null}
+      <CustomerRewardWallet items={props.rewardWalletItems ?? []} />
       <section className={`overflow-hidden rounded-3xl border ${theme.border} bg-card shadow-sm p-6 ${theme.glow}`}>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
           <div className="min-w-0 flex-1">
@@ -705,6 +711,8 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 count={props.loyaltyClaimableCount}
                 rewardName={props.loyaltyRewardDescription}
                 rewardCents={props.loyaltyRewardCents}
+                eligibleServices={props.loyaltyEligibleServices}
+                serviceBased={['free_service', 'free_wash'].includes(props.loyaltyRewardType ?? '')}
               />
             ) : null}
             <Link
@@ -716,7 +724,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           </GlassCard>
 
           {/* Google Review Box */}
-          <GlassCard>
+          {props.reviewEligible ? <GlassCard>
             <SectionEyebrow>Reviews</SectionEyebrow>
             <p className="mt-3 text-sm text-muted-foreground">Share how we did after your last visit.</p>
             {props.googleReviewUrl ? (
@@ -731,7 +739,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             ) : (
               <p className="mt-4 text-xs text-muted-foreground italic">Google review link is not configured yet. Contact support if you would like to leave feedback.</p>
             )}
-          </GlassCard>
+          </GlassCard> : null}
 
           {/* Gift Cards */}
           <GlassCard>

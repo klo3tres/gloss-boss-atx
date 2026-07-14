@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_REFERRAL_SETTINGS, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
+import { DEFAULT_REFERRAL_SETTINGS, formatReferralHeadline, formatRewardSummary, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
-
-function rewardLabel(type: string, value: number) {
-  if (type === 'percent') return `${value}%`;
-  if (type === 'dollar') return `$${value}`;
-  return `${value}`;
-}
 
 export async function GET() {
   const admin = tryCreateAdminSupabase();
@@ -17,11 +11,11 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     enabled: settings.enabled,
-    give: rewardLabel(settings.referredRewardType, settings.referredRewardValue),
-    get: rewardLabel(settings.referrerRewardType, settings.referrerRewardValue),
+    give: formatRewardSummary(settings.referredRewardType, settings.referredRewardValue),
+    get: formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue),
     givePercent: settings.referredRewardType === 'percent' ? settings.referredRewardValue : null,
     getPercent: settings.referrerRewardType === 'percent' ? settings.referrerRewardValue : null,
-    headline: `Give ${rewardLabel(settings.referredRewardType, settings.referredRewardValue)}, Get ${rewardLabel(settings.referrerRewardType, settings.referrerRewardValue)}`,
+    headline: formatReferralHeadline(settings),
     stackingAllowed: settings.stackingAllowed,
     rewardUnlockRule: settings.rewardUnlockRule,
   });

@@ -45,7 +45,9 @@ export async function applyReferralDiscountToQuote(
   const label =
     settings.referredRewardType === 'percent'
       ? `${settings.referredRewardValue}% referral discount`
-      : `$${(settings.referredRewardValue).toFixed(0)} referral discount`;
+      : settings.referredRewardType === 'dollar'
+        ? `$${settings.referredRewardValue.toFixed(2)} referral discount`
+        : 'Referral reward will be confirmed with your eligible service';
 
   return {
     applied: discountCents > 0,

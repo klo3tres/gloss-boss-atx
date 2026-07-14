@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    valid: result.applied,
+    valid: Boolean(result.referrerCustomerId),
     label: result.label,
     discountCents: result.discountCents,
     referralCode: result.referralCode,

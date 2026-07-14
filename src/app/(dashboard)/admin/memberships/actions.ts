@@ -70,6 +70,10 @@ export async function saveLoyaltyRuleAction(formData: FormData) {
     reward_type: rewardType,
     reward_cents: rewardCents,
     credit_cents: rewardCents,
+    maximum_value_cents: Math.max(0, Number(str(formData.get('maximum_value_cents'))) || rewardCents),
+    expiration_days: Math.max(1, Number(str(formData.get('expiration_days'))) || 365),
+    customer_pays_difference: formData.get('customer_pays_difference') === 'on',
+    eligible_service_slugs: str(formData.get('eligible_service_slugs')).split(',').map((value) => value.trim()).filter(Boolean),
   };
   if (rewardType === 'free_service' && freeServiceSlug) {
     rewardPayload.free_service_slug = freeServiceSlug;

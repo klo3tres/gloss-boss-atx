@@ -33,6 +33,7 @@ export async function saveReferralProgramSettingsAction(
     minCompletedBookings: num(formData.get('min_completed_bookings'), 1),
     maxRewardsPerCustomer: num(formData.get('max_rewards_per_customer'), 10),
     stackingAllowed: formData.get('stacking_allowed') === 'on',
+    rewardExpirationDays: Math.max(0, num(formData.get('reward_expiration_days'), 0)),
     reviewRewardEnabled: formData.get('review_reward_enabled') === 'on',
     reviewRewardType: String(formData.get('review_reward_type') ?? 'percent'),
     reviewRewardValue: num(formData.get('review_reward_value'), 10),

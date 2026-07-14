@@ -319,9 +319,9 @@ export async function POST(request: Request) {
     if (referralCode) {
       const { applyReferralDiscountToQuote } = await import('@/lib/referral/referral-discount');
       const ref = await applyReferralDiscountToQuote(admin, { referralCode, subtotalCents: totalBaseCents });
+      referrerCustomerId = ref.referrerCustomerId;
       if (ref.applied) {
         referralDiscountCents = ref.discountCents;
-        referrerCustomerId = ref.referrerCustomerId;
         priced.finalTotalCents = Math.max(0, totalBaseCents - referralDiscountCents);
       }
     }

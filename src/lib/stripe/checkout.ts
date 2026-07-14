@@ -758,6 +758,13 @@ export async function processCheckoutSessionCompleted(params: {
       await updateAppointmentPaidSafe(admin, appointmentId, extras);
     }
 
+    try {
+      const { processReferralJobCompletion } = await import('@/lib/referral/referral-completion');
+      await processReferralJobCompletion(admin, appointmentId);
+    } catch (referralErr) {
+      console.warn('[checkout] referral completion retry', referralErr);
+    }
+
     if (paymentKind === 'deposit') {
       try {
         const { markEstimateDepositPaidForAppointment } = await import('@/lib/service-estimates');

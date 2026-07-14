@@ -8,21 +8,26 @@ export function LoyaltyClaimButton({
   count,
   rewardName,
   rewardCents,
+  eligibleServices = [],
+  serviceBased = false,
 }: {
   count?: number;
   rewardName?: string;
   rewardCents?: number;
+  eligibleServices?: Array<{ slug: string; name: string; priceCents: number }>;
+  serviceBased?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [selectedService, setSelectedService] = useState('');
 
   const valueLabel = rewardCents != null ? `$${(rewardCents / 100).toFixed(2)}` : 'Credit on account';
   const expiresNote = 'Valid 12 months after claim — auto-applies at checkout.';
 
   const onClaim = () => {
     startTransition(async () => {
-      const res = await claimLoyaltyRewardAction();
+      const res = await claimLoyaltyRewardAction(selectedService || undefined);
       if (res.ok) {
         setMsg({ type: 'ok', text: res.message ?? 'Reward claimed!' });
         setOpen(false);
@@ -69,11 +74,20 @@ export function LoyaltyClaimButton({
               </div>
               <div className="rounded-lg border border-white/5 bg-black/40 px-3 py-2 text-xs text-zinc-400">{expiresNote}</div>
             </dl>
+            {serviceBased ? (
+              <label className="mt-4 block text-xs font-bold text-zinc-300">
+                Choose your eligible service
+                <select value={selectedService} onChange={(event) => setSelectedService(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-white/15 bg-black px-3 text-white">
+                  <option value="">Select a service</option>
+                  {eligibleServices.map((service) => <option key={service.slug} value={service.slug}>{service.name} · ${(service.priceCents / 100).toFixed(2)} retail</option>)}
+                </select>
+              </label>
+            ) : null}
             <p className="mt-3 text-xs text-zinc-500">Credit is added to your account and shows at booking checkout, on invoices, and receipts.</p>
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
-                disabled={pending}
+                disabled={pending || (serviceBased && !selectedService)}
                 onClick={onClaim}
                 className="flex-1 rounded-xl bg-emerald-500 py-2.5 text-[10px] font-black uppercase text-black disabled:opacity-60"
               >

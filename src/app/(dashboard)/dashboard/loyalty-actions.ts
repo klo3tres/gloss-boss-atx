@@ -12,7 +12,7 @@ import {
   loadLoyaltyRewardConfig,
 } from '@/lib/loyalty-reward-claim';
 
-export async function claimLoyaltyRewardAction(): Promise<ActionResult> {
+export async function claimLoyaltyRewardAction(selectedServiceSlug?: string): Promise<ActionResult> {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   const email = session.user?.email?.trim().toLowerCase();
@@ -31,8 +31,24 @@ export async function claimLoyaltyRewardAction(): Promise<ActionResult> {
   const view = buildLoyaltyRewardView(stamps ?? [], redeemedCount, { rewardThreshold: rewardConfig.rewardThreshold });
   if (!view.canClaim) return actionErr('No punch-card reward is available to claim right now.');
 
+  const serviceBased = ['free_service', 'free_wash'].includes(rewardConfig.rewardType);
+  let selectedServiceName = '';
+  if (serviceBased) {
+    const slug = String(selectedServiceSlug ?? rewardConfig.freeServiceSlug ?? '').trim();
+    if (!slug) return actionErr('Choose an eligible service before claiming this reward.');
+    if (rewardConfig.eligibleServiceSlugs.length > 0 && !rewardConfig.eligibleServiceSlugs.includes(slug)) {
+      return actionErr('That service is not eligible for this reward.');
+    }
+    const service = await admin.from('services').select('slug, name, active').eq('slug', slug).eq('active', true).maybeSingle();
+    if (!service.data) return actionErr('That service is no longer available. Choose another service.');
+    selectedServiceName = String(service.data.name ?? slug);
+  }
+
   const expiresAt = new Date();
-  expiresAt.setMonth(expiresAt.getMonth() + 12);
+  expiresAt.setDate(expiresAt.getDate() + rewardConfig.expirationDays);
+  const rewardOrdinal = redeemedCount + 1;
+  const source = `loyalty:${customerId}:${rewardOrdinal}`;
+  const reason = selectedServiceName ? `${rewardConfig.rewardDescription} · Reserved: ${selectedServiceName}` : rewardConfig.rewardDescription;
 
   const { data: inserted, error } = await admin
     .from('customer_credits')
@@ -41,15 +57,18 @@ export async function claimLoyaltyRewardAction(): Promise<ActionResult> {
       amount_cents: rewardConfig.rewardCents,
       remaining_cents: rewardConfig.rewardCents,
       type: 'loyalty_reward',
-      reason: rewardConfig.rewardDescription,
-      source: 'loyalty_claim',
+      reason,
+      source,
       status: 'active',
       expires_at: expiresAt.toISOString(),
     })
     .select('id')
     .maybeSingle();
 
-  if (error || !inserted) return actionErr(error?.message ?? 'Could not issue reward credit.');
+  if (error || !inserted) {
+    if (/duplicate|unique/i.test(error?.message ?? '')) return actionErr('This loyalty milestone was already claimed. Refresh to see it in your wallet.');
+    return actionErr(error?.message ?? 'Could not issue reward credit.');
+  }
 
   const amountLabel = `$${(rewardConfig.rewardCents / 100).toFixed(2)}`;
   const name = String(customer.full_name || 'Valued Client');
@@ -84,7 +103,7 @@ export async function claimLoyaltyRewardAction(): Promise<ActionResult> {
 
   await admin.from('customer_notes').insert({
     customer_id: customerId,
-    body: `Customer self-claimed punch-card reward credit (${amountLabel}).`,
+    body: `Customer self-claimed punch-card reward (${amountLabel})${selectedServiceName ? ` and selected ${selectedServiceName}` : ''}.`,
   });
 
   revalidatePath('/dashboard');

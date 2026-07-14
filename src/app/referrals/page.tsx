@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
-import { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
+import { ensureCustomerReferralCode, formatReferralHeadline, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
 import { loadReferralStatsForCustomer } from '@/lib/referral/referral-events';
 import { PremiumButton } from '@/components/premium/premium-button';
 import { PremiumEyebrow } from '@/components/premium/premium-eyebrow';
@@ -50,7 +50,7 @@ export default async function ReferralsLandingPage() {
         rewardsEarned: stats.rewardsEarned,
         rewardsAvailable: stats.rewardsAvailable,
         threshold: settings.freeDetailReferralThreshold,
-        rewardRules: `Give ${settings.referredRewardValue}${settings.referredRewardType === 'percent' ? '%' : ''}, get ${settings.referrerRewardValue}${settings.referrerRewardType === 'percent' ? '%' : ''} when friends complete their detail.`,
+        rewardRules: `${formatReferralHeadline(settings)} Your reward unlocks after your friend's completed paid appointment.`,
         givePercent: settings.referredRewardValue,
         getPercent: settings.referrerRewardValue,
         rewardLadder: settings.rewardLadder ?? [],

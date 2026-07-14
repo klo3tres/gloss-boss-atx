@@ -174,10 +174,10 @@ export const ACTION_LINK_REGISTRY: Record<ActionLinkType, ActionLinkDefinition> 
 };
 
 export function appOrigin(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.glossbossatx.com').replace(
-    /\/$/,
-    '',
-  );
+  const configured = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '').trim().replace(/\/$/, '');
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configured);
+  if (configured && !(process.env.NODE_ENV === 'production' && isLocal)) return configured;
+  return 'https://www.glossbossatx.com';
 }
 
 /** Password recovery redirect that must be allow-listed in Supabase Auth settings. */

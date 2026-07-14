@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { loadReferralProgramSettings } from '@/lib/referral/referral-codes';
+import { formatRewardSummary, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
 import { recordReferralEvent } from '@/lib/referral/referral-events';
 import { sendReferralNotification } from '@/lib/referral/referral-notifications';
 
@@ -61,7 +61,7 @@ export async function processReferralJobCompletion(
 
   if (!code || !referrerId) return { ok: true, rewardIssued: false };
 
-  await recordReferralEvent(admin, {
+  const completedEvent = await recordReferralEvent(admin, {
     referralCode: code,
     referrerCustomerId: referrerId,
     status: 'completed',
@@ -77,35 +77,86 @@ export async function processReferralJobCompletion(
     .in('status', ['completed', 'reward_issued']);
 
   const completed = completedCount ?? 0;
-  const ladder = settings.rewardLadder ?? [];
-  const tier = [...ladder].reverse().find((t) => completed >= t.threshold);
-  const rewardType = tier?.rewardType ?? settings.referrerRewardType;
-  const rewardValue = tier?.rewardValue ?? settings.referrerRewardValue;
-  const rewardLabel = tier?.label ?? `${rewardValue}${rewardType === 'percent' ? '%' : ''} off next detail`;
+  // The per-referral reward always comes from the referrer setting. Ladder
+  // milestones are separate bonuses and must never replace the saved base reward.
+  const rewardType = settings.referrerRewardType;
+  const rewardValue = settings.referrerRewardValue;
+  const rewardLabel = formatRewardSummary(rewardType, rewardValue);
 
   const { data: existingReward } = await admin
     .from('referral_rewards')
-    .select('id')
+    .select('id, status')
     .eq('customer_id', referrerId)
     .contains('metadata', { appointment_id: appointmentId })
     .maybeSingle();
 
   if (existingReward?.id) return { ok: true, rewardIssued: false };
 
+  const now = new Date();
+  const expiresAt = settings.rewardExpirationDays && settings.rewardExpirationDays > 0
+    ? new Date(now.getTime() + settings.rewardExpirationDays * 86400000).toISOString()
+    : null;
+
   const { data: reward, error } = await admin
     .from('referral_rewards')
     .insert({
       customer_id: referrerId,
+      referral_event_id: completedEvent.eventId ?? null,
       reward_type: rewardType,
       reward_value: rewardValue,
       reward_label: rewardLabel,
-      status: 'pending',
-      metadata: { appointment_id: appointmentId, referral_code: code, completed_count: completed },
+      status: 'issued',
+      issued_at: now.toISOString(),
+      expires_at: expiresAt,
+      metadata: { appointment_id: appointmentId, referral_code: code, completed_count: completed, expires_at: expiresAt },
     })
     .select('id')
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
+
+  if (rewardType === 'dollar' && rewardValue > 0) {
+    const amountCents = Math.max(1, Math.round(rewardValue * 100));
+    const source = `referral:${appointmentId}`;
+    const existingCredit = await admin.from('customer_credits').select('id').eq('source', source).maybeSingle();
+    const credit = existingCredit.data?.id
+      ? { data: existingCredit.data, error: null }
+      : await admin.from('customer_credits').insert({
+        customer_id: referrerId,
+        amount_cents: amountCents,
+        remaining_cents: amountCents,
+        type: 'referral_reward',
+        reason: rewardLabel,
+        source,
+        status: 'active',
+        expires_at: expiresAt,
+      }).select('id').maybeSingle();
+    if (credit.error) return { ok: false, error: `Reward saved but account credit failed: ${credit.error.message}` };
+    if (credit.data?.id && reward?.id) {
+      await admin.from('referral_rewards').update({ customer_credit_id: credit.data.id }).eq('id', reward.id);
+    }
+  }
+
+  await admin.from('customer_timeline_events').insert({
+    customer_id: referrerId,
+    event_type: 'referral_reward_available',
+    title: 'Referral reward available',
+    detail: rewardLabel,
+    href: '/dashboard',
+    metadata: { appointment_id: appointmentId, referral_code: code, referral_reward_id: reward?.id },
+  });
+
+  try {
+    const { logTitanActivity } = await import('@/lib/titan/activity-feed');
+    await logTitanActivity(admin, {
+      kind: 'referral_reward_issued',
+      title: 'Referral reward issued',
+      detail: rewardLabel,
+      metadata: { customer_id: referrerId, appointment_id: appointmentId, referral_reward_id: reward?.id },
+    });
+  } catch {
+    /* non-blocking */
+  }
 
   await recordReferralEvent(admin, {
     referralCode: code,

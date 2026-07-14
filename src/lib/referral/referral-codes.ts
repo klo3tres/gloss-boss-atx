@@ -39,10 +39,16 @@ export async function ensureCustomerReferralCode(
 export function formatRewardSummary(type: string, value: number, label?: string): string {
   if (label?.trim()) return label.trim();
   if (type === 'percent') return `${value}% off`;
-  if (type === 'dollar') return `$${Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 })} off`;
+  if (type === 'dollar') return `$${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })} credit`;
+  if (type === 'free_addon') return 'Free add-on';
   if (type === 'free_service') return value > 0 ? `Free service ($${value} value)` : 'Free service';
+  if (type === 'membership_credit') return value > 0 ? `$${value} membership credit` : 'Membership credit';
   if (type === 'custom') return value ? `Custom reward (${value})` : 'Custom reward';
   return String(value);
+}
+
+export function formatReferralHeadline(settings: Pick<ReferralProgramSettings, 'referredRewardType' | 'referredRewardValue' | 'referrerRewardType' | 'referrerRewardValue'>): string {
+  return `Give ${formatRewardSummary(settings.referredRewardType, settings.referredRewardValue)}. Get ${formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)}.`;
 }
 
 /** Durable customer referral booking link — no expiry query params. */
@@ -53,16 +59,18 @@ export function referralLinkForCode(code: string): string {
 
 export type ReferralRewardLadderTier = {
   threshold: number;
-  rewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
+  rewardType: ReferralRewardType;
   rewardValue: number;
   label: string;
 };
 
+export type ReferralRewardType = 'percent' | 'dollar' | 'free_addon' | 'free_service' | 'membership_credit' | 'custom';
+
 export type ReferralProgramSettings = {
   enabled: boolean;
-  referrerRewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
+  referrerRewardType: ReferralRewardType;
   referrerRewardValue: number;
-  referredRewardType: 'percent' | 'dollar' | 'free_service' | 'custom';
+  referredRewardType: ReferralRewardType;
   referredRewardValue: number;
   minCompletedBookings: number;
   maxRewardsPerCustomer: number;
