@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { ChevronRight, Eye, RefreshCw, Send, X } from 'lucide-react';
+import { AlarmClock, ChevronRight, Eye, RefreshCw, Send, X } from 'lucide-react';
 import type { DailyExecutableAction } from '@/lib/titan/daily-action-plan';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
@@ -13,6 +13,7 @@ import {
   dismissDailyActionAction,
   markDailyActionSentAction,
   regenerateDailyActionPlanAction,
+  snoozeDailyActionAction,
 } from '@/app/(dashboard)/admin/daily-action-actions';
 
 function actionChannels(action: DailyExecutableAction): Array<'sms' | 'email'> {
@@ -151,6 +152,11 @@ export function ActionCard({ action }: { action: DailyExecutableAction }) {
           {action.sendBlocker}
         </p>
       ) : null}
+      {!action.canSend ? (
+        <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-300">
+          Manual action required
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {action.messageScript ? (
           <button
@@ -178,6 +184,16 @@ export function ActionCard({ action }: { action: DailyExecutableAction }) {
         >
           Open <ChevronRight className="h-3 w-3" />
         </Link>
+        {!action.id.startsWith('draft-') ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => startTransition(async () => { await snoozeDailyActionAction(action.id, 2); router.refresh(); })}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[10px] font-black uppercase text-muted-foreground hover:border-amber-500/30 hover:text-amber-400"
+          >
+            <AlarmClock className="h-3 w-3" /> Snooze 2h
+          </button>
+        ) : null}
         {!action.id.startsWith('draft-') ? (
           <button
             type="button"
@@ -378,6 +394,16 @@ function MoneyMoveRow({ move }: { move: DailyExecutableAction }) {
             Open <ChevronRight className="h-3 w-3" />
           </Link>
         )}
+        {!move.id.startsWith('draft-') ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => startTransition(async () => { await snoozeDailyActionAction(move.id, 2); router.refresh(); })}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[9px] font-black uppercase text-muted-foreground hover:text-amber-400"
+          >
+            <AlarmClock className="h-3 w-3" /> Snooze
+          </button>
+        ) : null}
         {!move.id.startsWith('draft-') ? (
           <button
             type="button"

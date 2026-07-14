@@ -4,6 +4,7 @@ export type PublicBrandPayload = {
   brandCityLabel: string;
   logoUrl: string | null;
   iconUrl: string | null;
+  heroImageUrl: string | null;
   heroVideoUrl: string | null;
   heroVideoPosterUrl: string | null;
   heroVideoEnabled: boolean;

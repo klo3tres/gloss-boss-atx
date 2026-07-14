@@ -11,6 +11,7 @@ export type WorkspaceBrand = {
   brandSlug: string;
   logoUrl: string | null;
   iconUrl: string | null;
+  heroImageUrl: string | null;
   heroVideoUrl: string | null;
   heroVideoPosterUrl: string | null;
   heroVideoEnabled: boolean;
@@ -35,6 +36,7 @@ const FALLBACKS: WorkspaceBrand = {
   brandSlug: 'gloss-boss-atx',
   logoUrl: '/brand/glossboss-clean-logo.png',
   iconUrl: '/favicon.svg',
+  heroImageUrl: null,
   heroVideoUrl: null,
   heroVideoPosterUrl: null,
   heroVideoEnabled: false,
@@ -87,6 +89,7 @@ export function mapWorkspaceBrandRow(row: Record<string, unknown> | null | undef
     brandSlug: str(row.brand_slug) || 'gloss-boss-atx',
     logoUrl: str(row.logo_url) || FALLBACKS.logoUrl,
     iconUrl: str(row.icon_url) || FALLBACKS.iconUrl,
+    heroImageUrl: null,
     heroVideoUrl: str(row.hero_video_url) || null,
     heroVideoPosterUrl: str(row.hero_video_poster_url) || null,
     heroVideoEnabled: row.hero_video_enabled === true,
@@ -112,7 +115,18 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
 
   let brand = mapWorkspaceBrandRow(data as Record<string, unknown>);
 
-  const { data: heroAsset } = await admin
+  const { data: heroImageAsset } = await admin
+    .from('site_media_assets')
+    .select('public_url, external_url, is_active')
+    .eq('workspace_key', workspaceKey)
+    .eq('placement', 'homepage_hero_image')
+    .eq('media_type', 'image')
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: heroVideoAsset } = await admin
     .from('site_media_assets')
     .select('public_url, poster_url, external_url, is_active')
     .eq('workspace_key', workspaceKey)
@@ -122,8 +136,13 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
     .limit(1)
     .maybeSingle();
 
-  if (heroAsset) {
-    const asset = heroAsset as { public_url?: string; external_url?: string; poster_url?: string; is_active?: boolean };
+  const selectedImageUrl = heroImageAsset
+    ? str((heroImageAsset as { public_url?: string }).public_url) || str((heroImageAsset as { external_url?: string }).external_url)
+    : '';
+  if (selectedImageUrl) {
+    brand = { ...brand, heroImageUrl: selectedImageUrl, heroVideoEnabled: false };
+  } else if (heroVideoAsset) {
+    const asset = heroVideoAsset as { public_url?: string; external_url?: string; poster_url?: string; is_active?: boolean };
     const videoUrl = str(asset.public_url) || str(asset.external_url);
     if (videoUrl) {
       brand = {
@@ -165,6 +184,7 @@ export function publicBrandPayload(brand: WorkspaceBrand): PublicBrandPayload {
     brandCityLabel: brand.brandCityLabel,
     logoUrl: brand.logoUrl,
     iconUrl: brand.iconUrl,
+    heroImageUrl: brand.heroImageUrl,
     heroVideoUrl: brand.heroVideoEnabled ? brand.heroVideoUrl : null,
     heroVideoPosterUrl: brand.heroVideoPosterUrl,
     heroVideoEnabled: brand.heroVideoEnabled,

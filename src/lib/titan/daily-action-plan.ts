@@ -413,6 +413,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       .select('*')
       .eq('action_date', actionDate)
       .eq('status', 'pending')
+      .or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`)
       .order('expected_value_cents', { ascending: false });
 
     const actions: DailyExecutableAction[] = (rows ?? []).map((r) => {
@@ -452,6 +453,7 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       .lt('action_date', actionDate)
       .gte('action_date', lookbackIso)
       .eq('status', 'pending')
+      .or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`)
       .order('expected_value_cents', { ascending: false })
       .limit(8);
 

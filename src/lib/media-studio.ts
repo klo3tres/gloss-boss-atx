@@ -20,6 +20,7 @@ export type MediaAsset = {
 };
 
 export const MEDIA_PLACEMENTS = [
+  'homepage_hero_image',
   'homepage_hero_video',
   'homepage_hero_poster',
   'brand_logo',

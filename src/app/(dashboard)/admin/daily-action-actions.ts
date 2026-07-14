@@ -35,6 +35,22 @@ export async function dismissDailyActionAction(actionId: string): Promise<Action
   return actionOk('Action dismissed.');
 }
 
+export async function snoozeDailyActionAction(actionId: string, hours = 2): Promise<ActionResult> {
+  const g = await gate();
+  if (!g) return actionErr('Not authorized.');
+  const safeHours = Math.min(168, Math.max(1, Math.round(hours)));
+  const now = new Date();
+  const snoozedUntil = new Date(now.getTime() + safeHours * 60 * 60_000).toISOString();
+  const { error } = await g.admin
+    .from('titan_daily_actions')
+    .update({ snoozed_until: snoozedUntil, updated_at: now.toISOString() })
+    .eq('id', actionId)
+    .eq('status', 'pending');
+  if (error) return actionErr(error.message);
+  revalidatePath('/admin');
+  return actionOk(`Action snoozed for ${safeHours} hour(s).`);
+}
+
 export async function markDailyActionSentAction(
   actionId: string,
   channel: 'sms' | 'email' | 'review',

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { MediaAsset } from '@/lib/media-studio';
 import { MEDIA_PLACEMENTS, groupMediaByPlacement } from '@/lib/media-studio';
@@ -27,6 +27,7 @@ function MediaAssetCard({
   const [focalY, setFocalY] = useState(Number(item.cropSettings?.focalY ?? 50));
   const [zoom, setZoom] = useState(Number(item.cropSettings?.zoom ?? 1));
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const url = item.publicUrl || item.externalUrl;
 
   return (
@@ -108,7 +109,34 @@ function MediaAssetCard({
         >
           {item.isActive ? 'Deactivate' : 'Activate'}
         </button>
+        {(item.mediaType === 'image' || item.mediaType === 'video') ? (
+          <button
+            type="button"
+            disabled={busy || !url}
+            className="rounded-lg border border-gold/35 bg-gold/10 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                setMessage(null);
+                const res = await fetchWithTimeout('/api/admin/media-studio', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: item.id, setAsHomepageHero: true }),
+                  credentials: 'same-origin',
+                  timeoutMs: 15000,
+                });
+                const data = (await res.json()) as { ok?: boolean; error?: string };
+                setBusy(false);
+                setMessage(data.ok ? 'Now live on the homepage.' : data.error ?? 'Could not set homepage hero.');
+                if (data.ok) onRefresh();
+              })();
+            }}
+          >
+            Set as homepage hero
+          </button>
+        ) : null}
       </div>
+      {message ? <p className={`mt-2 text-xs ${message.includes('live') ? 'text-emerald-300' : 'text-rose-300'}`}>{message}</p> : null}
     </li>
   );
 }
@@ -118,10 +146,18 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
   const [items, setItems] = useState(initialItems);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [placement, setPlacement] = useState('homepage_hero_video');
+  const [placement, setPlacement] = useState('homepage_hero_image');
   const [externalUrl, setExternalUrl] = useState('');
   const grouped = useMemo(() => groupMediaByPlacement(items), [items]);
+  const liveHero = useMemo(
+    () => items.find((item) => item.isActive && item.placement === 'homepage_hero_image')
+      ?? items.find((item) => item.isActive && item.placement === 'homepage_hero_video')
+      ?? null,
+    [items],
+  );
   const refresh = () => router.refresh();
+
+  useEffect(() => setItems(initialItems), [initialItems]);
 
   if (!tablesReady) {
     return (
@@ -133,6 +169,26 @@ export function MediaStudioClient({ initialItems, tablesReady }: { initialItems:
 
   return (
     <div className="space-y-6">
+      <section className={`rounded-2xl border p-5 ${liveHero ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">Currently live</p>
+        {liveHero ? (
+          <div className="mt-3 grid gap-4 sm:grid-cols-[180px_1fr]">
+            {liveHero.mediaType === 'video' ? (
+              <video src={liveHero.publicUrl || liveHero.externalUrl || ''} muted controls className="h-28 w-full rounded-xl bg-black object-cover" poster={liveHero.posterUrl ?? undefined} />
+            ) : (
+              <img src={liveHero.publicUrl || liveHero.externalUrl || ''} alt={liveHero.altText ?? ''} className="h-28 w-full rounded-xl object-cover" style={cropStyle(liveHero.cropSettings)} />
+            )}
+            <dl className="grid content-start gap-1 text-xs text-zinc-300">
+              <div><dt className="inline text-zinc-500">Asset ID: </dt><dd className="inline font-mono">{liveHero.id}</dd></div>
+              <div><dt className="inline text-zinc-500">Placement: </dt><dd className="inline">{liveHero.placement}</dd></div>
+              <div><dt className="inline text-zinc-500">Active: </dt><dd className="inline text-emerald-300">Yes</dd></div>
+              <div><dt className="inline text-zinc-500">Public URL: </dt><dd className="inline">{liveHero.publicUrl || liveHero.externalUrl ? 'Configured' : 'Missing'}</dd></div>
+            </dl>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-amber-100">No active homepage hero is selected. Choose an asset below and set it live.</p>
+        )}
+      </section>
       <section className="rounded-2xl border border-white/10 bg-black/45 p-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">Upload asset</p>
         <p className="mt-1 text-xs text-zinc-500">Primary method: choose a file — uploads go directly to Supabase storage. URL is optional.</p>

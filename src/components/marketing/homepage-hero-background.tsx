@@ -3,6 +3,14 @@
 import { useState } from 'react';
 import type { PublicBrandPayload } from '@/lib/brand/public-brand-types';
 
+function directVideoUrl(value: string | null | undefined): string | null {
+  const url = value?.trim();
+  if (!url) return null;
+  if (/\.(mp4|webm|mov)(?:[?#].*)?$/i.test(url)) return url;
+  if (/\/storage\/v1\/object\/(?:public|sign)\//i.test(url) && /video/i.test(url)) return url;
+  return null;
+}
+
 export function HomepageHeroBackground({
   imageUrl,
   brand,
@@ -12,8 +20,8 @@ export function HomepageHeroBackground({
   brand?: PublicBrandPayload | null;
   objectStyle?: React.CSSProperties;
 }) {
-  const videoUrl = brand?.heroVideoEnabled ? brand.heroVideoUrl : null;
-  const poster = brand?.heroVideoPosterUrl || imageUrl;
+  const videoUrl = brand?.heroVideoEnabled ? directVideoUrl(brand.heroVideoUrl) : null;
+  const poster = imageUrl || brand?.heroVideoPosterUrl;
   const [mediaReady, setMediaReady] = useState(false);
 
   return (
@@ -37,7 +45,7 @@ export function HomepageHeroBackground({
           loop
           playsInline
           preload="metadata"
-          poster={poster}
+          poster={poster || undefined}
           onLoadedData={() => setMediaReady(true)}
         >
           <source src={videoUrl} />

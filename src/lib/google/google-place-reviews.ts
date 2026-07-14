@@ -155,7 +155,18 @@ export async function syncGoogleReviewsToDatabase(
   admin: SupabaseClient,
   options?: { placeId?: string; minRating?: number },
 ): Promise<SyncGoogleReviewsResult> {
-  const fetched = await fetchGooglePlaceReviews(options?.placeId);
+  let persistedPlaceId = options?.placeId?.trim() || '';
+  if (!persistedPlaceId) {
+    const { data: placeSetting } = await admin.from('site_settings').select('value').eq('key', 'google_place_id').maybeSingle();
+    const raw = placeSetting?.value;
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      persistedPlaceId = String((parsed as { placeId?: unknown } | null)?.placeId ?? raw ?? '').trim();
+    } catch {
+      persistedPlaceId = String(raw ?? '').replace(/^"|"$/g, '').trim();
+    }
+  }
+  const fetched = await fetchGooglePlaceReviews(persistedPlaceId || undefined);
   if (!fetched.ok) {
     return { ok: false, imported: 0, updated: 0, skipped: 0, totalFromGoogle: 0, error: fetched.error };
   }

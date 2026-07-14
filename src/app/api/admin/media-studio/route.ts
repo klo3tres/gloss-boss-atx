@@ -55,6 +55,13 @@ export async function POST(request: Request) {
       .select('id')
       .single();
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    if (placement === 'homepage_hero_image' || placement === 'homepage_hero_video') {
+      const setLive = await admin.rpc('set_homepage_hero_asset', {
+        p_asset_id: data.id,
+        p_workspace_key: DEFAULT_WORKSPACE_KEY,
+      });
+      if (setLive.error) return NextResponse.json({ ok: false, error: setLive.error.message }, { status: 400 });
+    }
     revalidatePaths();
     return NextResponse.json({ ok: true, id: data.id, url: externalUrl });
   }
@@ -100,6 +107,13 @@ export async function POST(request: Request) {
     .single();
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  if (placement === 'homepage_hero_image' || placement === 'homepage_hero_video') {
+    const setLive = await admin.rpc('set_homepage_hero_asset', {
+      p_asset_id: data.id,
+      p_workspace_key: DEFAULT_WORKSPACE_KEY,
+    });
+    if (setLive.error) return NextResponse.json({ ok: false, error: setLive.error.message }, { status: 400 });
+  }
   revalidatePaths();
   return NextResponse.json({ ok: true, id: data.id, url: data.public_url });
 }
@@ -118,9 +132,31 @@ export async function PATCH(request: Request) {
     altText?: string;
     posterUrl?: string;
     cropSettings?: { focalX?: number; focalY?: number; zoom?: number };
+    setAsHomepageHero?: boolean;
   };
   const id = String(body.id ?? '').trim();
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
+
+  if (body.setAsHomepageHero === true) {
+    const { data: asset } = await admin
+      .from('site_media_assets')
+      .select('id, public_url, external_url, media_type, workspace_key')
+      .eq('id', id)
+      .eq('workspace_key', DEFAULT_WORKSPACE_KEY)
+      .maybeSingle();
+    if (!asset) return NextResponse.json({ ok: false, error: 'Media asset not found in this workspace.' }, { status: 404 });
+    const liveUrl = String(asset.public_url ?? asset.external_url ?? '').trim();
+    if (!/^https?:\/\//i.test(liveUrl)) {
+      return NextResponse.json({ ok: false, error: 'Asset does not have a stable public URL.' }, { status: 400 });
+    }
+    const result = await admin.rpc('set_homepage_hero_asset', {
+      p_asset_id: id,
+      p_workspace_key: DEFAULT_WORKSPACE_KEY,
+    });
+    if (result.error) return NextResponse.json({ ok: false, error: result.error.message }, { status: 400 });
+    revalidatePaths();
+    return NextResponse.json({ ok: true, liveUrl, placement: asset.media_type === 'video' ? 'homepage_hero_video' : 'homepage_hero_image' });
+  }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof body.placement === 'string') patch.placement = body.placement;
@@ -147,4 +183,5 @@ function revalidatePaths() {
   revalidatePath('/');
   revalidatePath('/services');
   revalidatePath('/book');
+  revalidatePath('/api/public/site-data');
 }

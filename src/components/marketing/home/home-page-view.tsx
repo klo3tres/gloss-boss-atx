@@ -102,7 +102,7 @@ export function HomePageView({
   const bookingHref = brand?.publicBookingUrl || '/book';
 
   const heroImageFromVisuals = (visuals?.hero as { image?: string })?.image?.trim();
-  const heroImageUrl = heroImageFromVisuals || brand?.heroVideoPosterUrl || mediaUrl(mediaRegistry, 'homepage.hero');
+  const heroImageUrl = brand?.heroImageUrl || heroImageFromVisuals || brand?.heroVideoPosterUrl || mediaUrl(mediaRegistry, 'homepage.hero');
 
   const socialButtons = [
     { label: 'Instagram', href: socialLinks.instagramUrl, mark: 'IG' },
