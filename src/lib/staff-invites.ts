@@ -39,6 +39,9 @@ export type StaffInviteRow = {
   lastSentAt: string | null;
   lastSentChannel: string | null;
   createdAt: string;
+  smsDeliveryStatus: string | null;
+  smsDeliveryError: string | null;
+  smsDeliveryUpdatedAt: string | null;
 };
 
 const INVITE_TTL_DAYS = 7;
@@ -73,6 +76,9 @@ function mapInvite(row: Record<string, unknown>): StaffInviteRow {
     lastSentAt: str(row.last_sent_at) || null,
     lastSentChannel: str(row.last_sent_channel) || null,
     createdAt: str(row.created_at),
+    smsDeliveryStatus: str(row.sms_delivery_status) || null,
+    smsDeliveryError: str(row.sms_delivery_error) || null,
+    smsDeliveryUpdatedAt: str(row.sms_delivery_updated_at) || null,
   };
 }
 
@@ -218,6 +224,7 @@ export async function sendStaffInviteNotification(
         channel: 'email',
         status: sent.ok ? 'sent' : 'failed',
         provider: 'resend',
+        provider_message_id: sent.emailId ?? null,
         recipient: invite.email,
         template_key: 'staff_invite',
         error_message: sent.error ?? null,
@@ -236,9 +243,10 @@ export async function sendStaffInviteNotification(
       to: invite.phone,
       body: smsBody,
       requireConsent: false,
+      extraPayload: { invite_id: invite.id, role },
     });
     if (sms.ok) {
-      smsStatus = 'sent';
+      smsStatus = sms.deliveryStatus ?? 'queued';
     } else if (sms.skipped) {
       smsStatus = 'skipped';
       smsError = sms.error ?? humanSmsSkipReason(sms.skipped_reason);
@@ -256,6 +264,9 @@ export async function sendStaffInviteNotification(
     .update({
       last_sent_at: new Date().toISOString(),
       last_sent_channel: channel,
+      sms_delivery_status: smsStatus,
+      sms_delivery_error: smsError ?? null,
+      sms_delivery_updated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', invite.id);
@@ -267,7 +278,7 @@ export async function sendStaffInviteNotification(
     href: '/admin/team',
   });
 
-  const deliveryFailed = emailStatus === 'failed' || smsStatus === 'failed';
+  const deliveryFailed = emailStatus === 'failed' || ['failed', 'undelivered'].includes(smsStatus);
   await logAuthEvent(admin, {
     eventType: deliveryFailed ? 'invite_delivery_failed' : 'invite_sent',
     subjectEmail: invite.email,

@@ -16,6 +16,7 @@ import {
   twilioMessagingServiceSid,
   twilioSenderReady,
 } from '@/lib/twilio-config';
+import { appOrigin } from '@/lib/auth/action-link-registry';
 
 export function resendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim());
@@ -145,6 +146,7 @@ export async function sendTwilioSms(params: {
     const fields: Record<string, string> = {
       To: dest,
       Body: params.body.slice(0, 1400),
+      StatusCallback: `${appOrigin()}/api/webhooks/twilio`,
     };
     if (messagingServiceSid) {
       fields.MessagingServiceSid = messagingServiceSid;

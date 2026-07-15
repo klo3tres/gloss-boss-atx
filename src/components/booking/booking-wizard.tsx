@@ -140,6 +140,7 @@ export function BookingWizard() {
   const offerFromUrl = String(searchParams?.get('offer') ?? '').trim();
   const serviceFromUrl = String(searchParams?.get('service') ?? searchParams?.get('package') ?? '').trim();
   const referralFromUrl = String(searchParams?.get('ref') ?? '').trim().toUpperCase();
+  const rewardFromUrl = String(searchParams?.get('reward') ?? '').trim();
   const liveCatalogAppliedRef = useRef(false);
   const serviceFromUrlAppliedRef = useRef('');
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
@@ -1286,6 +1287,7 @@ export function BookingWizard() {
           referralCode: referralCode.trim() || undefined,
           paymentChoice: freePromoEligible ? 'full' : paymentChoice,
           requestedCreditCents: creditAppliedCents,
+          rewardId: rewardFromUrl || undefined,
           notes: notes || undefined,
         }),
       });
@@ -1441,6 +1443,12 @@ export function BookingWizard() {
         <div className='flex items-center gap-2 text-xs text-muted-foreground' aria-live='polite'>
           <span className='inline-block h-3 w-3 animate-spin rounded-full border border-gold/30 border-t-gold-soft' aria-hidden />
           Updating prices…
+        </div>
+      ) : null}
+      {rewardFromUrl ? (
+        <div className='rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-100' role='status'>
+          <p className='font-black uppercase tracking-wider'>Reward selected</p>
+          <p className='mt-1 text-xs leading-relaxed'>Choose the eligible service, add-on, and vehicle below. Your reward will be validated and reserved when the booking is saved.</p>
         </div>
       ) : null}
       <div className='rounded-2xl border border-gold/25 bg-gradient-to-r from-gold/10 via-black/50 to-black p-4 text-sm text-muted-foreground'>

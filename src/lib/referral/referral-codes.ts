@@ -62,6 +62,17 @@ export type ReferralRewardLadderTier = {
   rewardType: ReferralRewardType;
   rewardValue: number;
   label: string;
+  eligibleServiceSlugs?: string[];
+  eligibleAddonSlugs?: string[];
+  serviceCategory?: string;
+  maximumRetailCents?: number;
+  customerPaysDifference?: boolean;
+  vehicleRestrictions?: string[];
+  exclusions?: string[];
+  expirationDays?: number;
+  stackingAllowed?: boolean;
+  repeatable?: boolean;
+  internalNotes?: string;
 };
 
 export type ReferralRewardType = 'percent' | 'dollar' | 'free_addon' | 'free_service' | 'membership_credit' | 'custom';

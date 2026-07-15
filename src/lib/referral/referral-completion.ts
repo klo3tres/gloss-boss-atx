@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { formatRewardSummary, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
+import { loadReferralProgramSettings } from '@/lib/referral/referral-codes';
 import { recordReferralEvent } from '@/lib/referral/referral-events';
 import { sendReferralNotification } from '@/lib/referral/referral-notifications';
+import { issueReferralReward, redeemReservedReferralRewardForAppointment } from '@/lib/referral/referral-reward-issuer';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -16,9 +17,6 @@ export async function processReferralJobCompletion(
   admin: SupabaseClient,
   appointmentId: string,
 ): Promise<{ ok: boolean; rewardIssued?: boolean; error?: string }> {
-  const settings = await loadReferralProgramSettings(admin);
-  if (!settings.enabled) return { ok: true, rewardIssued: false };
-
   const { data: appt } = await admin
     .from('appointments')
     .select('id, customer_id, guest_email, booking_pricing_breakdown, payment_status, status, job_completed_at')
@@ -30,6 +28,14 @@ export async function processReferralJobCompletion(
   const paymentStatus = str((appt as { payment_status?: string }).payment_status);
   const isCompleted = apptStatus === 'completed' || Boolean(str((appt as { job_completed_at?: string }).job_completed_at));
   const isPaid = isPaidStatus(paymentStatus);
+
+  if (isCompleted && isPaid) {
+    const redemption = await redeemReservedReferralRewardForAppointment(admin, appointmentId);
+    if (redemption.error) return { ok: false, error: redemption.error };
+  }
+
+  const settings = await loadReferralProgramSettings(admin);
+  if (!settings.enabled) return { ok: true, rewardIssued: false };
 
   if (settings.rewardUnlockRule === 'completed_paid' && (!isCompleted || !isPaid)) {
     return { ok: true, rewardIssued: false };
@@ -77,85 +83,66 @@ export async function processReferralJobCompletion(
     .in('status', ['completed', 'reward_issued']);
 
   const completed = completedCount ?? 0;
-  // The per-referral reward always comes from the referrer setting. Ladder
-  // milestones are separate bonuses and must never replace the saved base reward.
-  const rewardType = settings.referrerRewardType;
-  const rewardValue = settings.referrerRewardValue;
-  const rewardLabel = formatRewardSummary(rewardType, rewardValue);
-
-  const { data: existingReward } = await admin
-    .from('referral_rewards')
-    .select('id, status')
-    .eq('customer_id', referrerId)
-    .contains('metadata', { appointment_id: appointmentId })
-    .maybeSingle();
-
-  if (existingReward?.id) return { ok: true, rewardIssued: false };
-
-  const now = new Date();
-  const expiresAt = settings.rewardExpirationDays && settings.rewardExpirationDays > 0
-    ? new Date(now.getTime() + settings.rewardExpirationDays * 86400000).toISOString()
-    : null;
-
-  const { data: reward, error } = await admin
-    .from('referral_rewards')
-    .insert({
-      customer_id: referrerId,
-      referral_event_id: completedEvent.eventId ?? null,
-      reward_type: rewardType,
-      reward_value: rewardValue,
-      reward_label: rewardLabel,
-      status: 'issued',
-      issued_at: now.toISOString(),
-      expires_at: expiresAt,
-      metadata: { appointment_id: appointmentId, referral_code: code, completed_count: completed, expires_at: expiresAt },
-    })
-    .select('id')
-    .maybeSingle();
-
-  if (error) return { ok: false, error: error.message };
-
-  if (rewardType === 'dollar' && rewardValue > 0) {
-    const amountCents = Math.max(1, Math.round(rewardValue * 100));
-    const source = `referral:${appointmentId}`;
-    const existingCredit = await admin.from('customer_credits').select('id').eq('source', source).maybeSingle();
-    const credit = existingCredit.data?.id
-      ? { data: existingCredit.data, error: null }
-      : await admin.from('customer_credits').insert({
-        customer_id: referrerId,
-        amount_cents: amountCents,
-        remaining_cents: amountCents,
-        type: 'referral_reward',
-        reason: rewardLabel,
-        source,
-        status: 'active',
-        expires_at: expiresAt,
-      }).select('id').maybeSingle();
-    if (credit.error) return { ok: false, error: `Reward saved but account credit failed: ${credit.error.message}` };
-    if (credit.data?.id && reward?.id) {
-      await admin.from('referral_rewards').update({ customer_credit_id: credit.data.id }).eq('id', reward.id);
-    }
-  }
-
-  await admin.from('customer_timeline_events').insert({
-    customer_id: referrerId,
-    event_type: 'referral_reward_available',
-    title: 'Referral reward available',
-    detail: rewardLabel,
-    href: '/dashboard',
-    metadata: { appointment_id: appointmentId, referral_code: code, referral_reward_id: reward?.id },
+  const base = await issueReferralReward(admin, {
+    customerId: referrerId,
+    referralEventId: completedEvent.eventId,
+    referralCode: code,
+    appointmentId,
+    issuanceKey: `referral-base:${appointmentId}`,
+    scope: 'base',
+    rewardType: settings.referrerRewardType,
+    rewardValue: settings.referrerRewardValue,
+    expirationDays: settings.rewardExpirationDays,
+    eligibility: { stackingAllowed: settings.stackingAllowed, maximumRetailCents: settings.maxDiscountCents },
+    metadata: { completed_count: completed },
   });
+  if (base.error) return { ok: false, error: base.error };
 
-  try {
-    const { logTitanActivity } = await import('@/lib/titan/activity-feed');
-    await logTitanActivity(admin, {
-      kind: 'referral_reward_issued',
-      title: 'Referral reward issued',
-      detail: rewardLabel,
-      metadata: { customer_id: referrerId, appointment_id: appointmentId, referral_reward_id: reward?.id },
-    });
-  } catch {
-    /* non-blocking */
+  let issuedAny = base.issued;
+  const milestones = [...(settings.rewardLadder ?? [])].sort((a, b) => a.threshold - b.threshold);
+  for (const milestone of milestones) {
+    if (completed < milestone.threshold) continue;
+    const lastCycle = milestone.repeatable ? Math.floor(completed / milestone.threshold) : 1;
+    if (lastCycle < 1) continue;
+    for (let cycle = 1; cycle <= lastCycle; cycle++) {
+      const milestoneResult = await issueReferralReward(admin, {
+      customerId: referrerId,
+      referralEventId: completedEvent.eventId,
+      referralCode: code,
+      appointmentId,
+      issuanceKey: `referral-milestone:${referrerId}:${milestone.threshold}:${cycle}`,
+      scope: 'milestone',
+      milestoneThreshold: milestone.threshold,
+      rewardType: milestone.rewardType,
+      rewardValue: milestone.rewardValue,
+      label: milestone.label,
+      expirationDays: milestone.expirationDays ?? settings.rewardExpirationDays,
+      eligibility: {
+        eligibleServiceSlugs: milestone.eligibleServiceSlugs,
+        eligibleAddonSlugs: milestone.eligibleAddonSlugs,
+        serviceCategory: milestone.serviceCategory,
+        maximumRetailCents: milestone.maximumRetailCents,
+        customerPaysDifference: milestone.customerPaysDifference,
+        vehicleRestrictions: milestone.vehicleRestrictions,
+        exclusions: milestone.exclusions,
+        stackingAllowed: milestone.stackingAllowed,
+      },
+      metadata: { completed_count: completed, repeatable: milestone.repeatable === true, internal_notes: milestone.internalNotes ?? null },
+      });
+      if (milestoneResult.error) return { ok: false, error: milestoneResult.error };
+      if (milestoneResult.issued) {
+        issuedAny = true;
+        await sendReferralNotification(admin, {
+          kind: 'reward_earned',
+          customerId: referrerId,
+          referralCode: code,
+          rewardLabel: milestone.label,
+          completedCount: completed,
+          threshold: milestone.threshold,
+        });
+      }
+      if (!milestone.repeatable) break;
+    }
   }
 
   await recordReferralEvent(admin, {
@@ -165,14 +152,16 @@ export async function processReferralJobCompletion(
     appointmentId,
   });
 
-  await sendReferralNotification(admin, {
-    kind: 'reward_earned',
-    customerId: referrerId,
-    referralCode: code,
-    rewardLabel,
-    completedCount: completed,
-    threshold: settings.freeDetailReferralThreshold,
-  });
+  if (base.issued) {
+    await sendReferralNotification(admin, {
+      kind: 'reward_earned',
+      customerId: referrerId,
+      referralCode: code,
+      rewardLabel: 'Referral reward available',
+      completedCount: completed,
+      threshold: settings.freeDetailReferralThreshold,
+    });
+  }
 
-  return { ok: true, rewardIssued: Boolean(reward?.id) };
+  return { ok: true, rewardIssued: issuedAny };
 }

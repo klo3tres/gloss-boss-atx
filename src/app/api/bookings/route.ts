@@ -56,6 +56,7 @@ type Body = {
   smsConsent?: boolean;
   smsConsentSource?: SmsConsentSource;
   requestedCreditCents?: number;
+  rewardId?: string;
 };
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
@@ -109,6 +110,11 @@ async function applyCustomerCreditsToAppointment(params: {
     appliedTotal += useNow;
     remainingRequest -= useNow;
     redemptionRows.push({ creditId: row.id, amountCents: useNow });
+    if (nextRemaining === 0) {
+      const { redeemReferralRewardForCredit } = await import('@/lib/referral/referral-reward-issuer');
+      const rewardRedemption = await redeemReferralRewardForCredit(admin, row.id, appointmentId);
+      if (rewardRedemption.error) console.warn('[api/bookings] linked referral reward redemption skipped', rewardRedemption.error);
+    }
   }
 
   if (appliedTotal <= 0) return 0;
@@ -325,8 +331,9 @@ export async function POST(request: Request) {
         priced.finalTotalCents = Math.max(0, totalBaseCents - referralDiscountCents);
       }
     }
-    const adjustedTotalCents = priced.finalTotalCents;
-    const depositAmountCents = paymentChoice === 'full' ? adjustedTotalCents : Math.min(priced.depositCents, adjustedTotalCents);
+    let adjustedTotalCents = priced.finalTotalCents;
+    let depositAmountCents = paymentChoice === 'full' ? adjustedTotalCents : Math.min(priced.depositCents, adjustedTotalCents);
+    let selectedReward: { id: string; discountCents: number; serviceSlug: string | null; addonSlug: string | null; metadata: Record<string, unknown> } | null = null;
     const primary = resolved[0]!;
     const offerRowId = claimed?.offerId ?? null;
 
@@ -453,6 +460,132 @@ export async function POST(request: Request) {
       customerId = null;
     }
 
+    const requestedRewardId = String(body.rewardId ?? '').trim();
+    if (requestedRewardId) {
+      if (!customerId) {
+        return NextResponse.json({ error: 'Sign in with the customer account that owns this reward before using it.' }, { status: 403 });
+      }
+      const rewardRes = await admin
+        .from('referral_rewards')
+        .select('id, customer_id, reward_type, reward_value, status, expires_at, eligibility, metadata')
+        .eq('id', requestedRewardId)
+        .eq('customer_id', customerId)
+        .maybeSingle();
+      if (rewardRes.error || !rewardRes.data) {
+        return NextResponse.json({ error: 'That reward is not available for this customer.' }, { status: 404 });
+      }
+      const reward = rewardRes.data as Record<string, unknown>;
+      const rewardStatus = String(reward.status ?? '');
+      if (rewardStatus === 'selected') {
+        const rewardMetadata = reward.metadata && typeof reward.metadata === 'object' ? reward.metadata as Record<string, unknown> : {};
+        const selectedAt = Date.parse(String(rewardMetadata.selected_at ?? ''));
+        if (!Number.isFinite(selectedAt) || selectedAt > Date.now() - 30 * 60 * 1000) {
+          return NextResponse.json({ error: 'That reward is already being used in another booking.' }, { status: 409 });
+        }
+        await admin.from('referral_rewards').update({ status: 'available' }).eq('id', requestedRewardId).eq('status', 'selected');
+      }
+      if (!['issued', 'available', 'selected'].includes(rewardStatus)) {
+        return NextResponse.json({ error: 'That reward has already been reserved, redeemed, expired, or voided.' }, { status: 409 });
+      }
+      if (reward.expires_at && String(reward.expires_at) < new Date().toISOString()) {
+        await admin.from('referral_rewards').update({ status: 'expired' }).eq('id', requestedRewardId);
+        return NextResponse.json({ error: 'That reward has expired.' }, { status: 409 });
+      }
+      const eligibility = reward.eligibility && typeof reward.eligibility === 'object'
+        ? reward.eligibility as Record<string, unknown>
+        : {};
+      const stringList = (value: unknown) => Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
+      const eligibleServices = stringList(eligibility.eligible_service_slugs ?? eligibility.eligibleServiceSlugs);
+      const eligibleAddons = stringList(eligibility.eligible_addon_slugs ?? eligibility.eligibleAddonSlugs);
+      const allowedVehicles = stringList(eligibility.vehicle_restrictions ?? eligibility.vehicleRestrictions).map((item) => normalizeVehicleClass(item));
+      const exclusions = new Set(stringList(eligibility.exclusions));
+      const stackingAllowed = eligibility.stacking_allowed === true || eligibility.stackingAllowed === true;
+      if (!stackingAllowed && (quote.promo.applied || referralDiscountCents > 0)) {
+        return NextResponse.json({ error: 'This reward cannot be combined with the selected promotion or referral discount.' }, { status: 409 });
+      }
+      const serviceCategory = String(eligibility.service_category ?? eligibility.serviceCategory ?? '').trim();
+      let categoryEligibleSlugs: string[] = [];
+      if (serviceCategory) {
+        const categoryResult = await admin.from('services').select('slug').ilike('category', serviceCategory).eq('active', true);
+        categoryEligibleSlugs = (categoryResult.data ?? []).map((row) => String(row.slug));
+      }
+      const selectedLine = resolved.find((line) =>
+        (eligibleServices.length === 0 || eligibleServices.includes(line.serviceSlug)) &&
+        (!serviceCategory || categoryEligibleSlugs.includes(line.serviceSlug)) &&
+        (allowedVehicles.length === 0 || allowedVehicles.includes(normalizeVehicleClass(line.vehicleClass))) &&
+        !exclusions.has(line.serviceSlug),
+      );
+      const selectedAddon = addOns.find((slug) =>
+        (eligibleAddons.length === 0 || eligibleAddons.includes(slug)) && !exclusions.has(slug),
+      ) ?? null;
+      const rewardType = String(reward.reward_type ?? '');
+      if ((rewardType === 'free_service' || eligibleServices.length > 0 || allowedVehicles.length > 0) && !selectedLine) {
+        return NextResponse.json({ error: 'Choose an eligible service and vehicle for this reward.' }, { status: 409 });
+      }
+      if (rewardType === 'free_addon' && !selectedAddon) {
+        return NextResponse.json({ error: 'Choose an eligible add-on before applying this reward.' }, { status: 409 });
+      }
+      const maximumRetailCents = Math.max(0, Number(eligibility.maximum_retail_cents ?? eligibility.maximumRetailCents ?? 0) || 0);
+      const customerPaysDifference = eligibility.customer_pays_difference === true || eligibility.customerPaysDifference === true;
+      let discountCents = 0;
+      if (rewardType === 'percent') {
+        const percentageBase = (eligibleServices.length > 0 || serviceCategory || allowedVehicles.length > 0) && selectedLine
+          ? Math.max(0, Number(selectedLine.priceCents ?? 0))
+          : adjustedTotalCents;
+        discountCents = Math.round(percentageBase * Math.max(0, Number(reward.reward_value ?? 0)) / 100);
+      } else if (rewardType === 'free_service') {
+        discountCents = Math.max(0, Number(selectedLine?.priceCents ?? 0));
+      } else if (rewardType === 'free_addon') {
+        const pricedWithAddOns = priced as unknown as { addOnLines?: Array<{ slug?: string; cents?: number }> };
+        const addOnLines = Array.isArray(pricedWithAddOns.addOnLines)
+          ? pricedWithAddOns.addOnLines
+          : [];
+        const selectedAddOnLine = addOnLines.find((line) => String(line.slug ?? '') === selectedAddon);
+        discountCents = Math.max(0, Number(selectedAddOnLine?.cents ?? 0));
+      } else if (rewardType === 'custom') {
+        discountCents = Math.round(Math.max(0, Number(reward.reward_value ?? 0)) * 100);
+      } else {
+        return NextResponse.json({ error: 'Use dollar and membership credits from the credit balance control during booking.' }, { status: 409 });
+      }
+      if (maximumRetailCents > 0 && discountCents > maximumRetailCents && !customerPaysDifference) {
+        return NextResponse.json({ error: 'Choose an eligible option within this reward’s maximum retail value.' }, { status: 409 });
+      }
+      if (maximumRetailCents > 0) discountCents = Math.min(discountCents, maximumRetailCents);
+      discountCents = Math.min(adjustedTotalCents, discountCents);
+      if (discountCents <= 0) {
+        return NextResponse.json({ error: 'This reward does not apply to the selected booking.' }, { status: 409 });
+      }
+      adjustedTotalCents = Math.max(0, adjustedTotalCents - discountCents);
+      priced.finalTotalCents = adjustedTotalCents;
+      depositAmountCents = paymentChoice === 'full' ? adjustedTotalCents : Math.min(priced.depositCents, adjustedTotalCents);
+      selectedReward = {
+        id: requestedRewardId,
+        discountCents,
+        serviceSlug: selectedLine?.serviceSlug ?? null,
+        addonSlug: selectedAddon,
+        metadata: reward.metadata && typeof reward.metadata === 'object' ? reward.metadata as Record<string, unknown> : {},
+      };
+    }
+
+    if (selectedReward) {
+      const lock = await admin
+        .from('referral_rewards')
+        .update({
+          status: 'selected',
+          selected_service_slug: selectedReward.serviceSlug,
+          selected_addon_slug: selectedReward.addonSlug,
+          metadata: { ...selectedReward.metadata, selected_at: new Date().toISOString() },
+        })
+        .eq('id', selectedReward.id)
+        .eq('customer_id', customerId!)
+        .in('status', ['issued', 'available'])
+        .select('id')
+        .maybeSingle();
+      if (lock.error || !lock.data?.id) {
+        return NextResponse.json({ error: 'That reward was just selected in another booking. Refresh your reward wallet.' }, { status: 409 });
+      }
+    }
+
     const vehicleDescriptionJoined = resolved.map((r) => r.vehicleDescription).join(' · ');
     const bookingVehicles = resolved.map((r) => ({
       service_slug: r.serviceSlug,
@@ -489,6 +622,8 @@ export async function POST(request: Request) {
       referral_code: referralCode || null,
       referrer_customer_id: referrerCustomerId,
       referral_discount_cents: referralDiscountCents,
+      referral_reward_id: selectedReward?.id ?? null,
+      referral_reward_discount_cents: selectedReward?.discountCents ?? 0,
     };
 
     const insertPayload: Record<string, unknown> = {
@@ -544,6 +679,9 @@ export async function POST(request: Request) {
     const { data: appointment, error: apptErr } = await insertAppointmentResilient(admin, insertPayload);
 
     if (apptErr || !appointment) {
+      if (selectedReward) {
+        await admin.from('referral_rewards').update({ status: 'available' }).eq('id', selectedReward.id).eq('status', 'selected');
+      }
       const detail = apptErr ?? 'unknown';
       await logBookingError(admin, {
         stage: 'insertAppointmentResilient',
@@ -601,6 +739,29 @@ export async function POST(request: Request) {
       requestedCents: requestedCreditCents,
       totalCents: adjustedTotalCents,
     });
+
+    if (selectedReward) {
+      const reserveResult = await admin
+        .from('referral_rewards')
+        .update({
+          status: 'reserved',
+          selected_service_slug: selectedReward.serviceSlug,
+          selected_addon_slug: selectedReward.addonSlug,
+          reserved_appointment_id: String(appointment.id),
+          metadata: {
+            ...selectedReward.metadata,
+            booking_discount_cents: selectedReward.discountCents,
+            reserved_at: new Date().toISOString(),
+          },
+        })
+        .eq('id', selectedReward.id)
+        .eq('customer_id', customerId!)
+        .eq('status', 'selected');
+      if (reserveResult.error) {
+        console.error('[api/bookings] reward reservation failed', reserveResult.error.message);
+        return NextResponse.json({ error: 'The booking was saved, but the reward could not be reserved. Contact Gloss Boss before paying.' }, { status: 409 });
+      }
+    }
 
     await logSmsConsentChange(admin, {
       customerId,

@@ -10,6 +10,7 @@ export type CustomerRewardWalletItem = {
   expiresAt: string | null;
   usable: boolean;
   terms?: string | null;
+  bookingHref?: string | null;
 };
 
 function statusLabel(status: string) {
@@ -52,7 +53,7 @@ export function CustomerRewardWallet({ items }: { items: CustomerRewardWalletIte
                     <p className="mt-4 font-mono text-2xl font-black text-gold-soft">{reward.valueLabel}</p>
                     {reward.expiresAt ? <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" /> Expires {new Date(reward.expiresAt).toLocaleDateString()}</p> : <p className="mt-2 text-xs text-muted-foreground">No expiration</p>}
                     {reward.terms ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{reward.terms}</p> : null}
-                    {reward.usable ? <Link href="/book" className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-gold/30 text-[10px] font-black uppercase text-gold-soft">Book now</Link> : null}
+                    {reward.usable ? <Link href={reward.bookingHref || '/book'} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-gold/30 text-[10px] font-black uppercase text-gold-soft">Select services & book</Link> : null}
                   </article>
                 ))}
               </div>

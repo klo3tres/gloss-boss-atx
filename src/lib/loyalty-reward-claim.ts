@@ -13,6 +13,8 @@ export type LoyaltyRewardConfig = {
   expirationDays: number;
   customerPaysDifference: boolean;
   maximumValueCents: number;
+  resetBehavior: 'reset_to_zero' | 'subtract_threshold' | 'advance_tier';
+  tierThresholds: number[];
 };
 
 export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<LoyaltyRewardConfig> {
@@ -43,26 +45,45 @@ export async function loadLoyaltyRewardConfig(admin: SupabaseClient): Promise<Lo
     expirationDays: Math.max(1, Number(payload.expiration_days ?? 365) || 365),
     customerPaysDifference: payload.customer_pays_difference === true,
     maximumValueCents: Math.max(0, Number(payload.maximum_value_cents ?? rewardCents) || rewardCents),
+    resetBehavior: ['reset_to_zero', 'subtract_threshold', 'advance_tier'].includes(String(payload.reset_behavior))
+      ? String(payload.reset_behavior) as LoyaltyRewardConfig['resetBehavior']
+      : 'subtract_threshold',
+    tierThresholds: Array.isArray(payload.tier_thresholds)
+      ? payload.tier_thresholds.map(Number).filter((value) => Number.isFinite(value) && value > 0)
+      : [],
   };
 }
 
-export async function countRedeemedLoyaltyRewards(admin: SupabaseClient, customerId: string): Promise<number> {
-  const { count } = await admin
-    .from('customer_credits')
-    .select('id', { count: 'exact', head: true })
-    .eq('customer_id', customerId)
-    .eq('type', 'loyalty_reward')
-    .neq('status', 'voided');
-  return count ?? 0;
+export async function loadLoyaltyRewardState(admin: SupabaseClient, customerId: string): Promise<{
+  issuedRewards: number;
+  redeemedRewards: number;
+  consumedStamps: number;
+}> {
+  const [issued, used, resets] = await Promise.all([
+    admin.from('customer_credits').select('id', { count: 'exact', head: true }).eq('customer_id', customerId).eq('type', 'loyalty_reward').neq('status', 'voided'),
+    admin.from('customer_credits').select('id', { count: 'exact', head: true }).eq('customer_id', customerId).eq('type', 'loyalty_reward').eq('status', 'used'),
+    admin.from('loyalty_reset_events').select('consumed_punches').eq('customer_id', customerId),
+  ]);
+  return {
+    issuedRewards: issued.count ?? 0,
+    redeemedRewards: used.count ?? 0,
+    consumedStamps: resets.error ? 0 : (resets.data ?? []).reduce((sum, row) => sum + Math.max(0, Number(row.consumed_punches ?? 0) || 0), 0),
+  };
 }
 
 export function buildLoyaltyRewardView(
   stamps: LoyaltyStampRow[],
-  redeemedRewards: number,
-  opts: { rewardThreshold?: number } = {},
+  issuedRewards: number,
+  opts: { rewardThreshold?: number; redeemedRewards?: number; resetBehavior?: LoyaltyRewardConfig['resetBehavior']; tierThresholds?: number[]; consumedStamps?: number } = {},
 ) {
-  const loyalty = calculateLoyaltyStatus(stamps, { rewardThreshold: opts.rewardThreshold, redeemedRewards });
-  const claimableRewards = Math.max(0, loyalty.rewardsEarned - redeemedRewards);
+  const loyalty = calculateLoyaltyStatus(stamps, {
+    rewardThreshold: opts.rewardThreshold,
+    redeemedRewards: opts.redeemedRewards ?? issuedRewards,
+    resetBehavior: opts.resetBehavior,
+    tierThresholds: opts.tierThresholds,
+    consumedStamps: opts.consumedStamps,
+  });
+  const claimableRewards = Math.max(0, loyalty.rewardsEarned - issuedRewards);
   return {
     ...loyalty,
     claimableRewards,

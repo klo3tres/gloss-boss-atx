@@ -279,8 +279,8 @@ export async function claimLoyaltyRewardForCustomerAction(formData: FormData) {
   const { actionErr, actionOk } = await import('@/lib/action-result');
   const {
     buildLoyaltyRewardView,
-    countRedeemedLoyaltyRewards,
     loadLoyaltyRewardConfig,
+    loadLoyaltyRewardState,
   } = await import('@/lib/loyalty-reward-claim');
   const { sendCustomerSms } = await import('@/lib/sms-send');
 
@@ -293,15 +293,21 @@ export async function claimLoyaltyRewardForCustomerAction(formData: FormData) {
   if (!isStaff) return actionErr('Staff only.');
   if (!customerId) return actionErr('No customer linked.');
 
-  const [{ data: customer }, { data: stamps }, redeemedCount, rewardConfig] = await Promise.all([
+  const [{ data: customer }, { data: stamps }, rewardState, rewardConfig] = await Promise.all([
     admin.from('customers').select('id, full_name, email, phone, sms_consent, sms_status').eq('id', customerId).maybeSingle(),
     admin.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', customerId),
-    countRedeemedLoyaltyRewards(admin, customerId),
+    loadLoyaltyRewardState(admin, customerId),
     loadLoyaltyRewardConfig(admin),
   ]);
   if (!customer?.id) return actionErr('Customer not found.');
 
-  const view = buildLoyaltyRewardView(stamps ?? [], redeemedCount, { rewardThreshold: rewardConfig.rewardThreshold });
+  const view = buildLoyaltyRewardView(stamps ?? [], rewardState.issuedRewards, {
+    rewardThreshold: rewardConfig.rewardThreshold,
+    redeemedRewards: rewardState.redeemedRewards,
+    consumedStamps: rewardState.consumedStamps,
+    resetBehavior: rewardConfig.resetBehavior,
+    tierThresholds: rewardConfig.tierThresholds,
+  });
   if (!view.canClaim) return actionErr('No punch-card reward is available to claim right now.');
 
   const expiresAt = new Date();
@@ -315,7 +321,7 @@ export async function claimLoyaltyRewardForCustomerAction(formData: FormData) {
       remaining_cents: rewardConfig.rewardCents,
       type: 'loyalty_reward',
       reason: rewardConfig.rewardDescription,
-      source: 'loyalty_staff_claim',
+      source: `loyalty:${customerId}:${rewardState.issuedRewards + 1}`,
       status: 'active',
       expires_at: expiresAt.toISOString(),
       linked_work_order_id: workOrderId || null,

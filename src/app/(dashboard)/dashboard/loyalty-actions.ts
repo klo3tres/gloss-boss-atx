@@ -8,8 +8,8 @@ import { sendCustomerSms } from '@/lib/sms-send';
 import { sendResendHtml, resendConfigured, businessNotifyDestination } from '@/lib/email-send';
 import {
   buildLoyaltyRewardView,
-  countRedeemedLoyaltyRewards,
   loadLoyaltyRewardConfig,
+  loadLoyaltyRewardState,
 } from '@/lib/loyalty-reward-claim';
 
 export async function claimLoyaltyRewardAction(selectedServiceSlug?: string): Promise<ActionResult> {
@@ -22,13 +22,19 @@ export async function claimLoyaltyRewardAction(selectedServiceSlug?: string): Pr
   if (!customer?.id) return actionErr('No customer profile found for this account.');
 
   const customerId = String(customer.id);
-  const [{ data: stamps }, redeemedCount, rewardConfig] = await Promise.all([
+  const [{ data: stamps }, rewardState, rewardConfig] = await Promise.all([
     admin.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', customerId),
-    countRedeemedLoyaltyRewards(admin, customerId),
+    loadLoyaltyRewardState(admin, customerId),
     loadLoyaltyRewardConfig(admin),
   ]);
 
-  const view = buildLoyaltyRewardView(stamps ?? [], redeemedCount, { rewardThreshold: rewardConfig.rewardThreshold });
+  const view = buildLoyaltyRewardView(stamps ?? [], rewardState.issuedRewards, {
+    rewardThreshold: rewardConfig.rewardThreshold,
+    redeemedRewards: rewardState.redeemedRewards,
+    consumedStamps: rewardState.consumedStamps,
+    resetBehavior: rewardConfig.resetBehavior,
+    tierThresholds: rewardConfig.tierThresholds,
+  });
   if (!view.canClaim) return actionErr('No punch-card reward is available to claim right now.');
 
   const serviceBased = ['free_service', 'free_wash'].includes(rewardConfig.rewardType);
@@ -46,7 +52,7 @@ export async function claimLoyaltyRewardAction(selectedServiceSlug?: string): Pr
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + rewardConfig.expirationDays);
-  const rewardOrdinal = redeemedCount + 1;
+  const rewardOrdinal = rewardState.issuedRewards + 1;
   const source = `loyalty:${customerId}:${rewardOrdinal}`;
   const reason = selectedServiceName ? `${rewardConfig.rewardDescription} · Reserved: ${selectedServiceName}` : rewardConfig.rewardDescription;
 

@@ -16,7 +16,7 @@ import { resolveOrderLedger } from '@/lib/order-ledger';
 import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { fetchPaymentsForJob, fetchUnassignedCustomerPaymentsForDiagnostics } from '@/lib/payments-resolve';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
-import { buildLoyaltyRewardView, countRedeemedLoyaltyRewards, loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
+import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
 import { loadDealConfigForBooking } from '@/lib/booking-server-shared';
 import { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
 import type { WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
@@ -696,8 +696,16 @@ export default async function TechWorkOrderDetailPage({
     }
   }
 
-  const redeemedRewards = row.customer_id ? await countRedeemedLoyaltyRewards(admin, String(row.customer_id)) : 0;
-  const loyaltyView = buildLoyaltyRewardView(stampsList, redeemedRewards, { rewardThreshold: rewardConfig.rewardThreshold });
+  const rewardState = row.customer_id
+    ? await loadLoyaltyRewardState(admin, String(row.customer_id))
+    : { issuedRewards: 0, redeemedRewards: 0, consumedStamps: 0 };
+  const loyaltyView = buildLoyaltyRewardView(stampsList, rewardState.issuedRewards, {
+    rewardThreshold: rewardConfig.rewardThreshold,
+    redeemedRewards: rewardState.redeemedRewards,
+    consumedStamps: rewardState.consumedStamps,
+    resetBehavior: rewardConfig.resetBehavior,
+    tierThresholds: rewardConfig.tierThresholds,
+  });
   const loyaltyRewardCredits = creditsList
     .filter((c) => c.type === 'loyalty_reward' && c.status === 'active' && (c.remaining_cents ?? 0) > 0)
     .map((c) => ({

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { displayMoney } from '@/lib/display-format';
-import { buildLoyaltyRewardView, countRedeemedLoyaltyRewards, loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
+import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
 import { recommendMembershipTier } from '@/lib/membership-roi';
 
 export type CustomerIntelligence = {
@@ -135,10 +135,10 @@ export async function loadCustomerIntelligence(
 
   const outstandingBalanceCents = rows.reduce((s, a) => s + Math.max(0, Number(a.balance_due_cents) || 0), 0);
 
-  const [{ data: stamps }, rewardConfig, redeemedRewards, plansRes, lastMsgRes, reviewRes] = await Promise.all([
+  const [{ data: stamps }, rewardConfig, rewardState, plansRes, lastMsgRes, reviewRes] = await Promise.all([
     admin.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', customerId),
     loadLoyaltyRewardConfig(admin),
-    countRedeemedLoyaltyRewards(admin, customerId),
+    loadLoyaltyRewardState(admin, customerId),
     admin
       .from('membership_plans')
       .select('tier, name, discount_percent, price_yearly_cents, price_monthly_cents, archived')
@@ -181,8 +181,12 @@ export async function loadCustomerIntelligence(
     /* optional */
   }
 
-  const loyaltyView = buildLoyaltyRewardView((stamps ?? []) as never[], redeemedRewards, {
+  const loyaltyView = buildLoyaltyRewardView((stamps ?? []) as never[], rewardState.issuedRewards, {
     rewardThreshold: rewardConfig.rewardThreshold,
+    redeemedRewards: rewardState.redeemedRewards,
+    consumedStamps: rewardState.consumedStamps,
+    resetBehavior: rewardConfig.resetBehavior,
+    tierThresholds: rewardConfig.tierThresholds,
   });
 
   const visitsPerYear = avgDaysBetweenVisits

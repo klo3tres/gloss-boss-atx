@@ -31,12 +31,14 @@ export default async function ReportsPage({
   const summary = await getFinancialSnapshot(admin, { startDate: fromIso, endDate: toIso, includeTest });
   const extended = await loadExtendedReportMetrics(admin, { startIso: fromIso, endIso: toIso });
 
-  const [reportOutstanding, reportIssued, reportRedeemed, reportExpired, reportVoided] = await Promise.all([
+  const [reportOutstanding, reportIssued, reportRedeemed, reportExpired, reportVoided, referralRewardsIssued, referralRewardsRedeemed] = await Promise.all([
     admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
     admin.from('customer_credits').select('amount_cents').gte('issued_at', fromIso).lte('issued_at', toIso).neq('status', 'voided'),
     admin.from('customer_credit_redemptions').select('amount_cents').gte('redeemed_at', fromIso).lte('redeemed_at', toIso),
     admin.from('customer_credits').select('remaining_cents').gte('expires_at', fromIso).lte('expires_at', toIso).eq('status', 'expired'),
     admin.from('customer_credits').select('amount_cents').gte('created_at', fromIso).lte('created_at', toIso).eq('status', 'voided'),
+    admin.from('referral_rewards').select('id', { count: 'exact', head: true }).gte('issued_at', fromIso).lte('issued_at', toIso),
+    admin.from('referral_rewards').select('id', { count: 'exact', head: true }).gte('redeemed_at', fromIso).lte('redeemed_at', toIso).eq('status', 'redeemed'),
   ]);
 
   const outstandingTotalCents = (reportOutstanding.data ?? []).reduce((sum, c) => sum + (c.remaining_cents ?? 0), 0);
@@ -117,6 +119,8 @@ export default async function ReportsPage({
             ['Fleet pipeline', extended.fleetPipelineLabel],
             ['Open upsell opps', String(extended.upsellOpportunityCount)],
             ['Referral rewards', extended.referralRevenueLabel],
+            ['Rewards issued', String(referralRewardsIssued.count ?? 0)],
+            ['Rewards redeemed', String(referralRewardsRedeemed.count ?? 0)],
           ].map(([label, value]) => (
             <div key={String(label)} className="rounded-2xl border border-border bg-muted/20 p-4">
               <p className="text-[10px] font-black uppercase text-muted-foreground">{label}</p>

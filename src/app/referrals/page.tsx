@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
-import { ensureCustomerReferralCode, formatReferralHeadline, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
+import { ensureCustomerReferralCode, formatReferralHeadline, formatRewardSummary, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
 import { loadReferralStatsForCustomer } from '@/lib/referral/referral-events';
 import { PremiumButton } from '@/components/premium/premium-button';
 import { PremiumEyebrow } from '@/components/premium/premium-eyebrow';
@@ -15,6 +15,7 @@ export default async function ReferralsLandingPage() {
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   const email = session.user?.email?.trim().toLowerCase();
+  const publicSettings = admin ? await loadReferralProgramSettings(admin) : null;
 
   let referralProps: {
     referralCode: string;
@@ -37,7 +38,7 @@ export default async function ReferralsLandingPage() {
     const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
     const customerId = customer?.id ? String(customer.id) : '';
     if (customerId) {
-      const settings = await loadReferralProgramSettings(admin);
+      const settings = publicSettings ?? await loadReferralProgramSettings(admin);
       const codeRow = await ensureCustomerReferralCode(admin, customerId);
       const stats = await loadReferralStatsForCustomer(admin, customerId);
       referralProps = {
@@ -95,15 +96,12 @@ export default async function ReferralsLandingPage() {
         <div className="mx-auto max-w-4xl">
           <h2 className="text-xl font-black uppercase text-white">Reward ladder</h2>
           <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-            {[
-              ['1 referral', 'Free add-on'],
-              ['3 referrals', 'Interior upgrade'],
-              ['5 referrals', 'Free maintenance wash'],
-              ['10 referrals', 'Free full detail'],
-            ].map(([n, reward]) => (
-              <li key={n} className="rounded-xl border border-white/10 bg-black/45 px-4 py-3 text-sm">
-                <span className="font-black text-gold-soft">{n}</span>
-                <span className="text-zinc-400"> → {reward}</span>
+            {(publicSettings?.rewardLadder ?? []).map((tier) => (
+              <li key={`${tier.threshold}:${tier.rewardType}:${tier.label}`} className="rounded-xl border border-white/10 bg-black/45 px-4 py-3 text-sm">
+                <span className="font-black text-gold-soft">
+                  {tier.threshold} {tier.threshold === 1 ? 'referral' : 'referrals'}
+                </span>
+                <span className="text-zinc-400"> → {tier.label || formatRewardSummary(tier.rewardType, tier.rewardValue)}</span>
               </li>
             ))}
           </ul>

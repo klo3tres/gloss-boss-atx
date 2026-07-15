@@ -30,7 +30,7 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
       <input type="hidden" name="reward_ladder_json" value={JSON.stringify(tiers)} />
       <p className="text-xs text-muted-foreground">Reward ladder — unlocks as referrals complete. Defaults include 15% and are fully editable.</p>
       {tiers.map((tier, idx) => (
-        <div key={idx} className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-[1fr_1fr_1fr_1.4fr_auto]">
+        <div key={idx} className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-[10px] font-black uppercase text-muted-foreground">
             At N referrals
             <input
@@ -90,6 +90,19 @@ function RewardLadderEditor({ initial }: { initial: ReferralRewardLadderTier[] }
               className={inputClass}
             />
           </label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Eligible service slugs<input value={(tier.eligibleServiceSlugs ?? []).join(', ')} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,eligibleServiceSlugs:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)}; setTiers(next); }} placeholder="exterior-wash, full-detail" className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Eligible add-on slugs<input value={(tier.eligibleAddonSlugs ?? []).join(', ')} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,eligibleAddonSlugs:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)}; setTiers(next); }} placeholder="pet-hair, engine-bay" className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Service category<input value={tier.serviceCategory ?? ''} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,serviceCategory:e.target.value}; setTiers(next); }} placeholder="exterior" className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Maximum retail value (cents)<input type="number" min="0" value={tier.maximumRetailCents ?? 0} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,maximumRetailCents:Number(e.target.value)||0}; setTiers(next); }} className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Vehicle restrictions<input value={(tier.vehicleRestrictions ?? []).join(', ')} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,vehicleRestrictions:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)}; setTiers(next); }} placeholder="sedan, suv, truck" className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Exclusions<input value={(tier.exclusions ?? []).join(', ')} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,exclusions:e.target.value.split(',').map(v=>v.trim()).filter(Boolean)}; setTiers(next); }} placeholder="ceramic-coating" className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Expiration days<input type="number" min="0" value={tier.expirationDays ?? 0} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,expirationDays:Number(e.target.value)||0}; setTiers(next); }} className={inputClass} /></label>
+          <label className="text-[10px] font-black uppercase text-muted-foreground">Internal notes<input value={tier.internalNotes ?? ''} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,internalNotes:e.target.value}; setTiers(next); }} className={inputClass} /></label>
+          <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase text-muted-foreground sm:col-span-2 lg:col-span-4">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={tier.customerPaysDifference === true} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,customerPaysDifference:e.target.checked}; setTiers(next); }} /> Customer pays difference</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={tier.stackingAllowed === true} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,stackingAllowed:e.target.checked}; setTiers(next); }} /> Stackable</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={tier.repeatable === true} onChange={(e) => { const next=[...tiers]; next[idx]={...tier,repeatable:e.target.checked}; setTiers(next); }} /> Repeatable</label>
+          </div>
           <div className="flex items-end gap-1 pb-1">
             <button
               type="button"

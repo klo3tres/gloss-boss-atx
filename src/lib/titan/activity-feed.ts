@@ -25,6 +25,7 @@ export type TitanActivityKind =
   | 'staff_reset_link_sent'
   | 'referral_settings_changed'
   | 'referral_reward_issued'
+  | 'referral_reward_redeemed'
   | 'tech_job_assigned'
   | 'payment_link_clicked'
   | 'payment_received'

@@ -231,6 +231,12 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
                 {inv.lastSentAt ? `Last sent ${new Date(inv.lastSentAt).toLocaleString()} (${inv.lastSentChannel})` : 'Not sent yet'}
                 {' · '}Expires {new Date(inv.expiresAt).toLocaleDateString()}
               </p>
+              {inv.smsDeliveryStatus ? (
+                <p className={`mt-1 text-[10px] font-bold ${['failed', 'undelivered'].includes(inv.smsDeliveryStatus) ? 'text-red-400' : inv.smsDeliveryStatus === 'delivered' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                  SMS: {inv.smsDeliveryStatus.replace(/_/g, ' ')}
+                  {inv.smsDeliveryError ? ` · ${inv.smsDeliveryError}` : ''}
+                </p>
+              ) : null}
             </div>
             <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700">Pending</span>
           </div>

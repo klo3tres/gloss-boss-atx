@@ -25,7 +25,7 @@ export async function logSmsOutbox(
   db: SupabaseClient | null | undefined,
   row: {
     kind: string;
-    status: 'sent' | 'delivered' | 'queued' | 'failed' | 'skipped';
+    status: 'sent' | 'delivered' | 'queued' | 'failed' | 'undelivered' | 'skipped';
     appointment_id?: string | null;
     fallback_booking_id?: string | null;
     customer_id?: string | null;
@@ -53,8 +53,9 @@ export async function logSmsOutbox(
     error_message: row.error_message ?? null,
     skipped_reason: row.skipped_reason ?? null,
     payload: { send_mode: twilioSendMode(), ...row.payload },
-    sent_at: row.status === 'sent' ? now : null,
-    failed_at: row.status === 'failed' ? now : null,
+    sent_at: row.status === 'sent' || row.status === 'delivered' ? now : null,
+    delivered_at: row.status === 'delivered' ? now : null,
+    failed_at: row.status === 'failed' || row.status === 'undelivered' ? now : null,
     created_at: now,
   });
   if (error) console.warn('[sms] notification_outbox', error.message);
@@ -174,8 +175,15 @@ export async function sendCustomerSms(params: {
   const sent = await sendTwilioSms({ to: e164, body: params.body });
   if (sent.ok) {
     const delivery = (sent.status ?? 'queued').toLowerCase();
-    const delivered = delivery === 'delivered' || delivery === 'sent';
-    const outboxStatus = delivered ? 'delivered' : delivery === 'failed' || delivery === 'undelivered' ? 'failed' : 'queued';
+    const outboxStatus = delivery === 'delivered'
+      ? 'delivered'
+      : delivery === 'sent'
+        ? 'sent'
+        : delivery === 'failed'
+          ? 'failed'
+          : delivery === 'undelivered'
+            ? 'undelivered'
+            : 'queued';
     await logSmsOutbox(params.db, {
       kind: params.kind,
       status: outboxStatus,

@@ -194,6 +194,18 @@ export default async function MembershipsAdminPage() {
                   <label className="block text-xs text-zinc-400">Expiration (days)<input name="expiration_days" type="number" min="1" defaultValue={Number(rulePayload.expiration_days ?? 365)} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white font-mono" /></label>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-zinc-300"><input type="checkbox" name="customer_pays_difference" defaultChecked={rulePayload.customer_pays_difference === true} className="accent-gold" /> Customer pays the difference above maximum value</label>
+                <label className="block text-xs text-zinc-400">
+                  Progress after redemption
+                  <select name="reset_behavior" defaultValue={String(rulePayload.reset_behavior ?? 'subtract_threshold')} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white">
+                    <option value="reset_to_zero">Reset to zero</option>
+                    <option value="subtract_threshold">Subtract threshold; keep extra punches</option>
+                    <option value="advance_tier">Advance to next tier</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-zinc-400">
+                  Tier punch thresholds (comma separated)
+                  <input name="tier_thresholds" defaultValue={Array.isArray(rulePayload.tier_thresholds) ? rulePayload.tier_thresholds.join(', ') : ''} placeholder="5, 8, 10" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-xs text-white" />
+                </label>
                 
                 <label className='flex items-center gap-2 text-xs text-zinc-300 cursor-pointer pt-1'>
                   <input type='checkbox' name='active' defaultChecked={rules[0]?.active !== false} className='accent-gold' />

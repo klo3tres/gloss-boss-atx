@@ -8,7 +8,7 @@ import {
   type CustomerApptSnapshotView,
 } from '@/lib/customer-dashboard-snapshot';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
-import { buildLoyaltyRewardView, countRedeemedLoyaltyRewards, loadLoyaltyRewardConfig } from '@/lib/loyalty-reward-claim';
+import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
 
 
 
@@ -464,8 +464,14 @@ export default async function CustomerDashboardRootPage({
       const rewardConfig = await loadLoyaltyRewardConfig(adminDb);
       loyaltyRewardThreshold = rewardConfig.rewardThreshold;
       loyaltyStampsCount = calculateLoyaltyStatus(stamps ?? [], { rewardThreshold: rewardConfig.rewardThreshold }).totalStamps;
-      const redeemedRewards = await countRedeemedLoyaltyRewards(adminDb, String(cust.id));
-      const loyaltyView = buildLoyaltyRewardView(stamps ?? [], redeemedRewards, { rewardThreshold: rewardConfig.rewardThreshold });
+      const rewardState = await loadLoyaltyRewardState(adminDb, String(cust.id));
+      const loyaltyView = buildLoyaltyRewardView(stamps ?? [], rewardState.issuedRewards, {
+        rewardThreshold: rewardConfig.rewardThreshold,
+        redeemedRewards: rewardState.redeemedRewards,
+        consumedStamps: rewardState.consumedStamps,
+        resetBehavior: rewardConfig.resetBehavior,
+        tierThresholds: rewardConfig.tierThresholds,
+      });
       loyaltyCanClaim = loyaltyView.canClaim;
       loyaltyClaimableCount = loyaltyView.claimableRewards;
       loyaltyRewardDescription = rewardConfig.rewardDescription;
@@ -509,7 +515,7 @@ export default async function CustomerDashboardRootPage({
           };
         });
       }
-      const referralWallet = await adminDb.from('referral_rewards').select('id, reward_type, reward_value, reward_label, status, expires_at, metadata').eq('customer_id', cust.id).neq('reward_type', 'dollar').order('created_at', { ascending: false }).limit(100);
+      const referralWallet = await adminDb.from('referral_rewards').select('id, reward_type, reward_value, reward_label, status, expires_at, metadata, eligibility, selected_service_slug, selected_addon_slug, reserved_appointment_id').eq('customer_id', cust.id).in('reward_type', ['percent', 'free_addon', 'free_service', 'custom']).order('created_at', { ascending: false }).limit(100);
       if (!referralWallet.error) {
         const { formatRewardSummary } = await import('@/lib/referral/referral-codes');
         rewardWalletItems.push(...(referralWallet.data ?? []).map((row) => {
@@ -526,6 +532,7 @@ export default async function CustomerDashboardRootPage({
             expiresAt,
             usable: ['issued', 'available'].includes(status),
             terms: 'Eligible service selection is confirmed during booking. One-time use.',
+            bookingHref: `/book?reward=${encodeURIComponent(String(row.id))}`,
           };
         }));
       }
