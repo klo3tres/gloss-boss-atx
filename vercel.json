@@ -9,10 +9,6 @@
       "schedule": "0 14 * * *"
     },
     {
-      "path": "/api/cron/missed-job-starts",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/titan-nightly",
       "schedule": "0 6 * * *"
     }

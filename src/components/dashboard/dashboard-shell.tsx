@@ -102,6 +102,7 @@ const adminNavGroups: NavGroup[] = [
   {
     title: 'System',
     links: [
+      { href: '/admin/automation-center', label: 'Automation Center' },
       { href: '/admin/setup-center', label: 'Setup center' },
       { href: '/admin/settings', label: 'Settings' },
       { href: '/admin/brand-settings', label: 'Brand settings' },

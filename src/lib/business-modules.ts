@@ -25,6 +25,24 @@ export type MarketingCampaign = {
   status: 'draft' | 'scheduled' | 'sent' | 'paused';
   sentCount: number;
   createdAt: string;
+  kind?: 'standard' | 'weather';
+  recipientProfiles?: Array<{
+    customerId: string;
+    firstName: string;
+    city: string;
+    vehicle: string;
+    lastService: string;
+    daysSinceLastAppointment: number | null;
+    membershipStatus: string;
+    loyaltyProgress: string;
+    ceramicStatus: string;
+    currentPromotion: string;
+    availableTimes: string;
+    weatherEvent: string;
+    serviceRecommendation: string;
+    qualification: string;
+  }>;
+  messageVariants?: { quick: string; professional: string; warm: string; emailBody: string };
   intelligence?: {
     reason: string;
     estimatedRecipientCount: number;
@@ -102,5 +120,6 @@ export function newMarketingCampaign(partial: Partial<MarketingCampaign> = {}): 
     status: partial.status ?? 'draft',
     sentCount: partial.sentCount ?? 0,
     createdAt: new Date().toISOString(),
+    kind: partial.kind ?? 'standard',
   };
 }

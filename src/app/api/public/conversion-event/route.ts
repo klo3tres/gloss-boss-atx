@@ -13,5 +13,18 @@ export async function POST(request: Request) {
   const sourcePath = String(body.sourcePath ?? '').trim().slice(0, 180);
   const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {};
   const { error } = await admin.from('conversion_events').insert({ event_type: eventType, session_id: sessionId || null, source_path: sourcePath || null, metadata, is_test: body.isTest === true });
+  const campaignId = String((metadata as Record<string, unknown>).campaignId ?? '').trim();
+  if (campaignId && eventType === 'booking_started') {
+    const { data: campaign } = await admin.from('customer_campaigns').select('click_count, meta').eq('id', campaignId).maybeSingle();
+    if (campaign) {
+      const meta = campaign.meta && typeof campaign.meta === 'object' ? campaign.meta as Record<string, unknown> : {};
+      const tracking = meta.tracking && typeof meta.tracking === 'object' ? meta.tracking as Record<string, unknown> : {};
+      await admin.from('customer_campaigns').update({
+        click_count: Number(campaign.click_count ?? 0) + 1,
+        meta: { ...meta, tracking: { ...tracking, bookingStarts: Number(tracking.bookingStarts ?? 0) + 1 } },
+        updated_at: new Date().toISOString(),
+      }).eq('id', campaignId);
+    }
+  }
   return NextResponse.json({ ok: !error }, { status: error ? 400 : 200 });
 }

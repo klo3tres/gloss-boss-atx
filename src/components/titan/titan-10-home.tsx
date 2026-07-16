@@ -377,6 +377,10 @@ export function Titan10HomeClient({
             <span aria-hidden>🌐</span>
             Website Intelligence
           </Link>
+          <Link href="/admin/automation-center" className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100 hover:text-white">
+            <span aria-hidden>☀</span>
+            Create rain recovery campaign
+          </Link>
           {/* Single Settings entry — do not duplicate in header */}
           <Link href="/admin/titan/settings" className="inline-flex items-center gap-1.5 rounded-xl border border-white/8 bg-black/30 px-4 py-3 text-center text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500 hover:text-white">
             <span aria-hidden>⚙️</span>

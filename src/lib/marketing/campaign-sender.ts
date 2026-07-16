@@ -11,6 +11,7 @@ type Recipient = {
   emailMarketingOptIn?: boolean | null;
   smsConsent?: boolean | null;
   smsStatus?: string | null;
+  personalization?: Record<string, string>;
 };
 
 function str(v: unknown) {
@@ -39,8 +40,32 @@ async function loadCustomersByIds(admin: SupabaseClient, ids: string[]): Promise
   return (data ?? []).map((c) => mapCustomerRow(c as Record<string, unknown>));
 }
 
-async function resolveAudience(admin: SupabaseClient, audience: string): Promise<Recipient[]> {
-  const hay = audience.toLowerCase();
+async function resolveAudience(admin: SupabaseClient, campaign: MarketingCampaign): Promise<Recipient[]> {
+  if (campaign.recipientProfiles?.length) {
+    const profiles = new Map(campaign.recipientProfiles.map((profile) => [profile.customerId, profile]));
+    const loaded = await loadCustomersByIds(admin, [...profiles.keys()]);
+    return loaded.map((recipient) => {
+      const profile = profiles.get(recipient.id);
+      return {
+        ...recipient,
+        personalization: profile ? {
+          first_name: profile.firstName,
+          city: profile.city,
+          vehicle: profile.vehicle,
+          last_service: profile.lastService,
+          days_since_last_appointment: profile.daysSinceLastAppointment == null ? 'not recorded' : String(profile.daysSinceLastAppointment),
+          membership_status: profile.membershipStatus,
+          loyalty_progress: profile.loyaltyProgress,
+          ceramic_status: profile.ceramicStatus,
+          current_promotion: profile.currentPromotion,
+          available_times: profile.availableTimes,
+          weather_event: profile.weatherEvent,
+          service_recommendation: profile.serviceRecommendation,
+        } : undefined,
+      };
+    });
+  }
+  const hay = campaign.audience.toLowerCase();
   const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
 
   if (hay.includes('opted_in_marketing') || hay.includes('opted-in marketing') || (hay.includes('opted in') && hay.includes('marketing'))) {
@@ -219,7 +244,7 @@ export async function executeMarketingCampaign(
     return { ok: false, sent: 0, skipped: 0, excluded: 0, errors: ['Campaign message is empty.'] };
   }
 
-  const recipients = await resolveAudience(admin, campaign.audience);
+  const recipients = await resolveAudience(admin, campaign);
   if (recipients.length === 0) {
     return { ok: false, sent: 0, skipped: 0, excluded: 0, errors: ['No recipients matched this audience.'] };
   }
@@ -230,6 +255,13 @@ export async function executeMarketingCampaign(
   let excluded = 0;
   const wantsEmail = campaign.channel === 'email' || campaign.channel === 'both';
   const wantsSms = campaign.channel === 'sms' || campaign.channel === 'both';
+  const render = (template: string, recipient: Recipient) => {
+    let output = template.replace(/\{name\}/gi, recipient.name.split(' ')[0] || 'there');
+    for (const [key, value] of Object.entries(recipient.personalization ?? {})) {
+      output = output.replaceAll(`{{${key}}}`, value);
+    }
+    return output;
+  };
 
   if (wantsEmail) {
     const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
@@ -245,20 +277,24 @@ export async function executeMarketingCampaign(
         skipped += 1;
         continue;
       }
-      const body = campaign.message.replace(/\{name\}/gi, r.name.split(' ')[0] || 'there');
+      const body = render(campaign.messageVariants?.emailBody || campaign.message, r);
+      const subject = render(campaign.intelligence?.emailSubject || campaign.name, r);
       const res = await sendResendHtml({
         to: r.email,
-        subject: campaign.name,
+        subject,
         html: `<div style="font-family:sans-serif;line-height:1.5">${body.replace(/\n/g, '<br/>')}</div>`,
       });
       if (res.ok) {
         sent += 1;
+        if (campaign.kind === 'weather') {
+          await admin.from('customer_campaign_recipients').update({ status: 'sent', provider_id: res.emailId ?? null, updated_at: new Date().toISOString() }).eq('campaign_id', campaign.id).eq('customer_id', r.id);
+        }
         await logOutboundMessage(admin, {
           kind: 'marketing_campaign',
           channel: 'email',
           status: 'sent',
           body,
-          subject: campaign.name,
+          subject,
           recipient: r.email,
           customer_id: r.id.length === 36 ? r.id : null,
           entity_type: 'marketing_campaign',
@@ -283,7 +319,7 @@ export async function executeMarketingCampaign(
           skipped += 1;
           continue;
         }
-        const body = campaign.message.replace(/\{name\}/gi, r.name.split(' ')[0] || 'there');
+        const body = render(campaign.message, r);
         const res = await sendCustomerSms({
           db: admin,
           kind: 'marketing_campaign',
@@ -295,6 +331,9 @@ export async function executeMarketingCampaign(
         });
         if (res.ok) {
           sent += 1;
+          if (campaign.kind === 'weather') {
+            await admin.from('customer_campaign_recipients').update({ status: 'sent', provider_id: res.sid ?? null, updated_at: new Date().toISOString() }).eq('campaign_id', campaign.id).eq('customer_id', r.id);
+          }
           await logOutboundMessage(admin, {
             kind: 'marketing_campaign',
             channel: 'sms',
@@ -320,6 +359,17 @@ export async function executeMarketingCampaign(
       excluded: 0,
       errors: [`Channel "${campaign.channel}" is draft-only — use email or SMS to send.`],
     };
+  }
+
+  if (campaign.kind === 'weather') {
+    await admin.from('customer_campaigns').update({
+      status: sent > 0 ? 'sent' : errors.length ? 'failed' : 'draft',
+      sent_at: sent > 0 ? new Date().toISOString() : null,
+      sent_count: sent,
+      failed_count: errors.length,
+      recipients_excluded: excluded,
+      updated_at: new Date().toISOString(),
+    }).eq('id', campaign.id);
   }
 
   return { ok: sent > 0, sent, skipped, excluded, errors: errors.slice(0, 8) };

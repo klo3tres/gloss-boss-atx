@@ -78,6 +78,20 @@ export async function POST(request: Request) {
         updated_at: now,
       }).eq('id', inviteId);
     }
+    const campaignId = typeof payload.campaign_id === 'string' ? payload.campaign_id : '';
+    if (campaignId) {
+      const recipientStatus = messageStatus === 'undelivered' ? 'failed' : messageStatus;
+      await admin.from('customer_campaign_recipients').update({
+        status: recipientStatus,
+        error_message: patch.error_message,
+        updated_at: now,
+      }).eq('campaign_id', campaignId).eq('provider_id', messageSid);
+      const [{ count: delivered }, { count: failed }] = await Promise.all([
+        admin.from('customer_campaign_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'delivered'),
+        admin.from('customer_campaign_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'failed'),
+      ]);
+      await admin.from('customer_campaigns').update({ delivered_count: delivered ?? 0, failed_count: failed ?? 0, updated_at: now }).eq('id', campaignId);
+    }
     return new NextResponse('<Response />', { headers: { 'Content-Type': 'text/xml' } });
   }
 
