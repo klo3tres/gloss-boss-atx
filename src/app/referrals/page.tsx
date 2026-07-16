@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { CustomerReferralCard } from '@/components/customer/customer-referral-card';
-import { ensureCustomerReferralCode, formatReferralHeadline, formatRewardSummary, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
+import { ensureCustomerReferralCode, formatReferralTerms, formatReferredReward, formatReferrerReward, formatRewardSummary, loadReferralProgramSettings, referralLinkForCode } from '@/lib/referral/referral-codes';
 import { loadReferralStatsForCustomer } from '@/lib/referral/referral-events';
 import { PremiumButton } from '@/components/premium/premium-button';
 import { PremiumEyebrow } from '@/components/premium/premium-eyebrow';
@@ -11,7 +12,9 @@ import { StickyBookCta } from '@/components/premium/sticky-book-cta';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReferralsLandingPage() {
+export default async function ReferralsLandingPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const query = await searchParams;
+  const host = (await headers()).get('host') ?? '';
   const session = await getSessionWithProfile();
   const admin = tryCreateAdminSupabase();
   const email = session.user?.email?.trim().toLowerCase();
@@ -28,6 +31,8 @@ export default async function ReferralsLandingPage() {
     rewardsAvailable: number;
     threshold: number;
     rewardRules: string;
+    giveLabel: string;
+    getLabel: string;
     givePercent: number;
     getPercent: number;
     rewardLadder: import('@/lib/referral/referral-codes').ReferralRewardLadderTier[];
@@ -51,13 +56,36 @@ export default async function ReferralsLandingPage() {
         rewardsEarned: stats.rewardsEarned,
         rewardsAvailable: stats.rewardsAvailable,
         threshold: settings.freeDetailReferralThreshold,
-        rewardRules: `${formatReferralHeadline(settings)} Your reward unlocks after your friend's completed paid appointment.`,
+        rewardRules: formatReferralTerms(settings),
+        giveLabel: formatReferredReward(settings),
+        getLabel: formatReferrerReward(settings),
         givePercent: settings.referredRewardValue,
         getPercent: settings.referrerRewardValue,
         rewardLadder: settings.rewardLadder ?? [],
         enabled: settings.enabled,
       };
     }
+  }
+  const localPreview = /^(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(host) && query.preview === '1';
+  if (!referralProps && localPreview && publicSettings) {
+    referralProps = {
+      referralCode: 'PREVIEW1',
+      referralLink: referralLinkForCode('PREVIEW1'),
+      completedReferrals: 2,
+      bookedReferrals: 3,
+      pendingReferrals: 1,
+      sentReferrals: 4,
+      rewardsEarned: 2,
+      rewardsAvailable: 1,
+      threshold: publicSettings.freeDetailReferralThreshold,
+      rewardRules: formatReferralTerms(publicSettings),
+      giveLabel: formatReferredReward(publicSettings),
+      getLabel: formatReferrerReward(publicSettings),
+      givePercent: publicSettings.referredRewardValue,
+      getPercent: publicSettings.referrerRewardValue,
+      rewardLadder: publicSettings.rewardLadder ?? [],
+      enabled: publicSettings.enabled,
+    };
   }
 
   return (

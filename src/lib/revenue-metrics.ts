@@ -23,6 +23,9 @@ export type PayRow = {
   exclude_from_revenue?: boolean | null;
   refunded_at?: string | null;
   refunded_amount_cents?: number | null;
+  applied_amount_cents?: number | null;
+  tip_amount_cents?: number | null;
+  tender_type?: string | null;
   source_table?: 'payments' | 'receipts';
   payment_id?: string | null;
   appointment_status?: string | null;
@@ -189,10 +192,11 @@ export function summarizePayments(
     if (meta?.duplicate_of_payment === true) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
 
-    // Filter by completed appointment status
+    // Collected revenue is cash received, regardless of whether the active job is
+    // still scheduled or already completed. Cancelled/voided jobs are excluded.
     const aid = str(p.appointment_id);
     const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
-    if (aid && apptStatus !== 'completed') continue;
+    if (aid && ['cancelled', 'canceled', 'voided', 'deleted', 'archived'].includes(str(apptStatus).toLowerCase())) continue;
 
     const amt = Math.max(0, (typeof p.amount_cents === 'number' ? p.amount_cents : 0) - (typeof p.refunded_amount_cents === 'number' ? p.refunded_amount_cents : 0));
     if (amt <= 0) continue;
@@ -239,7 +243,7 @@ export function selectCanonicalRevenueRows(
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
     const aid = str(p.appointment_id);
     const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
-    if (aid && apptStatus !== 'completed') continue;
+    if (aid && ['cancelled', 'canceled', 'voided', 'deleted', 'archived'].includes(str(apptStatus).toLowerCase())) continue;
     const amount = Math.max(0, (p.amount_cents ?? 0) - (p.refunded_amount_cents ?? 0));
     if (amount <= 0 || shouldExcludeFromCashRevenue(p)) continue;
     const key = revenueIdentityKey(p);
@@ -332,12 +336,13 @@ export function buildRevenueDiagnostics(
       continue;
     }
 
-    // Filter by completed appointment status in diagnostics
+    // Cash received for an active scheduled job is collected revenue (for
+    // example, a deposit). Only cancelled/voided jobs are excluded here.
     const aid = str(p.appointment_id);
     const apptStatus = p.appointment_status || (aid && opts?.apptById ? opts.apptById.get(aid)?.status : null);
-    if (aid && apptStatus !== 'completed') {
-      exclusions.push({ id, amountCents: amt, method, reason: `Linked job is not completed (status: ${apptStatus || 'none'})` });
-      pushAudit(p, false, `Linked job is not completed (status: ${apptStatus || 'none'})`);
+    if (aid && ['cancelled', 'canceled', 'voided', 'deleted', 'archived'].includes(str(apptStatus).toLowerCase())) {
+      exclusions.push({ id, amountCents: amt, method, reason: `Linked job is excluded (status: ${apptStatus || 'none'})` });
+      pushAudit(p, false, `Linked job is excluded (status: ${apptStatus || 'none'})`);
       continue;
     }
 
@@ -402,7 +407,7 @@ export function buildRevenueDiagnostics(
 
 export async function fetchPaymentsSince(admin: SupabaseClient, fromIso: string, toIso?: string) {
   const select =
-    'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
+    'id, amount_cents, status, payment_method, payment_kind, tender_type, applied_amount_cents, tip_amount_cents, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents';
   const upper = toIso ?? new Date().toISOString();
   const [byPaidRes, byCreatedRes, receiptRows] = await Promise.all([
     admin.from('payments').select(select).gte('paid_at', fromIso).lte('paid_at', upper).limit(5000),

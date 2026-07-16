@@ -81,6 +81,8 @@ export type CustomerDashboardProps = {
   referralRewardsAvailable?: number;
   referralProgramEnabled?: boolean;
   referralRewardRules?: string;
+  referralGiveLabel?: string;
+  referralGetLabel?: string;
   referralFreeDetailThreshold?: number;
   referralPendingCount?: number;
   referralGivePercent?: number;
@@ -348,6 +350,8 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           rewardsAvailable={props.referralRewardsAvailable}
           threshold={props.referralFreeDetailThreshold ?? 5}
           rewardRules={props.referralRewardRules}
+          giveLabel={props.referralGiveLabel}
+          getLabel={props.referralGetLabel}
           givePercent={props.referralGivePercent}
           getPercent={props.referralGetPercent}
           rewardLadder={props.referralRewardLadder}

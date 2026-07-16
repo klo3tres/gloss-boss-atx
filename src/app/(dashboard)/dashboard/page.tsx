@@ -260,6 +260,8 @@ export default async function CustomerDashboardRootPage({
   let referralRewardsAvailable = 0;
   let referralProgramEnabled = true;
   let referralRewardRules = '';
+  let referralGiveLabel = '';
+  let referralGetLabel = '';
   let referralFreeDetailThreshold = 5;
   let referralPendingCount = 0;
   let referralGivePercent = 10;
@@ -279,8 +281,10 @@ export default async function CustomerDashboardRootPage({
         referralGivePercent = settings.referredRewardValue;
         referralGetPercent = settings.referrerRewardValue;
         referralRewardLadder = settings.rewardLadder ?? [];
-        const { formatReferralHeadline } = await import('@/lib/referral/referral-codes');
-        referralRewardRules = `${formatReferralHeadline(settings)} Your reward unlocks after your friend's completed paid appointment.`;
+        const { formatReferralTerms, formatReferredReward, formatReferrerReward } = await import('@/lib/referral/referral-codes');
+        referralRewardRules = formatReferralTerms(settings);
+        referralGiveLabel = formatReferredReward(settings);
+        referralGetLabel = formatReferrerReward(settings);
         const codeRow = await ensureCustomerReferralCode(adminDb, customerId);
         referralCode = codeRow.code;
         referralLink = referralLinkForCode(codeRow.code);
@@ -523,6 +527,17 @@ export default async function CustomerDashboardRootPage({
           const expiresAt = row.expires_at ? String(row.expires_at) : typeof metadata.expires_at === 'string' ? metadata.expires_at : null;
           const expired = Boolean(expiresAt && expiresAt < new Date().toISOString());
           const status = expired ? 'expired' : String(row.status ?? 'pending');
+          const eligibility = row.eligibility && typeof row.eligibility === 'object' ? row.eligibility as Record<string, unknown> : {};
+          const serviceTerms = Array.isArray(eligibility.eligibleServiceSlugs) ? eligibility.eligibleServiceSlugs.map(String) : [];
+          const addonTerms = Array.isArray(eligibility.eligibleAddonSlugs) ? eligibility.eligibleAddonSlugs.map(String) : [];
+          const vehicleTerms = Array.isArray(eligibility.vehicleRestrictions) ? eligibility.vehicleRestrictions.map(String) : [];
+          const terms = [
+            serviceTerms.length ? `Services: ${serviceTerms.join(', ')}` : '',
+            addonTerms.length ? `Add-ons: ${addonTerms.join(', ')}` : '',
+            vehicleTerms.length ? `Vehicles: ${vehicleTerms.join(', ')}` : '',
+            eligibility.maximumRetailCents ? `Maximum value: $${(Number(eligibility.maximumRetailCents) / 100).toFixed(2)}` : '',
+            eligibility.customerPaysDifference === true ? 'You pay any difference.' : '',
+          ].filter(Boolean).join(' · ');
           return {
             id: `referral:${row.id}`,
             source: 'Referral reward',
@@ -531,7 +546,7 @@ export default async function CustomerDashboardRootPage({
             status,
             expiresAt,
             usable: ['issued', 'available'].includes(status),
-            terms: 'Eligible service selection is confirmed during booking. One-time use.',
+            terms: `${terms ? `${terms} ` : ''}Selection is confirmed during booking. One-time use.`,
             bookingHref: `/book?reward=${encodeURIComponent(String(row.id))}`,
           };
         }));
@@ -684,6 +699,8 @@ export default async function CustomerDashboardRootPage({
         referralRewardsAvailable={referralRewardsAvailable}
         referralProgramEnabled={referralProgramEnabled}
         referralRewardRules={referralRewardRules}
+        referralGiveLabel={referralGiveLabel}
+        referralGetLabel={referralGetLabel}
         referralFreeDetailThreshold={referralFreeDetailThreshold}
         referralPendingCount={referralPendingCount}
         referralGivePercent={referralGivePercent}

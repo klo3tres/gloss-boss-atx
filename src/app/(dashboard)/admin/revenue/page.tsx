@@ -7,6 +7,7 @@ import {
   buildRevenueDiagnostics,
   fetchPaymentsSince,
   startOfTodayIso,
+  startOfMonthIso,
   startOfWeekIso,
   startOfYearIso,
   summarizePayments,
@@ -16,8 +17,6 @@ import { notFound } from 'next/navigation';
 import { RevenueChartsClient } from '@/components/admin/revenue-charts';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
 import { getFinancialSnapshot } from '@/lib/financial-ledger';
-import Stripe from 'stripe';
-import { getStripeFinanceSnapshot } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
@@ -88,7 +87,7 @@ export default async function AdminRevenuePage({
 
   const sp = searchParams ? await searchParams : {};
   const includeTest = sp.includeTest === '1';
-  const periodStartIso = startOfRolling30Iso();
+  const periodStartIso = startOfMonthIso();
 
   const { data: apptMeta } = await admin.from('appointments').select('id, guest_email, guest_name, guest_phone').limit(800);
   const apptById = new Map(
@@ -135,23 +134,11 @@ export default async function AdminRevenuePage({
     { label: 'Other/manual', cents: financial.otherRevenueCents, hint: 'Other non-voided payment rows' },
   ].filter((row) => row.cents !== 0 || financial.grossRevenueCents === 0);
   
-  let stripeFinanceSnap: Awaited<ReturnType<typeof getStripeFinanceSnapshot>> | null = null;
   const stripeSecrets = await getStripeSecrets(admin);
   const isStripeConnected = Boolean(stripeSecrets.secretKey);
-
-  if (isStripeConnected && stripeSecrets.secretKey) {
-    try {
-      stripeFinanceSnap = await getStripeFinanceSnapshot(new Stripe(stripeSecrets.secretKey));
-    } catch {
-      stripeFinanceSnap = null;
-    }
-  }
-
-  const stripeBalances = {
-    available: stripeFinanceSnap?.paymentAvailableCents ?? null,
-    pending: stripeFinanceSnap?.paymentPendingCents ?? null,
-    treasury: stripeFinanceSnap?.treasuryAvailableCents ?? null,
-  };
+  // Initial revenue render is database-only. Live Stripe balances are refreshed
+  // from the dedicated Stripe sync/status workflow, never on this critical path.
+  const stripeFinanceSnap = null;
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
@@ -163,12 +150,13 @@ export default async function AdminRevenuePage({
     return sum + Number(breakdown.offerDiscountCents ?? 0) + Number(breakdown.websitePromoDiscountCents ?? 0) + Number(breakdown.multiCarDiscountCents ?? 0);
   }, 0);
   const cfoMetrics = [
-    ['Gross Service Value', money(allAppts.reduce((sum, a) => sum + Number(a.base_price_cents ?? 0), 0)), 'Booked service value before payment timing.', '/admin/work-orders'],
+    ['Booked Value', money(financial.bookedValueCents), 'Final quoted value of active work scheduled this month.', '/admin/work-orders'],
+    ['Completed Service Value', money(financial.completedServiceValueCents), 'Completed, non-cancelled service value this month.', '/admin/work-orders?status=completed'],
     ['Cash Collected', money(financial.grossRevenueCents), 'Cleared canonical payment rows only.', '/admin/payments'],
-    ['Credits Issued', money(0), 'Customer credit liability is summarized in Reports.', '/admin/reports'],
-    ['Credits Redeemed', money(0), 'Customer credits applied to jobs are summarized in Reports.', '/admin/reports'],
-    ['Discounts Given', money(discountsGivenCents), 'Promos, offers, and multi-car reductions.', '/admin/promotions'],
-    ['Net Revenue', money(financial.netProfitCents), 'Cash collected minus refunds, fees, and expenses.', '/admin/reports'],
+    ['Net Collected Revenue', money(financial.netCollectedRevenueCents), 'Collected cash minus recorded refunds.', '/admin/payments'],
+    ['Credits Redeemed', money(financial.creditsRedeemedCents), 'Referral, loyalty, membership, and account credits used.', '/admin/reports'],
+    ['Discounts Given', money(financial.discountsCents || discountsGivenCents), 'Promotions and fixed/percentage discounts applied.', '/admin/promotions'],
+    ['Revenue After Known Costs', money(financial.netProfitCents), 'Net collected minus known fees and recorded expenses; not full accounting profit.', '/admin/reports'],
     ['Outstanding Receivables', money(balanceDueCents), 'Customer balances still due.', '/admin/work-orders'],
     ['Pending Deposits', money(financial.pendingDepositsCents), 'Booked jobs awaiting required deposits.', '/admin/work-orders'],
   ];
@@ -191,6 +179,21 @@ export default async function AdminRevenuePage({
   const totalCompletedRevenue = completedAppts.reduce((sum, a) => sum + (a.base_price_cents ?? 0), 0);
   const avgCompletedTicketCents = completedAppts.length > 0 ? Math.round(totalCompletedRevenue / completedAppts.length) : 0;
   const avgTicketSize = displayMoney(avgCompletedTicketCents);
+  const completedPaidJobs = completedAppts.filter((a) => Number(a.balance_due_cents ?? 0) <= 0 || ['paid', 'paid_in_full'].includes(String(a.payment_status ?? '').toLowerCase())).length;
+  const todayDate = new Date();
+  const elapsedDays = Math.max(1, todayDate.getDate());
+  const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
+  const projectedMonthEndCents = Math.round((financial.netCollectedRevenueCents / elapsedDays) * daysInMonth);
+  const { data: monthlyGoalRow } = await admin
+    .from('admin_goals')
+    .select('target_value, unit')
+    .eq('goal_type', 'revenue_monthly')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const monthlyGoalCents = Math.max(0, Number(monthlyGoalRow?.target_value ?? 0) * (monthlyGoalRow?.unit === 'dollars' ? 100 : 1));
+  const gapToGoalCents = Math.max(0, monthlyGoalCents - financial.netCollectedRevenueCents);
 
   // Group top customers
   const customerSpent: Record<string, { name: string; email: string; totalCents: number; jobCount: number }> = {};
@@ -342,6 +345,24 @@ export default async function AdminRevenuePage({
     key: g.key,
     rows: g.rows as AnyRow[],
   }));
+  const activePaymentRows = (sixMonthRows as PayRow[]).filter((row) =>
+    row.source_table !== 'receipts'
+    && ['paid', 'succeeded'].includes(String(row.status ?? '').toLowerCase())
+    && !row.voided_at
+    && !row.exclude_from_revenue
+    && !row.is_test,
+  );
+  const paidAppointmentIds = new Set(activePaymentRows.map((row) => String(row.appointment_id ?? '')).filter(Boolean));
+  const completedWithoutPayment = completedAppts.filter((row) => !paidAppointmentIds.has(String(row.id))).length;
+  const paidWithBalance = allAppts.filter((row) => ['paid', 'paid_in_full'].includes(String(row.payment_status ?? '').toLowerCase()) && Number(row.balance_due_cents ?? 0) > 0).length;
+  const unlinkedPayments = activePaymentRows.filter((row) => !row.appointment_id).length;
+  const reconciliationRows = [
+    { label: 'Completed jobs with no payment', count: completedWithoutPayment, href: '/admin/work-orders?status=completed', detail: 'Completed value exists but no canonical payment is linked.' },
+    { label: 'Paid jobs still showing a balance', count: paidWithBalance, href: '/admin/work-orders?payment=balance_due', detail: 'Payment status and outstanding balance disagree.' },
+    { label: 'Unlinked successful payments', count: unlinkedPayments, href: '/admin/payments', detail: 'Collected money needs a work-order link.' },
+    { label: 'Duplicate payment identities', count: duplicateGroups.length, href: '/admin/payments?filter=duplicate', detail: 'Repeated Stripe/session identity; excluded from totals until reviewed.' },
+    { label: 'Payment processing alerts', count: paymentAlerts.length, href: '/admin/payments', detail: 'Webhook or payment processing errors requiring review.' },
+  ];
 
   return (
     <DashboardShell title="Revenue" subtitle="Transaction analytics and profit ledger." role="admin">
@@ -357,6 +378,32 @@ export default async function AdminRevenuePage({
           { href: includeTest ? '/admin/revenue' : '/admin/revenue?includeTest=1', label: includeTest ? 'Hide test' : 'Include test' },
         ]}
       />
+
+      <section className="mb-8 rounded-3xl border border-gold/25 bg-black/55 p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gold-soft">Financial command center</p>
+            <p className="mt-1 text-xs text-zinc-400">Cash uses canonical payment rows; completed value uses completed, non-cancelled jobs. QA/test records are excluded.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase">
+            <Link href="/admin/revenue" className="rounded-lg border border-gold/30 px-3 py-2 text-gold-soft">Month to date</Link>
+            <Link href="/admin/payments" className="rounded-lg border border-white/15 px-3 py-2 text-zinc-300">Transactions</Link>
+            <Link href="/admin/reports" className="rounded-lg border border-white/15 px-3 py-2 text-zinc-300">Reports</Link>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <StatBlock label="Revenue today" value={money(today.grossCents)} hint={`${today.paymentCount} collected payment(s) · today`} href="/admin/payments?range=today" />
+          <StatBlock label="Revenue this week" value={money(week.grossCents)} hint={`${week.paymentCount} collected payment(s) · week to date`} href="/admin/payments?range=week" />
+          <StatBlock label="Revenue month to date" value={money(month.grossCents)} hint={`${month.paymentCount} canonical payment(s) · MTD`} href="/admin/payments?range=month" />
+          <StatBlock label="Revenue year to date" value={money(year.grossCents)} hint={`${year.paymentCount} canonical payment(s) · YTD`} href="/admin/payments?range=year" />
+          <StatBlock label="Net collected" value={money(financial.netCollectedRevenueCents)} hint={`Collected minus ${money(financial.refundsCents)} refunds · MTD`} href="/admin/payments" />
+          <StatBlock label="Outstanding balances" value={money(balanceDueCents)} hint="Active billable customer balances" href="/admin/work-orders?payment=balance_due" />
+          <StatBlock label="Completed paid jobs" value={String(completedPaidJobs)} hint="Completed eligible jobs with no remaining balance · MTD" href="/admin/work-orders?status=completed" />
+          <StatBlock label="Average ticket" value={avgTicketSize} hint={`${completedAppts.length} completed eligible job(s) · MTD`} href="/admin/work-orders?status=completed" />
+          <StatBlock label="Projected month end" value={money(projectedMonthEndCents)} hint={`${money(financial.netCollectedRevenueCents)} ÷ ${elapsedDays} elapsed day(s) × ${daysInMonth}`} href="/admin/reports" />
+          <StatBlock label="Gap to revenue goal" value={monthlyGoalCents > 0 ? money(gapToGoalCents) : 'N/A'} hint={monthlyGoalCents > 0 ? `${money(monthlyGoalCents)} active monthly goal` : 'Set an active monthly revenue goal'} href="/admin/goals" />
+        </div>
+      </section>
 
       <section className="mb-8 rounded-3xl border border-white/10 bg-black/45 p-5">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-4">
@@ -419,6 +466,25 @@ export default async function AdminRevenuePage({
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
               <p className="mt-3 font-mono text-xl font-black text-white">{value}</p>
               <p className="mt-2 text-[11px] leading-5 text-zinc-500">{hint}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8 rounded-3xl border border-amber-500/20 bg-black/50 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">Financial reconciliation center</p>
+            <p className="mt-1 text-xs text-zinc-500">Potential discrepancies are surfaced for review; no financial record is silently changed.</p>
+          </div>
+          <Link href="/admin/payments" className="rounded-xl border border-amber-400/30 px-4 py-2 text-xs font-black uppercase text-amber-200">Review transactions</Link>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {reconciliationRows.map((issue) => (
+            <Link key={issue.label} href={issue.href} className={`rounded-2xl border p-4 transition hover:border-gold/40 ${issue.count ? 'border-amber-400/30 bg-amber-500/5' : 'border-emerald-500/20 bg-emerald-500/5'}`}>
+              <p className={`font-mono text-2xl font-black ${issue.count ? 'text-amber-200' : 'text-emerald-300'}`}>{issue.count}</p>
+              <p className="mt-2 text-xs font-black text-white">{issue.label}</p>
+              <p className="mt-2 text-[10px] leading-4 text-zinc-500">{issue.detail}</p>
             </Link>
           ))}
         </div>
@@ -508,7 +574,7 @@ export default async function AdminRevenuePage({
         <div className='mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
           <StatBlock label='Today' value={money(today.grossCents)} hint={`${today.paymentCount} payment(s)`} href='/admin/payments?range=today' />
           <StatBlock label='This week' value={money(week.grossCents)} hint={`${week.paymentCount} payment(s)`} href='/admin/payments?range=week' />
-          <StatBlock label='Last 30 days' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
+          <StatBlock label='Month to date' value={money(month.grossCents)} hint={`${month.paymentCount} payment(s)`} href='/admin/payments?range=month' />
           <StatBlock label='Year to date' value={money(year.grossCents)} hint={`${year.paymentCount} payment(s)`} />
         </div>
       </section>
@@ -525,7 +591,7 @@ export default async function AdminRevenuePage({
           <StatBlock label='Expenses' value={money(financial.expensesCents)} hint='Expenses + operations + mileage fuel' />
           <StatBlock label='Fees' value={money(financial.stripeFeesCents)} hint='Card processing charges' />
           <StatBlock label='Refunds' value={money(financial.refundsCents)} hint='Reversed transaction totals' />
-          <StatBlock label='Net Profit' value={money(financial.netProfitCents)} hint='Gross - refunds - fees - expenses' />
+          <StatBlock label='Revenue After Known Costs' value={money(financial.netProfitCents)} hint='Net collected - known fees - recorded expenses' />
           <StatBlock label='Payouts to bank' value={money(financial.payoutsCents)} hint='Disbursed bank transfers' />
           <StatBlock label='Open balances' value={money(balanceDueCents)} href='/admin/work-orders' hint='Accounts receivable' />
           <StatBlock label='Pending deposits' value={money(financial.pendingDepositsCents)} href='/admin/work-orders' hint='Jobs awaiting deposit' />

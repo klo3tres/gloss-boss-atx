@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send } from 'lucide-react';
 import type { MarketingCampaign } from '@/lib/business-modules';
-import { saveMarketingCampaignsAction, sendMarketingCampaignAction } from '@/app/(dashboard)/admin/marketing/actions';
+import { generateCampaignIdeasAction, saveMarketingCampaignsAction, sendMarketingCampaignAction } from '@/app/(dashboard)/admin/marketing/actions';
+import { displayMoney } from '@/lib/display-format';
 
 export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns: MarketingCampaign[] }) {
   const router = useRouter();
@@ -70,6 +71,16 @@ export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns
           <p className="mt-1 text-xs text-muted-foreground">Draft audiences, channels, and scheduled outreach.</p>
         </div>
         <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={() => {
+            setBusy(true);
+            void generateCampaignIdeasAction().then((result) => {
+              setCampaigns((current) => [...result.ideas, ...current]);
+              setMsg(result.error ?? `Titan generated ${result.ideas.length} data-backed campaign idea${result.ideas.length === 1 ? '' : 's'}. Review before saving or sending.`);
+              setBusy(false);
+            });
+          }} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-200 disabled:opacity-50">
+            Generate campaign ideas
+          </button>
           <button type="button" onClick={add} className="rounded-xl border border-border px-3 py-2 text-[10px] font-black uppercase text-muted-foreground">
             New campaign
           </button>
@@ -100,7 +111,7 @@ export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns
                   }
                   className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
                 >
-                  {['email', 'sms', 'social', 'referral'].map((ch) => (
+                  {['email', 'sms', 'both', 'social', 'referral'].map((ch) => (
                     <option key={ch} value={ch}>
                       {ch}
                     </option>
@@ -133,6 +144,17 @@ export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns
                 rows={3}
                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
               />
+              {c.intelligence ? (
+                <div className="grid gap-2 rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+                  <p><span className="font-black text-foreground">Why:</span> {c.intelligence.reason}</p>
+                  <p><span className="font-black text-foreground">Audience:</span> ~{c.intelligence.estimatedRecipientCount} recipients</p>
+                  <p><span className="font-black text-foreground">Offer:</span> {c.intelligence.offer}</p>
+                  <p><span className="font-black text-foreground">Projected revenue:</span> {displayMoney(c.intelligence.projectedRevenueCents)}</p>
+                  <p><span className="font-black text-foreground">Email subject:</span> {c.intelligence.emailSubject}</p>
+                  <p><span className="font-black text-foreground">Recommended send:</span> {new Date(c.intelligence.recommendedSendAt).toLocaleString()}</p>
+                  {c.intelligence.marginWarning ? <p className="sm:col-span-2 text-amber-700 dark:text-amber-200"><span className="font-black">Margin check:</span> {c.intelligence.marginWarning}</p> : null}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="datetime-local"
@@ -144,7 +166,7 @@ export function MarketingCampaignsPanel({ initialCampaigns }: { initialCampaigns
                   }
                   className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm"
                 />
-                {(c.channel === 'email' || c.channel === 'sms') && c.status !== 'sent' ? (
+                {(c.channel === 'email' || c.channel === 'sms' || c.channel === 'both') && c.status !== 'sent' ? (
                   <button
                     type="button"
                     disabled={sendingId === c.id || !c.message.trim()}

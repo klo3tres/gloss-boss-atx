@@ -139,9 +139,12 @@ export function TitanGlobalAssistant() {
       pathname === '/memberships' ||
       pathname === '/gallery' ||
       pathname.startsWith('/fleet'));
+  const compactMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
   const fabStyle =
-    fabPos.x || fabPos.y
+    compactMobile
+      ? { right: 12, bottom: hasStickyBookCta ? 84 : 20, left: 'auto' as const, top: 'auto' as const }
+      : fabPos.x || fabPos.y
       ? { left: fabPos.x, top: fabPos.y, right: 'auto', bottom: 'auto' as const }
       : {
           right: 16,
@@ -181,16 +184,16 @@ export function TitanGlobalAssistant() {
             }
           }}
           style={fabStyle}
-          className="pointer-events-auto fixed flex flex-col items-end gap-0.5 scale-[0.92] sm:scale-100"
+          className="pointer-events-auto fixed flex flex-col items-end gap-0.5 sm:scale-100"
           aria-label={fabLabel}
         >
-          <span className="flex items-center gap-2.5 rounded-full border border-emerald-400/50 bg-zinc-950/95 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_40px_rgba(0,0,0,0.55),0_0_24px_rgba(52,211,153,0.18)] backdrop-blur-md transition hover:scale-[1.02] hover:border-emerald-300/70">
+          <span className="flex items-center gap-2.5 rounded-full border border-emerald-400/50 bg-zinc-950/95 p-2.5 text-sm font-bold text-white shadow-[0_12px_40px_rgba(0,0,0,0.55),0_0_24px_rgba(52,211,153,0.18)] backdrop-blur-md transition hover:scale-[1.02] hover:border-emerald-300/70 sm:px-4 sm:py-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/25 to-emerald-600/10 text-emerald-300 ring-1 ring-emerald-400/30">
               <Sparkles className="h-4 w-4" />
             </span>
-            <span>{fabLabel}</span>
+            <span className="hidden sm:inline">{fabLabel}</span>
           </span>
-          <span className="mr-1 text-[8px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+          <span className="mr-1 hidden text-[8px] font-bold uppercase tracking-[0.2em] text-zinc-500 sm:block">
             {flags.branding ? <PoweredByTitan compact className="!text-[8px]" /> : 'Titan'}
           </span>
         </button>

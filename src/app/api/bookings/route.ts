@@ -27,6 +27,7 @@ import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from 
 import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-vehicle-sync';
 import { buildBookingOrderSnapshot, mergeSnapshotIntoBreakdown } from '@/lib/booking-order-snapshot';
 import { logSmsConsentChange, normalizeSmsConsentStatus, SMS_CONSENT_COPY, type SmsConsentSource } from '@/lib/sms-consent';
+import { evaluateDiscountPolicy, loadDiscountPolicy } from '@/lib/discount-policy';
 
 type Body = {
   serviceSlug?: string;
@@ -292,6 +293,7 @@ export async function POST(request: Request) {
     const publicBookingsOff = siteSettings.some((r) => r.accept_public_bookings === false);
     const { isFreePromoEnabled } = await import('@/lib/free-promo');
     const allowFreeTestPromo = await isFreePromoEnabled(admin);
+    const discountPolicy = await loadDiscountPolicy(admin);
     if (publicBookingsOff) {
       return NextResponse.json(
         { error: 'Online booking is temporarily paused. Please call Gloss Boss ATX to schedule.' },
@@ -324,7 +326,18 @@ export async function POST(request: Request) {
     let referrerCustomerId: string | null = null;
     if (referralCode) {
       const { applyReferralDiscountToQuote } = await import('@/lib/referral/referral-discount');
-      const ref = await applyReferralDiscountToQuote(admin, { referralCode, subtotalCents: totalBaseCents });
+      const pricedWithAddOns = priced as unknown as { addOnLines?: Array<{ slug?: string; cents?: number }> };
+      const ref = await applyReferralDiscountToQuote(admin, {
+        referralCode,
+        subtotalCents: totalBaseCents,
+        referredEmail: guestEmail,
+        serviceLines: resolved.map((line) => ({ serviceSlug: line.serviceSlug, vehicleClass: line.vehicleClass, priceCents: line.priceCents })),
+        addOnLines: pricedWithAddOns.addOnLines ?? [],
+      });
+      if (ref.error) return NextResponse.json({ error: ref.error }, { status: 409 });
+      if (!ref.referrerCustomerId && ref.label) {
+        return NextResponse.json({ error: ref.label }, { status: 409 });
+      }
       referrerCustomerId = ref.referrerCustomerId;
       if (ref.applied) {
         referralDiscountCents = ref.discountCents;
@@ -461,6 +474,7 @@ export async function POST(request: Request) {
     }
 
     const requestedRewardId = String(body.rewardId ?? '').trim();
+    let selectedRewardKind: 'referral' | 'loyalty' | 'other' = 'other';
     if (requestedRewardId) {
       if (!customerId) {
         return NextResponse.json({ error: 'Sign in with the customer account that owns this reward before using it.' }, { status: 403 });
@@ -475,9 +489,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'That reward is not available for this customer.' }, { status: 404 });
       }
       const reward = rewardRes.data as Record<string, unknown>;
+      const rewardMetadata = reward.metadata && typeof reward.metadata === 'object'
+        ? reward.metadata as Record<string, unknown>
+        : {};
+      const rewardSource = String(
+        rewardMetadata.source ?? rewardMetadata.program ?? rewardMetadata.reward_source ?? rewardMetadata.issuance_type ?? '',
+      ).toLowerCase();
+      selectedRewardKind = rewardSource.includes('loyalty') || rewardSource.includes('punch') ? 'loyalty' : 'referral';
       const rewardStatus = String(reward.status ?? '');
       if (rewardStatus === 'selected') {
-        const rewardMetadata = reward.metadata && typeof reward.metadata === 'object' ? reward.metadata as Record<string, unknown> : {};
         const selectedAt = Date.parse(String(rewardMetadata.selected_at ?? ''));
         if (!Number.isFinite(selectedAt) || selectedAt > Date.now() - 30 * 60 * 1000) {
           return NextResponse.json({ error: 'That reward is already being used in another booking.' }, { status: 409 });
@@ -552,7 +572,7 @@ export async function POST(request: Request) {
       }
       if (maximumRetailCents > 0) discountCents = Math.min(discountCents, maximumRetailCents);
       discountCents = Math.min(adjustedTotalCents, discountCents);
-      if (discountCents <= 0) {
+      if (discountCents <= 0 && rewardType !== 'custom') {
         return NextResponse.json({ error: 'This reward does not apply to the selected booking.' }, { status: 409 });
       }
       adjustedTotalCents = Math.max(0, adjustedTotalCents - discountCents);
@@ -566,6 +586,36 @@ export async function POST(request: Request) {
         metadata: reward.metadata && typeof reward.metadata === 'object' ? reward.metadata as Record<string, unknown> : {},
       };
     }
+
+    const policyDecision = evaluateDiscountPolicy(discountPolicy, {
+      originalTotalCents: priced.prePromoCents,
+      totalAfterPromotionalDiscountsCents: adjustedTotalCents,
+      requestedCreditCents,
+      serviceSlugs: resolved.map((line) => line.serviceSlug),
+      promoCodes: [
+        promoCode || null,
+        claimed ? `OFFER:${claimed.offerId}` : null,
+        priced.websitePromoDiscountCents > 0 ? 'WEBSITE_PROMO' : null,
+      ].filter((value): value is string => Boolean(value)),
+      hasOfferOrSitePromo:
+        Boolean(claimed) ||
+        priced.offerDiscountCents > 0 ||
+        priced.websitePromoDiscountCents > 0 ||
+        priced.promoDiscountCents > 0,
+      hasMembershipDiscount: priced.membershipDiscountCents > 0,
+      hasReferralDiscount: referralDiscountCents > 0,
+      hasReward: Boolean(selectedReward),
+      rewardKind: selectedRewardKind,
+      customerId,
+      customerEmail: emailNorm,
+    });
+    if (!policyDecision.ok) {
+      return NextResponse.json(
+        { error: policyDecision.error, code: 'DISCOUNT_POLICY_BLOCKED' },
+        { status: 409 },
+      );
+    }
+    const isQaTest = policyDecision.isQaTest || freePromoApplied || testOneDollar;
 
     if (selectedReward) {
       const lock = await admin
@@ -624,6 +674,12 @@ export async function POST(request: Request) {
       referral_discount_cents: referralDiscountCents,
       referral_reward_id: selectedReward?.id ?? null,
       referral_reward_discount_cents: selectedReward?.discountCents ?? 0,
+      discount_policy: {
+        active_mechanisms: policyDecision.activeMechanisms,
+        combined_discount_cents: policyDecision.combinedDiscountCents,
+        qa_test: isQaTest,
+        qa_reason: policyDecision.qaReason,
+      },
     };
 
     const insertPayload: Record<string, unknown> = {
@@ -664,6 +720,7 @@ export async function POST(request: Request) {
       booking_pricing_breakdown: breakdownWithSnapshot,
       booking_add_ons: addOns,
       booking_source: 'online',
+      is_test: isQaTest,
       sms_consent: smsConsent,
       sms_consent_source: smsConsentSource,
       sms_consent_timestamp: smsConsentTimestamp,
@@ -795,6 +852,11 @@ export async function POST(request: Request) {
         referralCode,
         referredName: guestName.trim(),
       });
+      const { processReferralJobCompletion } = await import('@/lib/referral/referral-completion');
+      const referralReward = await processReferralJobCompletion(admin, String(appointment.id));
+      if (!referralReward.ok) {
+        console.warn('[api/bookings] referral reward processing failed', referralReward.error);
+      }
     }
 
     if (customerId) {

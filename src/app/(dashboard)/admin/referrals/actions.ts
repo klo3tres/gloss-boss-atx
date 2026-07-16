@@ -10,6 +10,9 @@ function num(v: FormDataEntryValue | null, fallback: number) {
   const n = Number(String(v ?? '').trim());
   return Number.isFinite(n) ? n : fallback;
 }
+function list(v: FormDataEntryValue | null) {
+  return String(v ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+}
 
 export type ReferralSaveResult = { ok: true } | { ok: false; error: string };
 
@@ -28,8 +31,22 @@ export async function saveReferralProgramSettingsAction(
     enabled: formData.get('enabled') === 'on',
     referrerRewardType: String(formData.get('referrer_reward_type') ?? 'percent'),
     referrerRewardValue: num(formData.get('referrer_reward_value'), 15),
+    referrerRewardLabel: String(formData.get('referrer_reward_label') ?? '').trim(),
     referredRewardType: String(formData.get('referred_reward_type') ?? 'percent'),
     referredRewardValue: num(formData.get('referred_reward_value'), 10),
+    referredRewardLabel: String(formData.get('referred_reward_label') ?? '').trim(),
+    referredEligibleServiceSlugs: list(formData.get('referred_eligible_services')),
+    referredEligibleAddonSlugs: list(formData.get('referred_eligible_addons')),
+    referredVehicleRestrictions: list(formData.get('referred_vehicle_restrictions')),
+    referredExclusions: list(formData.get('referred_exclusions')),
+    referredMaximumRetailCents: Math.max(0, num(formData.get('referred_maximum_retail_dollars'), 0) * 100),
+    referredCustomerPaysDifference: formData.get('referred_customer_pays_difference') === 'on',
+    referrerEligibleServiceSlugs: list(formData.get('referrer_eligible_services')),
+    referrerEligibleAddonSlugs: list(formData.get('referrer_eligible_addons')),
+    referrerVehicleRestrictions: list(formData.get('referrer_vehicle_restrictions')),
+    referrerExclusions: list(formData.get('referrer_exclusions')),
+    referrerMaximumRetailCents: Math.max(0, num(formData.get('referrer_maximum_retail_dollars'), 0) * 100),
+    referrerCustomerPaysDifference: formData.get('referrer_customer_pays_difference') === 'on',
     minCompletedBookings: num(formData.get('min_completed_bookings'), 1),
     maxRewardsPerCustomer: num(formData.get('max_rewards_per_customer'), 10),
     stackingAllowed: formData.get('stacking_allowed') === 'on',

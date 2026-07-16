@@ -59,19 +59,32 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   const appointmentId = str(formData.get('appointmentId'));
   const fallbackBookingId = str(formData.get('fallbackBookingId'));
   const amountDollars = Number(formData.get('amountDollars'));
+  const tipDollars = Number(formData.get('tipDollars') || 0);
   const method = str(formData.get('method')).toLowerCase() || 'cash';
+  const referenceNumber = str(formData.get('referenceNumber'));
+  const note = str(formData.get('note'));
+  const attachmentUrl = str(formData.get('attachmentUrl'));
+  const receiptRequested = formData.get('sendReceipt') === 'on' || formData.get('sendReceipt') === 'true';
+  const paidAtInput = str(formData.get('paidAt'));
   if (!appointmentId && !fallbackBookingId) return actionErr('Missing work order.');
-  if (!Number.isFinite(amountDollars) || amountDollars <= 0) return actionErr('Enter a valid amount.');
+  if (!Number.isFinite(amountDollars) || amountDollars < 0) return actionErr('Enter a valid payment amount.');
+  if (!Number.isFinite(tipDollars) || tipDollars < 0) return actionErr('Enter a valid tip amount.');
+  if (amountDollars <= 0 && tipDollars <= 0) return actionErr('Payment or tip must be greater than zero.');
 
-  const amountCents = Math.round(amountDollars * 100);
+  const appliedAmountCents = Math.round(amountDollars * 100);
+  const tipAmountCents = Math.round(tipDollars * 100);
+  const amountCents = appliedAmountCents + tipAmountCents;
   const table = fallbackBookingId ? 'booking_fallbacks' : 'appointments';
   const jobId = fallbackBookingId || appointmentId;
   const { data: job } = await gate.admin.from(table).select('*').eq('id', jobId).maybeSingle();
   if (!job) return actionErr('Work order not found.');
 
   const jobRow = job as Record<string, unknown>;
-  const paymentMethod =
-    method === 'zelle' ? 'zelle' : method === 'venmo' ? 'venmo' : method === 'check' ? 'check' : 'cash';
+  const allowedMethods = new Set(['cash', 'zelle', 'cash_app', 'venmo', 'check', 'external_card', 'manual_card', 'bank_transfer', 'other']);
+  const paymentMethod = allowedMethods.has(method) ? method : 'other';
+  const balanceBefore = Math.max(0, Number(jobRow.balance_due_cents ?? 0));
+  if (appliedAmountCents > balanceBefore) return actionErr('Payment exceeds the outstanding balance. Put the difference in the tip field.');
+  const paidAt = paidAtInput && !Number.isNaN(new Date(paidAtInput).getTime()) ? new Date(paidAtInput).toISOString() : new Date().toISOString();
 
   const recentCutoff = new Date(Date.now() - 30_000).toISOString();
   let recentQuery = gate.admin
@@ -90,51 +103,63 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
     return actionOk('That payment was already recorded. No duplicate row was created.');
   }
 
-  const now = new Date().toISOString();
-  const balanceBefore = Math.max(0, Number(jobRow.balance_due_cents ?? 0));
-  const appliedAmountCents = balanceBefore > 0 ? Math.min(amountCents, balanceBefore) : amountCents;
-  const tipAmountCents = Math.max(0, amountCents - appliedAmountCents);
-  const idempotencyKey = `manual:${gate.userId}:${jobId}:${paymentMethod}:${amountCents}:${now}`;
+  const idempotencyKey = `manual:${gate.userId}:${jobId}:${paymentMethod}:${amountCents}:${paidAt}`;
 
-  let { data: inserted, error } = await gate.admin
-    .from('payments')
-    .insert({
-      appointment_id: appointmentId || null,
-      fallback_booking_id: fallbackBookingId || null,
-      customer_id: str(jobRow.customer_id) || null,
-      amount_cents: amountCents,
-      status: 'succeeded',
-      payment_method: paymentMethod,
-      payment_kind: 'manual',
-      payment_choice: 'balance',
-      paid_at: now,
-      tender_type: paymentMethod,
-      applied_amount_cents: appliedAmountCents,
-      tip_amount_cents: tipAmountCents,
-      idempotency_key: idempotencyKey,
-      recorded_by: gate.userId,
-      metadata: { source: 'admin_manual', recorded_by: gate.userId, applied_amount_cents: appliedAmountCents, tip_amount_cents: tipAmountCents },
-    })
-    .select('id')
-    .maybeSingle();
-
-  if (error && /tender_type|applied_amount_cents|tip_amount_cents|idempotency_key|recorded_by|schema cache|column/i.test(error.message)) {
-    ({ data: inserted, error } = await gate.admin
+  let inserted: { id?: string } | null = null;
+  let error: { message: string } | null = null;
+  if (appointmentId) {
+    const rpc = await gate.admin.rpc('record_manual_payment_atomic', {
+      p_appointment_id: appointmentId,
+      p_amount_cents: appliedAmountCents,
+      p_tip_amount_cents: tipAmountCents,
+      p_method: paymentMethod,
+      p_paid_at: paidAt,
+      p_reference_number: referenceNumber,
+      p_note: note,
+      p_attachment_url: attachmentUrl,
+      p_receipt_requested: receiptRequested,
+      p_recorded_by: gate.userId,
+      p_idempotency_key: idempotencyKey,
+    });
+    const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+    inserted = row ? { id: str((row as Record<string, unknown>).payment_id) } : null;
+    error = rpc.error ? { message: rpc.error.message } : null;
+  } else {
+    const balanceAfter = Math.max(0, balanceBefore - appliedAmountCents);
+    const direct = await gate.admin
       .from('payments')
       .insert({
-        appointment_id: appointmentId || null,
-        fallback_booking_id: fallbackBookingId || null,
+        fallback_booking_id: fallbackBookingId,
         customer_id: str(jobRow.customer_id) || null,
         amount_cents: amountCents,
         status: 'succeeded',
         payment_method: paymentMethod,
         payment_kind: 'manual',
         payment_choice: 'balance',
-        paid_at: now,
-        metadata: { source: 'admin_manual', recorded_by: gate.userId, applied_amount_cents: appliedAmountCents, tip_amount_cents: tipAmountCents },
+        paid_at: paidAt,
+        tender_type: paymentMethod,
+        applied_amount_cents: appliedAmountCents,
+        tip_amount_cents: tipAmountCents,
+        idempotency_key: idempotencyKey,
+        recorded_by: gate.userId,
+        reference_number: referenceNumber || null,
+        note: note || null,
+        attachment_url: attachmentUrl || null,
+        receipt_requested: receiptRequested,
+        metadata: { source: 'admin_manual', recorded_by: gate.userId },
       })
       .select('id')
-      .maybeSingle());
+      .maybeSingle();
+    inserted = direct.data;
+    error = direct.error ? { message: direct.error.message } : null;
+    if (!error) {
+      const update = await gate.admin.from('booking_fallbacks').update({
+        balance_due_cents: balanceAfter,
+        payment_status: balanceAfter === 0 ? 'paid' : 'balance_due',
+        updated_at: new Date().toISOString(),
+      }).eq('id', fallbackBookingId);
+      if (update.error) error = { message: `Payment was recorded but the fallback balance update failed: ${update.error.message}` };
+    }
   }
 
   if (error) return actionErr(error.message);
@@ -145,11 +170,15 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   await generateWorkOrderReceiptActionState(null, fd);
 
   revalidatePath('/admin/receipts');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+  revalidatePath('/admin/payments');
+  revalidatePath('/admin');
   revalidatePath(`/admin/receipts/${str(formData.get('receiptId') || inserted?.id)}`);
   const workOrderPath = str(formData.get('workOrderPath'));
   revalidatePath(`/tech/work-orders/${jobId}`);
   if (workOrderPath) revalidatePath(workOrderPath);
-  return actionOk(`${paymentMethod} payment of $${(amountCents / 100).toFixed(2)} recorded.`);
+  return actionOk(`${paymentMethod.replace(/_/g, ' ')} payment of $${(appliedAmountCents / 100).toFixed(2)}${tipAmountCents ? ` plus $${(tipAmountCents / 100).toFixed(2)} tip` : ''} recorded.`);
 }
 
 export async function rebuildReceiptFromWorkOrderActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {

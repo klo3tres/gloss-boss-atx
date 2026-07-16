@@ -7,6 +7,8 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { parseUserUiPreferences } from '@/lib/user-ui-preferences';
 import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
 import { pushoverConfigured } from '@/lib/pushover';
+import { DEFAULT_DISCOUNT_POLICY, loadDiscountPolicy } from '@/lib/discount-policy';
+import { DEFAULT_APPOINTMENT_NOTIFICATION_POLICY, loadAppointmentNotificationPolicy } from '@/lib/appointment-notification-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +22,8 @@ export default async function AdminSettingsPage() {
   let uiPreferences = parseUserUiPreferences(null);
   let websiteDefault: 'light' | 'dark' = 'dark';
   let notifyPrefs = await loadOwnerNotificationPreferences(admin!);
+  let discountPolicy = DEFAULT_DISCOUNT_POLICY;
+  let appointmentNotificationPolicy = DEFAULT_APPOINTMENT_NOTIFICATION_POLICY;
 
   if (admin && session.user.id) {
     const [{ data: profile }, siteRes] = await Promise.all([
@@ -34,6 +38,8 @@ export default async function AdminSettingsPage() {
     const raw = siteRes.data?.value;
     if (raw === 'light' || raw === 'dark') websiteDefault = raw;
     notifyPrefs = await loadOwnerNotificationPreferences(admin);
+    discountPolicy = await loadDiscountPolicy(admin);
+    appointmentNotificationPolicy = await loadAppointmentNotificationPolicy(admin);
   }
 
   return (
@@ -44,6 +50,8 @@ export default async function AdminSettingsPage() {
         isSuperAdmin={isSuperAdmin}
         pushoverConfigured={pushoverConfigured()}
         notifyPrefs={notifyPrefs}
+        discountPolicy={discountPolicy}
+        appointmentNotificationPolicy={appointmentNotificationPolicy}
       />
     </DashboardShell>
   );

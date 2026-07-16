@@ -64,24 +64,6 @@ export async function testNotificationSendAction(formData: FormData): Promise<{ 
     });
     const deliveryNote = res.deliveryStatus ? ` (${res.deliveryStatus})` : '';
     const carrierNote = res.carrierError ? ` — ${res.carrierError}` : '';
-    const outboxStatus = res.ok
-      ? res.deliveryStatus === 'delivered'
-        ? 'delivered'
-        : 'sent'
-      : res.skipped
-        ? 'skipped'
-        : 'failed';
-    await admin.from('notification_outbox').insert({
-      kind: 'test_send',
-      channel: 'sms',
-      provider: 'twilio',
-      status: outboxStatus,
-      provider_message_id: res.sid ?? null,
-      error_message: res.error ?? res.carrierError ?? null,
-      skipped_reason: res.skipped ? 'provider_not_configured' : null,
-      payload: { to, delivery_status: res.deliveryStatus, carrier_error: res.carrierError },
-      created_at: new Date().toISOString(),
-    });
     return {
       message: res.ok
         ? `SMS accepted${deliveryNote}${carrierNote} — not marked delivered until carrier confirms.`
@@ -131,7 +113,7 @@ export async function testNotificationSendAction(formData: FormData): Promise<{ 
     subject,
     provider_message_id: sent.emailId ?? null,
     error_message: sent.ok ? null : sent.error ?? 'failed',
-    payload: { to, from: fromEmail, subject },
+    payload: { to, from: fromEmail, subject, body, resend_email_id: sent.emailId ?? null },
     created_at: new Date().toISOString(),
   });
   return { message: sent.ok ? `Email sent to ${to}.` : `Email failed: ${sent.error ?? 'unknown'}` };
@@ -182,4 +164,76 @@ export async function installAllNotificationDefaultsAction(): Promise<{ message:
     ok: true,
     message: `Installed/updated ${saved} template(s). ${total} row(s) now in notification_templates.${errors.length ? ` Warnings: ${errors.slice(0, 2).join('; ')}` : ''}`,
   };
+}
+
+export async function retryFailedNotificationAction(outboxId: string): Promise<{ ok: boolean; message: string }> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, message: 'Unauthorized' };
+  const { data, error } = await admin
+    .from('notification_outbox')
+    .select('id, kind, channel, status, subject, template_key, appointment_id, fallback_booking_id, customer_id, technician_id, payload')
+    .eq('id', outboxId)
+    .maybeSingle();
+  if (error || !data) return { ok: false, message: 'Notification not found.' };
+  if (!['failed', 'undelivered'].includes(String(data.status))) {
+    return { ok: false, message: 'Only failed or undelivered messages are eligible for retry.' };
+  }
+  const payload = data.payload && typeof data.payload === 'object' ? data.payload as Record<string, unknown> : {};
+  const to = String(payload.to ?? payload.destination_e164 ?? '').trim();
+  const body = String(payload.body ?? '').trim();
+  if (!to || !body) return { ok: false, message: 'This older log does not contain enough information for a safe retry.' };
+
+  if (String(data.channel) === 'sms') {
+    const { sendCustomerSms } = await import('@/lib/sms-send');
+    const sent = await sendCustomerSms({
+      db: admin,
+      kind: String(data.kind || 'manual_retry'),
+      template_key: String(data.template_key || data.kind || 'manual_retry'),
+      to,
+      body,
+      appointment_id: data.appointment_id ? String(data.appointment_id) : null,
+      fallback_booking_id: data.fallback_booking_id ? String(data.fallback_booking_id) : null,
+      customer_id: data.customer_id ? String(data.customer_id) : null,
+      technician_id: data.technician_id ? String(data.technician_id) : null,
+      extraPayload: { retry_of: outboxId },
+      requireConsent: true,
+    });
+    await admin.from('notification_outbox').update({
+      payload: { ...payload, retry_attempted_at: new Date().toISOString(), retry_result: sent.ok ? 'accepted' : 'blocked', retry_sid: sent.sid ?? null },
+    }).eq('id', outboxId);
+    revalidatePath('/admin/notifications');
+    return sent.ok
+      ? { ok: true, message: 'Retry accepted by Twilio. Delivery confirmation is still pending.' }
+      : { ok: false, message: sent.error ?? 'Retry was blocked.' };
+  }
+
+  if (String(data.channel) === 'email') {
+    const { sendResendHtml } = await import('@/lib/email-send');
+    const safeBody = body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br/>');
+    const subject = String(data.subject ?? payload.subject ?? 'Gloss Boss ATX update');
+    const sent = await sendResendHtml({ to, subject, html: `<p>${safeBody}</p>` });
+    await admin.from('notification_outbox').insert({
+      kind: String(data.kind || 'manual_retry'),
+      channel: 'email',
+      provider: 'resend',
+      status: sent.ok ? 'sent' : 'failed',
+      subject,
+      template_key: data.template_key,
+      appointment_id: data.appointment_id,
+      fallback_booking_id: data.fallback_booking_id,
+      customer_id: data.customer_id,
+      technician_id: data.technician_id,
+      provider_message_id: sent.emailId ?? null,
+      error_message: sent.error ?? null,
+      payload: { to, body, subject, retry_of: outboxId, resend_email_id: sent.emailId ?? null },
+      sent_at: sent.ok ? new Date().toISOString() : null,
+      created_at: new Date().toISOString(),
+    });
+    revalidatePath('/admin/notifications');
+    return sent.ok
+      ? { ok: true, message: 'Retry accepted by Resend. Delivery confirmation is still pending.' }
+      : { ok: false, message: sent.error ?? 'Email retry failed.' };
+  }
+
+  return { ok: false, message: 'This channel cannot be retried.' };
 }

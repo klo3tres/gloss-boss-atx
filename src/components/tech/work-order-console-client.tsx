@@ -27,7 +27,7 @@ import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-b
 import type { ConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import type { RequiredBeforeSlot } from '@/lib/pre-inspection';
 import { cancelWorkOrderAction } from '@/app/(dashboard)/tech/work-order-pre-inspection-actions';
-import { techSendCustomSmsAction, techSaveJobNotesAction } from '@/app/(dashboard)/tech/tech-actions';
+import { acknowledgeTechAssignmentAction, techSendCustomSmsAction, techSaveJobNotesAction } from '@/app/(dashboard)/tech/tech-actions';
 import { addManualLoyaltyStampAction, deleteLoyaltyStampAction } from '@/app/(dashboard)/admin/customer-actions';
 import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin/customer-credits-manager';
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
@@ -153,6 +153,7 @@ export type WorkOrderConsoleData = {
   totalPaid?: string;
   technicianName: string;
   assignedTechnicianId?: string | null;
+  technicianAcknowledgedAt?: string | null;
   technicians?: Array<{ id: string; name: string }>;
   jobStartedAt: string;
   jobCompletedAt: string;
@@ -549,6 +550,12 @@ export function WorkOrderConsoleClient({
               technicians={data.technicians}
               canReassign={canAdminOverride && !data.isFallback && data.source === 'appointment'}
             />
+            {!data.isFallback && data.assignedTechnicianId === data.currentUserId && !data.technicianAcknowledgedAt ? (
+              <form action={acknowledgeTechAssignmentAction}>
+                <input type="hidden" name="appointmentId" value={jobId} />
+                <button type="submit" className="min-h-11 rounded-xl border border-emerald-400/35 bg-emerald-500/10 px-4 text-[10px] font-black uppercase text-emerald-300">Acknowledge assignment</button>
+              </form>
+            ) : null}
           </div>
         </div>
       </div>

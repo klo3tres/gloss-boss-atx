@@ -5,6 +5,7 @@ import { useOutboundPreview } from '@/components/admin/outbound-message-provider
 import {
   searchBulkRecipientsAction,
   sendBulkOutboundAction,
+  sendBulkTestToOwnerAction,
   type BulkRecipient,
 } from '@/app/(dashboard)/admin/bulk-outbound-actions';
 
@@ -40,6 +41,8 @@ export function BulkOutboundPanel() {
 
   const selectedList = recipients.filter((r) => selected.has(r.id));
   const first = selectedList[0];
+  const eligibleRecipients = recipients.filter((r) => channel === 'sms' ? Boolean(r.canSms && r.phone) : Boolean(r.canEmail && r.email));
+  const blockedCount = recipients.length - eligibleRecipients.length;
 
   const previewBulk = () => {
     if (!first || !body.trim()) return;
@@ -128,7 +131,15 @@ export function BulkOutboundPanel() {
       </div>
 
       {recipients.length > 0 ? (
-        <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto rounded-xl border border-white/8 bg-black/40 p-2">
+        <div className="mt-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-zinc-500">
+            <span>{eligibleRecipients.length} eligible · {blockedCount} blocked · {selected.size} selected</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSelected(new Set(eligibleRecipients.map((r) => r.id)))} className="font-black uppercase text-gold-soft">Select eligible</button>
+              <button type="button" onClick={() => setSelected(new Set())} className="font-black uppercase text-zinc-500">Clear</button>
+            </div>
+          </div>
+        <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-white/8 bg-black/40 p-2">
           {recipients.map((r) => {
             const deliverable = channel === 'sms' ? r.canSms && r.phone : r.canEmail && r.email;
             return (
@@ -153,6 +164,7 @@ export function BulkOutboundPanel() {
             );
           })}
         </ul>
+        </div>
       ) : null}
 
       {channel === 'email' ? (
@@ -173,6 +185,17 @@ export function BulkOutboundPanel() {
       />
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={pending || !body.trim()}
+          onClick={() => startTransition(async () => {
+            const result = await sendBulkTestToOwnerAction({ channel, body, subject });
+            setStatus(result.error ?? `Test sent to ${result.destination ?? 'owner'}. Confirm delivery before sending the campaign.`);
+          })}
+          className="rounded-xl border border-cyan-500/30 px-4 py-2.5 text-[10px] font-black uppercase text-cyan-200 disabled:opacity-50"
+        >
+          Test send to owner
+        </button>
         <button
           type="button"
           disabled={pending || selected.size === 0 || !body.trim()}

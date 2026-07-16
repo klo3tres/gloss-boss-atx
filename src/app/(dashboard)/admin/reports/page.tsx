@@ -30,6 +30,14 @@ export default async function ReportsPage({
   const toIso = new Date(`${to}T23:59:59`).toISOString();
   const summary = await getFinancialSnapshot(admin, { startDate: fromIso, endDate: toIso, includeTest });
   const extended = await loadExtendedReportMetrics(admin, { startIso: fromIso, endIso: toIso });
+  const conversionResult = await admin.from('conversion_events').select('event_type, session_id').gte('created_at', fromIso).lte('created_at', toIso).eq('is_test', false).limit(10000);
+  const conversionRows = conversionResult.error ? [] : conversionResult.data ?? [];
+  const funnelOrder = ['homepage_hero_cta','services_viewed','booking_started','vehicle_entered','service_selected','date_selected','contact_entered','promo_entered','deposit_started','deposit_completed','booking_completed'];
+  const funnel = funnelOrder.map((eventType) => {
+    const matching = conversionRows.filter((row) => row.event_type === eventType);
+    const sessions = new Set(matching.map((row) => row.session_id).filter(Boolean));
+    return { eventType, count: sessions.size || matching.length };
+  });
 
   const [reportOutstanding, reportIssued, reportRedeemed, reportExpired, reportVoided, referralRewardsIssued, referralRewardsRedeemed] = await Promise.all([
     admin.from('customer_credits').select('remaining_cents').in('status', ['active', 'partially_used']),
@@ -127,6 +135,19 @@ export default async function ReportsPage({
               <p className="mt-2 text-xl font-black text-foreground">{value}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border bg-card p-6">
+        <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Website booking funnel</p>
+        <p className="mt-1 text-xs text-muted-foreground">Unique tracked sessions for the selected range. Test events are excluded.</p>
+        {conversionResult.error ? <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Apply migration 000138 to begin conversion tracking.</p> : null}
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {funnel.map((stage, index) => {
+            const prior = index > 0 ? funnel[index - 1].count : stage.count;
+            const retention = prior > 0 ? Math.min(100, Math.round(stage.count / prior * 100)) : 0;
+            return <div key={stage.eventType} className="rounded-2xl border border-border bg-muted/20 p-4"><p className="text-[10px] font-black uppercase text-muted-foreground">{stage.eventType.replace(/_/g, ' ')}</p><p className="mt-2 text-2xl font-black text-foreground">{stage.count}</p>{index > 0 ? <p className="mt-1 text-xs text-muted-foreground">{retention}% from prior stage</p> : null}</div>;
+          })}
         </div>
       </section>
 

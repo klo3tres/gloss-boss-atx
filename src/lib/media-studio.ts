@@ -71,6 +71,15 @@ export function resolveMediaUrl(asset: Pick<MediaAsset, 'publicUrl' | 'externalU
   return asset.publicUrl || asset.externalUrl || null;
 }
 
+export function isDirectMediaUrl(urlValue: string | null | undefined, mediaType: string, mimeType?: string | null): boolean {
+  const url = String(urlValue ?? '').trim();
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (/\/storage\/v1\/object\/(?:public|sign)\//i.test(url)) return true;
+  const clean = url.split(/[?#]/)[0].toLowerCase();
+  if (mediaType === 'video') return /\.(mp4|webm|mov|m4v)$/.test(clean) || String(mimeType ?? '').startsWith('video/');
+  return /\.(avif|gif|jpe?g|png|svg|webp)$/.test(clean) || String(mimeType ?? '').startsWith('image/');
+}
+
 export function groupMediaByPlacement(items: MediaAsset[]) {
   const groups = new Map<string, MediaAsset[]>();
   for (const item of items) {

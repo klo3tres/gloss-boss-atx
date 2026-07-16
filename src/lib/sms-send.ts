@@ -77,6 +77,8 @@ export async function sendCustomerSms(params: {
   const phone = normalizeToE164(String(params.to ?? ''));
   const e164 = phone.ok ? phone.e164 : String(params.to ?? '').trim();
   const basePayload = {
+    to: phone.ok ? phone.e164 : String(params.to ?? '').trim(),
+    body: params.body,
     destination_e164: phone.ok ? phone.e164 : null,
     to_last4: phone.ok ? phone.digits10.slice(-4) : String(params.to ?? '').replace(/\D/g, '').slice(-4),
     body_preview: params.body.slice(0, 120),

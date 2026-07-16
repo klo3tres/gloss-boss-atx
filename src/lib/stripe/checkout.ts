@@ -786,6 +786,13 @@ export async function processCheckoutSessionCompleted(params: {
       createdBy: typeof technicianId === 'string' ? technicianId : null,
     });
 
+    if (!isFinalBalance && !isField) {
+      await admin.from('conversion_events').insert([
+        { event_type: 'deposit_completed', appointment_id: appointmentId, source_path: '/book', metadata: { stripe_session_id: session.id, payment_kind: paymentKind } },
+        { event_type: 'booking_completed', appointment_id: appointmentId, source_path: '/book', metadata: { stripe_session_id: session.id, payment_kind: paymentKind } },
+      ]).then(({ error }) => { if (error && !/conversion_events|relation.*does not exist/i.test(error.message)) console.warn('[checkout] conversion events', error.message); });
+    }
+
     const { data: appt } = await admin
       .from('appointments')
       .select('guest_email, guest_name, scheduled_start, base_price_cents, deposit_amount_cents')

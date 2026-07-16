@@ -42,6 +42,9 @@ export type StaffInviteRow = {
   smsDeliveryStatus: string | null;
   smsDeliveryError: string | null;
   smsDeliveryUpdatedAt: string | null;
+  emailDeliveryStatus: string | null;
+  emailDeliveryError: string | null;
+  emailDeliveryUpdatedAt: string | null;
 };
 
 const INVITE_TTL_DAYS = 7;
@@ -79,6 +82,9 @@ function mapInvite(row: Record<string, unknown>): StaffInviteRow {
     smsDeliveryStatus: str(row.sms_delivery_status) || null,
     smsDeliveryError: str(row.sms_delivery_error) || null,
     smsDeliveryUpdatedAt: str(row.sms_delivery_updated_at) || null,
+    emailDeliveryStatus: str(row.email_delivery_status) || null,
+    emailDeliveryError: str(row.email_delivery_error) || null,
+    emailDeliveryUpdatedAt: str(row.email_delivery_updated_at) || null,
   };
 }
 
@@ -264,6 +270,9 @@ export async function sendStaffInviteNotification(
     .update({
       last_sent_at: new Date().toISOString(),
       last_sent_channel: channel,
+      email_delivery_status: emailStatus,
+      email_delivery_error: emailError ?? null,
+      email_delivery_updated_at: new Date().toISOString(),
       sms_delivery_status: smsStatus,
       sms_delivery_error: smsError ?? null,
       sms_delivery_updated_at: new Date().toISOString(),

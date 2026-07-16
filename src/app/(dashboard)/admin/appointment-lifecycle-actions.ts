@@ -15,6 +15,13 @@ async function requireAdmin() {
   return admin;
 }
 
+async function requireAdminActor() {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) return null;
+  return { admin, userId: session.user.id };
+}
+
 export async function adminCancelAppointmentActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   return adminCancelAppointmentAction(formData);
 }
@@ -30,15 +37,21 @@ function googleSyncNote(result?: { ok: boolean; skipped?: boolean; error?: strin
 }
 
 export async function adminCancelAppointmentAction(formData: FormData): Promise<ActionResult> {
-  const admin = await requireAdmin();
-  if (!admin) return actionErr('Forbidden');
+  const gate = await requireAdminActor();
+  if (!gate) return actionErr('Forbidden');
   const appointmentId = String(formData.get('appointmentId') ?? '').trim();
   const reason = String(formData.get('reason') ?? 'Cancelled by admin').trim();
-  const r = await cancelAppointmentLifecycle(admin, { appointmentId, reason });
+  const refundDecision = String(formData.get('refundDecision') ?? '').trim();
+  const notifyCustomer = formData.has('notifyCustomer') ? formData.get('notifyCustomer') === 'true' : true;
+  const r = await cancelAppointmentLifecycle(gate.admin, { appointmentId, reason, actorId: gate.userId, refundDecision, notifyCustomer });
   if (!r.ok) return actionErr(r.error ?? 'Cancel failed');
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/dispatch');
   revalidatePath('/admin/calendar');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/payments');
+  revalidatePath('/admin');
+  revalidatePath('/book');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
   const gNote = googleSyncNote(r.googleCalendar);
   if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {

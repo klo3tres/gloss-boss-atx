@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { processAppointmentOperationalAlerts, processMissedJobStartAlerts } from '@/lib/staff-notification-router';
 import { runTrackedAutomation } from '@/lib/titan/automation-run';
@@ -6,26 +7,15 @@ import { runTrackedAutomation } from '@/lib/titan/automation-run';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function authorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return process.env.NODE_ENV !== 'production';
-  const auth = request.headers.get('authorization') ?? '';
-  if (auth === `Bearer ${secret}`) return true;
-  return new URL(request.url).searchParams.get('secret') === secret;
-}
-
-export async function GET(request: Request) {
-  if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function POST() {
+  const gate = await requireAdminApiUser();
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
   const admin = tryCreateAdminSupabase();
   if (!admin) return NextResponse.json({ error: 'Service role unavailable' }, { status: 503 });
 
-  const tracked = await runTrackedAutomation(admin, 'missed_job_starts', 'cron', async () => {
+  const tracked = await runTrackedAutomation(admin, 'missed_job_starts', 'manual', async () => {
       const [late, operations] = await Promise.all([processMissedJobStartAlerts(admin), processAppointmentOperationalAlerts(admin)]);
       return { alerted: late.alerted + operations.alerted, skipped: late.skipped + operations.skipped, failed: late.failed + operations.failed };
   });
-  return NextResponse.json(tracked, { status: tracked.ok ? 200 : tracked.alreadyRunning ? 409 : 500 });
-}
-
-export async function POST(request: Request) {
-  return GET(request);
+  return NextResponse.json(tracked, { status: tracked.ok || tracked.alreadyRunning ? 200 : 500 });
 }

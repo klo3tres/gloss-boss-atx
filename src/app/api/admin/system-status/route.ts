@@ -14,6 +14,8 @@ import {
 
 export const runtime = 'nodejs';
 
+const LATEST_LOCAL_MIGRATION = '000139_financial_ledger_and_cancellation_integrity.sql';
+
 export async function GET() {
   const supabase = await tryCreateServerSupabase();
   if (!supabase) {
@@ -36,6 +38,38 @@ export async function GET() {
   const twilioReady = twilioConfigured();
   const businessInboxReady = Boolean(businessNotifyDestination());
   const appleAdvanced = appleAdvancedApiStatus();
+
+  const schemaChecks = admin
+    ? await Promise.all([
+        admin.from('referral_rewards').select('issuance_key, eligibility, reserved_appointment_id, selected_addon_slug').limit(1),
+        admin.from('loyalty_reset_events').select('id, consumed_punches, reset_behavior').limit(1),
+        admin.from('notification_outbox').select('provider_status, delivered_at, status_updated_at').limit(1),
+        admin.from('staff_invites').select('sms_delivery_status, sms_delivery_error, sms_delivery_updated_at').limit(1),
+        admin.from('staff_invites').select('email_delivery_status, email_delivery_error, email_delivery_updated_at').limit(1),
+        admin.from('appointments').select('technician_acknowledged_at, on_the_way_at, arrived_at, updated_eta_at, updated_eta_minutes, flexible_arrival').limit(1),
+        admin.from('site_settings').select('key, value').eq('key', 'migration_marker_000139').maybeSingle(),
+        admin.from('conversion_events').select('id, event_type, is_test').limit(1),
+      ])
+    : [];
+  const rewardSchemaLabels = ['Referral reward lifecycle', 'Loyalty reset ledger', 'Twilio delivery truth', 'Staff invite SMS delivery truth', 'Staff invite email delivery truth', 'Late-job operational timestamps', 'Financial and cancellation integrity marker', 'Conversion funnel events'];
+  const rewardSchemaChecks = schemaChecks.map((result, index) => {
+    const marker = index === 6 ? result.data as { key?: string; value?: { name?: string; applied?: boolean; version?: number } } | null : null;
+    const markerValid = index !== 6 || (
+      marker?.key === 'migration_marker_000139'
+      && marker.value?.name === 'financial_ledger_and_cancellation_integrity'
+      && marker.value?.applied === true
+      && marker.value?.version === 139
+    );
+    return {
+      label: rewardSchemaLabels[index],
+      ok: !result.error && markerValid,
+      error: result.error?.message ?? (markerValid ? null : 'Migration marker is missing or invalid'),
+    };
+  });
+  const rewardLifecycleReady = Boolean(admin) && rewardSchemaChecks.slice(0, 4).length === 4 && rewardSchemaChecks.slice(0, 4).every((check) => check.ok);
+  const notificationOperationsReady = Boolean(admin) && rewardSchemaChecks.slice(0, 6).length === 6 && rewardSchemaChecks.slice(0, 6).every((check) => check.ok);
+  const migrationParityReady = notificationOperationsReady && rewardSchemaChecks[6]?.ok === true && rewardSchemaChecks[7]?.ok === true;
+  const applicationCommit = process.env.VERCEL_GIT_COMMIT_SHA?.trim() || process.env.NEXT_PUBLIC_APP_COMMIT?.trim() || 'local-uncommitted';
 
   const envChecklist: Array<{ key: string; ok: boolean; tier: 'required' | 'recommended' | 'optional'; detail: string }> = [
     { key: 'NEXT_PUBLIC_SUPABASE_URL', ok: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()), tier: 'required', detail: 'Public Supabase project URL' },
@@ -170,6 +204,17 @@ export async function GET() {
       twilio: twilioReady,
       supabaseServiceRole: serviceRole,
       businessNotifyEmail: businessInboxReady,
+      rewardLifecycle: rewardLifecycleReady,
+    },
+    deployment: {
+      localLatestMigration: LATEST_LOCAL_MIGRATION,
+      remoteLatestMigration: migrationParityReady ? LATEST_LOCAL_MIGRATION : notificationOperationsReady ? '000137_notification_operations_and_delivery.sql' : rewardLifecycleReady ? '000136_reward_lifecycle_and_twilio_delivery.sql' : 'Not verified',
+      remoteMigrationSource: migrationParityReady ? 'Expected production schema and migration marker verified directly' : notificationOperationsReady ? 'Migration 000137 is verified; 000138 still needs deployment' : rewardLifecycleReady ? 'Migration 000136 is verified; 000137 and 000138 still need deployment' : 'Expected schema is incomplete',
+      applicationVersion: process.env.npm_package_version ?? '0.1.0',
+      applicationCommit,
+      rewardLifecycleReady,
+      migrationParityReady,
+      expectedSchema: rewardSchemaChecks,
     },
     weatherMaps: {
       openWeatherConfigured: openWeatherConfigured(),

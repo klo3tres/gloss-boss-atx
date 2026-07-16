@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/toast-provider';
 
 
 
-/** Runs safe background automation once per admin session (lead radar). Calendar auto-pulls on page load. */
+/** Runs safe background automation for the signed-in admin. Calendar auto-pulls on page load. */
 
 export function AdminAutomationBoot({
 
@@ -85,6 +85,19 @@ export function AdminAutomationBoot({
     }
 
   }, [leadRadarAutoEnabled, lastLeadRadarScanAt, scanFrequency, toast]);
+
+  useEffect(() => {
+    const checkMissedStarts = () => {
+      if (document.visibilityState !== 'visible') return;
+      void fetch('/api/admin/automation/missed-job-starts', {
+        method: 'POST',
+        credentials: 'same-origin',
+      }).catch(() => undefined);
+    };
+    checkMissedStarts();
+    const timer = window.setInterval(checkMissedStarts, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
 
 

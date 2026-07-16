@@ -117,7 +117,7 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
 
   const { data: heroImageAsset } = await admin
     .from('site_media_assets')
-    .select('public_url, external_url, is_active')
+    .select('public_url, external_url, is_active, mime_type')
     .eq('workspace_key', workspaceKey)
     .eq('placement', 'homepage_hero_image')
     .eq('media_type', 'image')
@@ -128,7 +128,7 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
 
   const { data: heroVideoAsset } = await admin
     .from('site_media_assets')
-    .select('public_url, poster_url, external_url, is_active')
+    .select('public_url, poster_url, external_url, is_active, mime_type')
     .eq('workspace_key', workspaceKey)
     .eq('placement', 'homepage_hero_video')
     .eq('is_active', true)
@@ -136,14 +136,17 @@ export async function loadWorkspaceBrand(admin: SupabaseClient, workspaceKey = D
     .limit(1)
     .maybeSingle();
 
-  const selectedImageUrl = heroImageAsset
+  const selectedImageCandidate = heroImageAsset
     ? str((heroImageAsset as { public_url?: string }).public_url) || str((heroImageAsset as { external_url?: string }).external_url)
     : '';
+  const { isDirectMediaUrl } = await import('@/lib/media-studio');
+  const selectedImageUrl = isDirectMediaUrl(selectedImageCandidate, 'image', (heroImageAsset as { mime_type?: string } | null)?.mime_type) ? selectedImageCandidate : '';
   if (selectedImageUrl) {
     brand = { ...brand, heroImageUrl: selectedImageUrl, heroVideoEnabled: false };
   } else if (heroVideoAsset) {
     const asset = heroVideoAsset as { public_url?: string; external_url?: string; poster_url?: string; is_active?: boolean };
-    const videoUrl = str(asset.public_url) || str(asset.external_url);
+    const videoCandidate = str(asset.public_url) || str(asset.external_url);
+    const videoUrl = isDirectMediaUrl(videoCandidate, 'video', (asset as { mime_type?: string }).mime_type) ? videoCandidate : '';
     if (videoUrl) {
       brand = {
         ...brand,

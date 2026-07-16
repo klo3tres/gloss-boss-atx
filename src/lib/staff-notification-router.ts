@@ -14,6 +14,7 @@ import {
   staffEventAllowed,
   type StaffNotificationEventType,
 } from '@/lib/staff-notification-preferences';
+import { loadAppointmentNotificationPolicy } from '@/lib/appointment-notification-policy';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -98,9 +99,20 @@ function buildMessages(
       return {
         title: `Job has not started: ${guest}`,
         sms: `Gloss Boss ATX: ${guest}'s job was scheduled for ${when} and has not been started. Open: ${url}`,
-        body: `Start time passed 15+ minutes ago Â· ${service} Â· ${when}${addrPart}${notePart}`,
+        body: `Start time passed 15+ minutes ago · ${service} · ${when}${addrPart}${notePart}`,
         kind: 'tech_job_start_overdue',
       };
+    case 'job_reminder_60m':
+    case 'job_reminder_30m': {
+      const minutes = eventType === 'job_reminder_60m' ? 60 : 30;
+      return { title: `Job in ${minutes} minutes: ${guest}`, sms: `Gloss Boss ATX: ${guest}'s ${service} starts in ${minutes} minutes at ${when}.${addrPart} Open: ${url}`, body: `${minutes}-minute reminder · ${service} · ${when}${addrPart}`, kind: `tech_job_reminder_${minutes}m` };
+    }
+    case 'job_not_acknowledged':
+      return { title: `Assignment needs acknowledgment: ${guest}`, sms: `Gloss Boss ATX: Please acknowledge ${guest}'s job scheduled for ${when}. Open: ${url}`, body: `Assignment has not been acknowledged · ${service} · ${when}`, kind: 'tech_job_not_acknowledged' };
+    case 'job_not_on_the_way':
+      return { title: `On-the-way status missing: ${guest}`, sms: `Gloss Boss ATX: ${guest}'s job starts at ${when}. Mark on the way or update the ETA: ${url}`, body: `On-the-way status missing · ${service} · ${when}`, kind: 'tech_job_not_on_the_way' };
+    case 'job_running_over':
+      return { title: `Job is running over: ${guest}`, sms: `Gloss Boss ATX: ${guest}'s job is past its estimated duration. Update the owner/customer as needed: ${url}`, body: `Estimated duration exceeded · ${service} · ${when}`, kind: 'tech_job_running_over' };
     default:
       return {
         title: `Job update: ${guest}`,
@@ -368,12 +380,14 @@ export async function enqueueStaffJobReminders(
     .from('scheduled_messages')
     .update({ status: 'cancelled', skipped_reason: 'rescheduled_or_reassigned', updated_at: new Date().toISOString() })
     .eq('appointment_id', appointmentId)
-    .in('rule_key', ['staff_job_24h', 'staff_job_2h'])
+    .in('rule_key', ['staff_job_24h', 'staff_job_2h', 'staff_job_60m', 'staff_job_30m'])
     .eq('status', 'scheduled');
 
   for (const spec of [
     { ruleKey: 'staff_job_24h', hoursBefore: 24, label: '24h' },
     { ruleKey: 'staff_job_2h', hoursBefore: 2, label: '2h' },
+    { ruleKey: 'staff_job_60m', hoursBefore: 1, label: '60m' },
+    { ruleKey: 'staff_job_30m', hoursBefore: 0.5, label: '30m' },
   ] as const) {
     const dueMs = startMs - spec.hoursBefore * 3600000;
     if (dueMs < Date.now() - 60_000) continue;
@@ -415,7 +429,7 @@ export async function processDueStaffJobReminders(
     .from('scheduled_messages')
     .select('*')
     .eq('status', 'scheduled')
-    .in('rule_key', ['staff_job_24h', 'staff_job_2h'])
+    .in('rule_key', ['staff_job_24h', 'staff_job_2h', 'staff_job_60m', 'staff_job_30m'])
     .lte('scheduled_for', now)
     .order('scheduled_for', { ascending: true })
     .limit(40);
@@ -465,7 +479,7 @@ export async function processDueStaffJobReminders(
       continue;
     }
 
-    const eventType = ruleKey === 'staff_job_2h' ? 'job_reminder_2h' : 'job_reminder_24h';
+    const eventType = ruleKey === 'staff_job_30m' ? 'job_reminder_30m' : ruleKey === 'staff_job_60m' ? 'job_reminder_60m' : ruleKey === 'staff_job_2h' ? 'job_reminder_2h' : 'job_reminder_24h';
     try {
       await emitStaffNotification(admin, {
         technicianId,
@@ -510,18 +524,36 @@ export async function processDueStaffJobReminders(
 export async function processMissedJobStartAlerts(
   admin: SupabaseClient,
 ): Promise<{ alerted: number; skipped: number; failed: number }> {
+  const policy = await loadAppointmentNotificationPolicy(admin);
+  if (!policy.enabled) return { alerted: 0, skipped: 0, failed: 0 };
   const now = Date.now();
-  const cutoff = new Date(now - 15 * 60_000).toISOString();
+  const cutoff = new Date(now - policy.firstLateMinutes * 60_000).toISOString();
   const oldest = new Date(now - 24 * 60 * 60_000).toISOString();
-  const { data, error } = await admin
+  const fullQuery = await admin
     .from('appointments')
-    .select('id, guest_name, service_slug, scheduled_start, status, job_started_at, assigned_technician_id')
+    .select('id, guest_name, service_slug, scheduled_start, status, job_started_at, assigned_technician_id, flexible_arrival, delay_approved_by_owner_at, delay_approved_by_customer_at, updated_eta_minutes')
     .gte('scheduled_start', oldest)
     .lte('scheduled_start', cutoff)
     .is('job_started_at', null)
     .not('status', 'in', '(cancelled,canceled,completed,archived,in_progress)')
     .order('scheduled_start', { ascending: true })
     .limit(50);
+  let data = fullQuery.data as Record<string, unknown>[] | null;
+  let error = fullQuery.error;
+
+  if (error && /flexible_arrival|delay_approved|updated_eta_minutes|column|schema cache|Could not find|does not exist/i.test(error.message)) {
+    const legacyQuery = await admin
+      .from('appointments')
+      .select('id, guest_name, service_slug, scheduled_start, status, job_started_at, assigned_technician_id')
+      .gte('scheduled_start', oldest)
+      .lte('scheduled_start', cutoff)
+      .is('job_started_at', null)
+      .not('status', 'in', '(cancelled,canceled,completed,archived,in_progress)')
+      .order('scheduled_start', { ascending: true })
+      .limit(50);
+    data = legacyQuery.data as Record<string, unknown>[] | null;
+    error = legacyQuery.error;
+  }
 
   if (error || !data?.length) return { alerted: 0, skipped: 0, failed: error ? 1 : 0 };
   let alerted = 0;
@@ -532,24 +564,55 @@ export async function processMissedJobStartAlerts(
     const appointmentId = str(row.id);
     const guest = str(row.guest_name) || 'Customer';
     const scheduledStart = str(row.scheduled_start);
-    const marker = await admin.from('scheduled_messages').insert({
-      rule_key: 'job_start_overdue_15m',
+    const operational = row as Record<string, unknown>;
+    if (
+      operational.flexible_arrival === true ||
+      Boolean(operational.delay_approved_by_owner_at) ||
+      Boolean(operational.delay_approved_by_customer_at)
+    ) {
+      skipped++;
+      continue;
+    }
+    const etaDelayMinutes = Math.max(0, Number(operational.updated_eta_minutes ?? 0) || 0);
+    const scheduledMs = Date.parse(scheduledStart);
+    if (etaDelayMinutes > 0 && Number.isFinite(scheduledMs) && now < scheduledMs + (etaDelayMinutes + policy.firstLateMinutes) * 60_000) {
+      skipped++;
+      continue;
+    }
+    const markerPayload = {
+      rule_key: `job_start_overdue_${policy.firstLateMinutes}m`,
       channel: 'email',
       recipient: 'owner',
       subject: `Job has not started: ${guest}`,
-      body: `${guest}'s appointment has not started 15 minutes after its scheduled time.`,
-      status: 'sent',
+      body: `${guest}'s appointment has not started ${policy.firstLateMinutes} minutes after its scheduled time.`,
+      status: 'scheduled',
       scheduled_for: new Date().toISOString(),
-      sent_at: new Date().toISOString(),
       appointment_id: appointmentId,
       entity_type: 'appointment',
       entity_id: appointmentId,
-      metadata: { alert_only: true, threshold_minutes: 15 },
-    });
+      metadata: { alert_only: true, threshold_minutes: policy.firstLateMinutes },
+    };
+    let markerId = '';
+    const marker = await admin.from('scheduled_messages').insert(markerPayload).select('id').maybeSingle();
     if (marker.error) {
-      if (/duplicate|unique/i.test(marker.error.message)) skipped++;
-      else failed++;
-      continue;
+      if (!/duplicate|unique/i.test(marker.error.message)) {
+        failed++;
+        continue;
+      }
+      const existing = await admin
+        .from('scheduled_messages')
+        .select('id, status')
+        .eq('rule_key', `job_start_overdue_${policy.firstLateMinutes}m`)
+        .eq('appointment_id', appointmentId)
+        .maybeSingle();
+      if (!existing.data?.id || existing.data.status === 'sent') {
+        skipped++;
+        continue;
+      }
+      markerId = str(existing.data.id);
+      await admin.from('scheduled_messages').update({ status: 'scheduled', skipped_reason: null }).eq('id', markerId);
+    } else {
+      markerId = str(marker.data?.id);
     }
 
     try {
@@ -557,7 +620,7 @@ export async function processMissedJobStartAlerts(
       await emitOwnerNotification(admin, {
         eventType: 'job_start_overdue',
         title: `Job has not started: ${guest}`,
-        body: `${guest}'s appointment was scheduled for ${formatApptTime(scheduledStart)} and is now more than 15 minutes late without a recorded job start.`,
+        body: `${guest}'s appointment was scheduled for ${formatApptTime(scheduledStart)} and is now more than ${policy.firstLateMinutes} minutes late without a recorded job start.`,
         source: 'missed_job_start_monitor',
         priority: 'high',
         relatedType: 'appointment',
@@ -575,10 +638,110 @@ export async function processMissedJobStartAlerts(
           bypassQuietHours: true,
         });
       }
+      if (markerId) {
+        await admin.from('scheduled_messages').update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          skipped_reason: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', markerId);
+      }
       alerted++;
-    } catch {
+    } catch (error) {
+      if (markerId) {
+        await admin.from('scheduled_messages').update({
+          status: 'failed',
+          skipped_reason: error instanceof Error ? error.message : String(error),
+          updated_at: new Date().toISOString(),
+        }).eq('id', markerId);
+      }
       failed++;
     }
   }
   return { alerted, skipped, failed };
+}
+
+async function emitOperationalAlertOnce(
+  admin: SupabaseClient,
+  input: { ruleKey: string; appointmentId: string; technicianId?: string; guest: string; title: string; body: string; staffEvent: StaffNotificationEventType; cooldownMinutes?: number; maximumSends?: number },
+): Promise<'alerted' | 'skipped' | 'failed'> {
+  const now = new Date().toISOString();
+  const existing = await admin.from('scheduled_messages').select('id, created_at').eq('appointment_id', input.appointmentId).like('rule_key', `${input.ruleKey}%`).order('created_at', { ascending: false }).limit(Math.max(1, input.maximumSends ?? 1));
+  if ((existing.data?.length ?? 0) >= Math.max(1, input.maximumSends ?? 1)) return 'skipped';
+  const latestAt = Date.parse(String(existing.data?.[0]?.created_at ?? ''));
+  if (Number.isFinite(latestAt) && Date.now() < latestAt + Math.max(1, input.cooldownMinutes ?? 30) * 60_000) return 'skipped';
+  const sendIndex = (existing.data?.length ?? 0) + 1;
+  const marker = await admin.from('scheduled_messages').insert({
+    rule_key: `${input.ruleKey}_send_${sendIndex}`,
+    channel: 'staff',
+    recipient: input.technicianId ? `staff:${input.technicianId}` : 'owner',
+    subject: input.title,
+    body: input.body,
+    status: 'scheduled',
+    scheduled_for: now,
+    appointment_id: input.appointmentId,
+    entity_type: 'appointment',
+    entity_id: input.appointmentId,
+    metadata: { alert_only: true },
+  }).select('id').maybeSingle();
+  if (marker.error) return /duplicate|unique/i.test(marker.error.message) ? 'skipped' : 'failed';
+  try {
+    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+    await emitOwnerNotification(admin, { eventType: 'job_start_overdue', title: input.title, body: input.body, source: 'appointment_operations_monitor', priority: 'high', relatedType: 'appointment', relatedId: input.appointmentId, relatedUrl: `/admin/work-orders/${encodeURIComponent(input.appointmentId)}`, bypassQuietHours: true });
+    if (input.technicianId) await emitStaffNotification(admin, { technicianId: input.technicianId, appointmentId: input.appointmentId, eventType: input.staffEvent, extraNote: input.body, bypassQuietHours: true });
+    await admin.from('scheduled_messages').update({ status: 'sent', sent_at: now, updated_at: now }).eq('id', marker.data?.id);
+    return 'alerted';
+  } catch (error) {
+    await admin.from('scheduled_messages').update({ status: 'failed', skipped_reason: error instanceof Error ? error.message : String(error), updated_at: now }).eq('id', marker.data?.id);
+    return 'failed';
+  }
+}
+
+/** Additional acknowledgment, on-the-way, 30-minute-late, and overrun escalation checks. */
+export async function processAppointmentOperationalAlerts(admin: SupabaseClient): Promise<{ alerted: number; skipped: number; failed: number }> {
+  const totals = { alerted: 0, skipped: 0, failed: 0 };
+  const policy = await loadAppointmentNotificationPolicy(admin);
+  if (!policy.enabled) return totals;
+  const now = Date.now();
+  const windowStart = new Date(now - 24 * 60 * 60_000).toISOString();
+  const windowEnd = new Date(now + 2 * 60 * 60_000).toISOString();
+  const { data: scheduled } = await admin.from('appointments')
+    .select('id, guest_name, scheduled_start, status, assigned_technician_id, technician_acknowledged_at, on_the_way_at, job_started_at, flexible_arrival, delay_approved_by_owner_at, delay_approved_by_customer_at')
+    .gte('scheduled_start', windowStart).lte('scheduled_start', windowEnd).limit(100);
+  for (const raw of scheduled ?? []) {
+    const row = raw as Record<string, unknown>;
+    const status = str(row.status).toLowerCase();
+    if (['cancelled', 'canceled', 'completed', 'archived', 'voided'].includes(status) || row.flexible_arrival === true || row.delay_approved_by_owner_at || row.delay_approved_by_customer_at) continue;
+    const appointmentId = str(row.id);
+    const technicianId = str(row.assigned_technician_id);
+    const guest = str(row.guest_name) || 'Customer';
+    const start = Date.parse(str(row.scheduled_start));
+    if (!appointmentId || !Number.isFinite(start)) continue;
+    const checks: Array<{ due: boolean; ruleKey: string; title: string; body: string; staffEvent: StaffNotificationEventType }> = [
+      { due: Boolean(technicianId) && !row.technician_acknowledged_at && now >= start - policy.acknowledgeMinutesBefore * 60_000, ruleKey: `job_not_acknowledged_${policy.acknowledgeMinutesBefore}m`, title: `Assignment not acknowledged: ${guest}`, body: `${guest}'s assignment is within ${policy.acknowledgeMinutesBefore} minutes and has not been acknowledged.`, staffEvent: 'job_not_acknowledged' },
+      { due: Boolean(technicianId) && !row.on_the_way_at && !row.job_started_at && now >= start - policy.onWayMinutesBefore * 60_000, ruleKey: `job_not_on_the_way_${policy.onWayMinutesBefore}m`, title: `On-the-way status missing: ${guest}`, body: `${guest}'s appointment is within ${policy.onWayMinutesBefore} minutes and no on-the-way status is recorded.`, staffEvent: 'job_not_on_the_way' },
+      { due: !row.job_started_at && now >= start + policy.secondLateMinutes * 60_000, ruleKey: `job_start_overdue_${policy.secondLateMinutes}m`, title: `Job is ${policy.secondLateMinutes} minutes late: ${guest}`, body: `${guest}'s appointment has not started ${policy.secondLateMinutes} minutes after its scheduled time.`, staffEvent: 'job_start_overdue' },
+    ];
+    for (const check of checks) {
+      if (!check.due) continue;
+      const result = await emitOperationalAlertOnce(admin, { ...check, appointmentId, technicianId, guest, cooldownMinutes: policy.cooldownMinutes, maximumSends: policy.maximumSendsPerRule });
+      totals[result]++;
+    }
+  }
+
+  const { data: running } = await admin.from('appointments')
+    .select('id, guest_name, assigned_technician_id, job_started_at, estimated_duration_minutes, status')
+    .not('job_started_at', 'is', null).is('job_completed_at', null).limit(100);
+  for (const raw of running ?? []) {
+    const row = raw as Record<string, unknown>;
+    if (!['in_progress', 'started', 'active'].includes(str(row.status).toLowerCase())) continue;
+    const started = Date.parse(str(row.job_started_at));
+    const estimated = Math.max(15, Number(row.estimated_duration_minutes ?? 120) || 120);
+    if (!Number.isFinite(started) || now < started + (estimated + policy.overrunGraceMinutes) * 60_000) continue;
+    const appointmentId = str(row.id);
+    const guest = str(row.guest_name) || 'Customer';
+    const result = await emitOperationalAlertOnce(admin, { ruleKey: `job_running_over_${policy.overrunGraceMinutes}m`, appointmentId, technicianId: str(row.assigned_technician_id), guest, title: `Job is running over: ${guest}`, body: `${guest}'s job is more than ${policy.overrunGraceMinutes} minutes past its estimated duration.`, staffEvent: 'job_running_over', cooldownMinutes: policy.cooldownMinutes, maximumSends: policy.maximumSendsPerRule });
+    totals[result]++;
+  }
+  return totals;
 }

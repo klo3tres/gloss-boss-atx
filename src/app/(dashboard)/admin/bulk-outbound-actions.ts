@@ -30,6 +30,53 @@ function str(v: unknown) {
   return v == null ? '' : String(v).trim();
 }
 
+async function resolveBulkRecipientsByIds(admin: NonNullable<Awaited<ReturnType<typeof requireStaff>>>['admin'], ids: string[]) {
+  const customerIds = ids.filter((id) => id.startsWith('customer-')).map((id) => id.slice(9)).filter(Boolean);
+  const opportunityIds = ids.filter((id) => id.startsWith('opp-')).map((id) => id.slice(4)).filter(Boolean);
+  const recipients: BulkRecipient[] = [];
+  if (customerIds.length) {
+    const { data } = await admin.from('customers').select('id, full_name, email, phone, email_marketing_opt_in').in('id', customerIds);
+    for (const raw of data ?? []) {
+      const row = raw as Record<string, unknown>;
+      const phone = str(row.phone) || null;
+      const email = str(row.email) || null;
+      const smsCheck = phone ? await customerCanReceiveSms(admin, { customerId: str(row.id), phone }) : { ok: false, reason: 'No phone' };
+      recipients.push({
+        id: `customer-${str(row.id)}`,
+        label: str(row.full_name) || email || phone || 'Customer',
+        phone,
+        email,
+        source: 'customer',
+        customerId: str(row.id),
+        canSms: smsCheck.ok,
+        canEmail: Boolean(email?.includes('@') && row.email_marketing_opt_in !== false),
+        smsBlocker: smsCheck.ok ? undefined : smsCheck.reason,
+      });
+    }
+  }
+  if (opportunityIds.length) {
+    const { data } = await admin.from('titan_opportunities').select('id, title, author_name, contact_phone, contact_email, status').in('id', opportunityIds);
+    for (const raw of data ?? []) {
+      const row = raw as Record<string, unknown>;
+      if (['booked', 'lost', 'ignored', 'dismissed', 'won'].includes(str(row.status))) continue;
+      const phone = str(row.contact_phone) || null;
+      const email = str(row.contact_email) || null;
+      const smsCheck = phone ? await customerCanReceiveSms(admin, { phone }) : { ok: false, reason: 'No phone' };
+      recipients.push({
+        id: `opp-${str(row.id)}`,
+        label: str(row.author_name) || str(row.title) || 'Lead',
+        phone,
+        email,
+        source: 'opportunity',
+        canSms: smsCheck.ok,
+        canEmail: Boolean(email?.includes('@')),
+        smsBlocker: smsCheck.ok ? undefined : smsCheck.reason,
+      });
+    }
+  }
+  return recipients;
+}
+
 export async function searchBulkRecipientsAction(input: {
   query?: string;
   source?: 'customers' | 'opportunities' | 'all';
@@ -105,8 +152,15 @@ export async function sendBulkOutboundAction(input: {
   const gate = await requireStaff();
   if (!gate) return { sent: 0, skipped: 0, errors: ['Unauthorized'] };
 
-  const search = await searchBulkRecipientsAction({ source: 'all' });
-  const selected = search.recipients.filter((r) => input.recipientIds.includes(r.id));
+  const resolved = await resolveBulkRecipientsByIds(gate.admin, [...new Set(input.recipientIds)].slice(0, 500));
+  const seenDestinations = new Set<string>();
+  const selected = resolved.filter((recipient) => {
+    const raw = input.channel === 'sms' ? recipient.phone : recipient.email;
+    const normalized = input.channel === 'sms' ? str(raw).replace(/\D/g, '').slice(-10) : str(raw).toLowerCase();
+    if (!normalized || seenDestinations.has(normalized)) return false;
+    seenDestinations.add(normalized);
+    return true;
+  });
   let sent = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -130,10 +184,13 @@ export async function sendBulkOutboundAction(input: {
         errors.push(`${r.label}: email not available`);
         continue;
       }
+      const personalizedBody = input.body
+        .replace(/\{\{customer\}\}/gi, r.label)
+        .replace(/\{\{first_name\}\}/gi, r.label.split(/\s+/)[0] || r.label);
       const res = await schedulePreviewedMessageAction({
         channel: input.channel,
         to,
-        body: input.body,
+        body: personalizedBody,
         subject: input.subject,
         kind: 'bulk_outbound',
         scheduledFor: input.scheduledFor,
@@ -162,11 +219,14 @@ export async function sendBulkOutboundAction(input: {
         skipped++;
         continue;
       }
+      const personalizedBody = input.body
+        .replace(/\{\{customer\}\}/gi, r.label)
+        .replace(/\{\{first_name\}\}/gi, r.label.split(/\s+/)[0] || r.label);
       const res =
         input.channel === 'sms'
           ? await sendPreviewedSmsAction({
               to,
-              body: input.body,
+              body: personalizedBody,
               kind: 'bulk_outbound',
               customerId: r.customerId ?? undefined,
               entityType: r.source,
@@ -175,7 +235,7 @@ export async function sendBulkOutboundAction(input: {
           : await sendPreviewedEmailAction({
               to,
               subject: input.subject ?? 'Gloss Boss ATX',
-              body: input.body,
+              body: personalizedBody,
               kind: 'bulk_outbound',
               customerId: r.customerId ?? undefined,
               entityType: r.source,
@@ -190,4 +250,42 @@ export async function sendBulkOutboundAction(input: {
 
   revalidatePath('/admin/notifications');
   return { ok: sent > 0, sent, skipped, errors };
+}
+
+export async function sendBulkTestToOwnerAction(input: {
+  channel: 'sms' | 'email';
+  body: string;
+  subject?: string;
+}): Promise<{ ok?: boolean; error?: string; destination?: string }> {
+  const gate = await requireStaff();
+  if (!gate) return { error: 'Unauthorized' };
+  if (!input.body.trim()) return { error: 'Write the message before sending a test.' };
+  if (input.channel === 'sms') {
+    const { businessNotifyPhone } = await import('@/lib/business-booking-notify');
+    const { sendCustomerSms } = await import('@/lib/sms-send');
+    const to = businessNotifyPhone();
+    if (!to) return { error: 'Add the owner notification phone in Settings first.' };
+    const sent = await sendCustomerSms({
+      db: gate.admin,
+      kind: 'bulk_outbound_owner_test',
+      template_key: 'bulk_outbound_owner_test',
+      to,
+      body: `[TEST — NOT A CAMPAIGN]\n${input.body}`,
+      requireConsent: false,
+      extraPayload: { test_send: true },
+    });
+    return sent.ok ? { ok: true, destination: `phone ending ${to.replace(/\D/g, '').slice(-4)}` } : { error: sent.error ?? 'Test SMS failed.' };
+  }
+  const { businessNotifyDestination, sendResendHtml } = await import('@/lib/email-send');
+  const to = businessNotifyDestination();
+  if (!to) return { error: 'Add the owner notification email in Settings first.' };
+  const subject = `[TEST] ${input.subject?.trim() || 'Gloss Boss ATX campaign'}`;
+  const safeBody = input.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br/>');
+  const sent = await sendResendHtml({ to, subject, html: `<p><strong>Campaign test — no customer received this.</strong></p><p>${safeBody}</p>` });
+  await gate.admin.from('notification_outbox').insert({
+    kind: 'bulk_outbound_owner_test', channel: 'email', provider: 'resend', status: sent.ok ? 'sent' : 'failed',
+    subject, provider_message_id: sent.emailId ?? null, error_message: sent.error ?? null,
+    payload: { to, body: input.body, subject, test_send: true, resend_email_id: sent.emailId ?? null }, created_at: new Date().toISOString(),
+  });
+  return sent.ok ? { ok: true, destination: to.replace(/(^.).*(@.*$)/, '$1***$2') } : { error: sent.error ?? 'Test email failed.' };
 }

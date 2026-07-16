@@ -78,7 +78,7 @@ export async function loadReferralStatsForCustomer(
   const pending = rows.filter((e) => String(e.status) === 'booked').length;
   const rewardRows = rewards ?? [];
   const rewardsEarned = rewardRows.length;
-  const rewardsAvailable = rewardRows.filter((r) => r.status === 'pending' || r.status === 'issued').length;
+  const rewardsAvailable = rewardRows.filter((r) => ['pending', 'issued', 'available'].includes(String(r.status))).length;
 
   return { sent: sent ?? rows.length, booked, completed, pending, rewardsEarned, rewardsAvailable };
 }

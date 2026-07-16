@@ -47,8 +47,28 @@ export function formatRewardSummary(type: string, value: number, label?: string)
   return String(value);
 }
 
-export function formatReferralHeadline(settings: Pick<ReferralProgramSettings, 'referredRewardType' | 'referredRewardValue' | 'referrerRewardType' | 'referrerRewardValue'>): string {
-  return `Give ${formatRewardSummary(settings.referredRewardType, settings.referredRewardValue)}. Get ${formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)}.`;
+export function formatReferredReward(settings: Pick<ReferralProgramSettings, 'referredRewardType' | 'referredRewardValue' | 'referredRewardLabel'>): string {
+  if (settings.referredRewardLabel?.trim()) return settings.referredRewardLabel.trim();
+  if (settings.referredRewardType === 'dollar') return `$${Number(settings.referredRewardValue).toLocaleString('en-US', { maximumFractionDigits: 2 })} off`;
+  return formatRewardSummary(settings.referredRewardType, settings.referredRewardValue);
+}
+
+export function formatReferrerReward(settings: Pick<ReferralProgramSettings, 'referrerRewardType' | 'referrerRewardValue' | 'referrerRewardLabel'>): string {
+  return formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue, settings.referrerRewardLabel);
+}
+
+export function formatReferralHeadline(settings: Pick<ReferralProgramSettings, 'referredRewardType' | 'referredRewardValue' | 'referredRewardLabel' | 'referrerRewardType' | 'referrerRewardValue' | 'referrerRewardLabel'>): string {
+  return `Give ${formatReferredReward(settings)}. Get ${formatReferrerReward(settings)}.`;
+}
+
+export function formatReferralTerms(settings: ReferralProgramSettings): string {
+  const parts = [`Your reward unlocks after your friend's ${settings.rewardUnlockRule === 'booked' ? 'eligible booking' : 'completed paid appointment'}.`];
+  if (settings.referredEligibleServiceSlugs?.length) parts.push(`Friend offer services: ${settings.referredEligibleServiceSlugs.join(', ')}.`);
+  if (settings.referredVehicleRestrictions?.length) parts.push(`Eligible vehicles: ${settings.referredVehicleRestrictions.join(', ')}.`);
+  if (settings.referredMaximumRetailCents) parts.push(`Friend offer maximum value: $${(settings.referredMaximumRetailCents / 100).toFixed(2)}.`);
+  if (settings.rewardExpirationDays) parts.push(`Issued rewards expire after ${settings.rewardExpirationDays} days.`);
+  parts.push(settings.stackingAllowed ? 'Stacking is allowed where checkout confirms eligibility.' : 'Referral rewards do not stack with other promotions.');
+  return parts.join(' ');
 }
 
 /** Durable customer referral booking link — no expiry query params. */
@@ -81,8 +101,22 @@ export type ReferralProgramSettings = {
   enabled: boolean;
   referrerRewardType: ReferralRewardType;
   referrerRewardValue: number;
+  referrerRewardLabel?: string;
   referredRewardType: ReferralRewardType;
   referredRewardValue: number;
+  referredRewardLabel?: string;
+  referredEligibleServiceSlugs?: string[];
+  referredEligibleAddonSlugs?: string[];
+  referredVehicleRestrictions?: string[];
+  referredExclusions?: string[];
+  referredMaximumRetailCents?: number;
+  referredCustomerPaysDifference?: boolean;
+  referrerEligibleServiceSlugs?: string[];
+  referrerEligibleAddonSlugs?: string[];
+  referrerVehicleRestrictions?: string[];
+  referrerExclusions?: string[];
+  referrerMaximumRetailCents?: number;
+  referrerCustomerPaysDifference?: boolean;
   minCompletedBookings: number;
   maxRewardsPerCustomer: number;
   stackingAllowed: boolean;
@@ -101,8 +135,22 @@ export const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   enabled: true,
   referrerRewardType: 'percent',
   referrerRewardValue: 15,
+  referrerRewardLabel: '',
   referredRewardType: 'percent',
   referredRewardValue: 10,
+  referredRewardLabel: '',
+  referredEligibleServiceSlugs: [],
+  referredEligibleAddonSlugs: [],
+  referredVehicleRestrictions: [],
+  referredExclusions: [],
+  referredMaximumRetailCents: 0,
+  referredCustomerPaysDifference: true,
+  referrerEligibleServiceSlugs: [],
+  referrerEligibleAddonSlugs: [],
+  referrerVehicleRestrictions: [],
+  referrerExclusions: [],
+  referrerMaximumRetailCents: 0,
+  referrerCustomerPaysDifference: true,
   minCompletedBookings: 1,
   maxRewardsPerCustomer: 10,
   stackingAllowed: false,
@@ -127,6 +175,15 @@ export async function loadReferralProgramSettings(admin: SupabaseClient): Promis
   try {
     const raw = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
     const merged = { ...DEFAULT_REFERRAL_SETTINGS, ...(raw as Partial<ReferralProgramSettings>) };
+    merged.referrerRewardValue = Math.max(0, Number(merged.referrerRewardValue) || 0);
+    merged.referredRewardValue = Math.max(0, Number(merged.referredRewardValue) || 0);
+    merged.freeDetailReferralThreshold = Math.max(1, Number(merged.freeDetailReferralThreshold) || 1);
+    merged.rewardLadder = Array.isArray(merged.rewardLadder)
+      ? merged.rewardLadder
+          .filter((tier) => tier && Number(tier.threshold) > 0)
+          .map((tier) => ({ ...tier, threshold: Math.max(1, Math.floor(Number(tier.threshold))), rewardValue: Math.max(0, Number(tier.rewardValue) || 0), label: String(tier.label ?? '').trim() || formatRewardSummary(String(tier.rewardType), Number(tier.rewardValue) || 0) }))
+          .sort((a, b) => a.threshold - b.threshold)
+      : [];
     if (!merged.rewardLadder?.length) merged.rewardLadder = DEFAULT_REFERRAL_SETTINGS.rewardLadder;
     if (!merged.rewardUnlockRule) merged.rewardUnlockRule = 'completed_paid';
     return merged;

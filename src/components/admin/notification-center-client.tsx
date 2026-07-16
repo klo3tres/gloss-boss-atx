@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
   installAllNotificationDefaultsAction,
+  retryFailedNotificationAction,
   saveNotificationTemplateAction,
   testNotificationSendAction,
 } from '@/app/(dashboard)/admin/notifications/notification-actions';
@@ -90,7 +91,7 @@ export function NotificationCenterClient({
   const [installMsg, setInstallMsg] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
 
-  const failed = outbox.filter((r) => r.status === 'failed' || r.status === 'skipped');
+  const failed = outbox.filter((r) => ['failed', 'undelivered', 'bounced', 'complained', 'skipped'].includes(r.status));
   const sent = outbox.filter((r) => r.status === 'sent' || r.status === 'delivered');
   const queued = outbox.filter((r) => !['sent', 'delivered', 'failed', 'skipped'].includes(r.status));
 
@@ -99,7 +100,7 @@ export function NotificationCenterClient({
       <div className='grid gap-3 sm:grid-cols-3'>
         {[
           { label: 'Unread signal', value: `${outbox.length} events`, tone: 'gold' },
-          { label: 'Delivered', value: `${sent.length} sent`, tone: 'emerald' },
+          { label: 'Sent / delivered', value: `${sent.length} messages`, tone: 'emerald' },
           { label: 'Needs review', value: `${failed.length + queued.length} alerts`, tone: failed.length ? 'rose' : 'amber' },
         ].map((stat) => (
           <div key={stat.label} className='gb-platform-kpi'>
@@ -329,9 +330,12 @@ export function NotificationCenterClient({
 }
 
 function StructuredOutboxLogs({ rows, empty }: { rows: OutboxRow[]; empty: string }) {
+  const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'sms'>('all');
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<Record<string, string>>({});
 
   const filtered = rows.filter((r) => {
     const searchLower = search.toLowerCase();
@@ -353,11 +357,14 @@ function StructuredOutboxLogs({ rows, empty }: { rows: OutboxRow[]; empty: strin
 
   const getStatusBadge = (status: string) => {
     const s = status.toLowerCase();
-    if (s === 'sent' || s === 'delivered') {
-      return <span className="rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-emerald-300 font-mono">Sent</span>;
+    if (s === 'delivered') {
+      return <span className="rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-emerald-300 font-mono">Delivered</span>;
     }
-    if (s === 'failed') {
-      return <span className="rounded-full bg-rose-500/10 border border-rose-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-rose-300 font-mono">Failed</span>;
+    if (s === 'sent') {
+      return <span className="rounded-full bg-cyan-500/10 border border-cyan-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-cyan-300 font-mono">Sent</span>;
+    }
+    if (['failed', 'undelivered', 'bounced', 'complained'].includes(s)) {
+      return <span className="rounded-full bg-rose-500/10 border border-rose-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-rose-300 font-mono">{s}</span>;
     }
     return <span className="rounded-full bg-amber-500/10 border border-amber-500/25 px-2.5 py-0.5 text-[9px] font-black uppercase text-amber-300 font-mono">{status}</span>;
   };
@@ -509,6 +516,27 @@ function StructuredOutboxLogs({ rows, empty }: { rows: OutboxRow[]; empty: strin
                         </pre>
                       </div>
                     )}
+
+                    {['failed', 'undelivered'].includes(r.status) ? (
+                      <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-3">
+                        <button
+                          type="button"
+                          disabled={retryingId === r.id}
+                          onClick={() => {
+                            setRetryingId(r.id);
+                            void retryFailedNotificationAction(r.id).then((result) => {
+                              setRetryMessage((old) => ({ ...old, [r.id]: result.message }));
+                              setRetryingId(null);
+                              if (result.ok) router.refresh();
+                            });
+                          }}
+                          className="rounded-xl border border-gold/35 bg-gold/10 px-3 py-2 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+                        >
+                          {retryingId === r.id ? 'Retrying…' : 'Retry safely'}
+                        </button>
+                        <p className="text-xs text-zinc-400">{retryMessage[r.id] ?? 'SMS retries re-check consent and STOP status.'}</p>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

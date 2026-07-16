@@ -17,6 +17,8 @@ export function whenChicago(iso: string) {
 
 export type JobNotificationKind =
   | 'technician_on_the_way'
+  | 'technician_arrived'
+  | 'running_late'
   | 'job_started'
   | 'work_started'
   | 'halfway_complete'
@@ -45,6 +47,10 @@ export function buildJobNotificationSms(
   switch (kind) {
     case 'technician_on_the_way':
       return `Gloss Boss ATX update: Your technician is on the way for ${vehicle}. Track updates here: ${dashboardUrl}`;
+    case 'technician_arrived':
+      return `Gloss Boss ATX update: Your technician has arrived for ${vehicle}. Track updates here: ${dashboardUrl}`;
+    case 'running_late':
+      return `Gloss Boss ATX update: We are running behind schedule for ${vehicle}. We will keep your ETA updated here: ${dashboardUrl}`;
     case 'halfway_complete':
       return `Gloss Boss ATX update: We are about halfway through ${vehicle}. Track updates here: ${dashboardUrl}`;
     case 'last_touches':
@@ -84,6 +90,10 @@ export function buildJobNotificationEmailSubject(kind: string): string {
       return 'Gloss Boss ATX — Zelle payment instructions';
     case 'technician_on_the_way':
       return 'Gloss Boss ATX — Technician on the way';
+    case 'technician_arrived':
+      return 'Gloss Boss ATX — Technician arrived';
+    case 'running_late':
+      return 'Gloss Boss ATX — Updated arrival time';
     case 'halfway_complete':
       return 'Gloss Boss ATX — Service update';
     case 'last_touches':

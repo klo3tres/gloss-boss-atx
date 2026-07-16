@@ -17,6 +17,7 @@ export const RESEND_WEBHOOK_EVENTS = [
   'email.sent',
   'email.delivered',
   'email.bounced',
+  'email.complained',
   'email.failed',
   'email.opened',
   'email.clicked',
@@ -133,11 +134,15 @@ async function processEmailReceived(
 function outboxStatusForEvent(type: string): { status: string; failed: boolean } {
   switch (type) {
     case 'email.sent':
+      return { status: 'sent', failed: false };
     case 'email.delivered':
     case 'email.opened':
     case 'email.clicked':
-      return { status: 'sent', failed: false };
+      return { status: 'delivered', failed: false };
     case 'email.bounced':
+      return { status: 'bounced', failed: true };
+    case 'email.complained':
+      return { status: 'complained', failed: true };
     case 'email.failed':
       return { status: 'failed', failed: true };
     default:
@@ -154,26 +159,40 @@ async function updateNotificationOutbox(
   if (!emailId) return 0;
   const { status, failed } = outboxStatusForEvent(eventType);
   const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    status,
-    provider_message_id: emailId,
-    error_message: errText,
-    payload: { resend_event: eventType, updated_at: now },
-  };
-  if (!failed) {
-    patch.sent_at = now;
-    patch.failed_at = null;
-  } else {
-    patch.failed_at = now;
-  }
-
   let updated = 0;
   const byProvider = await admin
     .from('notification_outbox')
-    .update(patch)
-    .eq('provider_message_id', emailId)
-    .select('id');
-  if (!byProvider.error) updated += (byProvider.data ?? []).length;
+    .select('id, payload')
+    .eq('provider_message_id', emailId);
+  if (!byProvider.error) {
+    for (const row of byProvider.data ?? []) {
+      const existingPayload = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+      const patch: Record<string, unknown> = {
+        status,
+        provider_status: status,
+        provider_message_id: emailId,
+        error_message: errText,
+        status_updated_at: now,
+        payload: { ...existingPayload, resend_event: eventType, delivery_updated_at: now },
+      };
+      if (status === 'sent' || status === 'delivered') patch.sent_at = now;
+      if (status === 'delivered') patch.delivered_at = now;
+      if (failed) patch.failed_at = now;
+      const saved = await admin.from('notification_outbox').update(patch).eq('id', row.id);
+      if (!saved.error) {
+        updated += 1;
+        const inviteId = typeof existingPayload.invite_id === 'string' ? existingPayload.invite_id : '';
+        if (inviteId) {
+          await admin.from('staff_invites').update({
+            email_delivery_status: status,
+            email_delivery_error: errText,
+            email_delivery_updated_at: now,
+            updated_at: now,
+          }).eq('id', inviteId);
+        }
+      }
+    }
+  }
 
   if (updated === 0) {
     const recent = await admin
@@ -185,6 +204,17 @@ async function updateNotificationOutbox(
     for (const row of recent.data ?? []) {
       const p = (row as { payload?: Record<string, unknown> }).payload;
       if (p && str(p.resend_email_id) === emailId) {
+        const patch: Record<string, unknown> = {
+          status,
+          provider_status: status,
+          provider_message_id: emailId,
+          error_message: errText,
+          status_updated_at: now,
+          payload: { ...p, resend_event: eventType, delivery_updated_at: now },
+        };
+        if (status === 'sent' || status === 'delivered') patch.sent_at = now;
+        if (status === 'delivered') patch.delivered_at = now;
+        if (failed) patch.failed_at = now;
         const { error } = await admin.from('notification_outbox').update(patch).eq('id', (row as { id: string }).id);
         if (!error) updated += 1;
       }
@@ -275,6 +305,7 @@ export async function handleResendWebhook(
       event.type === 'email.sent' ||
       event.type === 'email.delivered' ||
       event.type === 'email.bounced' ||
+      event.type === 'email.complained' ||
       event.type === 'email.failed' ||
       event.type === 'email.opened' ||
       event.type === 'email.clicked'

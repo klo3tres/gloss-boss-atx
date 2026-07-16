@@ -74,7 +74,7 @@ async function emailCustomer(
 
 export async function cancelAppointmentLifecycle(
   admin: SupabaseClient,
-  input: { appointmentId: string; reason?: string; notifyCustomer?: boolean },
+  input: { appointmentId: string; reason?: string; notifyCustomer?: boolean; actorId?: string | null; refundDecision?: string },
 ): Promise<{ ok: boolean; error?: string; googleCalendar?: { ok: boolean; skipped?: boolean; error?: string } }> {
   const id = str(input.appointmentId);
   if (!id) return { ok: false, error: 'Missing appointment' };
@@ -82,19 +82,14 @@ export async function cancelAppointmentLifecycle(
   const { data: appt } = await admin.from('appointments').select('*').eq('id', id).maybeSingle();
   if (!appt) return { ok: false, error: 'Appointment not found' };
   const row = appt as Record<string, unknown>;
-  if (str(row.status) === 'cancelled') return { ok: true };
-
-  const now = new Date().toISOString();
-  const { error } = await admin
-    .from('appointments')
-    .update({
-      status: 'cancelled',
-      cancelled_at: now,
-      cancel_reason: str(input.reason) || 'Cancelled',
-      updated_at: now,
-    })
-    .eq('id', id);
-  if (error) return { ok: false, error: error.message };
+  const { error } = await admin.rpc('cancel_appointment_atomic', {
+    p_appointment_id: id,
+    p_reason: str(input.reason) || 'Cancelled',
+    p_actor_id: input.actorId ?? null,
+    p_refund_decision: str(input.refundDecision) || '',
+    p_notify_customer: input.notifyCustomer !== false,
+  });
+  if (error) return { ok: false, error: `Cancellation transaction failed: ${error.message}` };
 
   try {
     const { cancelAgreementRemindersForAppointment } = await import('@/lib/agreements/reminders');
@@ -139,9 +134,12 @@ export async function cancelAppointmentLifecycle(
   }
 
   const googleCalendar = await runGoogleCalendarSync(admin, id, 'delete');
-  void import('@/lib/booking-availability-block').then(({ removeAppointmentAvailabilityBlock }) =>
-    removeAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
-  );
+  try {
+    const { removeAppointmentAvailabilityBlock } = await import('@/lib/booking-availability-block');
+    await removeAppointmentAvailabilityBlock(admin, id);
+  } catch (e) {
+    console.warn('[lifecycle] availability block verification', e);
+  }
 
   return { ok: true, googleCalendar };
 }

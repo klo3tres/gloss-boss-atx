@@ -174,6 +174,20 @@ export function AppointmentScheduleControls({
             placeholder="Customer cancelled"
           />
         </label>
+        <label className="mt-3 block text-xs text-zinc-400">
+          Deposit / refund decision
+          <select name="refundDecision" defaultValue="" className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white">
+            <option value="">Auto: review if money was collected</option>
+            <option value="no_payment">No payment collected</option>
+            <option value="retain_deposit">Retain deposit</option>
+            <option value="refund_required">Refund required</option>
+            <option value="refund_completed">Refund already completed</option>
+            <option value="credit_issued">Customer credit issued</option>
+          </select>
+        </label>
+        <label className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+          <input type="checkbox" name="notifyCustomer" value="true" defaultChecked /> Notify the customer
+        </label>
         <button
           type="submit"
           disabled={pending}

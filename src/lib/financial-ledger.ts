@@ -42,7 +42,10 @@ export type FinancialDetailRow = {
 };
 
 export type FinancialSnapshot = {
+  bookedValueCents: number;
+  completedServiceValueCents: number;
   grossRevenueCents: number;
+  netCollectedRevenueCents: number;
   cashRevenueCents: number;
   stripeRevenueCents: number;
   zelleRevenueCents: number;
@@ -73,6 +76,7 @@ export type FinancialSnapshot = {
   stalePendingDepositsCents: number;
   creditsRedeemedCents: number;
   discountsCents: number;
+  tipsCents: number;
   grossServiceValueCents: number;
   diagnostics: RevenueDiagnostics & {
     ledgerRowsLoaded: number;
@@ -155,10 +159,10 @@ export async function getFinancialSnapshot(
   const fromIso = startDate.includes('T') ? startDate : new Date(`${startDate}T00:00:00`).toISOString();
   const toIso = endDate.includes('T') ? endDate : new Date(`${endDate}T23:59:59`).toISOString();
 
-  const [apptMetaRes, payments, ledgerRows, expenseRows, businessExpenseRows, mileageRows, receiptsRes, techsRes] = await Promise.all([
+  const [apptMetaRes, payments, ledgerRows, expenseRows, businessExpenseRows, mileageRows, receiptsRes, techsRes, creditRedemptions] = await Promise.all([
     db
       .from('appointments')
-      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, created_at, service_slug, assigned_technician_id, vehicle_class, stripe_checkout_session_id, fallback_booking_id, archived, archived_at, deleted_at')
+      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, created_at, service_slug, assigned_technician_id, vehicle_class, stripe_checkout_session_id, fallback_booking_id, archived, archived_at, deleted_at, booking_pricing_breakdown, booking_source')
       .limit(10000),
     fetchPaymentsSince(db, fromIso, toIso),
     safeSelect(db, 'financial_ledger', '*', 'occurred_at', fromIso, toIso),
@@ -167,6 +171,7 @@ export async function getFinancialSnapshot(
     loadMileageExpenses(db, fromIso, toIso),
     db.from('receipts').select('id, created_at').gte('created_at', fromIso).lte('created_at', toIso).limit(10000),
     db.from('profiles').select('id, full_name, email').limit(1000),
+    safeSelect(db, 'customer_credit_redemptions', 'id, amount_cents, appointment_id, credit_id, redeemed_at', 'redeemed_at', fromIso, toIso),
   ]);
 
   const apptRows = ((apptMetaRes.data ?? []) as Record<string, unknown>[]).filter((row) => includeTest || !isTestLikeJob(row));
@@ -227,10 +232,12 @@ export async function getFinancialSnapshot(
   };
   const recentPayments: FinancialDetailRow[] = [];
   const countedPayments: PayRow[] = [];
+  let tipsCents = 0;
   for (const p of canonicalPayments) {
     const paySummary = summarizePayments([p], { excludeTest: !includeTest, apptById: apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>, fromIso, toIso });
     if (paySummary.grossCents <= 0) continue;
     countedPayments.push(p);
+    tipsCents += Math.max(0, cents(p.tip_amount_cents));
     if (p.payment_kind === 'membership' || p.payment_method === 'membership') {
       membershipRevenueCents += paySummary.grossCents;
       const membershipChannel = classifyPaymentChannel(str(p.payment_method || p.payment_kind), str(p.payment_kind), p);
@@ -256,11 +263,14 @@ export async function getFinancialSnapshot(
   let stripeFeesCents = 0;
   let payoutsCents = 0;
   let ledgerExpensesCents = 0;
+  const refundedPaymentIds = new Set(
+    countedPayments.filter((payment) => cents(payment.refunded_amount_cents) > 0).map((payment) => str(payment.id)).filter(Boolean),
+  );
   for (const row of ledgerRows) {
     if (!includeTest && row.is_test === true) continue;
     if (row.exclude_from_reports === true) continue;
     const type = str(row.type);
-    if (type === 'refund') refundsCents += Math.abs(cents(row.gross_amount || row.amount));
+    if (type === 'refund' && !refundedPaymentIds.has(str(row.payment_id))) refundsCents += Math.abs(cents(row.gross_amount || row.amount));
     if (type === 'fee') stripeFeesCents += Math.abs(cents(row.fee_amount || row.amount));
     if (type === 'expense') ledgerExpensesCents += Math.abs(cents(row.amount || row.gross_amount));
     if (type === 'payout') payoutsCents += Math.abs(cents(row.amount || row.gross_amount));
@@ -297,11 +307,13 @@ export async function getFinancialSnapshot(
   const vehicleMap = new Map<string, { label: string; count: number; revenueCents: number }>();
   const customerMap = new Map<string, { label: string; email: string | null; count: number; revenueCents: number }>();
   let completedJobs = 0;
+  let bookedValueCents = 0;
   let openBalancesCents = 0;
   let staleOpenBalancesCents = 0;
   let pendingDepositsCents = 0;
   let stalePendingDepositsCents = 0;
   let grossServiceValueCents = 0;
+  let discountsCents = 0;
   const openBalances: FinancialDetailRow[] = [];
   const staleOpenBalances: FinancialDetailRow[] = [];
   const pendingDeposits: FinancialDetailRow[] = [];
@@ -309,6 +321,10 @@ export async function getFinancialSnapshot(
 
   for (const row of apptRows) {
     const status = str(row.status).toLowerCase();
+    const scheduledAt = str(row.scheduled_start);
+    if (!['cancelled', 'canceled', 'voided', 'deleted', 'archived', 'declined', 'expired'].includes(status) && dateInRange(scheduledAt, fromIso, toIso)) {
+      bookedValueCents += Math.max(0, cents(row.base_price_cents));
+    }
     const paymentStatus = str(row.payment_status).toLowerCase();
     const balance = Math.max(0, cents(row.balance_due_cents));
     const deposit = Math.max(0, cents(row.deposit_amount_cents));
@@ -358,6 +374,20 @@ export async function getFinancialSnapshot(
     completedJobs += 1;
     const amount = cents(row.base_price_cents);
     grossServiceValueCents += amount;
+    const pricing = row.booking_pricing_breakdown && typeof row.booking_pricing_breakdown === 'object'
+      ? row.booking_pricing_breakdown as Record<string, unknown>
+      : {};
+    discountsCents += Math.max(0,
+      cents(pricing.combined_discount_cents)
+      || cents(pricing.combinedDiscountCents)
+      || (
+        cents(pricing.offerDiscountCents)
+        + cents(pricing.websitePromoDiscountCents)
+        + cents(pricing.multiCarDiscountCents)
+        + cents(pricing.referral_discount_cents)
+        + cents(pricing.referral_reward_discount_cents)
+      ),
+    );
     const service = str(row.service_slug) || 'uncategorized';
     addBreakdown(serviceMap, service, { label: service.replace(/-/g, ' '), count: 0, revenueCents: 0 }, amount);
     const techId = str(row.assigned_technician_id);
@@ -372,7 +402,8 @@ export async function getFinancialSnapshot(
     customerMap.set(customerKey, customer);
   }
 
-  const netProfitCents = summary.grossCents - refundsCents - stripeFeesCents - expensesCents;
+  const netCollectedRevenueCents = Math.max(0, summary.grossCents - refundsCents);
+  const netProfitCents = netCollectedRevenueCents - stripeFeesCents - expensesCents;
   const sortRevenue = <T extends { revenueCents: number }>(rows: T[]) => rows.sort((a, b) => b.revenueCents - a.revenueCents);
   const stripeSourceCents = Math.max(0, summary.stripeCents - membershipChannelCents.stripe);
   const cashSourceCents = Math.max(0, summary.cashCents - membershipChannelCents.cash);
@@ -388,14 +419,18 @@ export async function getFinancialSnapshot(
   );
 
   return {
+    bookedValueCents,
+    completedServiceValueCents: grossServiceValueCents,
     grossRevenueCents: summary.grossCents,
+    netCollectedRevenueCents,
     cashRevenueCents: cashSourceCents,
     stripeRevenueCents: stripeSourceCents,
     zelleRevenueCents: electronicSourceCents,
     otherRevenueCents: otherSourceCents,
     membershipRevenueCents,
-    creditsRedeemedCents: summary.creditCents,
-    discountsCents: summary.compCents,
+    creditsRedeemedCents: creditRedemptions.reduce((sum, row) => sum + Math.max(0, cents(row.amount_cents)), 0),
+    discountsCents: discountsCents + summary.compCents,
+    tipsCents,
     grossServiceValueCents,
     refundsCents,
     stripeFeesCents,

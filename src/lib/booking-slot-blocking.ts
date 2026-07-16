@@ -12,6 +12,8 @@ function blocksOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && bStart < aEnd;
 }
 
+const NON_BLOCKING_STATUSES = new Set(['cancelled', 'canceled', 'deleted', 'voided', 'declined', 'expired', 'draft', 'abandoned']);
+
 function vehicleDurationLines(r: Record<string, unknown>): VehicleDurationLine[] {
   const vehicles = Array.isArray(r.booking_vehicles) ? (r.booking_vehicles as Record<string, unknown>[]) : [];
   if (vehicles.length > 0) {
@@ -39,7 +41,7 @@ function pushBlockFromRow(
   const id = str(r.id);
   if (id && seen.has(id)) return;
   const status = str(r.status).toLowerCase();
-  if (status === 'cancelled' || status === 'deleted' || status === 'expired' || status === 'draft') return;
+  if (NON_BLOCKING_STATUSES.has(status)) return;
 
   // Unpaid checkout holds only block while fresh (2 hours). Confirmed/paid always block.
   const payStatus = str(r.payment_status).toLowerCase();
@@ -110,7 +112,7 @@ export async function fetchBookedBlocks(
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
     const status = str(r.status).toLowerCase();
-    if (status === 'cancelled' || status === 'deleted' || status === 'expired' || status === 'draft') continue;
+    if (NON_BLOCKING_STATUSES.has(status)) continue;
     const payStatus = str(r.payment_status).toLowerCase();
     if (payStatus === 'refunded' || payStatus === 'voided') continue;
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
@@ -128,7 +130,7 @@ export async function fetchBookedBlocks(
     const r = row as Record<string, unknown>;
     if (r.schedule_override === true) continue;
     const st = str(r.status).toLowerCase();
-    if (st === 'cancelled' || st === 'deleted') continue;
+    if (NON_BLOCKING_STATUSES.has(st)) continue;
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
   }
 

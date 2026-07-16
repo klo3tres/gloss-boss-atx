@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_REFERRAL_SETTINGS, formatReferralHeadline, formatRewardSummary, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
+import { DEFAULT_REFERRAL_SETTINGS, formatReferralHeadline, formatReferralTerms, formatReferredReward, formatReferrerReward, loadReferralProgramSettings } from '@/lib/referral/referral-codes';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -11,11 +11,12 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     enabled: settings.enabled,
-    give: formatRewardSummary(settings.referredRewardType, settings.referredRewardValue),
-    get: formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue),
+    give: formatReferredReward(settings),
+    get: formatReferrerReward(settings),
     givePercent: settings.referredRewardType === 'percent' ? settings.referredRewardValue : null,
     getPercent: settings.referrerRewardType === 'percent' ? settings.referrerRewardValue : null,
     headline: formatReferralHeadline(settings),
+    terms: formatReferralTerms(settings),
     stackingAllowed: settings.stackingAllowed,
     rewardUnlockRule: settings.rewardUnlockRule,
   });

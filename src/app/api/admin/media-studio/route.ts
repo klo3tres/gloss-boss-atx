@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { requireAdminApiUser } from '@/lib/admin/api-guard';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { DEFAULT_WORKSPACE_KEY } from '@/lib/titan/workspace-keys';
+import { isDirectMediaUrl } from '@/lib/media-studio';
 
 export const runtime = 'nodejs';
 
@@ -140,14 +141,14 @@ export async function PATCH(request: Request) {
   if (body.setAsHomepageHero === true) {
     const { data: asset } = await admin
       .from('site_media_assets')
-      .select('id, public_url, external_url, media_type, workspace_key')
+      .select('id, public_url, external_url, media_type, mime_type, workspace_key')
       .eq('id', id)
       .eq('workspace_key', DEFAULT_WORKSPACE_KEY)
       .maybeSingle();
     if (!asset) return NextResponse.json({ ok: false, error: 'Media asset not found in this workspace.' }, { status: 404 });
     const liveUrl = String(asset.public_url ?? asset.external_url ?? '').trim();
-    if (!/^https?:\/\//i.test(liveUrl)) {
-      return NextResponse.json({ ok: false, error: 'Asset does not have a stable public URL.' }, { status: 400 });
+    if (!isDirectMediaUrl(liveUrl, String(asset.media_type ?? 'image'), asset.mime_type ? String(asset.mime_type) : null)) {
+      return NextResponse.json({ ok: false, error: 'Choose an uploaded file or a direct image/video URL. Webpage links cannot be used as hero media.' }, { status: 400 });
     }
     const result = await admin.rpc('set_homepage_hero_asset', {
       p_asset_id: id,

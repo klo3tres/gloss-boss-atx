@@ -49,7 +49,7 @@ export function RevenueChartsClient({
   const chartWidth = width - paddingLeft - paddingRight;
   const chartHeight = height - paddingTop - paddingBottom;
 
-  const maxVal = Math.max(...monthsData.map((d) => d.value), 100000); // minimum scale at $1000
+  const maxVal = Math.max(...monthsData.map((d) => d.value), 1);
 
   // Coordinates for the SVG path
   const points = monthsData.map((d, i) => {

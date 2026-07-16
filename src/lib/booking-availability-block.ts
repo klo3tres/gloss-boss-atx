@@ -32,7 +32,7 @@ export async function upsertAppointmentAvailabilityBlock(
 
   const row = appt as Record<string, unknown>;
   const status = str(row.status).toLowerCase();
-  if (status === 'cancelled' || row.archived_at || row.deleted_at) {
+  if (['cancelled', 'canceled', 'voided', 'declined', 'expired', 'deleted', 'abandoned'].includes(status) || row.archived_at || row.deleted_at) {
     await admin.from('booking_availability_blocks').delete().eq('appointment_id', appointmentId);
     return;
   }

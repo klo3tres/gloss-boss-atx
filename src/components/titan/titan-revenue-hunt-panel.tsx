@@ -14,6 +14,7 @@ import {
 import { sendPreviewedSmsAction } from '@/app/(dashboard)/admin/outbound-message-actions';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import { buildToneVariants } from '@/lib/outbound-message-tones';
+import { OpportunityDrawer } from '@/components/titan/opportunity-drawer';
 
 function money(cents: number) {
   return displayMoney(cents);
@@ -23,7 +24,7 @@ function copyText(text: string) {
   void navigator.clipboard.writeText(text);
 }
 
-function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean }) {
+function HuntCard({ opp, compact, onOpen }: { opp: RevenueOpportunity; compact?: boolean; onOpen: () => void }) {
   const router = useRouter();
   const { openPreview } = useOutboundPreview();
   const [pending, startTransition] = useTransition();
@@ -51,7 +52,7 @@ function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">
             {OPPORTUNITY_TYPE_LABELS[opp.opportunityType] ?? opp.opportunityType} · {STATUS_LABELS[opp.status]}
           </p>
-          <h3 className="mt-1 text-base font-black text-white">{opp.title}</h3>
+          <button type="button" onClick={onOpen} className="mt-1 text-left text-base font-black text-white hover:text-gold-soft hover:underline">{opp.title}</button>
           {opp.contactName ? <p className="mt-1 text-xs text-zinc-400">{opp.contactName}</p> : null}
         </div>
         <div className="text-right shrink-0">
@@ -70,6 +71,9 @@ function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean
       <p className="mt-3 text-xs leading-relaxed text-zinc-300">{opp.recommendedMessage}</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={onOpen} className="rounded-lg border border-gold/30 px-3 py-2 text-[10px] font-black uppercase text-gold-soft">
+          Open details
+        </button>
         {opp.contactPhone ? (
           <button
             type="button"
@@ -139,6 +143,9 @@ function HuntCard({ opp, compact }: { opp: RevenueOpportunity; compact?: boolean
         <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'lost'), 'Marked lost.')} className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-black uppercase text-rose-200 disabled:opacity-50">
           Mark lost
         </button>
+        <button type="button" disabled={pending} onClick={() => act(() => markOpportunityStatusAction(opp.id, 'ignored'), 'Dismissed and removed.')} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-400 disabled:opacity-50">
+          Dismiss
+        </button>
         <button type="button" disabled={pending} onClick={() => setShowFollowUp((v) => !v)} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-black uppercase text-zinc-300 disabled:opacity-50">
           Schedule follow-up
         </button>
@@ -189,6 +196,7 @@ export function TitanRevenueHuntPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [openOpportunity, setOpenOpportunity] = useState<RevenueOpportunity | null>(null);
 
   if (!tablesReady) {
     return (
@@ -224,7 +232,7 @@ export function TitanRevenueHuntPanel({
         ) : (
           <div className="mt-5 space-y-4">
             {huntTop5.map((opp) => (
-              <HuntCard key={opp.id} opp={opp} />
+              <HuntCard key={opp.id} opp={opp} onOpen={() => setOpenOpportunity(opp)} />
             ))}
           </div>
         )}
@@ -236,7 +244,7 @@ export function TitanRevenueHuntPanel({
           <ul className="mt-4 space-y-2">
             {followUpsDue.slice(0, 5).map((o) => (
               <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/8 px-4 py-3 text-sm">
-                <span className="font-bold text-white">{o.title}</span>
+                <button type="button" onClick={() => setOpenOpportunity(o)} className="font-bold text-white hover:text-gold-soft hover:underline">{o.title}</button>
                 <span className="text-xs text-cyan-200">{o.nextFollowUpAt ? new Date(o.nextFollowUpAt).toLocaleDateString() : 'Due'}</span>
               </li>
             ))}
@@ -257,6 +265,14 @@ export function TitanRevenueHuntPanel({
             ))}
           </ul>
         </section>
+      ) : null}
+      {openOpportunity ? (
+        <OpportunityDrawer
+          opp={openOpportunity}
+          events={[]}
+          serviceOptions={[]}
+          onClose={() => setOpenOpportunity(null)}
+        />
       ) : null}
     </div>
   );

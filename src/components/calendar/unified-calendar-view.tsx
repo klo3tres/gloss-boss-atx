@@ -28,6 +28,9 @@ const TZ = 'America/Chicago';
 
 function itemChipClass(item: CalendarFeedItem) {
   if (item.kind === 'appointment' || item.kind === 'fallback') {
+    if (['cancelled', 'canceled'].includes(String(item.status ?? '').toLowerCase())) {
+      return 'border-zinc-300 bg-zinc-100 text-zinc-500 line-through opacity-70 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500';
+    }
     return 'gb-calendar-chip-job bg-muted text-foreground border-border';
   }
   if (item.kind === 'block') {
@@ -470,7 +473,7 @@ export function UnifiedCalendarView({
                           key={job.id}
                           href={job.href ?? '#'}
                           onClick={() => setSelectedDay(null)}
-                          className="block rounded-xl border border-white/5 bg-zinc-950 p-3 text-xs hover:border-gold/30"
+                          className={`block rounded-xl border border-white/5 bg-zinc-950 p-3 text-xs hover:border-gold/30 ${['cancelled', 'canceled'].includes(String(job.status ?? '').toLowerCase()) ? 'opacity-60 line-through' : ''}`}
                         >
                           <div className="flex justify-between font-bold">
                             <span className="text-white">{job.title}</span>

@@ -595,7 +595,7 @@ export function WorkOrderAgreementPanel({
 
               <button type='button' onClick={() => setShowSchedule((value) => !value)} className={btnGhost}>Schedule</button>
 
-              <button type='button' disabled={!!busy || !sendComposer.body.trim()} onClick={() => void runSend(sendComposer.channel)} className={btnGold}>{busy ? 'Sendingâ€¦' : 'Send now'}</button>
+              <button type='button' disabled={!!busy || !sendComposer.body.trim()} onClick={() => void runSend(sendComposer.channel)} className={btnGold}>{busy ? 'Sending…' : 'Send now'}</button>
 
             </div>
 

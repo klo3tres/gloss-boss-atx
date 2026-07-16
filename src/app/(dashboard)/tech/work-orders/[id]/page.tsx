@@ -966,6 +966,7 @@ export default async function TechWorkOrderDetailPage({
     appointmentIdForAgreement: !isFallback ? queryId : '',
     technicianName: resolved.technicianName ?? '',
     assignedTechnicianId: str(row.assigned_technician_id) || null,
+    technicianAcknowledgedAt: str(row.technician_acknowledged_at) || null,
     technicians,
     jobStartedAt: displayChicago(row.job_started_at, ''),
     jobCompletedAt: displayChicago(row.job_completed_at || row.completed_at, ''),

@@ -13,6 +13,7 @@ import {
   Sparkles,
   Star,
 } from 'lucide-react';
+import { trackConversionEvent } from '@/lib/conversion-tracking';
 import { BeforeAfterRotator } from '@/components/marketing/before-after-rotator';
 import { ContactForm } from '@/components/marketing/contact-form';
 import { FeaturedTransformationsSection } from '@/components/marketing/featured-transformations-section';
@@ -167,11 +168,11 @@ export function HomePageView({
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                  <PremiumButton href={(visuals?.hero as { ctaLink?: string })?.ctaLink || bookingHref}>
+                  <PremiumButton href={(visuals?.hero as { ctaLink?: string })?.ctaLink || bookingHref} onClick={() => trackConversionEvent('homepage_hero_cta')}>
                     {(visuals?.hero as { ctaText?: string })?.ctaText || 'Book your detail'}{' '}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </PremiumButton>
-                  <PremiumButton href="/services" variant="secondary">
+                  <PremiumButton href="/services" variant="secondary" onClick={() => trackConversionEvent('services_viewed', { source: 'homepage_hero' })}>
                     View packages
                   </PremiumButton>
                   {socialButtons.length > 0 ? (

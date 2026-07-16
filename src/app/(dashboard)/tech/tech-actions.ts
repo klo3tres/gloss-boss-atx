@@ -810,6 +810,8 @@ export async function techStartJobAction(
 
 const NOTIFY_LABELS: Record<string, string> = {
   technician_on_the_way: 'Technician on the way',
+  technician_arrived: 'Technician arrived',
+  running_late: 'Running late update',
   job_started: 'Job started',
   halfway_complete: 'Halfway complete',
   last_touches: 'Last touches',
@@ -821,9 +823,33 @@ const NOTIFY_LABELS: Record<string, string> = {
   booking_confirmation: 'Booking confirmation',
 };
 
+export async function acknowledgeTechAssignmentAction(formData: FormData): Promise<void> {
+  const gate = await requireTechSupabase();
+  if (!gate.ok) throw new Error('Not signed in.');
+  const appointmentId = String(formData.get('appointmentId') ?? '').trim();
+  if (!appointmentId) throw new Error('Missing work order.');
+  const { data: appointment } = await gate.supabase
+    .from('appointments')
+    .select('assigned_technician_id')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (!appointment || String(appointment.assigned_technician_id ?? '') !== gate.userId) throw new Error('This work order is not assigned to you.');
+  const now = new Date().toISOString();
+  const result = await updateAppointmentSafely(gate.supabase, appointmentId, [
+    { technician_acknowledged_at: now, updated_at: now },
+    { updated_at: now },
+  ]);
+  if (!result.ok) throw new Error(result.error || 'Could not acknowledge the assignment.');
+  await recordJobTimelineEvent(gate.supabase, { appointmentId, eventType: 'technician_acknowledged', meta: {}, createdBy: gate.userId });
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath('/tech');
+}
+
 const NOTIFY_KINDS = new Set([
   'job_started',
   'technician_on_the_way',
+  'technician_arrived',
+  'running_late',
   'halfway_complete',
   'last_touches',
   'payment_link',
@@ -931,6 +957,8 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   const fallbackBookingId = String(formData.get('fallbackBookingId') ?? '').trim();
   const kind = String(formData.get('kind') ?? '').trim();
   const customBody = String(formData.get('customBody') ?? '').trim();
+  const etaMinutes = Math.min(240, Math.max(5, Number(formData.get('etaMinutes') ?? 15) || 15));
+  const delayReason = String(formData.get('delayReason') ?? '').trim().slice(0, 120);
   if (!NOTIFY_KINDS.has(kind) || (!appointmentId && !fallbackBookingId)) return actionErr('Invalid notification request.');
   const admin = tryCreateAdminSupabase();
   const db = admin ?? gate.supabase;
@@ -942,6 +970,25 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
   let skippedReason: string | null = guestEmail || guestPhone
     ? notificationConfigured ? null : 'Skipped — configure Twilio/Resend.'
     : 'No customer email or phone on file.';
+  if (appointmentId && ['technician_on_the_way', 'technician_arrived', 'running_late'].includes(kind)) {
+    const now = new Date().toISOString();
+    const operationalPatch = kind === 'technician_on_the_way'
+      ? { status: 'en_route', lifecycle_stage: 'en_route', on_the_way_at: now, updated_at: now }
+      : kind === 'technician_arrived'
+        ? { lifecycle_stage: 'en_route', arrived_at: now, updated_at: now }
+        : { updated_eta_at: now, updated_eta_minutes: etaMinutes, delay_reason: delayReason || 'Running late', updated_at: now };
+    const legacyPatch = kind === 'technician_on_the_way'
+      ? { status: 'en_route', lifecycle_stage: 'en_route', updated_at: now }
+      : { updated_at: now };
+    const operationalUpdate = await updateAppointmentSafely(db, appointmentId, [operationalPatch, legacyPatch]);
+    if (!operationalUpdate.ok) return actionErr(operationalUpdate.error || 'Could not save the technician status.');
+    await recordJobTimelineEvent(db, {
+      appointmentId,
+      eventType: kind as 'technician_on_the_way' | 'technician_arrived' | 'running_late',
+      meta: kind === 'running_late' ? { eta_minutes: etaMinutes, delay_reason: delayReason || 'Running late' } : {},
+      createdBy: gate.userId,
+    });
+  }
   if (kind === 'payment_link' && appointmentId) {
     const { data: apptRow } = await db.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
     const jobRow = (apptRow ?? {}) as Record<string, unknown>;
@@ -1061,9 +1108,11 @@ export async function techSendActiveJobNotificationAction(_prev: ActionResult | 
         customer_id: customerId,
         technician_id: gate.userId,
         channel: 'email',
+        provider: 'resend',
+        provider_message_id: emailResult.emailId ?? null,
         status: emailResult.ok ? 'sent' : 'failed',
         skipped_reason: emailResult.ok ? null : emailResult.error ?? 'Email send failed.',
-        payload: { message, guest_email: guestEmail, dashboard_url: dashboardUrl, payment_url: paymentUrl },
+        payload: { to: guestEmail, body: message, guest_email: guestEmail, dashboard_url: dashboardUrl, payment_url: paymentUrl, resend_email_id: emailResult.emailId ?? null },
       });
     }
     if (smsResult?.ok === false || emailResult?.ok === false) {

@@ -20,6 +20,10 @@ import { GoogleCalendarConnectPanel } from '@/components/admin/google-calendar-c
 import { NotificationSettingsPanel } from '@/components/admin/notification-settings-panel';
 import { PushoverSetupPanel } from '@/components/admin/pushover-setup-panel';
 import type { UserUiPreferences } from '@/lib/user-ui-preferences';
+import type { DiscountPolicyConfig } from '@/lib/discount-policy';
+import { DiscountPolicyPanel } from '@/components/admin/discount-policy-panel';
+import type { AppointmentNotificationPolicy } from '@/lib/appointment-notification-policy';
+import { AppointmentNotificationPolicyPanel } from '@/components/admin/appointment-notification-policy-panel';
 
 type Tab = 'general' | 'business' | 'notifications' | 'appearance';
 
@@ -61,12 +65,16 @@ export function AdminSettingsClient({
   isSuperAdmin,
   pushoverConfigured,
   notifyPrefs,
+  discountPolicy,
+  appointmentNotificationPolicy,
 }: {
   uiPreferences: UserUiPreferences;
   websiteDefault: 'light' | 'dark';
   isSuperAdmin: boolean;
   pushoverConfigured: boolean;
   notifyPrefs: Parameters<typeof NotificationSettingsPanel>[0]['prefs'];
+  discountPolicy: DiscountPolicyConfig;
+  appointmentNotificationPolicy: AppointmentNotificationPolicy;
 }) {
   const [tab, setTab] = useState<Tab>('general');
 
@@ -99,19 +107,23 @@ export function AdminSettingsClient({
       )}
 
       {tab === 'business' && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SettingsLinkCard href="/admin/setup-center" title="Business profile" desc="Owner name, email, phone" icon={<Building2 className="h-4 w-4" />} />
-          <SettingsLinkCard href="/admin/cms?tab=hours" title="Social & review links" desc="Instagram, Google review URL" icon={<Share2 className="h-4 w-4" />} />
-          <SettingsLinkCard href="/admin/referrals" title="Referral program" desc="Give/get rewards and ladder" icon={<Gift className="h-4 w-4" />} />
-          <SettingsLinkCard href="/admin/memberships" title="Membership plans" desc="Bronze, Silver, Gold benefits" icon={<Star className="h-4 w-4" />} />
-          <SettingsLinkCard href="/admin/integrations#weather" title="Weather" desc="OpenWeather API for readiness" icon={<Cloud className="h-4 w-4" />} />
-          <SettingsLinkCard href="/admin/media-studio" title="Media Studio" desc="Unified asset manager" icon={<Image className="h-4 w-4" />} />
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SettingsLinkCard href="/admin/setup-center" title="Business profile" desc="Owner name, email, phone" icon={<Building2 className="h-4 w-4" />} />
+            <SettingsLinkCard href="/admin/cms?tab=hours" title="Social & review links" desc="Instagram, Google review URL" icon={<Share2 className="h-4 w-4" />} />
+            <SettingsLinkCard href="/admin/referrals" title="Referral program" desc="Give/get rewards and ladder" icon={<Gift className="h-4 w-4" />} />
+            <SettingsLinkCard href="/admin/memberships" title="Membership plans" desc="Bronze, Silver, Gold benefits" icon={<Star className="h-4 w-4" />} />
+            <SettingsLinkCard href="/admin/integrations#weather" title="Weather" desc="OpenWeather API for readiness" icon={<Cloud className="h-4 w-4" />} />
+            <SettingsLinkCard href="/admin/media-studio" title="Media Studio" desc="Unified asset manager" icon={<Image className="h-4 w-4" />} />
+          </div>
+          <DiscountPolicyPanel policy={discountPolicy} canEdit={isSuperAdmin} />
         </div>
       )}
 
       {tab === 'notifications' && (
         <div className="space-y-4">
           <NotificationSettingsPanel prefs={notifyPrefs} />
+          <AppointmentNotificationPolicyPanel policy={appointmentNotificationPolicy} canEdit={isSuperAdmin} />
           <PushoverSetupPanel configured={pushoverConfigured} />
           <GoogleCalendarConnectPanel returnTo="/admin/settings" />
           <SettingsLinkCard href="/admin/integrations" title="Email & SMS integrations" desc="Twilio, Resend, maps" icon={<Bell className="h-4 w-4" />} />

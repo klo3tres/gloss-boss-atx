@@ -28,12 +28,12 @@ export function calculateLoyaltyStatus(
   const tierThresholds = (opts.tierThresholds ?? []).map(Number).filter((value) => Number.isFinite(value) && value > 0);
   const tierIndex = opts.resetBehavior === 'advance_tier' ? Math.min(redeemedRewards, Math.max(0, tierThresholds.length - 1)) : 0;
   const rewardThreshold = Math.max(1, Number(tierThresholds[tierIndex] ?? opts.rewardThreshold ?? 5) || 5);
-  const cycleSize = rewardThreshold + 1;
+  const cycleSize = rewardThreshold;
   const totalStamps = stamps
     .filter((stamp) => stamp.voided !== true && !stamp.voided_at)
     .reduce((sum, stamp) => sum + Math.max(0, Number(stamp.stamp_count ?? 1) || 1), 0);
   const calculatedConsumed = opts.resetBehavior === 'advance_tier'
-    ? Array.from({ length: redeemedRewards }, (_, index) => (tierThresholds[Math.min(index, Math.max(0, tierThresholds.length - 1))] ?? rewardThreshold) + 1).reduce((sum, value) => sum + value, 0)
+    ? Array.from({ length: redeemedRewards }, (_, index) => (tierThresholds[Math.min(index, Math.max(0, tierThresholds.length - 1))] ?? rewardThreshold)).reduce((sum, value) => sum + value, 0)
     : redeemedRewards * cycleSize;
   const consumedBeforeTier = Math.max(0, Number(opts.consumedStamps ?? calculatedConsumed) || 0);
   const effectiveStamps = Math.max(0, totalStamps - consumedBeforeTier);

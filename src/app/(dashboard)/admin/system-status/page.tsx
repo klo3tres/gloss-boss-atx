@@ -34,6 +34,17 @@ type StatusPayload = {
     twilio: boolean;
     supabaseServiceRole: boolean;
     businessNotifyEmail?: boolean;
+    rewardLifecycle?: boolean;
+  };
+  deployment?: {
+    localLatestMigration: string;
+    remoteLatestMigration: string;
+    remoteMigrationSource: string;
+    applicationVersion: string;
+    applicationCommit: string;
+    rewardLifecycleReady: boolean;
+    migrationParityReady: boolean;
+    expectedSchema: Array<{ label: string; ok: boolean; error: string | null }>;
   };
   weatherMaps?: {
     openWeatherConfigured: boolean;
@@ -138,6 +149,31 @@ export default function SystemStatusPage() {
                   ok={Boolean(r.businessNotifyEmail)}
                   detail='Alert mail recipient active'
                 />
+                <Row label='Reward Lifecycle' ok={Boolean(r.rewardLifecycle)} detail='Issuance, wallet, reservation, redemption, reset, and delivery schema' />
+              </div>
+            </section>
+          ) : null}
+
+          {data.deployment ? (
+            <section className={`rounded-3xl border p-6 ${data.deployment.migrationParityReady ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/10'}`}>
+              <div className='flex flex-wrap items-start justify-between gap-3'>
+                <div>
+                  <h2 className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Deployment & Migration Readiness</h2>
+                  <p className='mt-2 text-sm font-bold text-white'>{data.deployment.migrationParityReady ? 'Local and production schema are aligned' : 'A newer local migration still needs production deployment'}</p>
+                  <p className='mt-1 text-xs text-zinc-400'>{data.deployment.remoteMigrationSource}</p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase ${data.deployment.migrationParityReady ? 'border-emerald-500/30 text-emerald-300' : 'border-amber-500/30 text-amber-200'}`}>
+                  {data.deployment.migrationParityReady ? 'In sync' : 'Migration pending'}
+                </span>
+              </div>
+              <div className='mt-5 grid gap-3 sm:grid-cols-2'>
+                <Row label='Local latest migration' ok detail={data.deployment.localLatestMigration} />
+                <Row label='Remote latest migration' ok={data.deployment.migrationParityReady} detail={data.deployment.remoteLatestMigration} />
+                <Row label='Application version' ok detail={data.deployment.applicationVersion} />
+                <Row label='Application commit' ok={data.deployment.applicationCommit !== 'local-uncommitted'} detail={data.deployment.applicationCommit} />
+              </div>
+              <div className='mt-4 space-y-2'>
+                {data.deployment.expectedSchema.map((check) => <Row key={check.label} label={check.label} ok={check.ok} detail={check.error} />)}
               </div>
             </section>
           ) : null}

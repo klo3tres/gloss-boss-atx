@@ -237,6 +237,12 @@ export function PendingInvitesClient({ initialInvites }: { initialInvites: Staff
                   {inv.smsDeliveryError ? ` · ${inv.smsDeliveryError}` : ''}
                 </p>
               ) : null}
+              {inv.emailDeliveryStatus ? (
+                <p className={`mt-1 text-[10px] font-bold ${['failed', 'bounced', 'complained'].includes(inv.emailDeliveryStatus) ? 'text-red-400' : inv.emailDeliveryStatus === 'delivered' ? 'text-emerald-400' : 'text-cyan-300'}`}>
+                  Email: {inv.emailDeliveryStatus.replace(/_/g, ' ')}
+                  {inv.emailDeliveryError ? ` · ${inv.emailDeliveryError}` : ''}
+                </p>
+              ) : null}
             </div>
             <span className="rounded-full border border-amber-500/30 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700">Pending</span>
           </div>

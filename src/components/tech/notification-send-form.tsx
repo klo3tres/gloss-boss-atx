@@ -11,6 +11,8 @@ import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 const UPDATE_TEMPLATES = [
   { value: 'technician_on_the_way', label: 'Technician on the way' },
+  { value: 'technician_arrived', label: 'Technician arrived' },
+  { value: 'running_late', label: 'Running late / updated ETA' },
   { value: 'job_started', label: 'Service started' },
   { value: 'halfway_complete', label: 'Halfway complete' },
   { value: 'last_touches', label: 'Final touches' },
@@ -98,6 +100,19 @@ export function NotificationSendForm({
               </option>
             ))}
           </select>
+          {selectedKind === 'running_late' ? (
+            <div className="grid grid-cols-2 gap-2">
+              <input name="etaMinutes" type="number" min="5" max="240" step="5" defaultValue="15" className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs text-white" aria-label="Minutes late" />
+              <select name="delayReason" defaultValue="Traffic" className="rounded-xl border border-white/10 bg-black px-3 py-2 text-xs text-white" aria-label="Delay reason">
+                <option>Traffic</option>
+                <option>Previous job ran long</option>
+                <option>Weather</option>
+                <option>Equipment issue</option>
+                <option>Customer-approved delay</option>
+                <option>Other</option>
+              </select>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={openSendPreview}

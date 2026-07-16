@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReferralProgramSettings, ReferralRewardLadderTier } from '@/lib/referral/referral-codes';
-import { formatRewardSummary } from '@/lib/referral/referral-codes';
+import { formatReferredReward, formatReferrerReward, formatRewardSummary } from '@/lib/referral/referral-codes';
 import { analyzeReferralEconomics } from '@/lib/referral/referral-economics';
 import { saveReferralProgramSettingsAction, type ReferralSaveResult } from '@/app/(dashboard)/admin/referrals/actions';
 import { attachReferralToBookingAction } from '@/app/(dashboard)/admin/notifications/cadence-actions';
@@ -196,8 +196,22 @@ export function ReferralsAdminClient({
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-muted-foreground">Referrer reward type<select name="referrer_reward_type" defaultValue={settings.referrerRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar credit</option><option value="free_addon">Free add-on</option><option value="free_service">Free service</option><option value="membership_credit">Membership credit</option><option value="custom">Custom</option></select></label>
           <label className="text-xs text-muted-foreground">Referrer reward value<input name="referrer_reward_value" type="number" defaultValue={settings.referrerRewardValue} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referrer display text (optional)<input name="referrer_reward_label" defaultValue={settings.referrerRewardLabel ?? ''} placeholder={formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)} className={inputClass} /></label>
           <label className="text-xs text-muted-foreground">Referred customer reward type<select name="referred_reward_type" defaultValue={settings.referredRewardType} className={inputClass}><option value="percent">Percent</option><option value="dollar">Dollar discount</option><option value="free_addon">Free add-on</option><option value="free_service">Free service</option><option value="membership_credit">Membership credit</option><option value="custom">Custom</option></select></label>
           <label className="text-xs text-muted-foreground">Referred reward value<input name="referred_reward_value" type="number" defaultValue={settings.referredRewardValue} className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend display text (optional)<input name="referred_reward_label" defaultValue={settings.referredRewardLabel ?? ''} placeholder="10% off first detail" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend eligible services<input name="referred_eligible_services" defaultValue={(settings.referredEligibleServiceSlugs ?? []).join(', ')} placeholder="full-detail, interior-detail" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend eligible add-ons<input name="referred_eligible_addons" defaultValue={(settings.referredEligibleAddonSlugs ?? []).join(', ')} placeholder="pet-hair, engine-bay" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend vehicle restrictions<input name="referred_vehicle_restrictions" defaultValue={(settings.referredVehicleRestrictions ?? []).join(', ')} placeholder="sedan, suv" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend exclusions<input name="referred_exclusions" defaultValue={(settings.referredExclusions ?? []).join(', ')} placeholder="ceramic-coating" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Friend max retail value ($)<input name="referred_maximum_retail_dollars" type="number" min="0" step="0.01" defaultValue={(settings.referredMaximumRetailCents ?? 0) / 100} className={inputClass} /></label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground"><input name="referred_customer_pays_difference" type="checkbox" defaultChecked={settings.referredCustomerPaysDifference !== false} /> Friend pays any difference</label>
+          <label className="text-xs text-muted-foreground">Referrer eligible services<input name="referrer_eligible_services" defaultValue={(settings.referrerEligibleServiceSlugs ?? []).join(', ')} placeholder="full-detail" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referrer eligible add-ons<input name="referrer_eligible_addons" defaultValue={(settings.referrerEligibleAddonSlugs ?? []).join(', ')} placeholder="pet-hair" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referrer vehicle restrictions<input name="referrer_vehicle_restrictions" defaultValue={(settings.referrerVehicleRestrictions ?? []).join(', ')} placeholder="sedan, suv, truck" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referrer exclusions<input name="referrer_exclusions" defaultValue={(settings.referrerExclusions ?? []).join(', ')} placeholder="ceramic-coating" className={inputClass} /></label>
+          <label className="text-xs text-muted-foreground">Referrer max retail value ($)<input name="referrer_maximum_retail_dollars" type="number" min="0" step="0.01" defaultValue={(settings.referrerMaximumRetailCents ?? 0) / 100} className={inputClass} /></label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground"><input name="referrer_customer_pays_difference" type="checkbox" defaultChecked={settings.referrerCustomerPaysDifference !== false} /> Referrer pays any difference</label>
           <label className="text-xs text-muted-foreground">Min completed bookings before unlock<input name="min_completed_bookings" type="number" defaultValue={settings.minCompletedBookings} className={inputClass} /></label>
           <label className="text-xs text-muted-foreground">Max rewards per customer<input name="max_rewards_per_customer" type="number" defaultValue={settings.maxRewardsPerCustomer} className={inputClass} /></label>
           <label className="text-xs text-muted-foreground">Free detail at N referrals<input name="free_detail_threshold" type="number" defaultValue={settings.freeDetailReferralThreshold} className={inputClass} /></label>
@@ -248,13 +262,13 @@ export function ReferralsAdminClient({
           <div className="rounded-xl border border-border px-3 py-2">
             <dt className="text-muted-foreground">Referred discount</dt>
             <dd className="font-black text-gold-soft">
-              {formatRewardSummary(settings.referredRewardType, settings.referredRewardValue)} off first detail
+              {formatReferredReward(settings)} on the first eligible detail
             </dd>
           </div>
           <div className="rounded-xl border border-border px-3 py-2">
             <dt className="text-muted-foreground">Referrer reward</dt>
             <dd className="font-black text-foreground">
-              {formatRewardSummary(settings.referrerRewardType, settings.referrerRewardValue)} after completion
+              {formatReferrerReward(settings)} after completed payment
             </dd>
           </div>
           <div className="rounded-xl border border-border px-3 py-2">

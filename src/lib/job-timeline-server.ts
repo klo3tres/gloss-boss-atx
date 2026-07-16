@@ -15,6 +15,10 @@ export type JobTimelineEventType =
   | 'payment_received'
   | 'intake_submitted'
   | 'custom_sms_sent'
+  | 'technician_on_the_way'
+  | 'technician_acknowledged'
+  | 'technician_arrived'
+  | 'running_late'
   | 'payment_link_clicked';
 
 /**

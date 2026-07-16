@@ -36,6 +36,7 @@ import {
   normalizeVehicleClass,
   type UiVehicleClass,
 } from '@/lib/vehicle-pricing';
+import { trackConversionEvent } from '@/lib/conversion-tracking';
 
 const BOOKING_SEED = getLocalFallbackCatalog();
 
@@ -190,7 +191,21 @@ export function BookingWizard() {
   const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
   const [draftResumedNotice, setDraftResumedNotice] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const trackedConversionSteps = useRef(new Set<string>());
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
+
+  useEffect(() => {
+    const event = currentStep === 0 ? 'booking_started' : currentStep === 1 ? 'vehicle_entered' : currentStep === 2 ? 'service_selected' : currentStep === 4 ? 'date_selected' : currentStep === 5 ? 'contact_entered' : '';
+    if (!event || trackedConversionSteps.current.has(event)) return;
+    trackedConversionSteps.current.add(event);
+    trackConversionEvent(event, { step: currentStep });
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (!appliedPromoCode || trackedConversionSteps.current.has('promo_entered')) return;
+    trackedConversionSteps.current.add('promo_entered');
+    trackConversionEvent('promo_entered', { code: appliedPromoCode });
+  }, [appliedPromoCode]);
   type SavedBookingRef = {
     appointmentId?: string;
     fallbackBookingId?: string;
@@ -1181,6 +1196,7 @@ export function BookingWizard() {
     setSavedBooking(null);
     setCheckoutTimedOut(false);
     setPhoneError(null);
+    trackConversionEvent('deposit_started', { paymentChoice });
     try {
       const p10 = normalizeUsPhone10Digits(guestPhone);
       if (!p10.ok) {

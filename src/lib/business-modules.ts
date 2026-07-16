@@ -25,6 +25,20 @@ export type MarketingCampaign = {
   status: 'draft' | 'scheduled' | 'sent' | 'paused';
   sentCount: number;
   createdAt: string;
+  intelligence?: {
+    reason: string;
+    estimatedRecipientCount: number;
+    offer: string;
+    recommendedPriceCents: number | null;
+    projectedRevenueCents: number;
+    marginWarning: string | null;
+    emailSubject: string;
+    socialCaption: string;
+    recommendedSendAt: string;
+    expiresAt: string | null;
+    bookingLink: string;
+    promoCode: string | null;
+  };
 };
 
 const FLEET_KEY = 'fleet_contracts';

@@ -12,6 +12,7 @@ export type PromoRules = {
   services?: string[];
   paymentMode?: PromoPaymentMode;
   stackable?: boolean;
+  minimumVehicles?: number;
 };
 
 export type PromoRow = {
@@ -82,6 +83,7 @@ function parseRules(row: Record<string, unknown>): PromoRules {
     if (Array.isArray(r.services)) base.services = arr(r.services);
     if (r.paymentMode) base.paymentMode = str(r.paymentMode) as PromoPaymentMode;
     if (typeof r.stackable === 'boolean') base.stackable = r.stackable;
+    if (Number.isFinite(Number(r.minimumVehicles))) base.minimumVehicles = Math.max(1, Math.round(Number(r.minimumVehicles)));
   }
   const legacyServices = arr(row.service_restrictions);
   if (!base.services?.length && legacyServices.length) base.services = legacyServices;
@@ -135,6 +137,9 @@ export function validatePromoRow(promo: PromoRow, input: PromoValidationInput): 
   }
 
   const rules = promo.rules;
+  if (rules.minimumVehicles && input.vehicleLines.length < rules.minimumVehicles) {
+    return { ok: false, error: `This code requires at least ${rules.minimumVehicles} vehicles on the same booking.` };
+  }
   if (rules.paymentMode && rules.paymentMode !== 'any' && input.paymentChoice && rules.paymentMode !== input.paymentChoice) {
     return { ok: false, error: `This code only applies to ${rules.paymentMode === 'full' ? 'pay in full' : 'deposit'} bookings.` };
   }

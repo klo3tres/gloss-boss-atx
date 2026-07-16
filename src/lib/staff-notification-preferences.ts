@@ -7,6 +7,11 @@ export type StaffNotificationEventType =
   | 'new_booking_assigned'
   | 'job_reminder_24h'
   | 'job_reminder_2h'
+  | 'job_reminder_60m'
+  | 'job_reminder_30m'
+  | 'job_not_acknowledged'
+  | 'job_not_on_the_way'
+  | 'job_running_over'
   | 'job_start_overdue';
 
 export type StaffNotificationPreferences = {
@@ -104,6 +109,11 @@ export function staffEventAllowed(prefs: StaffNotificationPreferences, eventType
     case 'job_assigned':
     case 'job_reminder_24h':
     case 'job_reminder_2h':
+    case 'job_reminder_60m':
+    case 'job_reminder_30m':
+    case 'job_not_acknowledged':
+    case 'job_not_on_the_way':
+    case 'job_running_over':
     case 'job_start_overdue':
       return prefs.notifyJobAssigned;
     case 'new_booking_assigned':

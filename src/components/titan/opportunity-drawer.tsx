@@ -110,6 +110,12 @@ export function OpportunityDrawer({
     act(() => logOpportunityCallAction(opp.id, outcome), 'Call logged.');
   };
 
+  const openPhone = (phone: string) => {
+    void navigator.clipboard?.writeText(phone).catch(() => undefined);
+    setMsg('Phone number copied. Opening your calling app…');
+    window.location.href = `tel:${phone.replace(/[^+\d]/g, '')}`;
+  };
+
   const previewSend = (channel: 'sms' | 'email', scriptKey: OpportunityScriptKey) => {
     const recipient = channel === 'sms' ? opp.contactPhone : opp.contactEmail;
     if (!recipient) {
@@ -272,7 +278,7 @@ export function OpportunityDrawer({
                       <div className="flex gap-2">
                         <dt className="shrink-0 text-muted-foreground">Phone</dt>
                         <dd className="flex flex-wrap items-center gap-2">
-                          <a href={`tel:${opp.contactPhone}`} onClick={() => setMsg('Opening your phone appâ€¦')} className="text-emerald-600 hover:underline">{opp.contactPhone}</a>
+                          <button type="button" onClick={() => openPhone(opp.contactPhone!)} className="text-emerald-600 hover:underline">{opp.contactPhone}</button>
                           <button type="button" onClick={() => { void navigator.clipboard.writeText(opp.contactPhone!); setMsg('Phone number copied.'); }} className="text-[9px] font-black uppercase text-gold-soft hover:underline">Copy</button>
                         </dd>
                       </div>
@@ -343,13 +349,13 @@ export function OpportunityDrawer({
 
               <div className="flex flex-wrap gap-2">
                 {opp.contactPhone ? (
-                  <a
-                    href={`tel:${opp.contactPhone}`}
-                    onClick={() => logCall()}
+                  <button
+                    type="button"
+                    onClick={() => { logCall(); openPhone(opp.contactPhone!); }}
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[10px] font-black uppercase text-foreground"
                   >
                     <Phone className="h-3 w-3" /> Call & log
-                  </a>
+                  </button>
                 ) : null}
                 {opp.contactPhone ? (
                   <button type="button" onClick={() => previewSend('sms', 'sms_pitch')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase text-black">

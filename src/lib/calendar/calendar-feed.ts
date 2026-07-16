@@ -33,7 +33,7 @@ function parseSiteCalendarNotes(raw: unknown): Array<{ id: string; dayKey: strin
 
 function isActiveAppointment(row: Record<string, unknown>) {
   const status = str(row.status).toLowerCase();
-  if (status === 'cancelled' || status === 'deleted') return false;
+  if (['cancelled', 'canceled', 'deleted', 'voided', 'declined', 'expired', 'abandoned'].includes(status)) return false;
   if (row.archived_at || row.deleted_at) return false;
   const payStatus = str(row.payment_status).toLowerCase();
   if (payStatus === 'refunded' || payStatus === 'voided') return false;
@@ -46,6 +46,7 @@ function appointmentToFeedItem(row: Record<string, unknown>, shell: 'admin' | 't
   const endAt = str(row.estimated_end) || startAt;
   const guest = str(row.guest_name) || 'Guest';
   const service = str(row.service_slug).replace(/-/g, ' ') || 'Detail';
+  const cancelled = ['cancelled', 'canceled'].includes(str(row.status).toLowerCase());
   return {
     id: `appt-${id}`,
     kind: 'appointment',
@@ -58,7 +59,7 @@ function appointmentToFeedItem(row: Record<string, unknown>, shell: 'admin' | 't
     status: str(row.status),
     price: displayMoney(Number(row.base_price_cents ?? 0)),
     href: workOrderPath(id, { source: 'appointment', shell }),
-    blocksBooking: row.schedule_override !== true,
+    blocksBooking: !cancelled && row.schedule_override !== true,
     appointmentId: id,
     timeLabel: chicagoTimeShort(startAt),
   };
@@ -168,7 +169,8 @@ export async function loadCalendarFeed(
 
   for (const row of appts ?? []) {
     const r = row as Record<string, unknown>;
-    if (!isActiveAppointment(r)) continue;
+    const cancelled = ['cancelled', 'canceled'].includes(str(r.status).toLowerCase());
+    if (!isActiveAppointment(r) && !(role === 'admin' && cancelled)) continue;
     const id = str(r.id);
     if (id && seenApptIds.has(id)) continue;
     if (id) seenApptIds.add(id);

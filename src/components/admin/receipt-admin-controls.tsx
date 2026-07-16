@@ -73,7 +73,7 @@ export function ReceiptAdminControls({
       ) : null}
 
       <ToastActionForm
-        className='mt-4 grid gap-2 sm:grid-cols-4'
+        className='mt-4 grid gap-2 sm:grid-cols-6'
         action={async (prev, fd) => {
           const r = await recordManualPaymentActionState(prev, fd);
           setMsg(r.ok ? r.message ?? 'Recorded' : r.error ?? 'Failed');
@@ -92,11 +92,30 @@ export function ReceiptAdminControls({
           <select name='method' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' defaultValue='cash'>
             <option value='cash'>Cash</option>
             <option value='zelle'>Zelle</option>
+            <option value='cash_app'>Cash App</option>
             <option value='venmo'>Venmo</option>
             <option value='check'>Check</option>
+            <option value='external_card'>External card terminal</option>
+            <option value='bank_transfer'>Bank transfer</option>
+            <option value='other'>Other</option>
           </select>
         </label>
-        <div className='flex items-end sm:col-span-2'>
+        <label className='text-xs text-zinc-400 sm:col-span-1'>
+          Tip ($)
+          <input name='tipDollars' type='number' step='0.01' min='0' defaultValue='0' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' />
+        </label>
+        <label className='text-xs text-zinc-400 sm:col-span-1'>
+          Reference
+          <input name='referenceNumber' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' placeholder='Check / transfer ID' />
+        </label>
+        <label className='text-xs text-zinc-400 sm:col-span-2'>
+          Note
+          <input name='note' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' placeholder='Optional payment note' />
+        </label>
+        <label className='flex items-center gap-2 text-xs text-zinc-400 sm:col-span-2'>
+          <input name='sendReceipt' type='checkbox' /> Prepare receipt for review/send
+        </label>
+        <div className='flex items-end sm:col-span-4'>
           <SubmitStatusButton pendingText='Saving…' className='rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-black uppercase text-emerald-200'>
             Record manual payment
           </SubmitStatusButton>
