@@ -58,6 +58,8 @@ type Body = {
   smsConsentSource?: SmsConsentSource;
   requestedCreditCents?: number;
   rewardId?: string;
+  campaignId?: string;
+  campaignRecipientToken?: string;
 };
 
 const ALLOWED_CLASS = new Set(['sedan', 'suv', 'truck', 'suv_truck']);
@@ -615,6 +617,20 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+
+    let campaignId: string | null = null;
+    let campaignRecipientId: string | null = null;
+    const campaignToken = String(body.campaignRecipientToken ?? '').trim();
+    if (campaignToken && /^[a-f0-9]{24,80}$/i.test(campaignToken)) {
+      const { data: campaignRecipient } = await admin.from('customer_campaign_recipients').select('id,campaign_id,status').eq('tracking_token', campaignToken).maybeSingle();
+      if (campaignRecipient && !['excluded','opted_out','canceled','permanent_failure'].includes(String(campaignRecipient.status))) {
+        const { data: campaign } = await admin.from('customer_campaigns').select('id,status,expires_at').eq('id', campaignRecipient.campaign_id).maybeSingle();
+        if (campaign && !['canceled','failed'].includes(String(campaign.status)) && (!campaign.expires_at || Date.parse(campaign.expires_at) > Date.now())) {
+          campaignId = String(campaign.id);
+          campaignRecipientId = String(campaignRecipient.id);
+        }
+      }
+    }
     const isQaTest = policyDecision.isQaTest || freePromoApplied || testOneDollar;
 
     if (selectedReward) {
@@ -732,6 +748,11 @@ export async function POST(request: Request) {
     };
     if (customerId) insertPayload.customer_id = customerId;
     if (offerRowId) insertPayload.offer_id = offerRowId;
+    if (campaignId) {
+      insertPayload.campaign_id = campaignId;
+      insertPayload.campaign_recipient_id = campaignRecipientId;
+      insertPayload.campaign_tracking_token = campaignToken;
+    }
 
     const { data: appointment, error: apptErr } = await insertAppointmentResilient(admin, insertPayload);
 
@@ -781,6 +802,14 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+
+    if (campaignId && campaignRecipientId) {
+      const bookedAt = new Date().toISOString();
+      await Promise.all([
+        admin.from('customer_campaign_recipients').update({ status: 'booked', booked_at: bookedAt, booked_appointment_id: String(appointment.id), updated_at: bookedAt }).eq('id', campaignRecipientId),
+        admin.from('customer_campaign_events').insert({ campaign_id: campaignId, recipient_id: campaignRecipientId, customer_id: customerId, appointment_id: String(appointment.id), event_type: 'booked', meta: { source: 'online_booking' } }),
+      ]);
+    }
 
     queueGoogleCalendarSync(admin, String(appointment.id), 'upsert');
     void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>

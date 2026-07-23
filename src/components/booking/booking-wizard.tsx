@@ -143,6 +143,7 @@ export function BookingWizard() {
   const referralFromUrl = String(searchParams?.get('ref') ?? '').trim().toUpperCase();
   const rewardFromUrl = String(searchParams?.get('reward') ?? '').trim();
   const campaignFromUrl = String(searchParams?.get('campaign') ?? '').trim();
+  const campaignRecipientFromUrl = String(searchParams?.get('cr') ?? '').trim();
   const liveCatalogAppliedRef = useRef(false);
   const serviceFromUrlAppliedRef = useRef('');
   const [services, setServices] = useState<ServiceRow[]>(() => [...BOOKING_SEED.services]);
@@ -199,8 +200,8 @@ export function BookingWizard() {
     const event = currentStep === 0 ? 'booking_started' : currentStep === 1 ? 'vehicle_entered' : currentStep === 2 ? 'service_selected' : currentStep === 4 ? 'date_selected' : currentStep === 5 ? 'contact_entered' : '';
     if (!event || trackedConversionSteps.current.has(event)) return;
     trackedConversionSteps.current.add(event);
-    trackConversionEvent(event, { step: currentStep, campaignId: campaignFromUrl || undefined });
-  }, [campaignFromUrl, currentStep]);
+    trackConversionEvent(event, { step: currentStep, campaignId: campaignFromUrl || undefined, campaignRecipientToken: campaignRecipientFromUrl || undefined });
+  }, [campaignFromUrl, campaignRecipientFromUrl, currentStep]);
 
   useEffect(() => {
     if (!appliedPromoCode || trackedConversionSteps.current.has('promo_entered')) return;
@@ -1305,6 +1306,8 @@ export function BookingWizard() {
           paymentChoice: freePromoEligible ? 'full' : paymentChoice,
           requestedCreditCents: creditAppliedCents,
           rewardId: rewardFromUrl || undefined,
+          campaignId: campaignFromUrl || undefined,
+          campaignRecipientToken: campaignRecipientFromUrl || undefined,
           notes: notes || undefined,
         }),
       });

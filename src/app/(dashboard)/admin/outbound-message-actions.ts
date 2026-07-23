@@ -187,7 +187,11 @@ export async function sendPreviewedEmailAction(input: {
   if (!gate) return { error: 'Unauthorized' };
 
   const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
-  const { glossBossEmailLayout } = await import('@/lib/email/templates/layout');
+  const { escapeEmailHtml, glossBossEmailLayout, sanitizeCustomerFacingCopy } = await import('@/lib/email/templates/layout');
+
+  const subject = sanitizeCustomerFacingCopy(input.subject).replace(/[\r\n]+/g, ' ').slice(0, 180);
+  const customerBody = sanitizeCustomerFacingCopy(input.body);
+  if (!subject || !customerBody) return { error: 'Customer-facing subject and message are required.' };
 
   let status = 'skipped';
   let err: string | null = null;
@@ -195,10 +199,10 @@ export async function sendPreviewedEmailAction(input: {
 
   if (resendConfigured()) {
     const html = glossBossEmailLayout({
-      title: input.subject,
-      bodyHtml: `<p style="color:#e4e4e7;font-size:15px;line-height:1.6;white-space:pre-wrap">${input.body.replace(/</g, '&lt;')}</p>`,
+      title: subject,
+      bodyHtml: `<p style="color:#18181b;font-size:15px;line-height:1.6;white-space:pre-wrap">${escapeEmailHtml(customerBody)}</p>`,
     });
-    const sent = await sendResendHtml({ to: input.to, subject: input.subject, html });
+    const sent = await sendResendHtml({ to: input.to, subject, html });
     status = sent.ok ? 'sent' : 'failed';
     err = sent.ok ? null : sent.error ?? 'send failed';
     providerId = sent.emailId ?? null;
@@ -210,8 +214,8 @@ export async function sendPreviewedEmailAction(input: {
     kind: input.kind,
     channel: 'email',
     status,
-    body: input.body,
-    subject: input.subject,
+    body: customerBody,
+    subject,
     recipient: input.to,
     provider_message_id: providerId,
     error_message: err,
@@ -229,11 +233,11 @@ export async function sendPreviewedEmailAction(input: {
   if (status !== 'sent') return { error: err ?? 'Email failed' };
 
   const { scoreOutboundMessage, persistMessageScore } = await import('@/lib/titan/sales-coach');
-  const coach = scoreOutboundMessage(input.body, 'email');
+  const coach = scoreOutboundMessage(customerBody, 'email');
   await persistMessageScore(gate.admin as never, {
     channel: 'email',
     kind: input.kind,
-    body: input.body,
+    body: customerBody,
     score: coach,
     entityType: input.entityType,
     entityId: input.entityId,

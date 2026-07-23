@@ -51,7 +51,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/academy', label: 'Business Academy' },
       { href: '/admin/notifications', label: 'Activity' },
       { href: '/admin/calendar', label: 'Calendar' },
-      { href: '/titan', label: 'Titan OS' },
+      { href: '/admin/titan?workspace=today', label: 'Titan OS' },
       { href: '/admin/titan?workspace=growth', label: 'Titan workspace' },
     ],
   },

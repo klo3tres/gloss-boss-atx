@@ -22,12 +22,14 @@ export async function runManualAutomation(
   return runTrackedAutomation(admin, key, 'manual', async () => {
     switch (key) {
       case 'follow_up_engine': {
-        const { runFollowUpEngine } = await import('@/lib/follow-up-engine');
-        return runFollowUpEngine(admin);
+        const { loadAutomationPreview } = await import('@/lib/admin/automation-preview');
+        const preview = await loadAutomationPreview(admin, key);
+        return { draftsPrepared: preview.eligibleCount, blocked: preview.blockedCount, sent: 0 };
       }
       case 'notification_engine': {
-        const { processDueScheduledMessages } = await import('@/lib/customer-notification-cadence');
-        return processDueScheduledMessages(admin);
+        const { loadAutomationPreview } = await import('@/lib/admin/automation-preview');
+        const preview = await loadAutomationPreview(admin, key);
+        return { dueMessagesReviewed: preview.eligibleCount, blocked: preview.blockedCount, sent: 0 };
       }
       case 'review_request_engine':
       case 'payment_reminder_engine':
@@ -46,12 +48,14 @@ export async function runManualAutomation(
         return createWeatherCampaignDraft(admin);
       }
       case 'opportunity_follow_up_engine': {
-        const { processOpportunityFollowUps } = await import('@/lib/opportunity-follow-up-cron');
-        return processOpportunityFollowUps(admin);
+        const { loadAutomationPreview } = await import('@/lib/admin/automation-preview');
+        const preview = await loadAutomationPreview(admin, key);
+        return { draftsPrepared: preview.eligibleCount, blocked: preview.blockedCount, sent: 0 };
       }
       case 'appointment_reminder_engine': {
-        const { processAppointmentReminders } = await import('@/lib/customer-notification-cadence');
-        return processAppointmentReminders(admin);
+        const { loadAutomationPreview } = await import('@/lib/admin/automation-preview');
+        const preview = await loadAutomationPreview(admin, key);
+        return { draftsPrepared: preview.eligibleCount, blocked: preview.blockedCount, sent: 0 };
       }
       case 'missed_job_start_alerts': {
         const { processAppointmentOperationalAlerts, processMissedJobStartAlerts } = await import('@/lib/staff-notification-router');

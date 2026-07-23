@@ -6,7 +6,7 @@ import { loadOperationsSnapshot } from '@/lib/operations-snapshot';
 import { loadRevenueHuntBundle } from '@/lib/titan/revenue-opportunities';
 import { loadLeadRadarItems } from '@/lib/titan/lead-radar-engine';
 import { buildTodaysMoneyPlan, type MoneyMission } from '@/lib/titan/todays-money-plan';
-import { buildDailyActionPlan, type DailyActionPlan } from '@/lib/titan/daily-action-plan';
+import { loadOrBuildDailyActionPlan, type DailyActionPlan } from '@/lib/titan/daily-action-plan';
 import { countUnreadNotifications } from '@/lib/titan/notification-events';
 import { loadGoogleCalendarConnection } from '@/lib/google/google-calendar-sync';
 import { displayMoney } from '@/lib/display-format';
@@ -150,7 +150,7 @@ export async function loadExecutiveBriefing(
     avgJobCents,
   });
 
-  const dailyActionPlan = await buildDailyActionPlan(admin, avgJobCents);
+  const dailyActionPlan = await loadOrBuildDailyActionPlan(admin, avgJobCents);
 
   const todayPay = summarizePayments(await fetchPaymentsSince(admin, startOfTodayIso(), new Date().toISOString()));
   const revenueToday = todayPay.grossCents;

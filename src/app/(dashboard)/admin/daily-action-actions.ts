@@ -91,3 +91,13 @@ export async function regenerateDailyActionPlanAction(): Promise<ActionResult> {
   revalidatePath('/admin/titan');
   return actionOk(`Refreshed ${plan.actions.length} action(s).`);
 }
+
+export async function forceRebuildDailyActionPlanAction(): Promise<ActionResult> {
+  const g = await gate();
+  if (!g) return actionErr('Not authorized.');
+  const { buildDailyActionPlan } = await import('@/lib/titan/daily-action-plan');
+  const plan = await buildDailyActionPlan(g.admin, 17500, { force: true });
+  revalidatePath('/admin');
+  revalidatePath('/admin/titan');
+  return actionOk(`Force rebuilt ${plan.actions.length} action(s) from current source records.`);
+}

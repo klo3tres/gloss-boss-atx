@@ -5,6 +5,8 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { displayMoney } from '@/lib/display-format';
+import Link from 'next/link';
+import { CampaignComposer } from '@/components/admin/campaign-composer';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +22,9 @@ export default async function AutomationCenterPage() {
         .order('created_at', { ascending: false })
         .limit(10)
     : { data: [] };
+  const promotions = admin
+    ? await admin.from('promo_codes').select('id, code, description, enabled, starts_at, ends_at, max_uses, current_uses').is('archived_at', null).order('created_at', { ascending: false }).limit(12)
+    : { data: [] };
 
   return (
     <DashboardShell
@@ -27,7 +32,25 @@ export default async function AutomationCenterPage() {
       subtitle="Owner-controlled runs for follow-ups, reminders, referrals, Titan, and weather campaigns."
       role="admin"
     >
+      <CampaignComposer />
       <AutomationCenterClient />
+      <section className="mt-6 rounded-3xl border border-amber-400/20 bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider text-amber-300">Campaign offers</p>
+            <p className="mt-1 text-xs text-muted-foreground">These are the real promotion records available to owner-approved automation drafts.</p>
+          </div>
+          <Link href="/admin/promotions" className="rounded-xl bg-amber-300 px-4 py-2 text-[10px] font-black uppercase text-black">Create or edit offers</Link>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {(promotions.data ?? []).map((raw) => {
+            const row = raw as Record<string, unknown>;
+            const active = row.enabled !== false && (!row.ends_at || new Date(String(row.ends_at)).getTime() >= Date.now());
+            return <div key={String(row.id)} className="rounded-2xl border border-border bg-background/60 p-4"><div className="flex items-center justify-between gap-2"><p className="font-mono text-sm font-black text-foreground">{String(row.code ?? 'OFFER')}</p><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${active ? 'bg-emerald-500/10 text-emerald-300' : 'bg-zinc-500/10 text-zinc-400'}`}>{active ? 'Available' : 'Inactive'}</span></div><p className="mt-2 text-xs text-muted-foreground">{String(row.description ?? 'No customer-facing description yet.')}</p><p className="mt-2 text-[10px] text-muted-foreground">Uses {Number(row.current_uses ?? 0)}{row.max_uses ? ` / ${Number(row.max_uses)}` : ' · unlimited'}</p></div>;
+          })}
+          {(promotions.data ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No promotion records yet. Create one before attaching an offer to a campaign.</p> : null}
+        </div>
+      </section>
       <section className="mt-6 rounded-3xl border border-border bg-card p-5">
         <div>
           <p className="text-xs font-black uppercase tracking-wider text-cyan-300">Weather campaign dashboard</p>

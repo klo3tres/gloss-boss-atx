@@ -11,6 +11,7 @@ import { buildContextualMessage } from '@/lib/titan/contextual-messages';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
 import { buildTrackedBalancePayUrl } from '@/lib/payment-link-tracking';
 import { recommendMembershipTier } from '@/lib/membership-roi';
+import { upsertSiteSetting } from '@/lib/site-settings-upsert';
 
 export type DailyActionType =
   | 'follow_up'
@@ -74,15 +75,78 @@ function avgTicketExplanation(avgJobCents: number, multiplier = 1): string {
   return multiplier > 1 ? `${base} × ${multiplier} contacts` : base;
 }
 
+function storedAction(row: Record<string, unknown>, actionDate: string, avgJobCents: number): DailyExecutableAction {
+  const cents = Number(row.expected_value_cents ?? 0);
+  return {
+    id: str(row.id),
+    actionKey: str(row.action_key),
+    actionType: str(row.action_type) as DailyActionType,
+    title: str(row.title),
+    involvedNames: str(row.involved_names),
+    expectedValueCents: cents,
+    expectedValueLabel: valueLabel(cents),
+    valueExplanation: cents > 0 ? avgTicketExplanation(avgJobCents) : 'No direct dollar value',
+    reason: str(row.reason),
+    confidence: Number(row.confidence_score ?? 70),
+    confidenceLabel: str(row.confidence_label) || 'Titan estimate',
+    messageScript: str(row.message_script),
+    contactPhone: str(row.contact_phone) || null,
+    contactEmail: str(row.contact_email) || null,
+    entityType: str(row.entity_type) || undefined,
+    entityId: str(row.entity_id) || undefined,
+    href: str(row.href) || '/admin',
+    status: str(row.status) as DailyExecutableAction['status'],
+    canSend: Boolean(row.contact_phone || row.contact_email),
+    actionDate: str(row.action_date) || actionDate,
+    carriedOver: false,
+  };
+}
+
+async function loadCachedDailyActionPlan(admin: SupabaseClient, avgJobCents: number): Promise<DailyActionPlan | null> {
+  const actionDate = todayChicago();
+  const [rows, marker] = await Promise.all([
+    admin
+      .from('titan_daily_actions')
+      .select('*')
+      .eq('action_date', actionDate)
+      .eq('status', 'pending')
+      .or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`)
+      .order('expected_value_cents', { ascending: false }),
+    admin.from('site_settings').select('value').eq('key', `titan_daily_plan_generated_${actionDate}`).maybeSingle(),
+  ]);
+  const { data, error } = rows;
+  if (error || (!data?.length && !marker.data?.value)) return null;
+  const actions = data.map((row) => storedAction(row as Record<string, unknown>, actionDate, avgJobCents));
+  const lastGeneratedAt = data.reduce<string | null>((latest, row) => {
+    const stamp = str((row as { updated_at?: string }).updated_at);
+    return !latest || stamp > latest ? stamp : latest;
+  }, null);
+  const markerValue = marker.data?.value;
+  const markerStamp = typeof markerValue === 'string' ? markerValue : markerValue && typeof markerValue === 'object' ? str((markerValue as { generated_at?: string }).generated_at) : '';
+  return { actions: actions.slice(0, 8), fastestMoneyMoves: actions.filter((action) => action.expectedValueCents > 0).slice(0, 3), lastGeneratedAt: lastGeneratedAt || markerStamp || null };
+}
+
+/** Free-tier daily refresh: generate on the owner's first Titan visit each Chicago business day, then use the durable cache. */
+export async function loadOrBuildDailyActionPlan(admin: SupabaseClient, avgJobCents = 17500): Promise<DailyActionPlan> {
+  return (await loadCachedDailyActionPlan(admin, avgJobCents)) ?? buildDailyActionPlan(admin, avgJobCents);
+}
+
 type DraftAction = Omit<DailyExecutableAction, 'id' | 'status'>;
 
-export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 17500): Promise<DailyActionPlan> {
+export async function buildDailyActionPlan(
+  admin: SupabaseClient,
+  avgJobCents = 17500,
+  options?: { force?: boolean },
+): Promise<DailyActionPlan> {
   const safeAvg = Math.max(avgJobCents, 12000);
   const drafts: DraftAction[] = [];
   const reviewUrl = resolveGoogleReviewUrl('');
   const bookUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '')}/book`;
 
   const actionDate = todayChicago();
+  if (options?.force) {
+    await admin.from('titan_daily_actions').delete().eq('action_date', actionDate).eq('status', 'pending');
+  }
   // Include recent dismissals so refresh does not resurrect the same action keys.
   const lookback = new Date();
   lookback.setDate(lookback.getDate() - 14);
@@ -384,6 +448,20 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
   const openDrafts = drafts.filter((d) => !closedKeys.has(d.actionKey));
   const probe = await admin.from('titan_daily_actions').select('id').limit(1);
   if (!probe.error) {
+    // Resolve stale rows that are no longer supported by live source records.
+    const { data: existingToday } = await admin
+      .from('titan_daily_actions')
+      .select('id, action_key')
+      .eq('action_date', actionDate)
+      .eq('status', 'pending');
+    const openKeys = new Set(openDrafts.map((draft) => draft.actionKey));
+    const staleIds = (existingToday ?? [])
+      .filter((row) => !openKeys.has(str((row as { action_key?: string }).action_key)))
+      .map((row) => str((row as { id?: string }).id))
+      .filter(Boolean);
+    if (staleIds.length) {
+      await admin.from('titan_daily_actions').update({ status: 'completed', updated_at: new Date().toISOString() }).in('id', staleIds);
+    }
     for (const d of openDrafts) {
       await admin.from('titan_daily_actions').upsert(
         {
@@ -446,50 +524,6 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
       };
     });
 
-    // Carry forward still-pending actions from prior days (same action_key not closed).
-    const { data: carryRows } = await admin
-      .from('titan_daily_actions')
-      .select('*')
-      .lt('action_date', actionDate)
-      .gte('action_date', lookbackIso)
-      .eq('status', 'pending')
-      .or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`)
-      .order('expected_value_cents', { ascending: false })
-      .limit(8);
-
-    const seenKeys = new Set(actions.map((a) => a.actionKey));
-    for (const r of carryRows ?? []) {
-      const row = r as Record<string, unknown>;
-      const key = str(row.action_key);
-      if (!key || seenKeys.has(key) || closedKeys.has(key)) continue;
-      seenKeys.add(key);
-      const cents = Number(row.expected_value_cents ?? 0);
-      const rowDate = str(row.action_date) || actionDate;
-      actions.push({
-        id: str(row.id),
-        actionKey: key,
-        actionType: str(row.action_type) as DailyActionType,
-        title: str(row.title),
-        involvedNames: str(row.involved_names),
-        expectedValueCents: cents,
-        expectedValueLabel: valueLabel(cents),
-        valueExplanation: cents > 0 ? avgTicketExplanation(safeAvg) : 'No direct dollar value',
-        reason: str(row.reason),
-        confidence: Number(row.confidence_score ?? 70),
-        confidenceLabel: str(row.confidence_label) || 'Titan estimate',
-        messageScript: str(row.message_script),
-        contactPhone: str(row.contact_phone) || null,
-        contactEmail: str(row.contact_email) || null,
-        entityType: str(row.entity_type) || undefined,
-        entityId: str(row.entity_id) || undefined,
-        href: str(row.href) || '/admin',
-        status: 'pending',
-        canSend: Boolean(row.contact_phone || row.contact_email),
-        actionDate: rowDate,
-        carriedOver: true,
-      });
-    }
-
     actions.sort((a, b) => b.expectedValueCents - a.expectedValueCents);
 
     const lastGeneratedAt =
@@ -499,6 +533,11 @@ export async function buildDailyActionPlan(admin: SupabaseClient, avgJobCents = 
         if (!max || u > max) return u;
         return max;
       }, null) ?? new Date().toISOString();
+
+    await upsertSiteSetting(admin, {
+      key: `titan_daily_plan_generated_${actionDate}`,
+      value: JSON.stringify({ generated_at: lastGeneratedAt, action_count: actions.length }),
+    });
 
     return {
       actions: actions.slice(0, 8),

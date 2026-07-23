@@ -11,6 +11,7 @@ import { sendPreviewedEmailAction, sendPreviewedSmsAction } from '@/app/(dashboa
 import { markOpportunityStatusAction } from '@/app/(dashboard)/admin/titan/opportunity-actions';
 import {
   dismissDailyActionAction,
+  forceRebuildDailyActionPlanAction,
   markDailyActionSentAction,
   regenerateDailyActionPlanAction,
   snoozeDailyActionAction,
@@ -251,6 +252,12 @@ export function DailyActionPlanPanel({
       router.refresh();
     });
   };
+  const onForceRebuild = () => {
+    startTransition(async () => {
+      await forceRebuildDailyActionPlanAction();
+      router.refresh();
+    });
+  };
 
   if (visible.length === 0) {
     return (
@@ -292,6 +299,14 @@ export function DailyActionPlanPanel({
           className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[10px] font-black uppercase text-foreground hover:border-gold/30 disabled:opacity-50"
         >
           <RefreshCw className={`h-3 w-3 ${pending ? 'animate-spin' : ''}`} /> Refresh
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onForceRebuild}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-amber-700 dark:text-amber-200 disabled:opacity-50"
+        >
+          Force rebuild
         </button>
       </div>
       <div className="grid gap-3 lg:grid-cols-2">

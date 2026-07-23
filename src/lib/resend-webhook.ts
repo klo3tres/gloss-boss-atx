@@ -190,6 +190,20 @@ async function updateNotificationOutbox(
             updated_at: now,
           }).eq('id', inviteId);
         }
+        const campaignId = typeof existingPayload.campaign_id === 'string' ? existingPayload.campaign_id : '';
+        const campaignRecipientId = typeof existingPayload.campaign_recipient_id === 'string' ? existingPayload.campaign_recipient_id : '';
+        if (campaignId && campaignRecipientId) {
+          const recipientStatus = status === 'bounced' || status === 'complained' || status === 'failed' ? 'permanent_failure' : status;
+          const recipientPatch: Record<string, unknown> = { status: recipientStatus, error_message: errText, updated_at: now };
+          if (status === 'delivered') recipientPatch.delivered_at = now;
+          if (failed) recipientPatch.failed_at = now;
+          await admin.from('customer_campaign_recipients').update(recipientPatch).eq('id', campaignRecipientId).eq('campaign_id', campaignId);
+          const [{ count: delivered }, { count: failedCount }] = await Promise.all([
+            admin.from('customer_campaign_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['delivered','booked','completed']),
+            admin.from('customer_campaign_recipients').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['failed','permanent_failure']),
+          ]);
+          await admin.from('customer_campaigns').update({ delivered_count: delivered ?? 0, failed_count: failedCount ?? 0, updated_at: now }).eq('id', campaignId);
+        }
       }
     }
   }

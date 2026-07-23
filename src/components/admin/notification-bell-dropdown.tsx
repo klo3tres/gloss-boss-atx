@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Archive, Bell, CheckCheck, MailOpen } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
@@ -22,8 +23,11 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<TitanNotificationEvent[]>([]);
   const [unread, setUnread] = useState(0);
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [mounted, setMounted] = useState(false);
   const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -49,6 +53,7 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
   };
 
   useEffect(() => {
+    setMounted(true);
     void load();
     const t = window.setInterval(() => void load(), 45000);
     return () => window.clearInterval(t);
@@ -56,14 +61,23 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, []);
 
   const grouped = groupNotificationsByDay(events);
-  const list = [...grouped.today, ...grouped.yesterday, ...grouped.older];
+  const allEvents = [...grouped.today, ...grouped.yesterday, ...grouped.older];
+  const list = filter === 'unread' ? allEvents.filter((event) => !event.readAt) : allEvents;
 
   return (
     <div ref={ref} className={`relative ${className ?? ''}`}>
@@ -89,14 +103,15 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
         ) : null}
       </button>
 
-      <AnimatePresence>
+      {mounted ? createPortal(<AnimatePresence>
         {open ? (
           <motion.div
+            ref={panelRef}
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className="absolute right-0 z-[120] mt-2 flex max-h-[70vh] w-[min(100vw-2rem,24rem)] flex-col overflow-hidden rounded-2xl border border-gold/25 bg-black/90 shadow-2xl backdrop-blur-2xl"
+            className="fixed right-3 top-20 z-[1000] flex max-h-[calc(100dvh-6rem)] w-[min(100vw-1.5rem,25rem)] flex-col overflow-hidden rounded-2xl border border-gold/25 bg-black/95 shadow-2xl backdrop-blur-2xl sm:right-6"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-white/8 px-4 py-3">
               <p className="text-xs font-black uppercase tracking-wider text-gold-soft">Alerts</p>
@@ -114,6 +129,13 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
               >
                 <CheckCheck className="h-3 w-3" /> All read
               </button>
+            </div>
+            <div className="flex shrink-0 gap-2 border-b border-white/8 px-3 py-2">
+              {(['all', 'unread'] as const).map((value) => (
+                <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-full px-3 py-1 text-[9px] font-black uppercase ${filter === value ? 'bg-gold text-black' : 'border border-white/10 text-zinc-400'}`}>
+                  {value === 'all' ? `All (${allEvents.length})` : `Unread (${unread})`}
+                </button>
+              ))}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2" style={{ maxHeight: 'calc(70vh - 6.5rem)' }}>
               {list.length === 0 ? (
@@ -222,7 +244,7 @@ export function NotificationBellDropdown({ className }: { className?: string }) 
             </div>
           </motion.div>
         ) : null}
-      </AnimatePresence>
+      </AnimatePresence>, document.body) : null}
     </div>
   );
 }
