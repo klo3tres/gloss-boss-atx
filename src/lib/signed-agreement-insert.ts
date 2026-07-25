@@ -49,9 +49,7 @@ export async function insertSignedAgreementFlexible(
     'sms_consent_text',
     'sms_consent_phone',
     'marketing_media_consent',
-    'media_consent',
     'operational_photo_consent',
-    'photo_consent',
     'technician_witness_id',
     'technician_witness_name',
     'technician_witness_role',
@@ -65,6 +63,18 @@ export async function insertSignedAgreementFlexible(
   delete minimalNoTemplate.template_id;
   delete minimalNoTemplate.template_version;
   variants.push(minimalNoTemplate);
+
+  variants.push({
+    appointment_id: base.appointment_id,
+    fallback_booking_id: base.fallback_booking_id ?? null,
+    full_name: base.signer_legal_name,
+    signature_text: base.signature_data ?? base.signer_legal_name,
+    agreement_snapshot: snapshotText || ' ',
+    agreed_at: new Date().toISOString(),
+    sms_consent: base.sms_consent ?? false,
+    marketing_media_consent: base.marketing_media_consent ?? false,
+    operational_photo_consent: base.operational_photo_consent ?? true,
+  });
 
   let lastMsg = 'insert failed';
   const seen = new Set<string>();

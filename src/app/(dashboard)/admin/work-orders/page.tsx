@@ -148,7 +148,8 @@ export default async function AdminWorkOrdersPage({
   const [appointmentsRes, fallbacksRes, techRes, agreementsRes, intakeRes, paymentsRes] = await Promise.all([
     admin
       .from('appointments')
-      .select('id, access_token, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at')
+      .select('id, access_token, customer_id, status, payment_status, scheduled_start, guest_name, guest_email, guest_phone, service_slug, vehicle_class, vehicle_description, booking_vehicles, booking_pricing_breakdown, promo_code, comp_reason, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, assigned_technician_id, stripe_checkout_session_id, archived, archived_at, created_at, is_test')
+      .or('is_test.is.null,is_test.eq.false')
       .order('scheduled_start', { ascending: false })
       .limit(180),
     admin
@@ -157,13 +158,13 @@ export default async function AdminWorkOrdersPage({
       .order('created_at', { ascending: false })
       .limit(80),
     admin.from('profiles').select('id, full_name, email, active').eq('role', 'technician').order('full_name'),
-    admin.from('signed_agreements').select('id, appointment_id, signed_at').order('signed_at', { ascending: false }).limit(250),
+    admin.from('signed_agreements').select('id, appointment_id, agreed_at').order('agreed_at', { ascending: false }).limit(250),
     admin.from('intake_submissions').select('id, appointment_id, created_at').order('created_at', { ascending: false }).limit(250),
     admin.from('payments').select('id, appointment_id, fallback_booking_id, stripe_checkout_session_id, amount_cents, status, metadata, created_at').order('created_at', { ascending: false }).limit(250),
   ]);
 
   const agreementByAppt = new Map<string, Row>(
-    ((agreementsRes.data ?? []) as Row[]).filter((a) => a.appointment_id).map((a) => [str(a.appointment_id), { ...a, source: 'signed_agreements' }]),
+    ((agreementsRes.data ?? []) as Row[]).filter((a) => a.appointment_id).map((a) => [str(a.appointment_id), { ...a, signed_at: a.agreed_at, source: 'signed_agreements' }]),
   );
   for (const intake of (intakeRes.data ?? []) as Row[]) {
     const aid = str(intake.appointment_id);

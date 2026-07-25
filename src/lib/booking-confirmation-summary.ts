@@ -45,8 +45,9 @@ export async function loadBookingConfirmationSummary(
   }
 
   const pricing = snapshot?.pricing;
-  const [{ data: agreement }, { data: customer }, externalPaymentSettings] = await Promise.all([
-    admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
+  const [{ data: agreement }, { data: intake }, { data: customer }, externalPaymentSettings] = await Promise.all([
+    admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
+    admin.from('intake_submissions').select('id, form_data').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
     snapshot?.refs.customerId
       ? admin.from('customers').select('id, auth_user_id').eq('id', snapshot.refs.customerId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -79,7 +80,11 @@ export async function loadBookingConfirmationSummary(
     !job.job_completed_at &&
     !['in_progress', 'completed'].includes(status) &&
     (Number.isNaN(scheduledTime) || scheduledTime > Date.now());
-  const acknowledgementCompleted = Boolean(agreement);
+  const intakeForm =
+    intake?.form_data && typeof intake.form_data === 'object'
+      ? (intake.form_data as Record<string, unknown>)
+      : null;
+  const acknowledgementCompleted = Boolean(agreement || intakeForm?.deposit_legal_ack);
   const depositRequired = (pricing?.depositCents ?? 0) > 0;
   const depositPaid =
     depositRequired &&
