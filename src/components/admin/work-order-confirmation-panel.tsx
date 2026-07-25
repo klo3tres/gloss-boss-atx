@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Mail, MessageSquare, RefreshCw, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Mail, MessageSquare, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import {
   getCustomerPortalLinkAction,
   getConfirmationDeliveryStatusAction,
   previewBookingConfirmationAction,
+  regenerateCustomerPortalLinkAction,
   resendBookingConfirmationEmailAction,
   resendBookingConfirmationSmsAction,
   sendBookingConfirmationAction,
@@ -182,6 +183,21 @@ export function WorkOrderConfirmationPanel({
     });
   };
 
+  const regeneratePortalLink = () => {
+    if (!window.confirm('Regenerate the secure customer link? The previous link will stop working. No message will be sent.')) return;
+    startTransition(async () => {
+      const result = await regenerateCustomerPortalLinkAction(appointmentId);
+      if (result.error || !result.portalUrl) {
+        toast.error('Link not regenerated', result.error ?? 'Could not regenerate the link.');
+        return;
+      }
+      setPortalUrl(result.portalUrl);
+      toast.success('Link regenerated', 'The previous link was replaced. No customer message was sent.');
+      refreshStatus();
+      router.refresh();
+    });
+  };
+
   const missingContact = !guestEmail && !guestPhone;
 
   return (
@@ -251,8 +267,13 @@ export function WorkOrderConfirmationPanel({
         <p className="text-[9px] font-black uppercase tracking-wider text-gold-soft">Portal link tracking</p>
         <div className="mt-2 grid gap-1 text-[10px] text-zinc-400 sm:grid-cols-2">
           <p>Created: {formatWhen(status?.portal.linkCreatedAt ?? null)}</p>
+          <p>Regenerated: {formatWhen(status?.portal.linkLastRegeneratedAt ?? null)}</p>
           <p>Last sent: {formatWhen(status?.portal.linkLastSentAt ?? null)}</p>
-          <p>Customer opened: {formatWhen(status?.portal.linkLastOpenedAt ?? null)}</p>
+          <p>First customer open: {formatWhen(status?.portal.linkFirstOpenedAt ?? null)}</p>
+          <p>Latest customer open: {formatWhen(status?.portal.linkLastOpenedAt ?? null)}</p>
+          <p>Counted opens: {status?.portal.openCount ?? 0}</p>
+          <p>Acknowledgement started: {formatWhen(status?.portal.acknowledgementStartedAt ?? null)}</p>
+          <p>Payment page opened: {formatWhen(status?.portal.paymentPageOpenedAt ?? null)}</p>
           <p>Account linked: {status?.portal.authUserLinked ? 'Yes' : 'No'}</p>
         </div>
         {(portalUrl || status?.portalUrl) ? (
@@ -261,6 +282,13 @@ export function WorkOrderConfirmationPanel({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href={`/admin/customer-preview/${encodeURIComponent(appointmentId)}`}
+          target="_blank"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-[10px] font-black uppercase text-white"
+        >
+          <ShieldCheck className="h-3 w-3" /> Open customer experience
+        </Link>
         <button
           type="button"
           disabled={pending}
@@ -308,6 +336,15 @@ export function WorkOrderConfirmationPanel({
           className="inline-flex items-center gap-1.5 rounded-lg border border-gold/30 px-3 py-1.5 text-[10px] font-bold uppercase text-gold-soft disabled:opacity-50"
         >
           <Copy className="h-3 w-3" /> Copy portal link
+        </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={regeneratePortalLink}
+          title="State-changing: replaces the active token. Does not send a message."
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/30 px-3 py-1.5 text-[10px] font-bold uppercase text-amber-200 disabled:opacity-50"
+        >
+          <RefreshCw className="h-3 w-3" /> Regenerate link
         </button>
         <button
           type="button"

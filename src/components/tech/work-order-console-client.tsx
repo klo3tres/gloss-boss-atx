@@ -597,7 +597,7 @@ export function WorkOrderConsoleClient({
             </button>
             {data.accessToken ? (
               <a
-                href={`/book/confirmation?appointment_id=${encodeURIComponent(data.canonicalId)}&token=${encodeURIComponent(data.accessToken)}`}
+                href={`/admin/customer-preview/${encodeURIComponent(data.canonicalId)}`}
                 target='_blank'
                 rel='noreferrer'
                 className='inline-flex min-h-11 shrink-0 items-center rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'

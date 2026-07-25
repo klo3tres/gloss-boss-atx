@@ -3,6 +3,8 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { logBalancePaymentLinkClick } from '@/lib/payment-link-tracking';
 import { createCustomerFinalBalanceCheckoutSession } from '@/lib/stripe/checkout';
 import { getAppOrigin } from '@/lib/env/app-origin';
+import { getSessionWithProfile } from '@/lib/auth/session';
+import { isStaffRole } from '@/lib/auth/roles';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +28,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ appo
     return NextResponse.redirect(`${origin}/customer?payment=invalid`);
   }
 
-  await logBalancePaymentLinkClick(admin, appointmentId);
+  const session = await getSessionWithProfile();
+  const click = await logBalancePaymentLinkClick(admin, appointmentId, {
+    headers: request.headers,
+    role: session.profile?.role,
+    token,
+  });
+  if (session.user && isStaffRole(session.profile?.role)) {
+    return NextResponse.redirect(`${origin}/admin/customer-preview/${encodeURIComponent(appointmentId)}?tab=diagnostics`);
+  }
+  if (!click.counted) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: { 'Cache-Control': 'no-store, private' },
+    });
+  }
 
   let stripeUrl = typeof appt.final_payment_url === 'string' ? appt.final_payment_url : null;
   if (!stripeUrl) {

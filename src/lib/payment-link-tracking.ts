@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AppRole } from '@/lib/auth/roles';
+import { recordCustomerPortalEvent } from '@/lib/customer-portal-tracking';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { logTitanActivity } from '@/lib/titan/activity-feed';
 
@@ -8,7 +10,21 @@ export function buildTrackedBalancePayUrl(origin: string, appointmentId: string,
   return `${base}/pay/balance/${encodeURIComponent(appointmentId)}?t=${t}`;
 }
 
-export async function logBalancePaymentLinkClick(admin: SupabaseClient, appointmentId: string): Promise<void> {
+export async function logBalancePaymentLinkClick(
+  admin: SupabaseClient,
+  appointmentId: string,
+  input: { headers: Headers; role?: AppRole | null; token?: string },
+): Promise<{ counted: boolean; exclusionReason: string | null }> {
+  const portalEvent = await recordCustomerPortalEvent(admin, {
+    appointmentId,
+    token: input.token,
+    eventType: 'payment_page_opened',
+    headers: input.headers,
+    role: input.role,
+    channelSource: 'tracked_pay_link',
+  });
+  if (!portalEvent.counted) return portalEvent;
+
   const now = new Date().toISOString();
   await recordJobTimelineEvent(admin, {
     appointmentId,
@@ -34,4 +50,5 @@ export async function logBalancePaymentLinkClick(admin: SupabaseClient, appointm
   } catch {
     /* non-blocking */
   }
+  return portalEvent;
 }

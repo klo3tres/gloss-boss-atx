@@ -82,6 +82,7 @@ function ConfirmationInner() {
   const appointmentId = sp.get('appointment_id') ?? sp.get('appointmentId') ?? '';
   const token = sp.get('token') ?? '';
   const sessionId = sp.get('session_id') ?? '';
+  const adminPreview = sp.get('admin_preview') === '1';
 
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,9 +133,16 @@ function ConfirmationInner() {
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
 
   const openDepositCheckout = async (paymentChoice: 'deposit' | 'full' = 'deposit') => {
+    if (adminPreview) return;
     setCheckoutBusy(true);
     setCheckoutError(null);
     try {
+      await fetch('/api/public/portal-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId, token, eventType: 'payment_page_opened' }),
+        keepalive: true,
+      }).catch(() => null);
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,6 +166,13 @@ function ConfirmationInner() {
 
   return (
     <div className='space-y-6'>
+      {adminPreview ? (
+        <div className='sticky top-3 z-50 rounded-2xl border border-sky-400/40 bg-sky-950/95 px-5 py-4 text-center shadow-2xl backdrop-blur'>
+          <p className='text-xs font-black uppercase tracking-[0.18em] text-sky-200'>
+            Admin preview mode — no customer activity will be recorded
+          </p>
+        </div>
+      ) : null}
       <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
         <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
         <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-5xl'>You&apos;re booked</h1>
@@ -263,7 +278,7 @@ function ConfirmationInner() {
             Your booking is still saved. The last checkout did not complete; use the button below to open a fresh secure checkout.
           </p>
         ) : null}
-        {depositRequired && summary.sessionState.nextStep === 'payment' ? (
+        {depositRequired && summary.sessionState.nextStep === 'payment' && !adminPreview ? (
           <div className='mt-5 border-t border-white/10 pt-5'>
             <button
               type='button'
@@ -276,7 +291,7 @@ function ConfirmationInner() {
             {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
           </div>
         ) : null}
-        {!depositRequired && summary.balanceDueCents > 0 && summary.sessionState.appointmentActive ? (
+        {!depositRequired && summary.balanceDueCents > 0 && summary.sessionState.appointmentActive && !adminPreview ? (
           <div className='mt-5 border-t border-white/10 pt-5'>
             <button
               type='button'
@@ -291,7 +306,7 @@ function ConfirmationInner() {
         ) : null}
       </section>
 
-      {summary.sessionState.nextStep === 'payment' && summary.externalPaymentMethods?.length ? (
+      {summary.sessionState.nextStep === 'payment' && summary.externalPaymentMethods?.length && !adminPreview ? (
         <section className='rounded-3xl border border-white/10 bg-black/50 p-6'>
           <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Other enabled ways to pay</h2>
           <p className='mt-2 text-sm text-zinc-400'>Use only the instructions shown here. Your work order is updated after Gloss Boss verifies an external payment.</p>
@@ -322,7 +337,7 @@ function ConfirmationInner() {
         </p>
       </section>
 
-      {appointmentId && token ? (
+      {appointmentId && token && !adminPreview ? (
         <CustomerBookingLifecycle
           appointmentId={appointmentId}
           token={token}
@@ -342,29 +357,34 @@ function ConfirmationInner() {
       </section>
 
       <div className='grid gap-3 sm:grid-cols-2'>
-        {summary.sessionState.nextStep === 'acknowledgement' ? (
+        {adminPreview ? (
+          <div className='rounded-2xl border border-sky-400/30 bg-sky-500/10 px-6 py-4 text-center text-sm font-black uppercase text-sky-100 sm:col-span-2'>
+            Customer actions are disabled in read-only preview
+          </div>
+        ) : null}
+        {summary.sessionState.nextStep === 'acknowledgement' && !adminPreview ? (
           <Link href={signHref} className='rounded-2xl bg-gold px-6 py-4 text-center text-sm font-black uppercase text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'>
             Review and sign now
           </Link>
         ) : null}
-        <Link
+        {!adminPreview ? <Link
           href={`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`}
           className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'
         >
           Open customer portal
-        </Link>
-        <Link
+        </Link> : null}
+        {!adminPreview ? <Link
           href={`/signup?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
           className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300'
         >
           Create your account
-        </Link>
-        <Link
+        </Link> : null}
+        {!adminPreview ? <Link
           href={`/login?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
           className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300 sm:col-span-2'
         >
           Sign in to view in dashboard
-        </Link>
+        </Link> : null}
       </div>
 
       <div className="mt-8 rounded-2xl border border-border bg-card p-5 text-center">

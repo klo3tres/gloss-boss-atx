@@ -22,8 +22,15 @@ export type ConfirmationDeliveryStatus = {
   };
   portal: {
     linkCreatedAt: string | null;
+    linkLastRegeneratedAt: string | null;
     linkLastSentAt: string | null;
+    linkFirstOpenedAt: string | null;
     linkLastOpenedAt: string | null;
+    openCount: number;
+    acknowledgementStartedAt: string | null;
+    paymentPageOpenedAt: string | null;
+    accountClaimStartedAt: string | null;
+    accountCreatedAt: string | null;
     customerClaimedAt: string | null;
     authUserLinked: boolean;
     customerId: string | null;
@@ -65,7 +72,7 @@ export async function loadConfirmationDeliveryStatus(
     admin
       .from('appointments')
       .select(
-        'id, guest_email, guest_phone, access_token, customer_id, portal_link_created_at, portal_link_last_sent_at, portal_link_last_opened_at, customer_claimed_account_at',
+        'id, guest_email, guest_phone, access_token, customer_id, portal_link_created_at, portal_link_last_regenerated_at, portal_link_last_sent_at, portal_link_first_opened_at, portal_link_last_opened_at, portal_link_open_count, acknowledgement_started_at, payment_page_opened_at, account_claim_started_at, account_created_at, customer_claimed_account_at',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -127,8 +134,15 @@ export async function loadConfirmationDeliveryStatus(
     },
     portal: {
       linkCreatedAt: str(row.portal_link_created_at) || null,
+      linkLastRegeneratedAt: str(row.portal_link_last_regenerated_at) || null,
       linkLastSentAt: str(row.portal_link_last_sent_at) || null,
+      linkFirstOpenedAt: str(row.portal_link_first_opened_at) || null,
       linkLastOpenedAt: str(row.portal_link_last_opened_at) || null,
+      openCount: Number(row.portal_link_open_count ?? 0),
+      acknowledgementStartedAt: str(row.acknowledgement_started_at) || null,
+      paymentPageOpenedAt: str(row.payment_page_opened_at) || null,
+      accountClaimStartedAt: str(row.account_claim_started_at) || null,
+      accountCreatedAt: str(row.account_created_at) || null,
       customerClaimedAt: str(row.customer_claimed_account_at) || null,
       authUserLinked,
       customerId,
@@ -154,7 +168,17 @@ export async function markPortalLinkSent(admin: SupabaseClient, appointmentId: s
     .from('appointments')
     .update({
       portal_link_last_sent_at: now,
-      portal_link_created_at: now,
+      updated_at: now,
+    })
+    .eq('id', appointmentId);
+}
+
+export async function markPortalLinkRegenerated(admin: SupabaseClient, appointmentId: string) {
+  const now = new Date().toISOString();
+  await admin
+    .from('appointments')
+    .update({
+      portal_link_last_regenerated_at: now,
       updated_at: now,
     })
     .eq('id', appointmentId);

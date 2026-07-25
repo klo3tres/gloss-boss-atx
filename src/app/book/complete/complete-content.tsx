@@ -59,11 +59,25 @@ function formatAddress(a: ApptLite) {
   return [a.service_address, a.service_city, a.service_state, a.service_zip].filter(Boolean).join(', ') || 'On file';
 }
 
-export default function CompleteContent() {
+export default function CompleteContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id') ?? searchParams.get('sessionId') ?? '';
   const token = searchParams.get('token') ?? '';
-  const appointmentId = searchParams.get('appointment_id') ?? searchParams.get('appointmentId') ?? '';
+  const appointmentId = searchParams.get('appointment_id') ?? searchParams.get('appointmentId') ?? '';
+
+  useEffect(() => {
+    if (!appointmentId || !token) return;
+    void fetch('/api/public/portal-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appointmentId,
+        token,
+        eventType: 'acknowledgement_started',
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [appointmentId, token]);
   const fallbackBookingId = searchParams.get('fallback_booking_id') ?? searchParams.get('fallbackBookingId') ?? '';
   const customerId = searchParams.get('customer_id') ?? searchParams.get('customerId') ?? '';
   const paymentId = searchParams.get('payment_id') ?? searchParams.get('paymentId') ?? '';

@@ -1,5 +1,6 @@
 'use server';
 
+import { randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
@@ -11,6 +12,7 @@ import {
 } from '@/lib/booking-confirmation-send';
 import { loadPortalAccessContext } from '@/lib/customer-portal-access';
 import { loadConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
+import { buildCustomerPortalAccessUrl, defaultPortalAccessExpiry } from '@/lib/customer-portal-access';
 
 async function requireStaffAdmin() {
   const session = await getSessionWithProfile();
@@ -71,6 +73,35 @@ export async function getCustomerPortalLinkAction(appointmentId: string): Promis
   const loaded = await loadPortalAccessContext(admin, appointmentId);
   if (!loaded.ok) return { error: loaded.error };
   return { ok: true, portalUrl: loaded.ctx.portalUrl };
+}
+
+export async function regenerateCustomerPortalLinkAction(
+  appointmentId: string,
+): Promise<{ ok?: boolean; error?: string; portalUrl?: string }> {
+  const admin = await requireStaffAdmin();
+  if (!admin) return { error: 'Forbidden' };
+  const { data: appointment } = await admin
+    .from('appointments')
+    .select('scheduled_start')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (!appointment) return { error: 'Appointment not found' };
+  const token = randomBytes(24).toString('hex');
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from('appointments')
+    .update({
+      access_token: token,
+      portal_access_expires_at: defaultPortalAccessExpiry(appointment.scheduled_start),
+      portal_link_last_regenerated_at: now,
+      portal_link_revoked_at: null,
+      updated_at: now,
+    })
+    .eq('id', appointmentId);
+  if (error) return { error: error.message };
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath(`/admin/customer-preview/${appointmentId}`);
+  return { ok: true, portalUrl: buildCustomerPortalAccessUrl(appointmentId, token) };
 }
 
 export async function getConfirmationDeliveryStatusAction(appointmentId: string) {

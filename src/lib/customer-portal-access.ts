@@ -76,6 +76,20 @@ export async function loadPortalAccessContext(
   const row = job as Record<string, unknown>;
   const token = str(row.access_token);
   if (!token) return { ok: false, error: 'Portal access token missing on appointment' };
+  const customerId = str(row.customer_id) || null;
+  let guestEmail = str(row.guest_email).toLowerCase();
+  let guestPhone = str(row.guest_phone);
+  let guestName = str(row.guest_name) || 'Customer';
+  if (customerId && (!guestEmail || !guestPhone || guestName === 'Customer')) {
+    const { data: customer } = await admin
+      .from('customers')
+      .select('email, phone, full_name')
+      .eq('id', customerId)
+      .maybeSingle();
+    guestEmail = guestEmail || str(customer?.email).toLowerCase();
+    guestPhone = guestPhone || str(customer?.phone);
+    guestName = guestName === 'Customer' ? str(customer?.full_name) || guestName : guestName;
+  }
 
   const expiresAt = str(row.portal_access_expires_at) || (await ensurePortalAccessExpiry(admin, id, str(row.scheduled_start)));
 
@@ -84,10 +98,10 @@ export async function loadPortalAccessContext(
     ctx: {
       appointmentId: id,
       workOrderId: id,
-      customerId: str(row.customer_id) || null,
-      guestEmail: str(row.guest_email).toLowerCase(),
-      guestPhone: str(row.guest_phone),
-      guestName: str(row.guest_name) || 'Customer',
+      customerId,
+      guestEmail,
+      guestPhone,
+      guestName,
       accessToken: token,
       portalUrl: buildCustomerPortalAccessUrl(id, token),
       expiresAt: expiresAt || null,
@@ -223,11 +237,36 @@ export async function claimPortalAppointmentForUser(
     email: string;
     fullName?: string | null;
   },
-): Promise<{ ok: boolean; error?: string; customerId?: string; dashboardUrl?: string }> {
+): Promise<{ ok: boolean; error?: string; customerId?: string; dashboardUrl?: string; accountLinkedNow?: boolean }> {
   const verified = await verifyPortalAccess(input.appointmentId, input.token);
   if (!verified.ok) return { ok: false, error: verified.error };
   const loaded = await loadPortalAccessContext(admin, input.appointmentId);
   if (!loaded.ok) return { ok: false, error: loaded.error };
+
+  const signedInEmail = str(input.email).toLowerCase();
+  const bookingEmail = deliverableCustomerEmail(loaded.ctx.guestEmail);
+  if (bookingEmail && signedInEmail !== bookingEmail) {
+    return {
+      ok: false,
+      error: 'This account does not match the booking email. Sign out to continue as a guest, or sign in with the email on the booking.',
+    };
+  }
+
+  const { data: alreadyLinked } = await admin
+    .from('customers')
+    .select('id')
+    .eq('auth_user_id', input.authUserId)
+    .maybeSingle();
+  if (
+    alreadyLinked?.id &&
+    loaded.ctx.customerId &&
+    String(alreadyLinked.id) !== loaded.ctx.customerId
+  ) {
+    return {
+      ok: false,
+      error: 'This account belongs to a different customer record. Sign out to use the secure guest link.',
+    };
+  }
 
   const link = await linkAuthUserToCustomer(admin, {
     authUserId: input.authUserId,
@@ -253,5 +292,5 @@ export async function claimPortalAppointmentForUser(
   }
 
   const dashboardUrl = `/dashboard?job=${encodeURIComponent(input.appointmentId)}`;
-  return { ok: true, customerId: link.customerId, dashboardUrl };
+  return { ok: true, customerId: link.customerId, dashboardUrl, accountLinkedNow: Boolean(link.linked) };
 }

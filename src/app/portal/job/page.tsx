@@ -1,6 +1,9 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { PortalJobGateClient } from '@/components/portal/portal-job-gate-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
+import { isStaffRole } from '@/lib/auth/roles';
+import { recordCustomerPortalEvent } from '@/lib/customer-portal-tracking';
 import {
   claimPortalAppointmentForUser,
   isPortalAccessExpired,
@@ -29,7 +32,7 @@ function serviceLabel(slug: string) {
 }
 
 type Props = {
-  searchParams: Promise<{ appointment_id?: string; token?: string }>;
+  searchParams: Promise<{ appointment_id?: string; token?: string; source?: string }>;
 };
 
 export default async function PortalJobPage({ searchParams }: Props) {
@@ -75,14 +78,25 @@ export default async function PortalJobPage({ searchParams }: Props) {
     );
   }
 
-  await admin
-    .from('appointments')
-    .update({ portal_link_last_opened_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', appointmentId);
-
   const session = await getSessionWithProfile();
   const expired = verified.expired || isPortalAccessExpired(loaded.ctx.expiresAt);
+  const requestHeaders = await headers();
 
+  if (session.user && isStaffRole(session.profile?.role)) {
+    await recordCustomerPortalEvent(admin, {
+      appointmentId,
+      customerId: loaded.ctx.customerId,
+      token,
+      eventType: 'admin_preview_opened',
+      headers: requestHeaders,
+      role: session.profile?.role,
+      adminPreview: true,
+      channelSource: str(sp.source) || 'secure_portal_link',
+    });
+    redirect(`/admin/customer-preview/${encodeURIComponent(appointmentId)}`);
+  }
+
+  let accountAccessNotice: string | null = null;
   if (session.user?.id && session.user.email) {
     const claim = await claimPortalAppointmentForUser(admin, {
       appointmentId,
@@ -92,8 +106,39 @@ export default async function PortalJobPage({ searchParams }: Props) {
       fullName: session.profile?.full_name ?? loaded.ctx.guestName,
     });
     if (claim.ok && claim.dashboardUrl) {
+      await recordCustomerPortalEvent(admin, {
+        appointmentId,
+        customerId: claim.customerId ?? loaded.ctx.customerId,
+        token,
+        eventType: 'portal_opened',
+        headers: requestHeaders,
+        role: session.profile?.role,
+        channelSource: str(sp.source) || 'secure_portal_link',
+      });
+      if (claim.accountLinkedNow) {
+        await recordCustomerPortalEvent(admin, {
+          appointmentId,
+          customerId: claim.customerId ?? loaded.ctx.customerId,
+          token,
+          eventType: 'account_created',
+          headers: requestHeaders,
+          role: session.profile?.role,
+          channelSource: 'secure_portal_link',
+        });
+      }
       redirect(claim.dashboardUrl);
     }
+    accountAccessNotice = claim.error ?? 'This signed-in account could not be matched to the booking.';
+  } else {
+    await recordCustomerPortalEvent(admin, {
+      appointmentId,
+      customerId: loaded.ctx.customerId,
+      token,
+      eventType: 'portal_opened',
+      headers: requestHeaders,
+      role: session.profile?.role,
+      channelSource: str(sp.source) || 'secure_portal_link',
+    });
   }
 
   const { data: job } = await admin
@@ -117,12 +162,15 @@ export default async function PortalJobPage({ searchParams }: Props) {
 
   return (
     <PortalJobGateClient
+      appointmentId={appointmentId}
+      token={token}
       guestName={loaded.ctx.guestName}
       guestEmail={loaded.ctx.guestEmail}
       whenLabel={whenChicago(str(row?.scheduled_start) || new Date().toISOString())}
       service={serviceLabel(str(row?.service_slug))}
       portalPath={portalPath}
       expired={expired}
+      accountAccessNotice={accountAccessNotice}
       socialLinks={socialLinks}
     />
   );

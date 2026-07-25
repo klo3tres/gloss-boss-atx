@@ -1,24 +1,31 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, LogIn, UserPlus } from 'lucide-react';
+import { Calendar, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { SocialLinksRow, type SocialLinks } from '@/components/marketing/social-links';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export function PortalJobGateClient({
   guestName,
+  appointmentId,
+  token,
   guestEmail,
   whenLabel,
   service,
   portalPath,
   expired,
+  accountAccessNotice,
   socialLinks,
 }: {
   guestName: string;
+  appointmentId: string;
+  token: string;
   guestEmail: string;
   whenLabel: string;
   service: string;
   portalPath: string;
   expired: boolean;
+  accountAccessNotice?: string | null;
   socialLinks?: SocialLinks;
 }) {
   const loginHref = `/login?${new URLSearchParams({
@@ -29,6 +36,19 @@ export function PortalJobGateClient({
     next: portalPath,
     ...(guestEmail ? { email: guestEmail } : {}),
   }).toString()}`;
+  const trackAccountClaim = () => {
+    void fetch('/api/public/portal-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId, token, eventType: 'account_claim_started' }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  const signOutAndContinue = async () => {
+    const client = createSupabaseBrowserClient();
+    await client?.auth.signOut();
+    window.location.assign(portalPath);
+  };
 
   return (
     <main className="gb-luxury-page gb-marketing-page min-h-screen px-4 py-20 text-foreground sm:px-6">
@@ -45,6 +65,12 @@ export function PortalJobGateClient({
           </p>
         ) : null}
 
+        {accountAccessNotice ? (
+          <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-900">
+            {accountAccessNotice} You can sign out and reopen this link to continue securely as a guest.
+          </p>
+        ) : null}
+
         <section className="rounded-3xl border border-border bg-card p-6 shadow-sm">
           <div className="flex items-start gap-3">
             <Calendar className="mt-0.5 h-5 w-5 shrink-0 text-gold-soft" />
@@ -58,9 +84,19 @@ export function PortalJobGateClient({
           </p>
         </section>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        {accountAccessNotice ? (
+          <button
+            type="button"
+            onClick={() => void signOutAndContinue()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase text-black hover:brightness-110"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out and continue as guest
+          </button>
+        ) : <div className="grid gap-3 sm:grid-cols-2">
           <Link
             href={signupHref}
+            onClick={trackAccountClaim}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase text-black hover:brightness-110"
           >
             <UserPlus className="h-4 w-4" />
@@ -73,7 +109,7 @@ export function PortalJobGateClient({
             <LogIn className="h-4 w-4" />
             Sign in
           </Link>
-        </div>
+        </div>}
 
         <p className="text-center text-[11px] text-muted-foreground">
           Use {guestEmail || 'the email on your booking'} to link this appointment to your account — no duplicate profiles.
