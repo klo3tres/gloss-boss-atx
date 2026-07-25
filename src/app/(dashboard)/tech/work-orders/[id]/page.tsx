@@ -22,6 +22,7 @@ import { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkFo
 import type { WorkOrderGrowthData } from '@/components/tech/work-order-growth-panel';
 import { resolveAgreementSigned } from '@/lib/agreement-signed';
 import { resolveWorkOrder, vehicleParts, vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -499,7 +500,7 @@ export default async function TechWorkOrderDetailPage({
 
   const guestName = displayText(row.guest_name, resolved.orphanSession ? 'Walk-in customer' : 'Customer');
   const guestPhone = displayPhone(row.guest_phone);
-  const guestEmail = displayText(row.guest_email);
+  const guestEmail = deliverableCustomerEmail(row.guest_email);
 
   const checklistSaved = ((timelineRes.data ?? []) as Row[]).some((t) => str(t.event_type) === 'checklist_saved');
   const jobStarted = str(row.status) === 'in_progress' || Boolean(row.job_started_at);

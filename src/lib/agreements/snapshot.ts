@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement';
 import { resolveOrderLedger } from '@/lib/order-ledger';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 
 function money(cents: number) {
   return `$${(Math.max(0, cents) / 100).toFixed(2)}`;
@@ -40,7 +41,7 @@ export async function buildAgreementSnapshotForOrder(
 
   const base = buildNativeAgreementSnapshot({
     customerName: ledger.customer.name,
-    customerEmail: ledger.customer.email,
+    customerEmail: deliverableCustomerEmail(ledger.customer.email),
     customerPhone: ledger.customer.phone,
     vehicleDescription: vehicles.join('\n') || 'Vehicle on work order',
     serviceLabel: serviceLines || 'Mobile detailing',

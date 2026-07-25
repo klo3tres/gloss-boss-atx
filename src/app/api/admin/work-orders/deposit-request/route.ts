@@ -4,6 +4,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { enabledExternalPaymentMethods, loadExternalPaymentSettings } from '@/lib/external-payment-settings';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 
 export const runtime = 'nodejs';
 
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
       remainingBalanceCents: pricing.remainingBalanceCents,
       remainingAfterDepositCents: Math.max(0, pricing.remainingBalanceCents - pricing.depositCents),
     },
-    recipient: { phone: appointment.guest_phone ?? '', email: appointment.guest_email ?? '' },
+    recipient: { phone: appointment.guest_phone ?? '', email: deliverableCustomerEmail(appointment.guest_email) },
     secureLink: sessionUrl(appointmentId, String(appointment.access_token ?? '')),
     paymentChoice: appointment.payment_choice ?? 'deposit',
     externalPaymentMethods,

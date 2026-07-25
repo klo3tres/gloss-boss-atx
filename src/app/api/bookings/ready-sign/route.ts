@@ -4,6 +4,7 @@ import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { getAgreementRequestByToken } from '@/lib/agreements/requests';
 import { buildAgreementSnapshotForOrder } from '@/lib/agreements/snapshot';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 
 const APPT_SELECT =
   'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
@@ -191,7 +192,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({
-      appointment: appt,
+      appointment: { ...appt, guest_email: deliverableCustomerEmail(appt.guest_email) },
       appointmentId,
       fallbackBookingId: resolvedFallbackId,
       accessToken: token,

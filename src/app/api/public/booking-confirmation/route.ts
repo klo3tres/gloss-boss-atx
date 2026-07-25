@@ -3,6 +3,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { enabledExternalPaymentMethods, loadExternalPaymentSettings } from '@/lib/external-payment-settings';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 
 export const runtime = 'nodejs';
 
@@ -90,7 +91,7 @@ export async function GET(req: Request) {
     ok: true,
     bookingNumber: appointmentId.slice(0, 8).toUpperCase(),
     guestName: snap?.customer.name ?? str(job.guest_name),
-    guestEmail: snap?.customer.email ?? str(job.guest_email),
+    guestEmail: deliverableCustomerEmail(snap?.customer.email ?? job.guest_email),
     guestPhone: snap?.customer.phone ?? str(job.guest_phone),
     scheduledStart: snap?.scheduledStart ?? str(job.scheduled_start),
     serviceAddress: snap?.serviceAddress ?? '',
