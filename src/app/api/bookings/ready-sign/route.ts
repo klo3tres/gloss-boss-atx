@@ -8,7 +8,7 @@ import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 const APPT_SELECT =
   'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
 const APPT_SELECT_COMPAT =
-  'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, assigned_technician_id, customer_id, stripe_checkout_session_id, payment_status';
+  'id, access_token, status, guest_name, guest_email, guest_phone, base_price_cents, deposit_amount_cents, scheduled_start, payment_status';
 
 const FB_SELECT =
   'id, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, payload, stripe_checkout_session_id, payment_status, access_token';
