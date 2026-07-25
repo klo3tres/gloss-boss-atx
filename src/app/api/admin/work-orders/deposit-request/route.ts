@@ -41,6 +41,11 @@ export async function GET(request: Request) {
   const { admin, appointment, snapshot } = context;
   const pricing = snapshot.pricing;
   const externalPaymentMethods = enabledExternalPaymentMethods(await loadExternalPaymentSettings(admin));
+  const namedDiscountCents =
+    pricing.onlineDiscountCents +
+    pricing.multiCarDiscountCents +
+    pricing.promoDiscountCents +
+    pricing.manualDiscountCents;
   return NextResponse.json({
     ok: true,
     customer: snapshot.customer,
@@ -52,7 +57,7 @@ export async function GET(request: Request) {
     },
     pricing: {
       subtotalCents: pricing.prePromoCents,
-      discountCents: pricing.onlineDiscountCents + pricing.multiCarDiscountCents + pricing.promoDiscountCents + pricing.manualDiscountCents,
+      discountCents: Math.max(namedDiscountCents, pricing.prePromoCents - pricing.finalTotalCents),
       creditCents: pricing.creditPaidCents,
       finalTotalCents: pricing.finalTotalCents,
       paidCents: pricing.totalPaidCents,

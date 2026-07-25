@@ -70,6 +70,15 @@ export async function GET(req: Request) {
   const paidInFull = (p?.finalTotalCents ?? 0) > 0 && (p?.totalPaidCents ?? 0) >= (p?.finalTotalCents ?? 0);
   const paymentChoice = str(job.payment_choice).toLowerCase();
   const payOnArrival = paymentChoice === 'pay_later' || paymentChoice === 'pay_on_arrival';
+  const knownDiscountCents =
+    (p?.onlineDiscountCents ?? 0) +
+    (p?.multiCarDiscountCents ?? 0) +
+    (p?.promoDiscountCents ?? 0) +
+    (p?.manualDiscountCents ?? 0);
+  const pricingAdjustmentCents = Math.max(
+    0,
+    (p?.prePromoCents ?? 0) - knownDiscountCents - (p?.finalTotalCents ?? 0),
+  );
   const nextStep = !appointmentActive
     ? 'inactive'
     : !acknowledgementCompleted
@@ -98,6 +107,7 @@ export async function GET(req: Request) {
     multiCarDiscountCents: p?.multiCarDiscountCents ?? 0,
     promoDiscountCents: p?.promoDiscountCents ?? 0,
     manualDiscountCents: p?.manualDiscountCents ?? 0,
+    pricingAdjustmentCents,
     sessionState: {
       bookingExists: true,
       appointmentActive,

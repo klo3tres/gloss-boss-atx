@@ -34,6 +34,7 @@ type Summary = {
   multiCarDiscountCents: number;
   promoDiscountCents: number;
   manualDiscountCents: number;
+  pricingAdjustmentCents: number;
   sessionState: {
     appointmentActive: boolean;
     acknowledgementCompleted: boolean;
@@ -224,6 +225,12 @@ function ConfirmationInner() {
             <div className='flex justify-between gap-4 text-emerald-300'>
               <dt>Additional discount</dt>
               <dd>−{money(summary.manualDiscountCents)}</dd>
+            </div>
+          ) : null}
+          {summary.pricingAdjustmentCents > 0 ? (
+            <div className='flex justify-between gap-4 text-emerald-300'>
+              <dt>Work-order price adjustment</dt>
+              <dd>−{money(summary.pricingAdjustmentCents)}</dd>
             </div>
           ) : null}
           <div className='flex justify-between gap-4'>
