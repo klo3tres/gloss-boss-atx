@@ -36,12 +36,13 @@ function idea(input: {
 }
 
 export async function generateCampaignIdeas(admin: SupabaseClient): Promise<CampaignIdea[]> {
-  const [{ recipients }, promosRes, servicesRes, futureRes, settingsRes] = await Promise.all([
+  const [{ recipients }, promosRes, servicesRes, futureRes, settingsRes, techniciansRes] = await Promise.all([
     loadCampaignAudience(admin, { page: 1, pageSize: 2500, filters: {} }),
     admin.from('promo_codes').select('id, code, description, discount_type, discount_value, max_uses, current_uses, rules, starts_at, ends_at').eq('enabled', true).is('archived_at', null).limit(20),
     admin.from('services').select('id, slug, name, active').eq('active', true).limit(100),
     admin.from('appointments').select('scheduled_start, status').gte('scheduled_start', new Date().toISOString()).lte('scheduled_start', new Date(Date.now() + 7 * DAY).toISOString()).limit(500),
     admin.from('site_settings').select('key, value').in('key', ['weather_campaign_latest_snapshot', 'monthly_revenue_goal_cents']).limit(10),
+    admin.from('profiles').select('id').in('role', ['technician','admin','super_admin']).eq('active', true).limit(100),
   ]);
   const activePromos = ((promosRes.data ?? []) as Row[]).filter((row) => !row.ends_at || Date.parse(str(row.ends_at)) > Date.now());
   const promo = activePromos[0] ?? null;
@@ -67,7 +68,10 @@ export async function generateCampaignIdeas(admin: SupabaseClient): Promise<Camp
   const loyalty = eligible((row) => row.loyaltyCount > 0);
   const highValue = eligible((row) => row.lifetimeValueCents >= Math.max(avgTicket * 2, 30000));
   const bookedSlots = (futureRes.data ?? []).filter((row) => !['cancelled', 'canceled'].includes(str((row as Row).status).toLowerCase())).length;
-  const capacityReason = `${bookedSlots} appointments are currently booked over the next seven days; confirm open slots before sending.`;
+  const technicianCount = Math.max(1, techniciansRes.data?.length ?? 1);
+  const estimatedOpenSlots = Math.max(0, technicianCount * 3 * 7 - bookedSlots);
+  const fulfillableAudience = estimatedOpenSlots * 8;
+  const capacityReason = `${estimatedOpenSlots} estimated appointment slots remain across ${technicianCount} active field-capable staff over the next seven days. Audience is capped to protect fulfillment capacity.`;
   const weatherRow = ((settingsRes.data ?? []) as Row[]).find((row) => str(row.key).includes('weather'));
   const weatherText = JSON.stringify(weatherRow?.value ?? '').toLowerCase();
   const rainSignal = /rain|storm|wet/.test(weatherText);
@@ -89,5 +93,18 @@ export async function generateCampaignIdeas(admin: SupabaseClient): Promise<Camp
     idea({ id:'weekend-openings', name:'Weekend Openings', reason:capacityReason, audience:'Eligible customers without a future booking', filters:{preset:'no_future'}, eligible:noFuture, offer:'Weekend availability', service:interior.name, serviceSlug:interior.slug, averageTicket:avgTicket, promo, quick:'{{first_name}}, we have weekend availability for {{recommended_service}} on your {{vehicle}}. {{promotion}} {{campaign_link}}', professional:'Hi {{first_name}}, a few weekend appointments are available for {{recommended_service}}. Based on your {{vehicle}}, this may be a good maintenance window. {{campaign_link}}', warm:'Hey {{first_name}}! If the weekend is easier, we have a few openings to refresh your {{vehicle}}: {{campaign_link}}', subject:'Weekend detail openings', emailBody:professionalTokens, social:'Weekend mobile detail appointments are available.', sendHour:9 }),
     idea({ id:'same-week', name:'Same-Week Fill', reason:capacityReason, audience:'Eligible customers without a future booking', filters:{preset:'no_future'}, eligible:noFuture, offer:str(promo?.description)||'Same-week opening', service:interior.name, serviceSlug:interior.slug, averageTicket:avgTicket, promo, quick:standardTokens, professional:professionalTokens, warm:warmTokens, subject:'A few same-week appointments are open', emailBody:professionalTokens, social:'A few same-week mobile detail openings are available.', daysValid:3 }),
   ];
-  return ideas.filter((item) => item.estimatedEligibleCount > 0).slice(0, 20);
+  return ideas
+    .filter((item) => item.estimatedEligibleCount > 0 && estimatedOpenSlots > 0)
+    .map((item) => {
+      const estimatedEligibleCount = Math.min(item.estimatedEligibleCount, fulfillableAudience);
+      const projectedBookings = Math.min(estimatedOpenSlots, Math.max(0, Math.round(estimatedEligibleCount * 0.12)));
+      return {
+        ...item,
+        estimatedEligibleCount,
+        projectedBookings,
+        projectedRevenueCents: projectedBookings * Math.round(item.projectedRevenueCents / Math.max(1, item.projectedBookings)),
+        reason: `${item.reason} ${capacityReason}`,
+      };
+    })
+    .slice(0, 20);
 }

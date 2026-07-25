@@ -91,7 +91,6 @@ export function EstimatePublicClient({ estimate }: { estimate: ServiceEstimate }
         {estimate.validUntil ? (
           <p className="text-[10px] text-zinc-600">Valid until {formatChicagoDateTime(estimate.validUntil)}</p>
         ) : null}
-        {estimate.notes ? <p className="text-xs leading-5 text-zinc-400">{estimate.notes}</p> : null}
       </div>
 
       {msg ? <p className="text-center text-sm text-emerald-400">{msg}</p> : null}

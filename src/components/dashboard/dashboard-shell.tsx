@@ -27,6 +27,7 @@ const TITAN_ADMIN_SURFACES = new Set([
   '/admin/dispatch',
   '/admin/customers',
   '/admin/revenue',
+  '/admin/quotes',
   '/admin/calendar',
 ]);
 
@@ -58,6 +59,7 @@ const adminNavGroups: NavGroup[] = [
   {
     title: 'Work',
     links: [
+      { href: '/admin/quotes', label: 'Quote builder' },
       { href: '/admin/work-orders', label: 'Work orders' },
       { href: '/admin/dispatch', label: 'Dispatch' },
       { href: '/admin/leads', label: 'Leads' },
@@ -103,6 +105,8 @@ const adminNavGroups: NavGroup[] = [
     title: 'System',
     links: [
       { href: '/admin/automation-center', label: 'Automation Center' },
+      { href: '/admin/integrity-center', label: 'Integrity Center' },
+      { href: '/admin/titan/governance', label: 'Titan governance' },
       { href: '/admin/setup-center', label: 'Setup center' },
       { href: '/admin/settings', label: 'Settings' },
       { href: '/admin/brand-settings', label: 'Brand settings' },

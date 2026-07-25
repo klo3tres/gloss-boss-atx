@@ -9,12 +9,15 @@ import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 
 export type EstimateStatus =
   | 'draft'
+  | 'scheduled'
   | 'sent'
+  | 'viewed'
   | 'approved'
   | 'declined'
   | 'deposit_paid'
   | 'converted'
-  | 'expired';
+  | 'expired'
+  | 'voided';
 
 export type EstimateLineItem = {
   label: string;
@@ -48,6 +51,7 @@ export type ServiceEstimate = {
   declinedAt: string | null;
   depositPaidAt: string | null;
   convertedAt: string | null;
+  viewedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -103,6 +107,7 @@ function mapRow(row: Record<string, unknown>): ServiceEstimate {
     declinedAt: row.declined_at ? String(row.declined_at) : null,
     depositPaidAt: row.deposit_paid_at ? String(row.deposit_paid_at) : null,
     convertedAt: row.converted_at ? String(row.converted_at) : null,
+    viewedAt: row.viewed_at ? String(row.viewed_at) : null,
     createdAt: str(row.created_at),
     updatedAt: str(row.updated_at),
   };
@@ -504,17 +509,18 @@ export async function approveEstimateByToken(admin: SupabaseClient, token: strin
   if (estimate.status === 'approved' || estimate.status === 'deposit_paid' || estimate.status === 'converted') {
     return { ok: true, estimate };
   }
-  if (estimate.status !== 'sent' && estimate.status !== 'draft') {
+  if (estimate.status !== 'sent' && estimate.status !== 'viewed' && estimate.status !== 'draft') {
     return { ok: false, error: `Estimate cannot be approved from status ${estimate.status}.` };
   }
 
   const now = new Date().toISOString();
   const { error } = await admin
     .from('service_estimates')
-    .update({ status: 'approved', approved_at: now, updated_at: now })
+    .update({ status: 'approved', approved_at: now, accepted_at: now, updated_at: now })
     .eq('id', estimate.id);
 
   if (error) return { ok: false, error: error.message };
+  await admin.from('service_estimate_events').insert({ estimate_id: estimate.id, customer_id: estimate.customerId, event_type: 'customer_accepted' });
   return { ok: true, estimate: { ...estimate, status: 'approved', approvedAt: now } };
 }
 
@@ -529,6 +535,7 @@ export async function declineEstimateByToken(admin: SupabaseClient, token: strin
     .eq('id', estimate.id);
 
   if (error) return { ok: false, error: error.message };
+  await admin.from('service_estimate_events').insert({ estimate_id: estimate.id, customer_id: estimate.customerId, event_type: 'customer_declined' });
   if (estimate.leadId) {
     await admin.from('leads').update({ status: 'lost', updated_at: now }).eq('id', estimate.leadId);
   }

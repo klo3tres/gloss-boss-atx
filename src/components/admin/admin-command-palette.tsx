@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Command, Search, User, Briefcase, Target, Radar } from 'lucide-react';
+import { Command, Search, User, Briefcase, Target, Radar, Calculator } from 'lucide-react';
 import type { AdminSearchResult } from '@/app/api/admin/search/route';
 
 const TYPE_ICON = {
@@ -114,6 +114,17 @@ export function AdminCommandPalette({ enabled }: { enabled: boolean }) {
               />
             </div>
             <div className="max-h-[50vh] overflow-y-auto p-2">
+              <button
+                type="button"
+                onClick={() => go('/admin/quotes')}
+                className="mb-2 flex w-full items-center gap-3 rounded-xl border border-gold/25 bg-gold/10 px-3 py-3 text-left"
+              >
+                <Calculator className="h-4 w-4 text-gold-soft" />
+                <span>
+                  <span className="block text-sm font-black text-foreground">Build owner quote</span>
+                  <span className="block text-[11px] text-muted-foreground">Price, margin-check, send, approve, and convert</span>
+                </span>
+              </button>
               {loading ? <p className="px-3 py-4 text-xs text-muted-foreground">Searching…</p> : null}
               {!loading && query.length >= 2 && results.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-muted-foreground">No matches for &ldquo;{query}&rdquo;</p>
