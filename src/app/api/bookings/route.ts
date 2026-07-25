@@ -908,12 +908,14 @@ export async function POST(request: Request) {
       ]);
     }
 
-    queueGoogleCalendarSync(admin, String(appointment.id), 'upsert');
-    void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
-      upsertAppointmentAvailabilityBlock(admin, String(appointment.id)).catch((e) =>
-        console.warn('[api/bookings] availability block', e),
-      ),
-    );
+    if (!isQaTest) {
+      queueGoogleCalendarSync(admin, String(appointment.id), 'upsert');
+      void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
+        upsertAppointmentAvailabilityBlock(admin, String(appointment.id)).catch((e) =>
+          console.warn('[api/bookings] availability block', e),
+        ),
+      );
+    }
 
     const appliedCreditCents = await applyCustomerCreditsToAppointment({
       admin,
@@ -1034,31 +1036,33 @@ export async function POST(request: Request) {
         metadata: { promo_code: 'FREE', source: 'free_test_promo', vehicles: bookingVehicles },
       });
 
-      void notifyBookingConfirmationQueued({
-        toEmail: emailNorm,
-        toPhone: phoneDigits,
-        guestName: guestName.trim(),
-        whenIso: scheduled.toISOString(),
-        totalCents: priced.finalTotalCents,
-        depositCents: 0,
-        vehicles: vehicleDescriptionJoined,
-        appointmentId: appointment.id,
-      }).catch(() => {});
+      if (!isQaTest) {
+        void notifyBookingConfirmationQueued({
+          toEmail: emailNorm,
+          toPhone: phoneDigits,
+          guestName: guestName.trim(),
+          whenIso: scheduled.toISOString(),
+          totalCents: priced.finalTotalCents,
+          depositCents: 0,
+          vehicles: vehicleDescriptionJoined,
+          appointmentId: appointment.id,
+        }).catch(() => {});
 
-      void notifyBusinessNewBookingQueued({
-        eventKind: 'free_booking',
-        guestName: guestName.trim(),
-        guestEmail: emailNorm,
-        guestPhone: phoneDigits,
-        whenIso: scheduled.toISOString(),
-        totalCents: priced.finalTotalCents,
-        depositCents: 0,
-        balanceCents: 0,
-        appointmentId: appointment.id,
-        vehicles: vehicleDescriptionJoined,
-        serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
-        comped: true,
-      }).catch((e) => console.warn('[api/bookings] FREE owner notify', e));
+        void notifyBusinessNewBookingQueued({
+          eventKind: 'free_booking',
+          guestName: guestName.trim(),
+          guestEmail: emailNorm,
+          guestPhone: phoneDigits,
+          whenIso: scheduled.toISOString(),
+          totalCents: priced.finalTotalCents,
+          depositCents: 0,
+          balanceCents: 0,
+          appointmentId: appointment.id,
+          vehicles: vehicleDescriptionJoined,
+          serviceAddress: [serviceAddress, serviceCity, serviceState, serviceZip].filter(Boolean).join(', '),
+          comped: true,
+        }).catch((e) => console.warn('[api/bookings] FREE owner notify', e));
+      }
 
       return NextResponse.json({
         appointmentId: appointment.id,
@@ -1087,7 +1091,7 @@ export async function POST(request: Request) {
         })
         .eq('id', appointment.id);
 
-      void notifyBookingConfirmationQueued({
+      if (!isQaTest) void notifyBookingConfirmationQueued({
         toEmail: emailNorm,
         toPhone: phoneDigits,
         guestName: guestName.trim(),
@@ -1099,7 +1103,7 @@ export async function POST(request: Request) {
       }).catch(() => {});
 
       const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
-      void notifyBusinessNewBookingQueued({
+      if (!isQaTest) void notifyBusinessNewBookingQueued({
         eventKind: hasCeramic ? 'ceramic_quote' : 'new_booking',
         guestName: guestName.trim(),
         guestEmail: emailNorm,
