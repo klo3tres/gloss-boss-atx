@@ -676,7 +676,6 @@ export async function POST(request: Request) {
       promoCodes: [
         promoCode || null,
         claimed ? `OFFER:${claimed.offerId}` : null,
-        priced.websitePromoDiscountCents > 0 ? 'WEBSITE_PROMO' : null,
       ].filter((value): value is string => Boolean(value)),
       hasOfferOrSitePromo:
         Boolean(claimed) ||
