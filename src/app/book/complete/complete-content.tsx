@@ -180,7 +180,10 @@ export default function CompleteContent() {
         setAuthoritativeAgreementSnapshot(data.agreementSnapshot ?? null);
         setAlreadySigned(Boolean(data.alreadySigned));
         setPaymentVerified(Boolean(data.paymentVerified));
-        if (data.alreadySigned) setDone(true);
+        if (data.alreadySigned && data.appointmentId && data.accessToken) {
+          window.location.replace(`/book/confirmation?appointment_id=${encodeURIComponent(data.appointmentId)}&token=${encodeURIComponent(data.accessToken)}`);
+          return;
+        }
         const name = String(data.appointment.guest_name ?? '').trim();
         if (name) setLegalName(name);
       })
@@ -320,8 +323,14 @@ export default function CompleteContent() {
       setSubmitting(false);
       return;
     }
-    setDone(true);
-    setSubmitting(false);
+    const nextAppointmentId = resolvedAppointmentId || appointmentId;
+    const nextToken = resolvedToken || token;
+    if (nextAppointmentId && nextToken) {
+      window.location.assign(`/book/confirmation?appointment_id=${encodeURIComponent(nextAppointmentId)}&token=${encodeURIComponent(nextToken)}`);
+      return;
+    }
+    setDone(true);
+    setSubmitting(false);
   };
 
   if (loading) {
