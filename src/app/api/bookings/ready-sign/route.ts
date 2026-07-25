@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { resolveWorkOrder } from '@/lib/work-order-resolve';
 import { getAgreementRequestByToken } from '@/lib/agreements/requests';
 import { buildAgreementSnapshotForOrder } from '@/lib/agreements/snapshot';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 const APPT_SELECT =
   'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
@@ -150,25 +149,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
     }
 
-    let paymentVerified = false;
-    const status = str(appt.status).toLowerCase();
-    const payStatus = str(appt.payment_status).toLowerCase();
-    if (sessionId && !['awaiting_payment', 'pending', 'assigned', 'confirmed', 'in_progress', 'completed'].includes(status)) {
-      const stripe = await getStripeSdk(admin);
-      if (stripe) {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
-          return NextResponse.json({ error: 'Invalid payment session' }, { status: 400 });
-        }
-        paymentVerified = true;
-      }
-    }
-    if (
-      ['deposit_paid', 'paid', 'full_paid', 'test_comped', 'manual_comped', 'comped', 'in_progress', 'completed', 'confirmed', 'assigned'].includes(status) ||
-      ['deposit_paid', 'paid', 'full_paid', 'comped'].includes(payStatus)
-    ) {
-      paymentVerified = true;
-    }
+    // Payment proof comes only from canonical, successful payment rows linked to this order.
+    // Appointment/workflow labels and the existence of a Stripe session are not proof of payment.
+    const orderSnapshot = appointmentId
+      ? await loadOrderSnapshot(admin, { appointmentId })
+      : resolvedFallbackId
+        ? await loadOrderSnapshot(admin, { fallbackBookingId: resolvedFallbackId })
+        : null;
+    const paymentVerified =
+      Boolean(orderSnapshot) &&
+      (orderSnapshot!.pricing.finalTotalCents === 0 || orderSnapshot!.pricing.totalPaidCents > 0);
 
     const { data: template } = await admin
       .from('agreement_templates')

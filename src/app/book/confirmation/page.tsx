@@ -26,6 +26,7 @@ type Summary = {
   finalTotalCents: number;
   depositCents: number;
   depositPaidCents: number;
+  totalPaidCents: number;
   balanceDueCents: number;
   paymentStatus: string;
   onlineDiscountCents: number;
@@ -66,6 +67,8 @@ function ConfirmationInner() {
 
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [socialLinks, setSocialLinks] = useState({ instagramUrl: '', facebookUrl: '', tiktokUrl: '', youtubeUrl: '' });
 
   useEffect(() => {
@@ -104,8 +107,28 @@ function ConfirmationInner() {
     return <p className='text-zinc-400'>Loading your confirmation…</p>;
   }
 
-  const paidDeposit = summary.depositPaidCents > 0 || summary.paymentStatus.includes('deposit');
+  const paidDeposit = summary.depositPaidCents > 0;
+  const paidInFull = summary.finalTotalCents > 0 && summary.totalPaidCents >= summary.finalTotalCents;
+  const depositRequired = summary.depositCents > 0 && !paidDeposit && !paidInFull;
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
+
+  const openDepositCheckout = async () => {
+    setCheckoutBusy(true);
+    setCheckoutError(null);
+    try {
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId, accessToken: token, paymentChoice: 'deposit' }),
+      });
+      const json = (await res.json()) as { url?: string; customerMessage?: string; error?: string };
+      if (!res.ok || !json.url) throw new Error(json.customerMessage ?? json.error ?? 'Secure checkout could not be opened.');
+      window.location.assign(json.url);
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : 'Secure checkout could not be opened.');
+      setCheckoutBusy(false);
+    }
+  };
 
   const calHref = googleCalendarHref(summary);
   const icsHref = appointmentId ? `/api/calendar/appointment/${appointmentId}` : '';
@@ -191,8 +214,8 @@ function ConfirmationInner() {
           </div>
           <div className='flex justify-between gap-4'>
             <dt className='text-zinc-400'>Deposit paid</dt>
-            <dd className={paidDeposit ? 'text-emerald-300' : 'text-amber-200'}>
-              {paidDeposit ? money(summary.depositPaidCents || summary.depositCents) : 'Pending'}
+            <dd className={paidDeposit || paidInFull ? 'text-emerald-300' : 'text-amber-200'}>
+              {paidInFull ? 'Paid in full' : paidDeposit ? money(summary.depositPaidCents) : depositRequired ? 'Payment required' : 'Not required'}
             </dd>
           </div>
           <div className='flex justify-between gap-4 border-t border-white/10 pt-2'>
@@ -200,6 +223,19 @@ function ConfirmationInner() {
             <dd className='font-bold text-gold-soft'>{money(summary.balanceDueCents)}</dd>
           </div>
         </dl>
+        {depositRequired ? (
+          <div className='mt-5 border-t border-white/10 pt-5'>
+            <button
+              type='button'
+              disabled={checkoutBusy}
+              onClick={() => void openDepositCheckout()}
+              className='w-full rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase text-black disabled:opacity-60'
+            >
+              {checkoutBusy ? 'Opening secure checkout…' : `Pay ${money(summary.depositCents)} deposit`}
+            </button>
+            {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
+          </div>
+        ) : null}
       </section>
 
       {appointmentId && token ? <CustomerBookingLifecycle appointmentId={appointmentId} token={token} /> : null}
