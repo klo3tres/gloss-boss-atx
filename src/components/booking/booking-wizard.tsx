@@ -192,8 +192,19 @@ export function BookingWizard() {
   const [promoQuoteFinalCents, setPromoQuoteFinalCents] = useState<number | null>(null);
   const [draftExpiredNotice, setDraftExpiredNotice] = useState(false);
   const [draftResumedNotice, setDraftResumedNotice] = useState(false);
+  const [draftMeta, setDraftMeta] = useState<{ createdAt?: string; savedAt?: string; scheduledStart?: string } | null>(null);
+  const [bookingSessionId, setBookingSessionId] = useState('');
+  const [slotHold, setSlotHold] = useState<{
+    state: 'idle' | 'holding' | 'held' | 'conflict' | 'expired' | 'error';
+    holdId?: string;
+    expiresAt?: string;
+    message?: string;
+  }>({ state: 'idle' });
+  const [holdSecondsLeft, setHoldSecondsLeft] = useState(0);
+  const [holdRefreshKey, setHoldRefreshKey] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const trackedConversionSteps = useRef(new Set<string>());
+  const restoredDraftSlotRef = useRef(false);
   const [paymentChoice, setPaymentChoice] = useState<'deposit' | 'full'>('deposit');
 
   useEffect(() => {
@@ -540,7 +551,10 @@ export function BookingWizard() {
     let cancelled = false;
     const from = new Date().toISOString();
     const to = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
-    void fetchWithTimeout(`/api/public/booked-slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+    if (!bookingSessionId) return () => {
+      cancelled = true;
+    };
+    void fetchWithTimeout(`/api/public/booked-slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&session_id=${encodeURIComponent(bookingSessionId)}`, {
       cache: 'no-store',
       timeoutMs: 8000,
     })
@@ -552,7 +566,7 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [bookingSessionId]);
 
   const bookableDateKeys = useMemo(
     () => getBookableDateKeys(bookingRules, { limit: 56, maxScanDays: 180 }),
@@ -617,6 +631,82 @@ export function BookingWizard() {
       ),
     [bookingLines],
   );
+
+  useEffect(() => {
+    if (!bookingSessionId || !bookingScheduledIso || bookingLines.length === 0) {
+      setSlotHold((current) => (current.state === 'idle' ? current : { state: 'idle' }));
+      return;
+    }
+    let cancelled = false;
+    setSlotHold((current) => ({ ...current, state: 'holding', message: undefined }));
+    const timer = window.setTimeout(() => {
+      void fetch('/api/public/booking-slot-hold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'hold',
+          bookingSessionId,
+          isTest: appliedPromoCode === 'TEST1' || (freePromoRequested && promoComped),
+          scheduledStart: bookingScheduledIso,
+          vehicles: bookingLines.map((line) => ({
+            serviceSlug: line.serviceSlug,
+            vehicleClass: line.vehicleClass,
+            addOnSlugs: line.addOnSlugs ?? [],
+          })),
+        }),
+      })
+        .then(async (response) => {
+          const data = (await response.json()) as {
+            ok?: boolean;
+            state?: string;
+            holdId?: string;
+            expiresAt?: string;
+            error?: string;
+          };
+          if (cancelled) return;
+          if (!response.ok || !data.ok) {
+            if (restoredDraftSlotRef.current) {
+              restoredDraftSlotRef.current = false;
+              setBookingTimeValue('');
+              setCurrentStep(3);
+              setScheduleError(
+                'The time saved in your restored draft is no longer available. Your customer, vehicle, and service details are still here—choose a new time.',
+              );
+              return;
+            }
+            setSlotHold({
+              state: data.state === 'held_by_another_session' || data.state === 'booked' ? 'conflict' : 'error',
+              message: data.error ?? 'This time could not be held.',
+            });
+            return;
+          }
+          setSlotHold({ state: 'held', holdId: data.holdId, expiresAt: data.expiresAt });
+          setScheduleError(null);
+        })
+        .catch(() => {
+          if (!cancelled) setSlotHold({ state: 'error', message: 'Could not hold this time. Check your connection and try again.' });
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [appliedPromoCode, bookingLines, bookingScheduledIso, bookingSessionId, freePromoRequested, holdRefreshKey, promoComped]);
+
+  useEffect(() => {
+    if (!slotHold.expiresAt || slotHold.state !== 'held') {
+      setHoldSecondsLeft(0);
+      return;
+    }
+    const update = () => {
+      const left = Math.max(0, Math.ceil((new Date(slotHold.expiresAt!).getTime() - Date.now()) / 1000));
+      setHoldSecondsLeft(left);
+      if (left === 0) setSlotHold((current) => ({ ...current, state: 'expired', message: 'Your time hold expired. Select the time again to refresh it.' }));
+    };
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [slotHold.expiresAt, slotHold.state]);
 
   const filteredSlotOpts = useMemo(() => {
     if (!bookingDateKey) return [];
@@ -716,7 +806,7 @@ export function BookingWizard() {
             stackableWithSitePromo: claimedOfferSnap.stackableWithSitePromo,
           }
         : null,
-      depositPercent: 30,
+      depositPercent: paymentChoice === 'full' ? 100 : 30,
       membershipDiscountPercent: customerCredits.membershipDiscountPercent,
     });
     if ('kind' in bd) return null;
@@ -727,13 +817,18 @@ export function BookingWizard() {
         ? ({
             ...bd,
             finalTotalCents: promoFinal,
-            depositCents: promoFinal === 0 ? 0 : bd.depositCents,
-            promoDiscountCents: Math.max(0, bd.prePromoCents - promoFinal),
+            depositCents:
+              promoFinal === 0
+                ? 0
+                : paymentChoice === 'full'
+                  ? promoFinal
+                  : Math.min(promoFinal, Math.round((promoFinal * bd.depositPercent) / 100)),
+            promoDiscountCents: Math.max(0, bd.finalTotalCents - promoFinal),
           } as BookingPricingBreakdown)
         : (bd as BookingPricingBreakdown);
 
     return { kind: 'ok' as const, lines, addOnLines, breakdown: finalBreakdown };
-  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents, customerCredits.membershipDiscountPercent]);
+  }, [bookingLines, prices, services, deals, claimedOfferSnap, addonOptions, freePromoEligible, promoQuoteFinalCents, customerCredits.membershipDiscountPercent, paymentChoice]);
 
   useEffect(() => {
     const code = referralCode.trim().toUpperCase();
@@ -874,15 +969,41 @@ export function BookingWizard() {
 
   useEffect(() => {
     const loaded = loadBookingDraftForWizard();
+    const freshSessionId = () => crypto.randomUUID();
+    if (loaded.kind === 'none') {
+      const now = new Date().toISOString();
+      setBookingSessionId(freshSessionId());
+      setDraftMeta({ createdAt: now, savedAt: now });
+      return;
+    }
     if (loaded.kind === 'expired') {
       setDraftExpiredNotice(true);
+      const now = new Date().toISOString();
+      setBookingSessionId(freshSessionId());
+      setDraftMeta({ createdAt: now, savedAt: now });
       if (loaded.guestName) setGuestName(loaded.guestName);
       if (loaded.guestEmail) setGuestEmail(loaded.guestEmail);
       if (loaded.guestPhone) setGuestPhone(loaded.guestPhone);
+      if (loaded.previousBookingSessionId) {
+        void fetch('/api/public/booking-slot-hold', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'release', bookingSessionId: loaded.previousBookingSessionId }),
+        }).catch(() => {});
+      }
       return;
     }
-    if (loaded.kind !== 'fresh') return;
     const draft = loaded.draft;
+    restoredDraftSlotRef.current = Boolean(draft.scheduledStart);
+    setBookingSessionId(draft.bookingSessionId || freshSessionId());
+    setDraftMeta({
+      createdAt: draft.createdAt,
+      savedAt: draft.savedAt,
+      scheduledStart: draft.scheduledStart,
+    });
+    if (draft.holdId && draft.holdExpiresAt && Date.parse(draft.holdExpiresAt) > Date.now()) {
+      setSlotHold({ state: 'held', holdId: draft.holdId, expiresAt: draft.holdExpiresAt });
+    }
     if (draft.serviceSlug) setServiceSlug(draft.serviceSlug);
     if (draft.vehicleClass) setVehicleClass(draft.vehicleClass as VehicleClass);
     if (draft.vehicleDescription) setVehicleDescription(draft.vehicleDescription);
@@ -928,10 +1049,14 @@ export function BookingWizard() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      if (checkoutPhase === 'redirecting') return;
+      if (checkoutPhase === 'redirecting' || !bookingSessionId) return;
       writeBookingDraft({
         version: 1,
+        createdAt: draftMeta?.createdAt,
         savedAt: new Date().toISOString(),
+        bookingSessionId,
+        holdId: slotHold.holdId,
+        holdExpiresAt: slotHold.expiresAt,
         serviceSlug,
         vehicleClass,
         vehicleDescription,
@@ -981,6 +1106,10 @@ export function BookingWizard() {
     waterAccess,
     powerAccess,
     checkoutPhase,
+    bookingSessionId,
+    draftMeta?.createdAt,
+    slotHold.holdId,
+    slotHold.expiresAt,
   ]);
 
   const applyPromo = useCallback(async () => {
@@ -1191,6 +1320,15 @@ export function BookingWizard() {
       setError((prev) => prev ?? 'Online booking is disabled for this catalog. Call us to schedule.');
       return;
     }
+    if (!bookingSessionId) {
+      setError('Your booking session is still starting. Please try again in a moment.');
+      return;
+    }
+    if (slotHold.state === 'conflict' || slotHold.state === 'expired' || slotHold.state === 'error') {
+      setScheduleError(slotHold.message ?? 'This appointment time is not currently available.');
+      setError(slotHold.message ?? 'Choose another appointment time.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setCheckoutError(null);
@@ -1283,6 +1421,8 @@ export function BookingWizard() {
         timeoutMs: 20000,
         body: JSON.stringify({
           vehicles,
+          bookingSessionId,
+          slotHoldId: slotHold.holdId,
           addOns: allAddOnSlugs,
           offerId: claimedOfferSnap?.id,
           scheduledStart: startIso,
@@ -1318,14 +1458,16 @@ export function BookingWizard() {
         usedFallback?: boolean;
         fallbackBookingId?: string;
         skipPayment?: boolean;
+        code?: string;
+        error?: string;
       };
 
       if (!bookingRes.ok) {
         setCheckoutPhase('idle');
-        const errText = (bookingJson as { error?: string }).error ?? 'Booking failed';
-        if (bookingRes.status === 409) {
+        const errText = bookingJson.error ?? 'Booking failed';
+        if (bookingJson.code === 'SLOT_CONFLICT' || bookingJson.code === 'SLOT_HELD_BY_ANOTHER') {
           setScheduleError(errText);
-          setError('That time slot was just taken. Please pick another time.');
+          setError(errText);
         } else {
           setError(errText);
         }
@@ -1335,11 +1477,7 @@ export function BookingWizard() {
 
       if (bookingJson.skipPayment && bookingJson.appointmentId) {
         clearBookingDraft();
-        const q = new URLSearchParams({
-          appointment_id: bookingJson.appointmentId,
-          token: bookingJson.accessToken ?? '',
-        });
-        window.location.href = `/book/confirmation?${q.toString()}`;
+        window.location.href = `/booking/${encodeURIComponent(bookingJson.accessToken ?? '')}`;
         return;
       }
 
@@ -1438,6 +1576,17 @@ export function BookingWizard() {
   const goBack = () => goToStep(currentStep - 1);
 
   const stepTitle = BOOKING_WIZARD_STEPS[clampBookingStep(currentStep)]?.label ?? 'Book';
+  const startNewBooking = () => {
+    if (bookingSessionId) {
+      void fetch('/api/public/booking-slot-hold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', bookingSessionId }),
+      }).catch(() => {});
+    }
+    clearBookingDraft();
+    window.location.assign('/book');
+  };
 
   return (
     <form onSubmit={handleSubmit} className='gb-booking-form space-y-6 overflow-x-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] lg:pb-8'>
@@ -1450,14 +1599,32 @@ export function BookingWizard() {
         />
       </div>
       {draftExpiredNotice ? (
-        <p className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
-          Your old booking draft expired. Start fresh — we kept your name and email.
-        </p>
+        <div className='rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-100' role='status'>
+          <p>Your old booking draft expired. We kept your contact information and started a fresh booking session.</p>
+          <button type='button' onClick={startNewBooking} className='mt-2 text-xs font-black uppercase underline underline-offset-4'>
+            Clear everything
+          </button>
+        </div>
       ) : null}
       {draftResumedNotice && !draftExpiredNotice ? (
-        <p className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
-          Welcome back — we restored your booking draft. Pick up where you left off.
-        </p>
+        <div className='rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-3 text-sm text-emerald-100' role='status'>
+          <p className='font-bold'>Welcome back — your booking draft is restored.</p>
+          <p className='mt-1 text-xs text-emerald-100/80'>
+            {draftMeta?.createdAt ? `Created ${new Date(draftMeta.createdAt).toLocaleString()}. ` : ''}
+            {draftMeta?.savedAt ? `Last saved ${new Date(draftMeta.savedAt).toLocaleString()}. ` : ''}
+            {serviceSlug ? `Service: ${services.find((service) => service.slug === serviceSlug)?.title ?? serviceSlug}. ` : ''}
+            {draftMeta?.scheduledStart ? `Time: ${new Date(draftMeta.scheduledStart).toLocaleString()}. ` : ''}
+            Slot: {slotHold.state === 'held' ? 'held for this session' : slotHold.state === 'holding' ? 'checking' : 'will be revalidated'}.
+          </p>
+          <div className='mt-2 flex flex-wrap gap-3 text-xs font-black uppercase'>
+            <button type='button' onClick={() => setDraftResumedNotice(false)} className='underline underline-offset-4'>
+              Continue draft
+            </button>
+            <button type='button' onClick={startNewBooking} className='text-emerald-100/75 underline underline-offset-4'>
+              Start new booking
+            </button>
+          </div>
+        </div>
       ) : null}
       {catalogRefreshing ? (
         <div className='flex items-center gap-2 text-xs text-muted-foreground' aria-live='polite'>
@@ -1822,6 +1989,34 @@ export function BookingWizard() {
                   ))}
                 </div>
               ) : null}
+              {bookingTimeValue ? (
+                <div
+                  className={clsx(
+                    'mt-3 rounded-lg border px-3 py-2 text-xs',
+                    slotHold.state === 'held'
+                      ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-100'
+                      : slotHold.state === 'conflict' || slotHold.state === 'error' || slotHold.state === 'expired'
+                        ? 'border-amber-500/35 bg-amber-500/10 text-amber-100'
+                        : 'border-border bg-muted/40 text-muted-foreground',
+                  )}
+                  role='status'
+                >
+                  {slotHold.state === 'held'
+                    ? `This time is held for your booking${holdSecondsLeft > 0 ? ` for ${Math.floor(holdSecondsLeft / 60)}:${String(holdSecondsLeft % 60).padStart(2, '0')}` : ''}.`
+                    : slotHold.state === 'holding'
+                      ? 'Holding this time for you…'
+                      : slotHold.message ?? 'Checking this time…'}
+                  {slotHold.state === 'expired' ? (
+                    <button
+                      type='button'
+                      onClick={() => setHoldRefreshKey((value) => value + 1)}
+                      className='ml-2 font-black uppercase underline underline-offset-4'
+                    >
+                      Hold this time again
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {scheduleError ? <p className='mt-2 text-xs text-amber-300'>{scheduleError}</p> : null}
               <BookingWeatherHint
                 serviceAddress={serviceAddress}
@@ -2172,6 +2367,18 @@ export function BookingWizard() {
                     <span className='tabular-nums'>-${(priceSummary.breakdown.websitePromoDiscountCents / 100).toFixed(2)}</span>
                   </p>
                 ) : null}
+                {priceSummary.breakdown.promoDiscountCents > 0 && !freePromoEligible ? (
+                  <p className='flex justify-between text-xs text-emerald-300'>
+                    <span>
+                      {appliedPromoCode === 'TEST1'
+                        ? 'TEST1 controlled QA adjustment'
+                        : appliedPromoCode
+                          ? `Promo ${appliedPromoCode}`
+                          : 'Promo adjustment'}
+                    </span>
+                    <span className='tabular-nums'>-${(priceSummary.breakdown.promoDiscountCents / 100).toFixed(2)}</span>
+                  </p>
+                ) : null}
                 {priceSummary.breakdown.membershipDiscountCents > 0 ? (
                   <p className='flex justify-between text-xs text-emerald-300'>
                     <span>Member savings ({priceSummary.breakdown.membershipDiscountPercent}%)</span>
@@ -2266,6 +2473,22 @@ export function BookingWizard() {
                         ${((priceSummary.breakdown.finalTotalCents - priceSummary.breakdown.depositCents) / 100).toFixed(2)}
                       </span>
                     </p>
+                  ) : null}
+                  {(appliedPromoCode === 'TEST1' || freePromoEligible) ? (
+                    <details className='mt-3 rounded-lg border border-sky-400/25 bg-sky-400/5 p-3 text-xs text-sky-100'>
+                      <summary className='cursor-pointer font-black uppercase tracking-wider'>QA pricing diagnostics</summary>
+                      <dl className='mt-3 grid grid-cols-2 gap-2 font-mono text-[10px]'>
+                        <dt>Vehicle services</dt><dd className='text-right'>{priceSummary.breakdown.vehicleSubtotalCents}¢</dd>
+                        <dt>Add-ons</dt><dd className='text-right'>{priceSummary.breakdown.addOnSubtotalCents}¢</dd>
+                        <dt>Multi-car</dt><dd className='text-right'>−{priceSummary.breakdown.multiCarDiscountCents}¢</dd>
+                        <dt>Offer</dt><dd className='text-right'>−{priceSummary.breakdown.offerDiscountCents}¢</dd>
+                        <dt>Sitewide</dt><dd className='text-right'>−{priceSummary.breakdown.websitePromoDiscountCents}¢</dd>
+                        <dt>Membership</dt><dd className='text-right'>−{priceSummary.breakdown.membershipDiscountCents}¢</dd>
+                        <dt>Controlled promo</dt><dd className='text-right'>−{priceSummary.breakdown.promoDiscountCents}¢</dd>
+                        <dt className='font-black'>Displayed final</dt><dd className='text-right font-black'>{priceSummary.breakdown.finalTotalCents}¢</dd>
+                      </dl>
+                      <p className='mt-2 text-[10px] text-sky-100/70'>The server recalculates the same quote and remains authoritative before Stripe opens.</p>
+                    </details>
                   ) : null}
                 </div>
               </div>

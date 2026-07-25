@@ -2,7 +2,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { estimatedEndIso, totalBookingDurationMinutes, type VehicleDurationLine } from '@/lib/booking-service-duration';
 import type { DurationCatalog } from '@/lib/booking-duration-catalog';
 
-export type BookedBlock = { start: string; end: string; appointmentId?: string };
+export type BookedBlock = {
+  start: string;
+  end: string;
+  appointmentId?: string;
+  bookingSessionId?: string;
+  source?: 'appointment' | 'fallback' | 'manual' | 'slot_hold';
+};
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -73,7 +79,13 @@ function pushBlockFromRow(
   // estimated_end / duration already include service buffer — do not double-add here.
   if (endMs <= rangeStart || startMs >= rangeEnd) return;
   if (id) seen.add(id);
-  blocks.push({ start: startIso, end: new Date(endMs).toISOString(), appointmentId: id || undefined });
+  blocks.push({
+    start: startIso,
+    end: new Date(endMs).toISOString(),
+    appointmentId: id || undefined,
+    bookingSessionId: str(r.booking_session_id) || undefined,
+    source: opts?.requireConfirmed ? 'appointment' : undefined,
+  });
 }
 
 export async function fetchBookedBlocks(
@@ -88,7 +100,7 @@ export async function fetchBookedBlocks(
 
   const { data: appts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test, booking_session_id')
     .gte('scheduled_start', rangeStartIso)
     .lte('scheduled_start', rangeEndIso)
     .is('archived_at', null)
@@ -97,7 +109,7 @@ export async function fetchBookedBlocks(
 
   const { data: activeAppts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test, booking_session_id')
     .in('status', ['in_progress', 'assigned', 'confirmed', 'deposit_paid', 'paid_in_full'])
     .is('archived_at', null)
     .is('deleted_at', null)
@@ -122,7 +134,7 @@ export async function fetchBookedBlocks(
 
   const { data: fbs } = await admin
     .from('booking_fallbacks')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, payload, status, archived_at, deleted_at, schedule_override')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, payload, status, archived_at, deleted_at, schedule_override, booking_session_id')
     .gte('scheduled_start', rangeStartIso)
     .lte('scheduled_start', rangeEndIso)
     .is('archived_at', null)
@@ -151,7 +163,28 @@ export async function fetchBookedBlocks(
     const startMs = new Date(startIso).getTime();
     const endMs = new Date(endIso).getTime();
     if (endMs <= rangeStart || startMs >= rangeEnd) continue;
-    blocks.push({ start: startIso, end: endIso, appointmentId: str(r.id) || undefined });
+    blocks.push({ start: startIso, end: endIso, appointmentId: str(r.id) || undefined, source: 'manual' });
+  }
+
+  const { data: activeHolds } = await admin
+    .from('booking_slot_holds')
+    .select('id, booking_session_id, scheduled_start, scheduled_end, expires_at, status, is_test')
+    .in('status', ['held', 'converting_to_checkout'])
+    .gt('expires_at', new Date().toISOString())
+    .eq('is_test', false)
+    .lt('scheduled_start', rangeEndIso)
+    .gt('scheduled_end', rangeStartIso);
+
+  for (const row of activeHolds ?? []) {
+    const startIso = str(row.scheduled_start);
+    const endIso = str(row.scheduled_end);
+    if (!startIso || !endIso) continue;
+    blocks.push({
+      start: startIso,
+      end: endIso,
+      bookingSessionId: str(row.booking_session_id) || undefined,
+      source: 'slot_hold',
+    });
   }
 
   return blocks;
@@ -162,6 +195,7 @@ export function slotConflictsWithBlocks(
   durationMinutes: number,
   blocks: BookedBlock[],
   excludeAppointmentId?: string,
+  excludeBookingSessionId?: string,
 ): boolean {
   const startMs = new Date(scheduledStartIso).getTime();
   // durationMinutes already includes booking buffer from totalBookingDurationMinutes — do not add again.
@@ -169,6 +203,7 @@ export function slotConflictsWithBlocks(
   if (Number.isNaN(startMs)) return true;
   return blocks.some((b) => {
     if (excludeAppointmentId && b.appointmentId === excludeAppointmentId) return false;
+    if (excludeBookingSessionId && b.bookingSessionId === excludeBookingSessionId) return false;
     const bStart = new Date(b.start).getTime();
     const bEnd = new Date(b.end).getTime();
     return blocksOverlap(startMs, endMs, bStart, bEnd);

@@ -73,7 +73,7 @@ export async function createDepositCheckoutSession(params: {
   try {
     const { data: appt, error } = await admin
       .from('appointments')
-      .select('id, access_token, status, payment_status, deposit_amount_cents, base_price_cents, guest_email, guest_name, customer_id, service_slug, vehicle_description, service_address, service_city, service_state, service_zip')
+      .select('id, access_token, status, payment_status, deposit_amount_cents, base_price_cents, guest_email, guest_name, customer_id, service_slug, vehicle_description, service_address, service_city, service_state, service_zip, stripe_checkout_session_id')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -136,6 +136,34 @@ export async function createDepositCheckoutSession(params: {
         message: 'Customer credits covered the card amount due.',
       };
     }
+    const existingCheckoutId = String(
+      (appt as { stripe_checkout_session_id?: string | null }).stripe_checkout_session_id ?? '',
+    ).trim();
+    if (existingCheckoutId) {
+      try {
+        const existingCheckout = await stripe.checkout.sessions.retrieve(existingCheckoutId);
+        if (
+          existingCheckout.status === 'open' &&
+          existingCheckout.payment_status === 'unpaid' &&
+          existingCheckout.url &&
+          Number(existingCheckout.amount_total ?? amountCents) === amountCents
+        ) {
+          return { ok: true, url: existingCheckout.url };
+        }
+        if (existingCheckout.payment_status === 'paid') {
+          return {
+            ok: true,
+            skipPayment: true,
+            appointmentId: String(appt.id),
+            accessToken: accessToken.trim(),
+            code: 'NO_CARD_BALANCE',
+            message: 'Payment is already complete and is being confirmed.',
+          };
+        }
+      } catch {
+        // Missing or expired provider session: create a fresh checkout for this same booking.
+      }
+    }
     const stripeMeta = buildCheckoutStripeMetadata({
       appointment_id: String(appt.id),
       work_order_id: String(appt.id),
@@ -147,30 +175,41 @@ export async function createDepositCheckoutSession(params: {
       vehicle_summary: vehicleSummary.slice(0, 500),
       service_address: serviceAddress.slice(0, 500),
     });
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: appt.guest_email ?? undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            unit_amount: amountCents,
-            product_data: {
-              name: isBalancePayment
-                ? 'Gloss Boss ATX — Remaining service balance'
-                : isFullPay
-                  ? 'Gloss Boss ATX — Paid in full'
-                  : 'Gloss Boss ATX — Service deposit',
-              description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: appt.guest_email ?? undefined,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              unit_amount: amountCents,
+              product_data: {
+                name: isBalancePayment
+                  ? 'Gloss Boss ATX — Remaining service balance'
+                  : isFullPay
+                    ? 'Gloss Boss ATX — Paid in full'
+                    : 'Gloss Boss ATX — Service deposit',
+                description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
+              },
             },
+            quantity: 1,
           },
-          quantity: 1,
-        },
-      ],
-      success_url: `${origin}/book/confirmation?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
-      cancel_url: `${origin}/book/confirmation?appointment_id=${encodeURIComponent(String(appt.id))}&token=${encodeURIComponent(accessToken.trim())}&payment_cancelled=1`,
-      ...stripeMeta,
-    });
+        ],
+        success_url: `${origin}/booking/${encodeURIComponent(accessToken.trim())}?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/booking/${encodeURIComponent(accessToken.trim())}?payment_cancelled=1`,
+        ...stripeMeta,
+      },
+      {
+        idempotencyKey: [
+          'booking-checkout',
+          String(appt.id),
+          isFullPay ? 'full' : 'deposit',
+          String(amountCents),
+          existingCheckoutId || 'initial',
+        ].join('-').slice(0, 255),
+      },
+    );
 
     await upsertSessionIdSafe(admin, appt.id, session.id);
 

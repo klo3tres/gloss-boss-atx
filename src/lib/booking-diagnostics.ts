@@ -135,6 +135,8 @@ export async function saveBookingFallback(
         promo_code: params.payload.promo_code ?? null,
         payment_status: params.payload.payment_status ?? null,
         comp_reason: params.payload.comp_reason ?? null,
+        booking_session_id: params.payload.booking_session_id ?? null,
+        slot_hold_id: params.payload.slot_hold_id ?? null,
         status: 'pending',
       })
       .select('id, access_token')

@@ -55,5 +55,15 @@ export async function POST(request: Request) {
         }
       : undefined,
   });
+  if (eventType === 'account_claim_started') {
+    await admin
+      .from('appointments')
+      .update({
+        account_claim_status: 'claim_started',
+        account_claim_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId);
+  }
   return NextResponse.json({ ok: true, counted: result.counted });
 }

@@ -17,10 +17,14 @@ import {
 } from '@/app/(dashboard)/admin/confirmation-actions';
 import { useToast } from '@/components/ui/toast-provider';
 import type { ConfirmationDeliveryStatus, DeliveryChannelStatus } from '@/lib/confirmation-delivery-status';
+import { buildToneVariants } from '@/lib/outbound-message-tones';
 
 function statusBadge(status: DeliveryChannelStatus) {
   const map: Record<DeliveryChannelStatus, { label: string; className: string; icon: typeof CheckCircle2 }> = {
+    queued: { label: 'Queued', className: 'border-sky-500/30 bg-sky-500/10 text-sky-200', icon: RefreshCw },
     sent: { label: 'Sent', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200', icon: CheckCircle2 },
+    delivered: { label: 'Delivered', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200', icon: CheckCircle2 },
+    undelivered: { label: 'Undelivered', className: 'border-rose-500/30 bg-rose-500/10 text-rose-200', icon: XCircle },
     failed: { label: 'Failed', className: 'border-rose-500/30 bg-rose-500/10 text-rose-200', icon: XCircle },
     skipped: { label: 'Skipped', className: 'border-amber-500/30 bg-amber-500/10 text-amber-200', icon: AlertTriangle },
     not_sent: { label: 'Not sent', className: 'border-white/10 bg-white/5 text-zinc-400', icon: MessageSquare },
@@ -76,7 +80,7 @@ export function WorkOrderConfirmationPanel({
     });
   };
 
-  const previewConfirmation = () => {
+  const openConfirmationPreview = (title: string) => {
     startTransition(async () => {
       const preview = await previewBookingConfirmationAction(appointmentId);
       if (preview.error || !preview.smsBody) {
@@ -84,51 +88,63 @@ export function WorkOrderConfirmationPanel({
         return;
       }
       if (preview.portalUrl) setPortalUrl(preview.portalUrl);
+      const tones = buildToneVariants(preview.smsBody, {
+        name: guestName,
+        price: undefined,
+        bookLink: preview.portalUrl,
+      });
       openPreview({
-        title: 'Preview customer confirmation',
-        channel: 'sms',
+        title,
+        channel: guestPhone ? 'sms' : 'email',
+        channelOptions: [
+          ...(guestPhone ? (['sms'] as const) : []),
+          ...(guestEmail ? (['email'] as const) : []),
+        ],
         recipient: guestPhone || guestEmail || guestName,
+        recipients: { sms: guestPhone, email: guestEmail },
         subject: preview.emailSubject ?? 'Gloss Boss ATX — Your appointment is confirmed',
         body: preview.smsBody,
         contextLabel: [guestName, preview.whenLabel, preview.service].filter(Boolean).join(' · '),
-        onSend: async () => ({ ok: true }),
-      });
-    });
-  };
-
-  const sendBoth = () => {
-    startTransition(async () => {
-      const preview = await previewBookingConfirmationAction(appointmentId);
-      if (preview.error) {
-        toast.error('Confirmation', preview.error);
-        return;
-      }
-      if (preview.portalUrl) setPortalUrl(preview.portalUrl);
-      openPreview({
-        title: 'Send customer confirmation',
-        channel: guestPhone ? 'sms' : 'email',
-        recipient: guestPhone || guestEmail || 'No contact on file',
-        subject: preview.emailSubject ?? 'Gloss Boss ATX — Your appointment is confirmed',
-        body: preview.smsBody ?? '',
-        contextLabel: [guestName, preview.whenLabel, preview.service].filter(Boolean).join(' · '),
+        toneVariants: tones,
+        allowOwnerTest: true,
+        allowSchedule: false,
+        kind: 'booking_confirmation',
+        appointmentId,
+        customerId: customerId ?? undefined,
         onSend: async (final) => {
           const res = await sendBookingConfirmationAction({
             appointmentId,
-            customSmsBody: final.body,
+            channel: final.channel,
+            customSmsBody: final.channel === 'sms' ? final.body : undefined,
+            customEmailBodyPlain: final.channel === 'email' ? final.body : preview.emailBodyPlain,
             customEmailSubject: final.subject,
           });
-          if (res.error) {
-            toast.error('Confirmation failed', res.error);
-            return { ok: false, error: res.error };
-          }
-          if (res.tone === 'warning') toast.warning('Confirmation', res.message ?? 'Sent with warnings.');
-          else toast.success('Confirmation sent', res.message ?? 'Customer notified.');
+          if (res.error) return { ok: false, error: res.error };
+          refreshStatus();
+          router.refresh();
+          return { ok: true };
+        },
+        onSendBoth: async (final) => {
+          const res = await sendBookingConfirmationAction({
+            appointmentId,
+            channel: 'both',
+            customSmsBody: final.body,
+            customEmailBodyPlain: preview.emailBodyPlain,
+            customEmailSubject: final.subject,
+          });
+          if (res.error) return { ok: false, error: res.error };
           refreshStatus();
           router.refresh();
           return { ok: true };
         },
       });
     });
+  };
+
+  const previewConfirmation = () => openConfirmationPreview('Preview customer confirmation');
+
+  const sendBoth = () => {
+    openConfirmationPreview('Preview and send customer confirmation');
   };
 
   const resendEmail = () => {
@@ -242,6 +258,7 @@ export function WorkOrderConfirmationPanel({
             </div>
             <p className="mt-2 truncate text-xs text-zinc-300">{guestEmail || '—'}</p>
             <p className="mt-1 text-[10px] text-zinc-500">Last sent: {formatWhen(status?.email.lastSentAt ?? null)}</p>
+            <p className="mt-1 text-[10px] text-zinc-500">Delivered: {formatWhen(status?.email.deliveredAt ?? null)}</p>
             {status?.email.providerMessageId ? (
               <p className="mt-0.5 truncate text-[10px] text-zinc-600">ID: {status.email.providerMessageId}</p>
             ) : null}
@@ -254,6 +271,7 @@ export function WorkOrderConfirmationPanel({
             </div>
             <p className="mt-2 truncate text-xs text-zinc-300">{guestPhone || '—'}</p>
             <p className="mt-1 text-[10px] text-zinc-500">Last sent: {formatWhen(status?.sms.lastSentAt ?? null)}</p>
+            <p className="mt-1 text-[10px] text-zinc-500">Delivered: {formatWhen(status?.sms.deliveredAt ?? null)}</p>
             {status?.sms.providerMessageId ? (
               <p className="mt-0.5 truncate text-[10px] text-zinc-600">Twilio SID: {status.sms.providerMessageId}</p>
             ) : null}
@@ -275,7 +293,11 @@ export function WorkOrderConfirmationPanel({
           <p>Acknowledgement started: {formatWhen(status?.portal.acknowledgementStartedAt ?? null)}</p>
           <p>Payment page opened: {formatWhen(status?.portal.paymentPageOpenedAt ?? null)}</p>
           <p>Account linked: {status?.portal.authUserLinked ? 'Yes' : 'No'}</p>
+          <p>Account claim: {status?.portal.accountClaimStatus?.replace(/_/g, ' ') ?? 'not offered'}</p>
         </div>
+        {status?.portal.accountClaimError ? (
+          <p className='mt-2 text-[10px] text-rose-300'>Claim error: {status.portal.accountClaimError}</p>
+        ) : null}
         {(portalUrl || status?.portalUrl) ? (
           <p className="mt-2 truncate font-mono text-[10px] text-zinc-500">{portalUrl || status?.portalUrl}</p>
         ) : null}

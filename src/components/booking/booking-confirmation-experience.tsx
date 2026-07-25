@@ -87,16 +87,18 @@ function googleCalendarHref(summary: BookingConfirmationSummary) {
 function ConfirmationInner({
   initialSummary,
   appointmentIdOverride,
+  accessTokenOverride,
   previewMode,
 }: {
   initialSummary?: BookingConfirmationSummary | null;
   appointmentIdOverride?: string;
+  accessTokenOverride?: string;
   previewMode: boolean;
 }) {
   const sp = useSearchParams();
   const pathname = usePathname();
   const appointmentId = appointmentIdOverride ?? sp.get('appointment_id') ?? sp.get('appointmentId') ?? '';
-  const token = sp.get('token') ?? '';
+  const token = accessTokenOverride ?? sp.get('token') ?? '';
   const sessionId = sp.get('session_id') ?? '';
   const adminPreview = previewMode || sp.get('admin_preview') === '1';
 
@@ -116,7 +118,7 @@ function ConfirmationInner({
   }, []);
 
   useEffect(() => {
-    if (adminPreview || pathname !== '/portal/job' || !appointmentId || !token) return;
+    if (adminPreview || (!pathname.startsWith('/booking/') && pathname !== '/portal/job') || !appointmentId || !token) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let sent = false;
     const confirmVisibleView = () => {
@@ -235,6 +237,13 @@ function ConfirmationInner({
 
   const calHref = googleCalendarHref(summary);
   const icsHref = appointmentId ? `/api/calendar/appointment/${appointmentId}` : '';
+  const canonicalPath = `/booking/${encodeURIComponent(token)}`;
+  const lifecycleSteps = [
+    { label: 'Appointment', done: summary.sessionState.appointmentActive },
+    { label: 'Acknowledgment', done: summary.sessionState.acknowledgementCompleted },
+    { label: 'Payment', done: !summary.sessionState.depositRequired || summary.sessionState.depositPaid || summary.sessionState.paidInFull },
+    { label: 'Secured', done: summary.sessionState.nextStep === 'confirmation' },
+  ];
 
   return (
     <div className='space-y-6'>
@@ -247,7 +256,9 @@ function ConfirmationInner({
       ) : null}
       <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
         <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
-        <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-5xl'>You&apos;re booked</h1>
+        <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-5xl'>
+          {summary.sessionState.nextStep === 'confirmation' ? 'You’re booked' : 'Your appointment is reserved'}
+        </h1>
         <p className='mt-2 text-sm text-zinc-400'>Ref {summary.bookingNumber}</p>
         <p className='mt-4 text-xl font-bold text-white'>{chicago(summary.scheduledStart)}</p>
         <p className='mt-2 text-sm text-zinc-300'>{summary.serviceAddress || 'Mobile service at your address'}</p>
@@ -271,6 +282,20 @@ function ConfirmationInner({
             </a>
           ) : null}
         </div>
+      </section>
+
+      <section className='grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/50 p-3 sm:grid-cols-4' aria-label='Booking progress'>
+        {lifecycleSteps.map((step, index) => (
+          <div
+            key={step.label}
+            className={`rounded-xl border px-3 py-3 text-center ${
+              step.done ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100' : 'border-white/10 text-zinc-400'
+            }`}
+          >
+            <p className='text-[10px] font-black uppercase tracking-wider'>{index + 1}. {step.label}</p>
+            <p className='mt-1 text-[10px]'>{step.done ? 'Complete' : 'Next'}</p>
+          </div>
+        ))}
       </section>
 
       <section className='gb-glass rounded-3xl border border-gold/20 p-6'>
@@ -473,20 +498,20 @@ function ConfirmationInner({
           </Link>
         ) : null}
         {!adminPreview ? <Link
-          href={`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`}
+          href={canonicalPath}
           className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'
         >
           Open customer portal
         </Link> : null}
         {!adminPreview ? <Link
-          href={`/signup?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
+          href={`/signup?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(canonicalPath)}`}
           onClick={trackAccountClaim}
           className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300'
         >
           Create your account
         </Link> : null}
         {!adminPreview ? <Link
-          href={`/login?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`)}`}
+          href={`/login?email=${encodeURIComponent(summary.guestEmail)}&next=${encodeURIComponent(canonicalPath)}`}
           className='rounded-2xl border border-white/15 px-6 py-4 text-center text-sm font-black uppercase text-zinc-300 sm:col-span-2'
         >
           Sign in to view in dashboard
@@ -504,10 +529,12 @@ function ConfirmationInner({
 export function BookingConfirmationExperience({
   initialSummary,
   appointmentId,
+  accessToken,
   previewMode = false,
 }: {
   initialSummary?: BookingConfirmationSummary | null;
   appointmentId?: string;
+  accessToken?: string;
   previewMode?: boolean;
 }) {
   return (
@@ -517,6 +544,7 @@ export function BookingConfirmationExperience({
           <ConfirmationInner
             initialSummary={initialSummary}
             appointmentIdOverride={appointmentId}
+            accessTokenOverride={accessToken}
             previewMode={previewMode}
           />
         </Suspense>

@@ -28,8 +28,11 @@ import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-ve
 import { buildBookingOrderSnapshot, mergeSnapshotIntoBreakdown } from '@/lib/booking-order-snapshot';
 import { logSmsConsentChange, normalizeSmsConsentStatus, SMS_CONSENT_COPY, type SmsConsentSource } from '@/lib/sms-consent';
 import { evaluateDiscountPolicy, loadDiscountPolicy } from '@/lib/discount-policy';
+import { convertBookingSlotHold, reserveBookingSlot, validBookingSessionId } from '@/lib/booking-slot-holds';
 
 type Body = {
+  bookingSessionId?: string;
+  slotHoldId?: string;
   serviceSlug?: string;
   vehicleClass?: string;
   vehicles?: VehicleLineInput[];
@@ -205,6 +208,16 @@ export async function POST(request: Request) {
           .slice(0, 12)
           .map((s) => s.slice(0, 120))
       : [];
+    const bookingSessionId = String(body.bookingSessionId ?? '').trim();
+    if (!validBookingSessionId(bookingSessionId)) {
+      return NextResponse.json(
+        {
+          error: 'Your booking session expired. Refresh the page to safely start a new booking.',
+          code: 'BOOKING_SESSION_INVALID',
+        },
+        { status: 400 },
+      );
+    }
 
     let lines: VehicleLineInput[] = [];
     if (Array.isArray(body.vehicles) && body.vehicles.length > 0) {
@@ -281,6 +294,51 @@ export async function POST(request: Request) {
         },
         { status: 503 },
       );
+    }
+
+    const emailNorm = guestEmail.trim().toLowerCase();
+    const existingSessionResult = await admin
+      .from('appointments')
+      .select('id, access_token, deposit_amount_cents, payment_status, status')
+      .eq('booking_session_id', bookingSessionId)
+      .eq('guest_email', emailNorm)
+      .maybeSingle();
+    if (existingSessionResult.error) {
+      return NextResponse.json(
+        {
+          error: 'We could not restore this booking session. Please try again.',
+          code: 'BOOKING_SESSION_LOOKUP_FAILED',
+        },
+        { status: 503 },
+      );
+    }
+    const existingSessionAppointment = existingSessionResult.data as {
+      id: string;
+      access_token: string;
+      deposit_amount_cents: number | null;
+      payment_status: string | null;
+      status: string | null;
+    } | null;
+    if (
+      existingSessionAppointment &&
+      ['cancelled', 'canceled', 'voided'].includes(String(existingSessionAppointment.status ?? '').toLowerCase())
+    ) {
+      return NextResponse.json(
+        {
+          error: 'This booking session was cancelled. Choose “Start new booking” to reserve another appointment.',
+          code: 'BOOKING_SESSION_CLOSED',
+        },
+        { status: 409 },
+      );
+    }
+    if (existingSessionAppointment) {
+      return NextResponse.json({
+        appointmentId: existingSessionAppointment.id,
+        accessToken: existingSessionAppointment.access_token,
+        depositAmountCents: Number(existingSessionAppointment.deposit_amount_cents ?? 0),
+        restoredBookingSession: true,
+        status: existingSessionAppointment.payment_status ?? 'payment_pending',
+      });
     }
 
     let siteSettingsQuery: { data: unknown[] | null; error: { message: string } | null } = await admin
@@ -379,16 +437,35 @@ export async function POST(request: Request) {
     const rangeEnd = new Date(scheduled.getTime() + 48 * 60 * 60 * 1000).toISOString();
     await maybeAutoPullGoogleCalendar(admin);
     const bookedBlocks = await fetchBookedBlocks(admin, rangeStart, rangeEnd);
-    if (slotConflictsWithBlocks(scheduled.toISOString(), durationMinutes, bookedBlocks)) {
+    if (slotConflictsWithBlocks(scheduled.toISOString(), durationMinutes, bookedBlocks, undefined, bookingSessionId)) {
       return NextResponse.json(
-        { error: 'That time slot is no longer available. Please choose another time.' },
+        {
+          error: 'That time overlaps an existing confirmed appointment. Please choose another time.',
+          code: 'SLOT_CONFLICT',
+          reason: 'booked_by_another_appointment',
+        },
+        { status: 409 },
+      );
+    }
+    const hold = await reserveBookingSlot(admin, {
+      bookingSessionId,
+      scheduledStartIso: scheduled.toISOString(),
+      durationMinutes,
+      isTest: freePromoApplied || testOneDollar,
+    });
+    if (!hold.ok) {
+      return NextResponse.json(
+        {
+          error: hold.error ?? 'This appointment time could not be held.',
+          code: hold.state === 'held_by_another_session' ? 'SLOT_HELD_BY_ANOTHER' : 'SLOT_CONFLICT',
+          reason: hold.state,
+        },
         { status: 409 },
       );
     }
 
     const scheduleFields = buildAppointmentScheduleFields(scheduled.toISOString(), durationLines, durationCatalog);
 
-    const emailNorm = guestEmail.trim().toLowerCase();
     let customerId: string | null = null;
     try {
       const { data: existingCustomer, error: lookupErr } = await admin
@@ -745,6 +822,8 @@ export async function POST(request: Request) {
       sms_consent_text: SMS_CONSENT_COPY,
       sms_status: normalizeSmsConsentStatus(smsConsent),
       sms_opt_out_timestamp: smsConsent ? null : smsConsentTimestamp,
+      booking_session_id: bookingSessionId,
+      slot_hold_id: hold.holdId ?? body.slotHoldId ?? null,
     };
     if (customerId) insertPayload.customer_id = customerId;
     if (offerRowId) insertPayload.offer_id = offerRowId;
@@ -802,6 +881,11 @@ export async function POST(request: Request) {
     }
 
     await recordBookingSuccess(admin);
+    await convertBookingSlotHold(admin, {
+      bookingSessionId,
+      holdId: hold.holdId ?? body.slotHoldId,
+      appointmentId: String(appointment.id),
+    });
 
     if (campaignId && campaignRecipientId) {
       const bookedAt = new Date().toISOString();

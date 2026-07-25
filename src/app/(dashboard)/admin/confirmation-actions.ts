@@ -39,6 +39,16 @@ export async function previewBookingConfirmationAction(appointmentId: string): P
   const loaded = await loadBookingConfirmationContext(admin, appointmentId);
   if (!loaded.ok) return { error: loaded.error };
   const ctx = loaded.ctx;
+  await admin.from('customer_portal_events').insert({
+    appointment_id: appointmentId,
+    customer_id: ctx.customerId,
+    event_type: 'message_previewed',
+    admin_preview: true,
+    counted: false,
+    user_agent_classification: 'staff',
+    channel_source: 'work_order_confirmation',
+    metadata: { channels: ['email', 'sms'] },
+  });
   return {
     ok: true,
     guestName: ctx.guestName,
@@ -122,8 +132,15 @@ export async function sendBookingConfirmationBothAction(appointmentId: string): 
       [result.email?.error, result.sms?.error].filter(Boolean).join(' · ') || 'Confirmation partially failed.',
     );
   }
-  if (result.email?.status === 'sent' || result.sms?.status === 'sent' || result.sms?.status === 'delivered') {
-    return { ...actionOk('Confirmation sent to customer.'), smsDetail: result.sms?.twilioDetail };
+  if (
+    result.email?.status === 'queued' ||
+    result.email?.status === 'sent' ||
+    result.email?.status === 'delivered' ||
+    result.sms?.status === 'queued' ||
+    result.sms?.status === 'sent' ||
+    result.sms?.status === 'delivered'
+  ) {
+    return { ...actionOk('Confirmation accepted for delivery.'), smsDetail: result.sms?.twilioDetail };
   }
   return actionErr(result.error ?? 'Could not send confirmation.');
 }
@@ -133,7 +150,9 @@ export async function resendBookingConfirmationEmailAction(appointmentId: string
   if (!admin) return actionErr('Forbidden');
   const result = await sendBookingConfirmation(admin, { appointmentId, channel: 'email' });
   revalidatePath(`/tech/work-orders/${appointmentId}`);
-  if (result.email?.status === 'sent') return actionOk('Confirmation email sent.');
+  if (['queued', 'sent', 'delivered'].includes(result.email?.status ?? '')) {
+    return actionOk(`Confirmation email ${result.email?.status}.`);
+  }
   return actionErr(result.email?.error ?? result.email?.skippedReason ?? result.error ?? 'Email send failed.');
 }
 
@@ -142,14 +161,15 @@ export async function resendBookingConfirmationSmsAction(appointmentId: string):
   if (!admin) return actionErr('Forbidden');
   const result = await sendBookingConfirmation(admin, { appointmentId, channel: 'sms' });
   revalidatePath(`/tech/work-orders/${appointmentId}`);
-  if (result.sms?.status === 'sent' || result.sms?.status === 'delivered') {
-    return { ...actionOk('Confirmation SMS sent.'), smsDetail: result.sms?.twilioDetail };
+  if (['queued', 'sent', 'delivered'].includes(result.sms?.status ?? '')) {
+    return { ...actionOk(`Confirmation SMS ${result.sms?.status}.`), smsDetail: result.sms?.twilioDetail };
   }
   return actionErr(result.sms?.error ?? result.sms?.skippedReason ?? result.error ?? 'SMS send failed.');
 }
 
 export async function sendBookingConfirmationAction(input: {
   appointmentId: string;
+  channel?: 'both' | 'email' | 'sms';
   customEmailSubject?: string;
   customEmailBodyPlain?: string;
   customSmsBody?: string;
@@ -181,6 +201,7 @@ export async function sendBookingConfirmationAction(input: {
     customEmailHtml,
     customEmailSubject: input.customEmailSubject,
     customSmsBody: input.customSmsBody,
+    channel: input.channel ?? 'both',
   });
 
   revalidatePath(`/tech/work-orders/${input.appointmentId}`);
@@ -204,7 +225,14 @@ export async function sendBookingConfirmationAction(input: {
     };
   }
 
-  if (result.email?.status === 'sent' || result.sms?.status === 'sent' || result.sms?.status === 'delivered') {
+  if (
+    result.email?.status === 'queued' ||
+    result.email?.status === 'sent' ||
+    result.email?.status === 'delivered' ||
+    result.sms?.status === 'queued' ||
+    result.sms?.status === 'sent' ||
+    result.sms?.status === 'delivered'
+  ) {
     return {
       ...actionOk(message || 'Confirmation sent.'),
       emailStatus: result.email?.status,

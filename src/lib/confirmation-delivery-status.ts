@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildCustomerPortalAccessUrl } from '@/lib/customer-portal-access';
 
-export type DeliveryChannelStatus = 'not_sent' | 'sent' | 'failed' | 'skipped';
+export type DeliveryChannelStatus =
+  | 'not_sent'
+  | 'queued'
+  | 'sent'
+  | 'delivered'
+  | 'undelivered'
+  | 'failed'
+  | 'skipped';
 
 export type ConfirmationDeliveryStatus = {
   guestEmail: string;
@@ -10,12 +17,14 @@ export type ConfirmationDeliveryStatus = {
   email: {
     status: DeliveryChannelStatus;
     lastSentAt: string | null;
+    deliveredAt: string | null;
     lastError: string | null;
     providerMessageId: string | null;
   };
   sms: {
     status: DeliveryChannelStatus;
     lastSentAt: string | null;
+    deliveredAt: string | null;
     lastError: string | null;
     providerMessageId: string | null;
     twilioDetail: string | null;
@@ -32,6 +41,8 @@ export type ConfirmationDeliveryStatus = {
     accountClaimStartedAt: string | null;
     accountCreatedAt: string | null;
     customerClaimedAt: string | null;
+    accountClaimStatus: string;
+    accountClaimError: string | null;
     authUserLinked: boolean;
     customerId: string | null;
   };
@@ -43,8 +54,11 @@ function str(v: unknown) {
 
 function mapOutboxStatus(raw: string | null | undefined): DeliveryChannelStatus {
   const s = str(raw).toLowerCase();
-  if (s === 'sent' || s === 'delivered' || s === 'queued') return 'sent';
-  if (s === 'failed' || s === 'error') return 'failed';
+  if (s === 'queued' || s === 'accepted' || s === 'sending') return 'queued';
+  if (s === 'sent') return 'sent';
+  if (s === 'delivered') return 'delivered';
+  if (s === 'undelivered') return 'undelivered';
+  if (s === 'failed' || s === 'error' || s === 'bounced' || s === 'complained') return 'failed';
   if (s === 'skipped') return 'skipped';
   return 'not_sent';
 }
@@ -72,14 +86,14 @@ export async function loadConfirmationDeliveryStatus(
     admin
       .from('appointments')
       .select(
-        'id, guest_email, guest_phone, access_token, customer_id, portal_link_created_at, portal_link_last_regenerated_at, portal_link_last_sent_at, portal_link_first_opened_at, portal_link_last_opened_at, portal_link_open_count, acknowledgement_started_at, payment_page_opened_at, account_claim_started_at, account_created_at, customer_claimed_account_at',
+        'id, guest_email, guest_phone, access_token, customer_id, portal_link_created_at, portal_link_last_regenerated_at, portal_link_last_sent_at, portal_link_first_opened_at, portal_link_last_opened_at, portal_link_open_count, acknowledgement_started_at, payment_page_opened_at, account_claim_started_at, account_created_at, customer_claimed_account_at, account_claim_status, account_claim_error',
       )
       .eq('id', id)
       .maybeSingle(),
     admin
       .from('notification_outbox')
       .select(
-        'id, kind, channel, status, error_message, skipped_reason, provider_message_id, sent_at, created_at, payload',
+        'id, kind, channel, status, provider_status, error_message, skipped_reason, provider_message_id, sent_at, delivered_at, status_updated_at, created_at, payload',
       )
       .eq('appointment_id', id)
       .order('created_at', { ascending: false })
@@ -120,14 +134,16 @@ export async function loadConfirmationDeliveryStatus(
     guestPhone: str(row.guest_phone),
     portalUrl,
     email: {
-      status: emailRow ? mapOutboxStatus(str(emailRow.status)) : 'not_sent',
+      status: emailRow ? mapOutboxStatus(str(emailRow.provider_status || emailRow.status)) : 'not_sent',
       lastSentAt: str(emailRow?.sent_at || emailRow?.created_at) || null,
+      deliveredAt: str(emailRow?.delivered_at) || null,
       lastError: str(emailRow?.error_message || emailRow?.skipped_reason) || null,
       providerMessageId: str(emailRow?.provider_message_id) || null,
     },
     sms: {
-      status: smsRow ? mapOutboxStatus(str(smsRow.status)) : 'not_sent',
+      status: smsRow ? mapOutboxStatus(str(smsRow.provider_status || smsRow.status)) : 'not_sent',
       lastSentAt: str(smsRow?.sent_at || smsRow?.created_at) || null,
+      deliveredAt: str(smsRow?.delivered_at) || null,
       lastError: str(smsRow?.error_message || smsRow?.skipped_reason) || null,
       providerMessageId: str(smsRow?.provider_message_id) || null,
       twilioDetail: twilioDetail || null,
@@ -144,6 +160,8 @@ export async function loadConfirmationDeliveryStatus(
       accountClaimStartedAt: str(row.account_claim_started_at) || null,
       accountCreatedAt: str(row.account_created_at) || null,
       customerClaimedAt: str(row.customer_claimed_account_at) || null,
+      accountClaimStatus: str(row.account_claim_status) || (authUserLinked ? 'linked' : 'not_offered'),
+      accountClaimError: str(row.account_claim_error) || null,
       authUserLinked,
       customerId,
     },

@@ -15,11 +15,16 @@ export async function GET(request: Request) {
   const to =
     url.searchParams.get('to') ??
     new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString();
+  const bookingSessionId = url.searchParams.get('session_id')?.trim() || undefined;
 
   try {
     await maybeAutoPullGoogleCalendar(admin);
     const blocks = await fetchBookedBlocks(admin, from, to);
-    return NextResponse.json({ blocks });
+    return NextResponse.json({
+      blocks: bookingSessionId
+        ? blocks.filter((block) => block.bookingSessionId !== bookingSessionId)
+        : blocks,
+    });
   } catch (e) {
     console.warn('[booked-slots]', e);
     return NextResponse.json({ blocks: [] });

@@ -24,9 +24,9 @@ export type PortalAccessContext = {
 
 export function buildCustomerPortalAccessUrl(appointmentId: string, accessToken: string) {
   const base = appBaseUrl();
-  const id = encodeURIComponent(appointmentId);
+  void appointmentId;
   const token = encodeURIComponent(accessToken);
-  return `${base}/portal/job?appointment_id=${id}&token=${token}`;
+  return `${base}/booking/${token}`;
 }
 
 export function defaultPortalAccessExpiry(scheduledStartIso?: string | null): string {
@@ -277,18 +277,30 @@ export async function claimPortalAppointmentForUser(
   });
   if (!link.ok) return { ok: false, error: link.error };
 
-  if (link.customerId && !loaded.ctx.customerId) {
+  if (link.customerId) {
     const now = new Date().toISOString();
-    await admin
+    const claimUpdate = await admin
       .from('appointments')
-      .update({ customer_id: link.customerId, customer_claimed_account_at: now, updated_at: now })
+      .update({
+        customer_id: link.customerId,
+        customer_claimed_account_at: now,
+        account_created_at: now,
+        account_claim_status: 'linked',
+        account_claim_error: null,
+        updated_at: now,
+      })
       .eq('id', input.appointmentId);
-  } else if (link.customerId && loaded.ctx.customerId && loaded.ctx.customerId !== link.customerId) {
-    await admin
-      .from('appointments')
-      .update({ customer_id: link.customerId, updated_at: new Date().toISOString() })
-      .eq('id', input.appointmentId)
-      .is('customer_id', null);
+    if (claimUpdate.error) {
+      await admin
+        .from('appointments')
+        .update({
+          account_claim_status: 'failed',
+          account_claim_error: claimUpdate.error.message.slice(0, 1000),
+          updated_at: now,
+        })
+        .eq('id', input.appointmentId);
+      return { ok: false, error: 'Your account exists, but this booking could not be linked yet. Please retry or contact Gloss Boss.' };
+    }
   }
 
   const dashboardUrl = `/dashboard?job=${encodeURIComponent(input.appointmentId)}`;

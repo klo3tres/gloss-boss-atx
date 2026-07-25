@@ -13,7 +13,11 @@ export type BookingDraftVehicle = {
 
 export type BookingDraft = {
   version: 1;
+  createdAt?: string;
   savedAt: string;
+  bookingSessionId?: string;
+  holdId?: string;
+  holdExpiresAt?: string;
   serviceSlug: string;
   vehicleClass: string;
   vehicleDescription: string;
@@ -59,7 +63,13 @@ export function readBookingDraft(): BookingDraft | null {
 export type BookingDraftLoadResult =
   | { kind: 'none' }
   | { kind: 'fresh'; draft: BookingDraft }
-  | { kind: 'expired'; guestName: string; guestEmail: string; guestPhone: string };
+  | {
+      kind: 'expired';
+      guestName: string;
+      guestEmail: string;
+      guestPhone: string;
+      previousBookingSessionId?: string;
+    };
 
 /** Load draft; if expired, clear vehicle/schedule fields and keep contact info only. */
 export function loadBookingDraftForWizard(): BookingDraftLoadResult {
@@ -70,8 +80,10 @@ export function loadBookingDraftForWizard(): BookingDraftLoadResult {
   const guestName = draft.guestName ?? '';
   const guestEmail = draft.guestEmail ?? '';
   const guestPhone = draft.guestPhone ?? '';
+  const previousBookingSessionId = draft.bookingSessionId;
   writeBookingDraft({
     version: 1,
+    createdAt: new Date().toISOString(),
     savedAt: new Date().toISOString(),
     serviceSlug: '',
     vehicleClass: 'sedan',
@@ -93,13 +105,20 @@ export function loadBookingDraftForWizard(): BookingDraftLoadResult {
     hasWater: null,
     hasPower: null,
   });
-  return { kind: 'expired', guestName, guestEmail, guestPhone };
+  return { kind: 'expired', guestName, guestEmail, guestPhone, previousBookingSessionId };
 }
 
 export function writeBookingDraft(draft: BookingDraft): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+    localStorage.setItem(
+      BOOKING_DRAFT_KEY,
+      JSON.stringify({
+        ...draft,
+        createdAt: draft.createdAt || draft.savedAt || new Date().toISOString(),
+        savedAt: new Date().toISOString(),
+      }),
+    );
   } catch {
     /* quota */
   }

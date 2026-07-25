@@ -115,7 +115,7 @@ export async function loadBookingConfirmationContext(
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.glossbossatx.com').replace(/\/$/, '');
   const token = str(row.access_token);
   const confirmationUrl = token
-    ? `${base}/book/confirmation?appointment_id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`
+    ? buildCustomerPortalAccessUrl(id, token)
     : `${base}/book/confirmation?appointment_id=${encodeURIComponent(id)}`;
   const portalUrl = token ? buildCustomerPortalAccessUrl(id, token) : `${base}/dashboard`;
   await ensurePortalAccessExpiry(admin, id, whenIso);
@@ -183,7 +183,14 @@ export function buildConfirmationSms(details: {
   balanceCents: number;
   portalUrl: string;
 }) {
-  return `Gloss Boss ATX: Your detail is confirmed for ${details.whenLabel}. View your appointment, updates, loyalty rewards, referral link, and photos here: ${details.portalUrl}`;
+  const firstName = details.guestName.trim().split(/\s+/)[0] || 'there';
+  return [
+    `Hi ${firstName}, your Gloss Boss ATX appointment is reserved for ${details.whenLabel}.`,
+    `Service: ${details.service} · ${details.vehicles}.`,
+    `Deposit: ${money(details.depositCents)}${details.balanceCents > 0 ? ` · Balance after deposit: ${money(details.balanceCents)}` : ''}.`,
+    `Review, pay, and manage your booking: ${details.portalUrl}`,
+    'Reply STOP to opt out.',
+  ].join(' ');
 }
 
 async function logEmailOutbox(
@@ -247,7 +254,7 @@ export async function sendBookingConfirmation(
   if (sendEmail && ctx.guestEmail.includes('@')) {
     if (resendConfigured()) {
       const sent = await sendResendHtml({ to: ctx.guestEmail, subject, html });
-      emailStatus = sent.ok ? 'sent' : 'failed';
+      emailStatus = sent.ok ? 'queued' : 'failed';
       emailError = sent.ok ? undefined : sent.error ?? 'Resend failed';
       await logEmailOutbox(admin, {
         appointment_id: ctx.appointmentId,
@@ -304,7 +311,7 @@ export async function sendBookingConfirmation(
       smsStatus = 'skipped';
       smsSkipped = smsResult.error ?? 'SMS skipped';
     } else if (smsResult.ok) {
-      smsStatus = smsResult.deliveryStatus === 'delivered' ? 'delivered' : 'sent';
+      smsStatus = smsResult.deliveryStatus ?? 'queued';
       twilioDetail = describeTwilioDelivery(smsResult.deliveryStatus, {
         errorMessage: smsResult.carrierError ?? smsResult.error,
         sid: smsResult.sid,
@@ -326,7 +333,9 @@ export async function sendBookingConfirmation(
     smsSkipped = 'No customer phone on file.';
   }
 
-  const anySent = emailStatus === 'sent' || smsStatus === 'sent' || smsStatus === 'delivered';
+  const anySent =
+    ['queued', 'sent', 'delivered'].includes(emailStatus) ||
+    ['queued', 'sent', 'delivered'].includes(smsStatus);
   const anyFailed = emailStatus === 'failed' || smsStatus === 'failed';
 
   if (anySent) {
