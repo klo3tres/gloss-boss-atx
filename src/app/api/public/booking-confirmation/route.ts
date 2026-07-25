@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
   const { data: appt } = await admin
     .from('appointments')
-    .select('id, access_token, guest_name, guest_email, guest_phone, scheduled_start, payment_status, promo_code')
+    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -54,6 +54,27 @@ export async function GET(req: Request) {
   }
 
   const p = snap?.pricing;
+  const [{ data: agreement }, { data: customer }] = await Promise.all([
+    admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
+    snap?.refs.customerId
+      ? admin.from('customers').select('id, auth_user_id').eq('id', snap.refs.customerId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const status = str(job.status).toLowerCase();
+  const appointmentActive = !['cancelled', 'voided', 'deleted'].includes(status);
+  const acknowledgementCompleted = Boolean(agreement);
+  const depositRequired = (p?.depositCents ?? 0) > 0;
+  const depositPaid = (p?.depositPaidCents ?? 0) > 0;
+  const paidInFull = (p?.finalTotalCents ?? 0) > 0 && (p?.totalPaidCents ?? 0) >= (p?.finalTotalCents ?? 0);
+  const paymentChoice = str(job.payment_choice).toLowerCase();
+  const payOnArrival = paymentChoice === 'pay_later' || paymentChoice === 'pay_on_arrival';
+  const nextStep = !appointmentActive
+    ? 'inactive'
+    : !acknowledgementCompleted
+      ? 'acknowledgement'
+      : depositRequired && !depositPaid && !paidInFull && !payOnArrival
+        ? 'payment'
+        : 'confirmation';
   return NextResponse.json({
     ok: true,
     bookingNumber: appointmentId.slice(0, 8).toUpperCase(),
@@ -73,5 +94,19 @@ export async function GET(req: Request) {
     onlineDiscountCents: p?.onlineDiscountCents ?? 0,
     multiCarDiscountCents: p?.multiCarDiscountCents ?? 0,
     promoDiscountCents: p?.promoDiscountCents ?? 0,
+    sessionState: {
+      bookingExists: true,
+      appointmentActive,
+      acknowledgementCompleted,
+      depositRequired,
+      depositPaid,
+      paidInFull,
+      payOnArrival,
+      paymentFailed: ['failed', 'payment_failed'].includes(str(job.payment_status).toLowerCase()),
+      paymentCancelled: ['cancelled', 'payment_cancelled'].includes(str(job.payment_status).toLowerCase()),
+      accountClaimed: Boolean(customer?.auth_user_id),
+      workOrderCreated: Boolean(snap?.refs.workOrderId),
+      nextStep,
+    },
   });
 }

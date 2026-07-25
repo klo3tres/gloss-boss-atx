@@ -63,12 +63,25 @@ export async function loadGoogleCalendarConnection(admin: SupabaseClient): Promi
   return data as CalendarConnection;
 }
 
-async function ensureFreshToken(admin: SupabaseClient, connection: CalendarConnection): Promise<string | null> {
+async function ensureFreshToken(
+  admin: SupabaseClient,
+  connection: CalendarConnection,
+  forceRefresh = false,
+): Promise<string | null> {
   const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  if (expiresAt > Date.now() + 60_000) return connection.access_token;
+  if (!forceRefresh && expiresAt > Date.now() + 5 * 60_000) return connection.access_token;
 
   const refreshed = await refreshAccessToken(connection);
-  if (!refreshed) return connection.access_token;
+  if (!refreshed) {
+    await admin
+      .from('google_calendar_connections')
+      .update({
+        last_error: connection.refresh_token ? 'google_auth_refresh_failed' : 'google_auth_refresh_token_missing',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', connection.id);
+    return null;
+  }
 
   await admin
     .from('google_calendar_connections')
@@ -80,6 +93,65 @@ async function ensureFreshToken(admin: SupabaseClient, connection: CalendarConne
     .eq('id', connection.id);
 
   return refreshed.accessToken;
+}
+
+async function googleRequestWithAuthRetry(
+  admin: SupabaseClient,
+  connection: CalendarConnection,
+  url: string,
+  init: RequestInit,
+): Promise<Response | null> {
+  let accessToken = await ensureFreshToken(admin, connection);
+  if (!accessToken) return null;
+  let response = await fetch(url, {
+    ...init,
+    headers: { ...init.headers, Authorization: `Bearer ${accessToken}` },
+  });
+  if (response.status !== 401) return response;
+  accessToken = await ensureFreshToken(admin, connection, true);
+  if (!accessToken) return response;
+  return fetch(url, {
+    ...init,
+    headers: { ...init.headers, Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+async function recordConnectionResult(admin: SupabaseClient, connectionId: string, error: string | null) {
+  await admin
+    .from('google_calendar_connections')
+    .update({
+      last_error: error,
+      ...(error ? {} : { last_push_at: new Date().toISOString(), last_sync_at: new Date().toISOString() }),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connectionId);
+}
+
+async function recordSyncJob(
+  admin: SupabaseClient,
+  appointmentId: string,
+  action: 'upsert' | 'delete',
+  status: string,
+  error?: string,
+) {
+  const now = new Date().toISOString();
+  const { data: eventMap } = await admin
+    .from('google_calendar_event_map')
+    .select('google_event_id')
+    .eq('appointment_id', appointmentId)
+    .maybeSingle();
+  await admin.from('google_calendar_sync_jobs').upsert({
+    appointment_id: appointmentId,
+    work_order_id: appointmentId,
+    google_event_id: eventMap?.google_event_id ?? null,
+    attempted_action: action,
+    provider_status: status,
+    sanitized_error_code: error ?? null,
+    last_attempted_at: now,
+    ...(status === 'synced' ? { last_successful_sync_at: now, next_retry_at: null } : {}),
+    ...(status === 'retry_scheduled' ? { next_retry_at: new Date(Date.now() + 15 * 60_000).toISOString() } : {}),
+    updated_at: now,
+  }, { onConflict: 'appointment_id' });
 }
 
 function formatChicago(iso: string) {
@@ -134,9 +206,6 @@ export async function upsertGoogleCalendarEvent(
     return deleteGoogleCalendarEvent(admin, appointmentId);
   }
 
-  const accessToken = await ensureFreshToken(admin, connection);
-  if (!accessToken) return { ok: false, error: 'Could not refresh Google token' };
-
   const payload = buildEventPayload(row);
   const calendarId = encodeURIComponent(connection.calendar_id || 'primary');
 
@@ -149,20 +218,23 @@ export async function upsertGoogleCalendarEvent(
   const existingId = str((existing as { google_event_id?: string } | null)?.google_event_id);
 
   if (existingId) {
-    const res = await fetch(
+    const res = await googleRequestWithAuthRetry(
+      admin,
+      connection,
       `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events/${encodeURIComponent(existingId)}`,
       {
         method: 'PATCH',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       },
     );
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      return { ok: false, error: `Google update failed (${res.status}): ${err.slice(0, 200)}` };
+    if (!res?.ok) {
+      const code = res?.status ?? 401;
+      const error = code === 401 || code === 403 ? 'google_authentication_required' : `google_update_failed_${code}`;
+      await recordConnectionResult(admin, connection.id, error);
+      return { ok: false, error };
     }
     const updated = (await res.json()) as { id?: string; etag?: string };
     await admin
@@ -173,20 +245,27 @@ export async function upsertGoogleCalendarEvent(
         updated_at: new Date().toISOString(),
       })
       .eq('appointment_id', appointmentId);
+    await recordConnectionResult(admin, connection.id, null);
     return { ok: true };
   }
 
-  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+  const res = await googleRequestWithAuthRetry(
+    admin,
+    connection,
+    `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    return { ok: false, error: `Google create failed (${res.status}): ${err.slice(0, 200)}` };
+  );
+  if (!res?.ok) {
+    const code = res?.status ?? 401;
+    const error = code === 401 || code === 403 ? 'google_authentication_required' : `google_create_failed_${code}`;
+    await recordConnectionResult(admin, connection.id, error);
+    return { ok: false, error };
   }
   const created = (await res.json()) as { id?: string; etag?: string };
   if (!created.id) return { ok: false, error: 'Google did not return event id' };
@@ -203,18 +282,7 @@ export async function upsertGoogleCalendarEvent(
     { onConflict: 'appointment_id' },
   );
 
-  await admin
-    .from('google_calendar_connections')
-    .update({
-      last_push_at: new Date().toISOString(),
-      last_sync_at: new Date().toISOString(),
-      push_count: (connection as { push_count?: number }).push_count
-        ? Number((connection as { push_count?: number }).push_count) + 1
-        : 1,
-      last_error: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', connection.id);
+  await recordConnectionResult(admin, connection.id, null);
 
   return { ok: true };
 }
@@ -279,10 +347,20 @@ export async function runGoogleCalendarSync(
   }
   const connection = await loadGoogleCalendarConnection(admin);
   if (!connection) {
+    await recordSyncJob(admin, appointmentId, action, 'not_connected', 'google_calendar_not_connected');
     return { ok: false, skipped: true, error: 'Google Calendar not connected' };
   }
+  await recordSyncJob(admin, appointmentId, action, 'syncing');
   const fn = action === 'delete' ? deleteGoogleCalendarEvent : upsertGoogleCalendarEvent;
   const result = await fn(admin, appointmentId);
+  const authRequired = !result.ok && /authentication|required|refresh|401|403/i.test(result.error ?? '');
+  await recordSyncJob(
+    admin,
+    appointmentId,
+    action,
+    result.ok ? (action === 'delete' ? 'cancelled' : 'synced') : authRequired ? 'authentication_required' : 'retry_scheduled',
+    result.ok ? undefined : result.error ?? 'google_calendar_sync_failed',
+  );
   if (admin) {
     const { data: appt } = await admin
       .from('appointments')
@@ -309,25 +387,39 @@ export async function runGoogleCalendarSync(
       startIso && endIso
         ? `${new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(startIso))}–${new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(endIso))}`
         : whenShort;
-    const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
-    void emitOwnerNotification(admin, {
-      eventType: result.ok ? 'new_booking' : 'calendar_sync_failed',
-      title: result.ok
-        ? action === 'delete'
-          ? `Google Calendar removed: ${guest} — ${service}`
-          : `Google Calendar updated: ${guest} — ${service}`
-        : 'Google Calendar sync failed',
-      body: result.ok
-        ? action === 'delete'
-          ? `Gloss Boss ATX: Google Calendar event removed for ${guest} — ${service}${whenShort ? `, ${whenShort}` : ''}.`
-          : `Gloss Boss ATX: Google Calendar synced for ${guest} — ${service}${timeRange ? `, ${timeRange}` : whenShort ? `, ${whenShort}` : ''}.`
-        : `Gloss Boss ATX: Google Calendar sync failed for ${guest} — ${result.error ?? 'unknown error'}.`,
-      source: 'google_calendar',
-      relatedType: 'appointment',
-      relatedId: appointmentId,
-      relatedUrl: `/admin/work-orders/${appointmentId}?shell=admin`,
-      bypassQuietHours: !result.ok,
-    });
+    const cooldownStart = new Date(Date.now() - 60 * 60_000).toISOString();
+    const { data: recentIncident } = result.ok
+      ? { data: null }
+      : await admin
+          .from('titan_notification_events')
+          .select('id')
+          .eq('source', 'google_calendar')
+          .eq('related_id', appointmentId)
+          .eq('title', 'Google Calendar needs to be reconnected')
+          .gte('created_at', cooldownStart)
+          .limit(1)
+          .maybeSingle();
+    if (!recentIncident) {
+      const { emitOwnerNotification } = await import('@/lib/titan/owner-notification-router');
+      void emitOwnerNotification(admin, {
+        eventType: result.ok ? 'new_booking' : 'calendar_sync_failed',
+        title: result.ok
+          ? action === 'delete'
+            ? `Google Calendar removed: ${guest} — ${service}`
+            : `Google Calendar updated: ${guest} — ${service}`
+          : 'Google Calendar needs to be reconnected',
+        body: result.ok
+          ? action === 'delete'
+            ? `Gloss Boss ATX: Google Calendar event removed for ${guest} — ${service}${whenShort ? `, ${whenShort}` : ''}.`
+            : `Gloss Boss ATX: Google Calendar synced for ${guest} — ${service}${timeRange ? `, ${timeRange}` : whenShort ? `, ${whenShort}` : ''}.`
+          : `Google Calendar needs to be reconnected. ${guest}'s appointment was updated internally${whenShort ? ` to ${whenShort}` : ''}, but the Google event could not be updated.`,
+        source: 'google_calendar',
+        relatedType: 'appointment',
+        relatedId: appointmentId,
+        relatedUrl: `/admin/work-orders/${appointmentId}?shell=admin`,
+        bypassQuietHours: false,
+      });
+    }
   }
   return result;
 }

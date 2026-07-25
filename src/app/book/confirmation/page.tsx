@@ -32,6 +32,16 @@ type Summary = {
   onlineDiscountCents: number;
   multiCarDiscountCents: number;
   promoDiscountCents: number;
+  sessionState: {
+    appointmentActive: boolean;
+    acknowledgementCompleted: boolean;
+    depositRequired: boolean;
+    depositPaid: boolean;
+    paidInFull: boolean;
+    payOnArrival: boolean;
+    accountClaimed: boolean;
+    nextStep: 'inactive' | 'acknowledgement' | 'payment' | 'confirmation';
+  };
 };
 
 function money(cents: number) {
@@ -223,7 +233,7 @@ function ConfirmationInner() {
             <dd className='font-bold text-gold-soft'>{money(summary.balanceDueCents)}</dd>
           </div>
         </dl>
-        {depositRequired ? (
+        {depositRequired && summary.sessionState.nextStep === 'payment' ? (
           <div className='mt-5 border-t border-white/10 pt-5'>
             <button
               type='button'
@@ -236,6 +246,21 @@ function ConfirmationInner() {
             {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
           </div>
         ) : null}
+      </section>
+
+      <section className='rounded-2xl border border-gold/30 bg-gold/10 p-5'>
+        <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Next step</p>
+        <p className='mt-2 text-sm text-white'>
+          {summary.sessionState.nextStep === 'acknowledgement'
+            ? 'Review and sign the service acknowledgment. Your deposit step will follow.'
+            : summary.sessionState.nextStep === 'payment'
+              ? `Pay the required ${money(summary.depositCents)} deposit to complete your booking.`
+              : summary.sessionState.nextStep === 'inactive'
+                ? 'This appointment is no longer active. Contact Gloss Boss ATX if you need help.'
+                : summary.sessionState.payOnArrival
+                  ? 'Your appointment is confirmed. Payment is due on arrival.'
+                  : 'Your appointment requirements are complete.'}
+        </p>
       </section>
 
       {appointmentId && token ? <CustomerBookingLifecycle appointmentId={appointmentId} token={token} /> : null}
@@ -251,9 +276,11 @@ function ConfirmationInner() {
       </section>
 
       <div className='grid gap-3 sm:grid-cols-2'>
-        <Link href={signHref} className='rounded-2xl bg-gold px-6 py-4 text-center text-sm font-black uppercase text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'>
-          Sign agreement now
-        </Link>
+        {summary.sessionState.nextStep === 'acknowledgement' ? (
+          <Link href={signHref} className='rounded-2xl bg-gold px-6 py-4 text-center text-sm font-black uppercase text-black shadow-[0_0_32px_rgba(212,175,55,0.35)]'>
+            Review and sign now
+          </Link>
+        ) : null}
         <Link
           href={`/portal/job?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`}
           className='rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'

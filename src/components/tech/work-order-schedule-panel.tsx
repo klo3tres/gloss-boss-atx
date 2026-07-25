@@ -42,6 +42,24 @@ export function WorkOrderSchedulePanel({
   const [durationMinutes, setDurationMinutes] = useState(initialDuration);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
 
+  const retryGoogleCalendar = () => {
+    startTransition(async () => {
+      setMsg(null);
+      const response = await fetch('/api/admin/google-calendar/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId }),
+      });
+      const result = (await response.json()) as { ok?: boolean; error?: string };
+      setMsg(result.ok
+        ? { tone: 'ok', text: 'Google Calendar sync completed.' }
+        : { tone: 'err', text: /authentication|required|refresh/i.test(result.error ?? '')
+          ? 'Google Calendar needs to be reconnected before retrying.'
+          : 'Google Calendar sync still needs attention.' });
+      if (result.ok) router.refresh();
+    });
+  };
+
   const saveSchedule = (fd: FormData, notifyBodies?: { email?: string; sms?: string }) => {
     if (notifyBodies?.email) fd.set('customNotifyEmailBody', notifyBodies.email);
     if (notifyBodies?.sms) fd.set('customNotifySmsBody', notifyBodies.sms);
@@ -168,6 +186,20 @@ export function WorkOrderSchedulePanel({
       >
         {pending ? 'Saving…' : 'Save schedule'}
       </button>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={retryGoogleCalendar}
+        className="ml-2 mt-3 rounded-lg border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft disabled:opacity-50"
+      >
+        Retry calendar sync
+      </button>
+      <a
+        href={`/api/admin/google-calendar/connect?return_to=${encodeURIComponent(`/admin/work-orders/${appointmentId}`)}`}
+        className="ml-2 mt-3 inline-flex rounded-lg border border-amber-500/40 px-4 py-2 text-xs font-black uppercase text-amber-200"
+      >
+        Reconnect Google Calendar
+      </a>
       {msg ? <p className={`mt-2 text-sm ${msg.tone === 'ok' ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</p> : null}
     </form>
   );

@@ -95,31 +95,27 @@ export async function GET(request: Request) {
       return redirectCalendarError(request, 'service_role_unavailable');
     }
 
-    const { error: delErr } = await admin
-      .from('google_calendar_connections')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-
-    if (delErr) {
-      const missingTable = /google_calendar_connections|schema cache|does not exist/i.test(delErr.message);
-      return redirectCalendarError(
-        request,
-        'database_write_failed',
-        missingTable ? `${delErr.message} — apply migration 000105` : delErr.message,
-      );
-    }
-
     const now = new Date().toISOString();
-    const { error: insErr } = await admin.from('google_calendar_connections').insert({
+    const { data: existing } = await admin
+      .from('google_calendar_connections')
+      .select('id, refresh_token')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const connectionRow = {
       google_account_email: exchange.tokens.email,
       access_token: exchange.tokens.accessToken,
-      refresh_token: exchange.tokens.refreshToken,
+      refresh_token: exchange.tokens.refreshToken ?? existing?.refresh_token ?? null,
       token_expires_at: exchange.tokens.expiresAt,
       calendar_id: 'primary',
       sync_enabled: true,
       last_error: null,
       updated_at: now,
-    });
+    };
+    const writeResult = existing?.id
+      ? await admin.from('google_calendar_connections').update(connectionRow).eq('id', existing.id)
+      : await admin.from('google_calendar_connections').insert(connectionRow);
+    const insErr = writeResult.error;
 
     if (insErr) {
       return redirectCalendarError(request, 'database_write_failed', insErr.message);
