@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       ? await admin
           .from('appointments')
           .select(
-            'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, vehicle_id, assigned_technician_id',
+            'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, customer_id, assigned_technician_id',
           )
           .eq('id', appointmentId)
           .maybeSingle()
