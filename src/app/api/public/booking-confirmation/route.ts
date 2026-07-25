@@ -97,6 +97,7 @@ export async function GET(req: Request) {
     onlineDiscountCents: p?.onlineDiscountCents ?? 0,
     multiCarDiscountCents: p?.multiCarDiscountCents ?? 0,
     promoDiscountCents: p?.promoDiscountCents ?? 0,
+    manualDiscountCents: p?.manualDiscountCents ?? 0,
     sessionState: {
       bookingExists: true,
       appointmentActive,
