@@ -709,6 +709,14 @@ export async function POST(request: Request) {
       }
     }
     const isQaTest = policyDecision.isQaTest || freePromoApplied || testOneDollar;
+    const qaExpiresAt = isQaTest ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
+
+    if (isQaTest && customerId) {
+      await admin
+        .from('customers')
+        .update({ is_test: true, qa_expires_at: qaExpiresAt, updated_at: new Date().toISOString() })
+        .eq('id', customerId);
+    }
 
     if (selectedReward) {
       const lock = await admin
@@ -814,6 +822,9 @@ export async function POST(request: Request) {
       booking_add_ons: addOns,
       booking_source: 'online',
       is_test: isQaTest,
+      qa_expires_at: qaExpiresAt,
+      exclude_from_automations: isQaTest,
+      exclude_from_customer_communications: isQaTest,
       sms_consent: smsConsent,
       sms_consent_source: smsConsentSource,
       sms_consent_timestamp: smsConsentTimestamp,
