@@ -11,6 +11,7 @@ import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { humanizeAuthError } from '@/lib/auth/auth-event-log';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
+import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
 
 function formatLoginFailure(outcome: { code: string; message?: string; rawRole?: string }): string {
   switch (outcome.code) {
@@ -38,6 +39,11 @@ export default function LoginForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
   const [resendBusy, setResendBusy] = useState(false);
+  const nextDestination = getSafeInternalRedirect(searchParams.get('next'), '/dashboard');
+  const signupHref = `/signup?${new URLSearchParams({
+    next: nextDestination,
+    ...(searchParams.get('email') ? { email: searchParams.get('email')! } : {}),
+  }).toString()}`;
   
   const [brand, setBrand] = useState<{
     businessDisplayName: string;
@@ -229,7 +235,15 @@ export default function LoginForm() {
     setError(null);
     setNotice(null);
     try {
-      const { error: resendErr } = await client.auth.resend({ type: 'signup', email: email.trim() });
+      const emailRedirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextDestination)}&type=signup`
+          : undefined;
+      const { error: resendErr } = await client.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      });
       if (resendErr) setError(humanizeAuthError(resendErr.message));
       else setNotice(`If ${email.trim()} needs confirmation, a new email was sent.`);
     } catch (e) {
@@ -330,7 +344,7 @@ export default function LoginForm() {
         </div>
 
         <div className='mt-6 flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4'>
-          <Link href='/signup' className='hover:text-gold-soft font-semibold'>
+          <Link href={signupHref} className='hover:text-gold-soft font-semibold'>
             Create account
           </Link>
           <Link href='/forgot-password' className='hover:text-gold-soft font-semibold'>

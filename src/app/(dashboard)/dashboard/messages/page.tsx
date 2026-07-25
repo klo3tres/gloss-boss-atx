@@ -7,10 +7,16 @@ import { GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CustomerMessagesPage() {
+export default async function CustomerMessagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ appointment?: string }>;
+}) {
   const session = await getSessionWithProfile();
   if (!session.user) redirect('/login');
   if (!canAccessCustomerPortal(session.profile?.role)) redirect('/login');
+  const params = await searchParams;
+  const appointmentId = typeof params.appointment === 'string' ? params.appointment.trim() : '';
 
   return (
     <DashboardShell
@@ -18,7 +24,7 @@ export default async function CustomerMessagesPage() {
       subtitle={`Messages go directly to Gloss Boss ATX support at ${GLOSS_BOSS_SUPPORT_EMAIL}.`}
       role='customer'
     >
-      <CustomerMessagesClient customerEmail={session.user.email ?? ''} />
+      <CustomerMessagesClient customerEmail={session.user.email ?? ''} initialAppointmentId={appointmentId || undefined} />
     </DashboardShell>
   );
 }

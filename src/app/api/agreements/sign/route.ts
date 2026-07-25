@@ -102,11 +102,11 @@ export async function POST(request: Request) {
     }
 
     if (apptErr || !appt) {
-      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+      return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
     }
     const rowToken = appt.access_token ? String(appt.access_token) : '';
     if (!agreementTokenValidated && accessToken && rowToken && rowToken !== accessToken) {
-      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+      return NextResponse.json({ error: 'This secure booking link could not be verified.' }, { status: 403 });
     }
 
     const signableStatuses = [

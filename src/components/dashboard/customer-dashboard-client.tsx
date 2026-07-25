@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight } from 'lucide-react';
+import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight, FileDown, Settings } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
@@ -17,6 +17,7 @@ import { CustomerPortalTimeline } from '@/components/customer/customer-portal-ti
 import { SocialLinksRow, hasConfiguredSocialLinks } from '@/components/marketing/social-links';
 import { LoyaltyClaimButton } from '@/components/dashboard/loyalty-claim-button';
 import { CustomerRewardWallet, type CustomerRewardWalletItem } from '@/components/customer/customer-reward-wallet';
+import { CustomerPhotoUpload } from '@/components/customer/customer-photo-upload';
 
 export type CustomerAppt = {
   id: string;
@@ -34,6 +35,7 @@ export type CustomerAppt = {
   service_zip?: string | null;
   booking_vehicles?: unknown;
   vehicle_class: string;
+  access_token?: string | null;
 };
 
 export type CustomerDashboardProps = {
@@ -46,8 +48,8 @@ export type CustomerDashboardProps = {
   pending?: CustomerAppt[];
   history: CustomerAppt[];
   eventsByAppt: Record<string, Array<{ event_type: string; created_at: string }>>;
-  paymentsByAppt: Record<string, Array<{ amount_cents: number; status: string }>>;
-  receiptsByAppt: Record<string, Array<{ receipt_number: string | null; created_at: string }>>;
+  paymentsByAppt: Record<string, Array<{ amount_cents: number; status: string; payment_method?: string | null; paid_at?: string | null }>>;
+  receiptsByAppt: Record<string, Array<{ id: string; receipt_number: string | null; created_at: string; amount_cents?: number; payment_method?: string | null }>>;
   agreementByAppt: Record<string, boolean>;
   agreementHrefByAppt: Record<string, string>;
   photosByAppt: Record<string, Array<{ file_url: string; category: string }>>;
@@ -294,6 +296,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
     }
     return out;
   }, [props.inFlight, props.pending, props.upcoming]);
+  const documentAppointments = useMemo(() => {
+    const seen = new Set<string>();
+    return [...appointmentCards, ...props.history].filter((appointment) => {
+      if (seen.has(appointment.id)) return false;
+      seen.add(appointment.id);
+      return true;
+    });
+  }, [appointmentCards, props.history]);
 
   const scheduleItems: ScheduleWidgetItem[] = useMemo(() => {
     return appointmentCards.map((a) => {
@@ -358,7 +368,9 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           enabled={props.referralProgramEnabled !== false}
         />
       ) : null}
-      <CustomerRewardWallet items={props.rewardWalletItems ?? []} />
+      <section id="rewards" className="scroll-mt-28">
+        <CustomerRewardWallet items={props.rewardWalletItems ?? []} />
+      </section>
       <section className={`overflow-hidden rounded-3xl border ${theme.border} bg-card shadow-sm p-6 ${theme.glow}`}>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch lg:justify-between">
           <div className="min-w-0 flex-1">
@@ -569,10 +581,10 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
 
       {/* Grid of Key summaries */}
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <IconTile icon={<Car className="h-5 w-5" />} label="Garage Count" value={`${uniqueVehicles.length} vehicles`} />
-        <IconTile icon={<Calendar className="h-5 w-5" />} label="Upcoming" value={`${appointmentCards.length} appointments`} />
-        <IconTile icon={<Award className="h-5 w-5" />} label="Loyalty Stamps" value={`${loyaltyVisits} earned`} />
-        <IconTile icon={<MessageSquare className="h-5 w-5" />} label="Inbox Logs" value={`${props.agreementTotal} signed docs`} href="/dashboard/messages" />
+        <IconTile icon={<Car className="h-5 w-5" />} label="Garage" value={`${uniqueVehicles.length} vehicles`} href="/dashboard/settings#garage" />
+        <IconTile icon={<Calendar className="h-5 w-5" />} label="Appointments" value={`${appointmentCards.length} upcoming`} href="#appointments" />
+        <IconTile icon={<Award className="h-5 w-5" />} label="Rewards" value={`${loyaltyVisits} stamps`} href="#rewards" />
+        <IconTile icon={<MessageSquare className="h-5 w-5" />} label="Messages" value="Contact Gloss Boss" href="/dashboard/messages" />
       </section>
 
       {/* Main content grid */}
@@ -588,7 +600,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           />
 
           {/* Upcoming detail cards */}
-          <GlassCard glow>
+          <GlassCard glow className="scroll-mt-28" id="appointments">
             <SectionEyebrow>Upcoming appointments</SectionEyebrow>
             {(props.inFlight?.length ?? 0) > 0 ? (
               <p className="mt-2 text-xs text-emerald-300 font-bold uppercase tracking-wider">{props.inFlight!.length} in progress right now</p>
@@ -645,8 +657,29 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                         </span>
                       ))}
                     </div>
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+                      {a.access_token ? (
+                        <Link
+                          href={`/book/confirmation?appointment_id=${encodeURIComponent(a.id)}&token=${encodeURIComponent(a.access_token)}`}
+                          className="inline-flex min-h-11 items-center rounded-xl bg-gold px-4 text-[10px] font-black uppercase text-black"
+                        >
+                          {a.balance_due_cents != null && a.balance_due_cents > 0 ? 'Pay or manage appointment' : 'Manage appointment'}
+                        </Link>
+                      ) : null}
+                      <a
+                        href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground"
+                      >
+                        <FileDown className="h-4 w-4" /> Download invoice
+                      </a>
+                      <Link href={`/dashboard/messages?appointment=${encodeURIComponent(a.id)}`} className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
+                        Contact business
+                      </Link>
+                    </div>
                     {receipts[0] ? (
-                      <p className="mt-3 text-xs text-emerald-300/90 font-mono">Receipt {receipts[0].receipt_number ?? 'on file'} · {chicago(receipts[0].created_at)}</p>
+                      <a href={`/api/receipts/${encodeURIComponent(receipts[0].id)}/pdf`} className="mt-3 inline-flex items-center gap-2 text-xs font-black text-emerald-600 hover:underline">
+                        <FileDown className="h-3.5 w-3.5" /> Receipt {receipts[0].receipt_number ?? 'on file'} · {chicago(receipts[0].created_at)}
+                      </a>
                     ) : null}
                   </li>
                 );
@@ -655,7 +688,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
           </GlassCard>
 
           {/* Vehicle Garage Grid */}
-          <GlassCard>
+          <GlassCard className="scroll-mt-28" id="garage">
             <SectionEyebrow>Vehicle Garage</SectionEyebrow>
             {uniqueVehicles.length === 0 ? (
               <p className="text-xs text-muted-foreground italic mt-4 py-4 text-center">No vehicles in your virtual garage yet.</p>
@@ -679,6 +712,77 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 ))}
               </div>
             )}
+            <Link href="/dashboard/settings#garage" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold/30 px-4 text-xs font-black uppercase text-gold-soft">
+              <Settings className="h-4 w-4" /> Add or edit vehicles
+            </Link>
+          </GlassCard>
+
+          <CustomerPhotoUpload
+            appointments={[...appointmentCards, ...props.history].map((appointment) => ({
+              id: appointment.id,
+              status: appointment.status,
+              scheduledStart: appointment.scheduled_start,
+              serviceSlug: appointment.service_slug,
+            }))}
+          />
+
+          <GlassCard id="documents" className="scroll-mt-28">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SectionEyebrow>Payments & documents</SectionEyebrow>
+                <h3 className="mt-1 text-lg font-black text-foreground">Invoices, receipts, and payment history</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Every document stays attached to its appointment and customer account.</p>
+              </div>
+              <CreditCard className="h-5 w-5 text-gold-soft" />
+            </div>
+            <div className="mt-5 space-y-3">
+              {documentAppointments.length === 0 ? <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-muted-foreground">Documents will appear after your first booking.</p> : null}
+              {documentAppointments.map((raw) => {
+                const appointment = apptFromSnapshot(raw, props.snapshotByAppt?.[raw.id]);
+                const payments = props.paymentsByAppt[appointment.id] ?? [];
+                const receipts = props.receiptsByAppt[appointment.id] ?? [];
+                return (
+                  <article key={appointment.id} className="rounded-2xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black uppercase text-foreground">{safeSlug(appointment.service_slug)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{chicago(appointment.scheduled_start)} · Work order {appointment.id.slice(0, 8).toUpperCase()}</p>
+                      </div>
+                      <PremiumBadge tone={appointment.balance_due_cents && appointment.balance_due_cents > 0 ? 'amber' : 'emerald'}>
+                        {appointment.balance_due_cents && appointment.balance_due_cents > 0 ? `${money(appointment.balance_due_cents)} due` : appointment.payment_status || 'No balance due'}
+                      </PremiumBadge>
+                    </div>
+                    {payments.length ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {payments.map((payment, index) => (
+                          <div key={`${appointment.id}-payment-${index}`} className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+                            <p className="font-mono font-bold text-foreground">{money(payment.amount_cents)} · {payment.status.replace(/_/g, ' ')}</p>
+                            <p className="mt-1 text-muted-foreground">{payment.payment_method?.replace(/_/g, ' ') || 'Payment method on file'}{payment.paid_at ? ` · ${chicago(payment.paid_at)}` : ''}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-muted-foreground">No completed payment is recorded for this appointment yet.</p>
+                    )}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a href={`/api/receipts/${encodeURIComponent(appointment.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
+                        <FileDown className="h-3.5 w-3.5" /> Download invoice
+                      </a>
+                      {receipts.map((receipt) => (
+                        <a key={receipt.id} href={`/api/receipts/${encodeURIComponent(receipt.id)}/pdf`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-500/30 px-4 text-[10px] font-black uppercase text-emerald-600">
+                          <FileDown className="h-3.5 w-3.5" /> {receipt.receipt_number || 'Download receipt'}
+                        </a>
+                      ))}
+                      {appointment.access_token ? (
+                        <Link href={`/book/confirmation?appointment_id=${encodeURIComponent(appointment.id)}&token=${encodeURIComponent(appointment.access_token)}`} className="inline-flex min-h-11 items-center rounded-xl border border-gold/30 px-4 text-[10px] font-black uppercase text-gold-soft">
+                          Pay or manage
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </GlassCard>
 
           <CustomerPortalTimeline />
@@ -817,6 +921,14 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                     Paid {money(payments[0].amount_cents)} · {payments[0].status}
                   </p>
                 ) : null}
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+                  <a href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
+                    <FileDown className="h-3.5 w-3.5" /> Download {a.balance_due_cents && a.balance_due_cents > 0 ? 'invoice' : 'receipt'}
+                  </a>
+                  <Link href={`/dashboard/messages?appointment=${encodeURIComponent(a.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
+                    <MessageSquare className="h-3.5 w-3.5" /> Message us
+                  </Link>
+                </div>
                 {photos.length > 0 ? (
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                     {photos.slice(0, 4).map((p) => (

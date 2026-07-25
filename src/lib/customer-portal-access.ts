@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
 import { verifyAppointmentAccessToken } from '@/lib/appointment-lifecycle';
 
 function str(v: unknown) {
@@ -47,9 +48,10 @@ export async function ensurePortalAccessExpiry(
     .maybeSingle();
   const row = data as { portal_access_expires_at?: string | null; scheduled_start?: string | null } | null;
   const existing = str(row?.portal_access_expires_at);
-  if (existing) return existing;
+  if (existing && !isPortalAccessExpired(existing)) return existing;
 
-  const expiresAt = defaultPortalAccessExpiry(scheduledStartIso ?? row?.scheduled_start);
+  const scheduledExpiry = defaultPortalAccessExpiry(scheduledStartIso ?? row?.scheduled_start);
+  const expiresAt = isPortalAccessExpired(scheduledExpiry) ? defaultPortalAccessExpiry(null) : scheduledExpiry;
   await admin
     .from('appointments')
     .update({ portal_access_expires_at: expiresAt, updated_at: new Date().toISOString() })
@@ -115,7 +117,10 @@ export async function verifyPortalAccess(
 
   const { data } = await admin.from('appointments').select('portal_access_expires_at').eq('id', id).maybeSingle();
   const expiresAt = str((data as { portal_access_expires_at?: string } | null)?.portal_access_expires_at);
-  return { ok: true, expired: isPortalAccessExpired(expiresAt) };
+  if (isPortalAccessExpired(expiresAt)) {
+    await ensurePortalAccessExpiry(admin, id, null);
+  }
+  return { ok: true, expired: false };
 }
 
 /**
@@ -192,9 +197,15 @@ export async function linkAuthUserToCustomer(
 
   if (!existingAuth) {
     const now = new Date().toISOString();
+    const currentEmail = deliverableCustomerEmail(customer.email);
     const { error } = await admin
       .from('customers')
-      .update({ auth_user_id: authUserId, portal_account_linked_at: now, updated_at: now })
+      .update({
+        auth_user_id: authUserId,
+        email: currentEmail || email,
+        portal_account_linked_at: now,
+        updated_at: now,
+      })
       .eq('id', customer.id);
     if (error) return { ok: false, error: error.message };
     return { ok: true, customerId: customer.id, linked: true };
@@ -215,10 +226,6 @@ export async function claimPortalAppointmentForUser(
 ): Promise<{ ok: boolean; error?: string; customerId?: string; dashboardUrl?: string }> {
   const verified = await verifyPortalAccess(input.appointmentId, input.token);
   if (!verified.ok) return { ok: false, error: verified.error };
-  if (verified.expired) {
-    return { ok: false, error: 'This portal link has expired. Contact Gloss Boss ATX for a new link.' };
-  }
-
   const loaded = await loadPortalAccessContext(admin, input.appointmentId);
   if (!loaded.ok) return { ok: false, error: loaded.error };
 

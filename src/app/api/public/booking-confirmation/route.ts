@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
   const { data: appt } = await admin
     .from('appointments')
-    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code')
+    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code, job_started_at, job_completed_at')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -65,9 +65,16 @@ export async function GET(req: Request) {
   ]);
   const status = str(job.status).toLowerCase();
   const appointmentActive = !['cancelled', 'voided', 'deleted'].includes(status);
+  const scheduledTime = new Date(str(job.scheduled_start)).getTime();
+  const customerCanModify =
+    appointmentActive &&
+    !job.job_started_at &&
+    !job.job_completed_at &&
+    !['in_progress', 'completed'].includes(status) &&
+    (Number.isNaN(scheduledTime) || scheduledTime > Date.now());
   const acknowledgementCompleted = Boolean(agreement);
   const depositRequired = (p?.depositCents ?? 0) > 0;
-  const depositPaid = (p?.depositPaidCents ?? 0) > 0;
+  const depositPaid = (p?.depositCents ?? 0) > 0 && (p?.depositPaidCents ?? 0) >= (p?.depositCents ?? 0);
   const paidInFull = (p?.finalTotalCents ?? 0) > 0 && (p?.totalPaidCents ?? 0) >= (p?.finalTotalCents ?? 0);
   const paymentChoice = str(job.payment_choice).toLowerCase();
   const payOnArrival = paymentChoice === 'pay_later' || paymentChoice === 'pay_on_arrival';
@@ -121,6 +128,8 @@ export async function GET(req: Request) {
       paymentCancelled: ['cancelled', 'payment_cancelled'].includes(str(job.payment_status).toLowerCase()),
       accountClaimed: Boolean(customer?.auth_user_id),
       workOrderCreated: Boolean(snap?.refs.workOrderId),
+      canReschedule: customerCanModify,
+      canCancel: customerCanModify,
       nextStep,
     },
   });

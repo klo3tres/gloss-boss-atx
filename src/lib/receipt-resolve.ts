@@ -35,6 +35,7 @@ export async function resolveReceiptContext(
   admin: SupabaseClient,
   rawId: string,
   sourceHint?: string,
+  options?: { autoCreateReceipt?: boolean },
 ): Promise<ResolvedReceiptContext | null> {
   const id = str(rawId).trim();
   if (!id) return null;
@@ -141,7 +142,7 @@ export async function resolveReceiptContext(
     isFallback,
   });
 
-  if (!receipt && (payment || Object.keys(job).length)) {
+  if (!receipt && (payment || Object.keys(job).length) && options?.autoCreateReceipt !== false) {
     const receiptNumber = `RCPT-${workOrderId.slice(0, 8).toUpperCase()}-${Date.now().toString(36).slice(-4)}`;
     const { resolveOrderLedger } = await import('@/lib/order-ledger');
     const ledger = await resolveOrderLedger(admin, {

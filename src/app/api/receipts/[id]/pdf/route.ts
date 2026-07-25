@@ -3,6 +3,7 @@ import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { buildReceiptPdfFromContext, resolveReceiptContext } from '@/lib/receipt-resolve';
+import { customerOwnsWorkOrder } from '@/lib/customer-account';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,12 +19,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const url = new URL(request.url);
   const source = url.searchParams.get('source') ?? undefined;
 
-  const ctx = await resolveReceiptContext(admin, id, source ?? undefined);
+  const ctx = await resolveReceiptContext(admin, id, source ?? undefined, {
+    autoCreateReceipt: role !== 'customer',
+  });
   if (!ctx) {
     return NextResponse.json(
       { error: 'Receipt not found. Generate a receipt from the work order or complete a payment first.' },
       { status: 404 },
     );
+  }
+  if (
+    role === 'customer' &&
+    !(await customerOwnsWorkOrder(admin, {
+      authUserId: session.user!.id,
+      email: session.user!.email ?? '',
+      customerId: ctx.job.customer_id,
+      guestEmail: ctx.job.guest_email,
+    }))
+  ) {
+    return NextResponse.json({ error: 'This document is not connected to your account.' }, { status: 403 });
   }
 
   const pdf = await buildReceiptPdfFromContext(ctx, admin);

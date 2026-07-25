@@ -13,6 +13,7 @@ import {
   updateAppointmentStripeIds,
   upsertMergedStripePayment,
 } from '@/lib/stripe-payment-resolve';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
@@ -97,7 +98,14 @@ export async function createDepositCheckoutSession(params: {
     const vehicleSummary = String(appt.vehicle_description ?? 'Vehicle');
     const serviceAddress = [appt.service_address, appt.service_city, appt.service_state, appt.service_zip].filter(Boolean).join(', ');
     const isFullPay = params.paymentChoice === 'full';
-    const rawAmountCents = isFullPay && typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : appt.deposit_amount_cents;
+    const snapshot = await loadOrderSnapshot(admin, { appointmentId: String(appt.id) });
+    const isBalancePayment = isFullPay && (snapshot?.pricing.totalPaidCents ?? 0) > 0;
+    const rawAmountCents = isFullPay
+      ? snapshot?.pricing.remainingBalanceCents ??
+        (typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : 0)
+      : snapshot
+        ? Math.max(0, snapshot.pricing.depositCents - snapshot.pricing.depositPaidCents)
+        : appt.deposit_amount_cents;
     const creditPaymentsRes = await admin
       .from('payments')
       .select('amount_cents, status, payment_method, payment_kind, provider, voided, voided_at')
@@ -109,7 +117,7 @@ export async function createDepositCheckoutSession(params: {
       const isVoided = row.voided === true || Boolean(row.voided_at);
       return isCredit && !isVoided ? sum + Math.max(0, Number(row.amount_cents ?? 0)) : sum;
     }, 0);
-    const amountCents = Math.max(0, rawAmountCents - appliedCreditCents);
+    const amountCents = Math.max(0, rawAmountCents - (snapshot ? 0 : appliedCreditCents));
     if (amountCents < 50) {
       await admin
         .from('appointments')
@@ -133,7 +141,7 @@ export async function createDepositCheckoutSession(params: {
       work_order_id: String(appt.id),
       customer_id: appt.customer_id != null ? String(appt.customer_id) : '',
       access_token: accessToken.trim(),
-      stripe_checkout_kind: isFullPay ? 'booking_full' : 'deposit',
+      stripe_checkout_kind: isBalancePayment ? 'customer_final_balance' : isFullPay ? 'booking_full' : 'deposit',
       customer_name: String(appt.guest_name ?? ''),
       service_name: serviceName,
       vehicle_summary: vehicleSummary.slice(0, 500),
@@ -148,7 +156,11 @@ export async function createDepositCheckoutSession(params: {
             currency: 'usd',
             unit_amount: amountCents,
             product_data: {
-              name: isFullPay ? 'Gloss Boss ATX — Paid in full' : 'Gloss Boss ATX — Service deposit',
+              name: isBalancePayment
+                ? 'Gloss Boss ATX — Remaining service balance'
+                : isFullPay
+                  ? 'Gloss Boss ATX — Paid in full'
+                  : 'Gloss Boss ATX — Service deposit',
               description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },
@@ -156,7 +168,7 @@ export async function createDepositCheckoutSession(params: {
         },
       ],
       success_url: `${origin}/book/confirmation?appointment_id=${appt.id}&session_id={CHECKOUT_SESSION_ID}&token=${accessToken.trim()}`,
-      cancel_url: `${origin}/book?cancelled=1`,
+      cancel_url: `${origin}/book/confirmation?appointment_id=${encodeURIComponent(String(appt.id))}&token=${encodeURIComponent(accessToken.trim())}&payment_cancelled=1`,
       ...stripeMeta,
     });
 

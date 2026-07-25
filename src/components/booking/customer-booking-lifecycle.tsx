@@ -5,9 +5,13 @@ import { useState } from 'react';
 export function CustomerBookingLifecycle({
   appointmentId,
   token,
+  canReschedule,
+  canCancel,
 }: {
   appointmentId: string;
   token: string;
+  canReschedule: boolean;
+  canCancel: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -30,6 +34,7 @@ export function CustomerBookingLifecycle({
         return;
       }
       setMsg(j.message ?? 'Done.');
+      window.setTimeout(() => window.location.reload(), 700);
     } catch {
       setMsg('Network error');
     } finally {
@@ -40,18 +45,22 @@ export function CustomerBookingLifecycle({
   return (
     <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm'>
       <p className='font-black uppercase tracking-wider text-gold-soft'>Need to change your appointment?</p>
-      <p className='mt-2 text-xs text-zinc-400'>Cancel frees your slot. Reschedule sends updated confirmation email.</p>
+      <p className='mt-2 text-xs text-zinc-400'>
+        {canReschedule || canCancel
+          ? 'Cancel frees your slot. Reschedule sends updated confirmation email.'
+          : 'Online changes are closed because this appointment has started, finished, or passed. Message Gloss Boss if you still need help.'}
+      </p>
       {msg ? <p className='mt-3 text-xs text-emerald-200'>{msg}</p> : null}
       <div className='mt-4 flex flex-wrap gap-2'>
-        <button
+        {canReschedule ? <button
           type='button'
           disabled={busy}
           onClick={() => setShowReschedule((v) => !v)}
           className='rounded-xl border border-gold/40 px-4 py-2 text-xs font-black uppercase text-gold-soft'
         >
           Reschedule
-        </button>
-        <button
+        </button> : null}
+        {canCancel ? <button
           type='button'
           disabled={busy}
           onClick={() => {
@@ -61,9 +70,9 @@ export function CustomerBookingLifecycle({
           className='rounded-xl border border-red-500/40 px-4 py-2 text-xs font-black uppercase text-red-200'
         >
           Cancel booking
-        </button>
+        </button> : null}
       </div>
-      {showReschedule ? (
+      {showReschedule && canReschedule ? (
         <div className='mt-4 grid gap-2 sm:grid-cols-2'>
           <label className='text-xs text-zinc-400'>
             New date

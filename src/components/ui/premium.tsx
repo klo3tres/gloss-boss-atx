@@ -2,20 +2,20 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState, type HTMLAttributes, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 
 export function GlassCard({
   children,
   className,
   glow,
-}: {
-  children: ReactNode;
-  className?: string;
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
   glow?: boolean;
 }) {
   return (
     <div
+      {...props}
       className={clsx(
         'gb-glass rounded-3xl border border-border bg-card p-5 sm:p-6 text-card-foreground',
         glow && 'shadow-[0_0_40px_rgba(212,175,55,0.12)]',

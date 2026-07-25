@@ -9,6 +9,8 @@ import {
 } from '@/lib/customer-dashboard-snapshot';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
+import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
+import { randomUUID } from 'crypto';
 
 
 
@@ -43,6 +45,7 @@ type ApptRow = {
   balance_due_cents?: number | null;
   payment_status?: string | null;
   guest_email?: string | null;
+  access_token?: string | null;
 
 };
 
@@ -83,6 +86,7 @@ type PaymentRow = {
 };
 
 type ReceiptRow = {
+  id: string;
   appointment_id: string;
   receipt_number: string | null;
   amount_cents: number;
@@ -251,6 +255,15 @@ export default async function CustomerDashboardRootPage({
 
 
   const userEmail = session.user?.email?.trim().toLowerCase() ?? '';
+  const authenticatedCustomer =
+    adminDb && session.user?.id && userEmail
+      ? await resolveAuthenticatedCustomer(adminDb, {
+          authUserId: session.user.id,
+          email: userEmail,
+          fullName: session.profile?.full_name,
+        })
+      : null;
+  const customerId = authenticatedCustomer?.id ?? '';
   let referralCode: string | null = null;
   let referralLink: string | null = null;
   let referralCompletedCount = 0;
@@ -269,11 +282,13 @@ export default async function CustomerDashboardRootPage({
   let referralRewardLadder: import('@/lib/referral/referral-codes').ReferralRewardLadderTier[] = [];
 
   if (supabase && session.user && userEmail) {
-    let customerId = '';
     if (adminDb) {
-      const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
-      customerId = cust?.id ? String(cust.id) : '';
       if (customerId) {
+        await adminDb
+          .from('appointments')
+          .update({ customer_id: customerId, updated_at: new Date().toISOString() })
+          .is('customer_id', null)
+          .ilike('guest_email', userEmail);
         const { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } = await import('@/lib/referral/referral-codes');
         const settings = await loadReferralProgramSettings(adminDb);
         referralProgramEnabled = settings.enabled;
@@ -302,7 +317,7 @@ export default async function CustomerDashboardRootPage({
     let query = supabase
       .from('appointments')
       .select(
-        'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at, guest_email',
+        'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at, guest_email, access_token',
       )
       .order('scheduled_start', { ascending: false })
       .limit(40);
@@ -315,6 +330,21 @@ export default async function CustomerDashboardRootPage({
 
     const { data } = await query;
     appointments = (data ?? []) as ApptRow[];
+    if (adminDb) {
+      await Promise.all(
+        appointments.map(async (appointment) => {
+          if (appointment.access_token) return;
+          const token = randomUUID().replaceAll('-', '');
+          const updated = await adminDb
+            .from('appointments')
+            .update({ access_token: token, updated_at: new Date().toISOString() })
+            .eq('id', appointment.id)
+            .select('access_token')
+            .maybeSingle();
+          if (updated.data?.access_token) appointment.access_token = String(updated.data.access_token);
+        }),
+      );
+    }
 
 
 
@@ -361,7 +391,7 @@ export default async function CustomerDashboardRootPage({
           .limit(100),
         supabase
           .from('receipts')
-          .select('appointment_id, receipt_number, amount_cents, payment_method, created_at')
+          .select('id, appointment_id, receipt_number, amount_cents, payment_method, created_at')
           .in('appointment_id', ids)
           .order('created_at', { ascending: false })
           .limit(100),
@@ -457,9 +487,9 @@ export default async function CustomerDashboardRootPage({
   let rewardWalletItems: import('@/components/customer/customer-reward-wallet').CustomerRewardWalletItem[] = [];
   let activeDeals: ActiveDealView[] = [];
   let activeCardDesign = null;
-  if (adminDb && userEmail) {
-    const { data: cust } = await adminDb.from('customers').select('id').ilike('email', userEmail).maybeSingle();
-    if (cust?.id) {
+  if (adminDb && customerId) {
+    const cust = { id: customerId };
+    if (cust.id) {
       const [{ count }, { data: stamps }] = await Promise.all([
         adminDb.from('vehicles').select('id', { count: 'exact', head: true }).eq('customer_id', cust.id),
         adminDb.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', cust.id),

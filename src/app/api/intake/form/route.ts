@@ -92,7 +92,7 @@ export async function GET(req: Request) {
     .maybeSingle();
 
   if (apptErr || !appt || appt.access_token !== effectiveToken) {
-    return NextResponse.json({ ok: false, error: 'Invalid booking link' }, { status: 403 });
+    return NextResponse.json({ ok: false, error: 'This secure booking link could not be verified.' }, { status: 403 });
   }
 
   const paidStatuses = ['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'completed'];

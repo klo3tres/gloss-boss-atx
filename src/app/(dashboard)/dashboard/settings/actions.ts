@@ -7,6 +7,28 @@ import { normalizeSmsConsentStatus } from '@/lib/sms-consent';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { ThemePreference } from '@/components/theme/theme-provider';
+import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
+import { insertCustomerVehicle, updateCustomerVehicle } from '@/lib/crm-vehicles-db';
+
+export type CustomerSettingsActionResult = { ok: true; message: string } | { ok: false; error: string };
+
+function str(value: unknown) {
+  return value == null ? '' : String(value).trim();
+}
+
+async function authenticatedCustomer() {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  const email = session.user?.email?.trim().toLowerCase() ?? '';
+  if (!session.user?.id || !email || !admin) return null;
+  const customer = await resolveAuthenticatedCustomer(admin, {
+    authUserId: session.user.id,
+    email,
+    fullName: session.profile?.full_name,
+  });
+  if (!customer?.id) return null;
+  return { session, admin, customer };
+}
 
 export async function updateThemePreferenceAction(preference: ThemePreference) {
   const session = await getSessionWithProfile();
@@ -18,10 +40,9 @@ export async function updateThemePreferenceAction(preference: ThemePreference) {
 }
 
 export async function updateCustomerSmsPreferencesAction(formData: FormData) {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  const email = session.user?.email?.trim().toLowerCase();
-  if (!session.user || !email || !admin) return;
+  const context = await authenticatedCustomer();
+  if (!context) return;
+  const { admin, customer } = context;
 
   const smsConsent = formData.get('sms_consent') === 'on';
   await admin
@@ -33,20 +54,19 @@ export async function updateCustomerSmsPreferencesAction(formData: FormData) {
       sms_consent_timestamp: new Date().toISOString(),
       sms_opt_out_timestamp: smsConsent ? null : new Date().toISOString(),
     })
-    .ilike('email', email);
+    .eq('id', customer.id);
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/settings');
 }
 
 export async function updateCustomerEmailPreferencesAction(formData: FormData) {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  const email = session.user?.email?.trim().toLowerCase();
-  if (!session.user || !email || !admin) return;
+  const context = await authenticatedCustomer();
+  if (!context) return;
+  const { admin, customer, session } = context;
 
   const emailMarketingOptIn = formData.get('email_marketing_opt_in') === 'on';
-  const { data: existing } = await admin.from('customers').select('id, email_marketing_opt_in').ilike('email', email).maybeSingle();
+  const { data: existing } = await admin.from('customers').select('id, email_marketing_opt_in').eq('id', customer.id).maybeSingle();
   const prev = (existing as { email_marketing_opt_in?: boolean | null } | null)?.email_marketing_opt_in;
 
   await admin
@@ -55,14 +75,14 @@ export async function updateCustomerEmailPreferencesAction(formData: FormData) {
       email_marketing_opt_in: emailMarketingOptIn,
       updated_at: new Date().toISOString(),
     })
-    .ilike('email', email);
+    .eq('id', customer.id);
 
   const customerId = (existing as { id?: string } | null)?.id;
   if (customerId) {
     const { logSmsConsentChange } = await import('@/lib/sms-consent');
     await logSmsConsentChange(admin, {
       customerId,
-      changedBy: session.user.id,
+      changedBy: session.user!.id,
       source: 'customer_profile',
       previousConsent: prev === true,
       newConsent: emailMarketingOptIn,
@@ -74,16 +94,100 @@ export async function updateCustomerEmailPreferencesAction(formData: FormData) {
   revalidatePath('/dashboard/settings');
 }
 
-export async function cancelCustomerMembershipAction(formData: FormData) {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  const email = session.user?.email?.trim().toLowerCase();
-  const membershipId = String(formData.get('membershipId') ?? '').trim();
-  if (!session.user || !email || !membershipId || !admin) return;
+export async function updateCustomerProfileAction(input: {
+  fullName: string;
+  phone: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+}): Promise<CustomerSettingsActionResult> {
+  const context = await authenticatedCustomer();
+  if (!context) return { ok: false, error: 'Your account could not be loaded. Please sign in again.' };
+  const { admin, customer, session } = context;
+  const fullName = str(input.fullName).slice(0, 120);
+  const phone = str(input.phone).slice(0, 40);
+  if (!fullName) return { ok: false, error: 'Name is required.' };
 
-  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
-  const customerId = (customer as { id?: string } | null)?.id;
-  if (!customerId) return;
+  const patch = {
+    full_name: fullName,
+    phone: phone || null,
+    address_line1: str(input.addressLine1).slice(0, 200) || null,
+    address_line2: str(input.addressLine2).slice(0, 200) || null,
+    city: str(input.city).slice(0, 100) || null,
+    state: str(input.state).slice(0, 40) || null,
+    postal_code: str(input.postalCode).slice(0, 20) || null,
+    updated_at: new Date().toISOString(),
+  };
+  let update = await admin.from('customers').update(patch).eq('id', customer.id);
+  if (update.error && /column|schema cache/i.test(update.error.message)) {
+    update = await admin
+      .from('customers')
+      .update({ full_name: fullName, phone: phone || null, updated_at: new Date().toISOString() })
+      .eq('id', customer.id);
+  }
+  if (update.error) return { ok: false, error: 'Your profile could not be saved. Please try again.' };
+
+  await admin.from('profiles').update({ full_name: fullName }).eq('id', session.user!.id);
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/settings');
+  return { ok: true, message: 'Profile saved.' };
+}
+
+export async function addCustomerVehicleAction(input: {
+  description: string;
+  notes?: string;
+}): Promise<CustomerSettingsActionResult> {
+  const context = await authenticatedCustomer();
+  if (!context) return { ok: false, error: 'Your account could not be loaded. Please sign in again.' };
+  const description = str(input.description).slice(0, 160);
+  if (!description) return { ok: false, error: 'Enter the vehicle year, make, and model.' };
+  try {
+    await insertCustomerVehicle(context.admin, {
+      customerId: context.customer.id,
+      description,
+      notes: str(input.notes).slice(0, 1000),
+    });
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/settings');
+    return { ok: true, message: 'Vehicle added to your garage.' };
+  } catch {
+    return { ok: false, error: 'The vehicle could not be added. Please try again.' };
+  }
+}
+
+export async function updateCustomerVehicleAction(input: {
+  vehicleId: string;
+  description: string;
+  notes?: string;
+}): Promise<CustomerSettingsActionResult> {
+  const context = await authenticatedCustomer();
+  if (!context) return { ok: false, error: 'Your account could not be loaded. Please sign in again.' };
+  const vehicleId = str(input.vehicleId);
+  const description = str(input.description).slice(0, 160);
+  if (!vehicleId || !description) return { ok: false, error: 'Vehicle information is incomplete.' };
+  try {
+    await updateCustomerVehicle(context.admin, {
+      customerId: context.customer.id,
+      vehicleId,
+      description,
+      notes: str(input.notes).slice(0, 1000),
+    });
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/settings');
+    return { ok: true, message: 'Vehicle updated.' };
+  } catch {
+    return { ok: false, error: 'The vehicle could not be updated. Please try again.' };
+  }
+}
+
+export async function cancelCustomerMembershipAction(formData: FormData) {
+  const context = await authenticatedCustomer();
+  const membershipId = String(formData.get('membershipId') ?? '').trim();
+  if (!context || !membershipId) return;
+  const { admin, customer } = context;
+  const customerId = customer.id;
 
   const { data: membership } = await admin
     .from('customer_memberships')
@@ -123,15 +227,11 @@ export async function cancelCustomerMembershipAction(formData: FormData) {
 }
 
 export async function pauseCustomerMembershipAction(formData: FormData) {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  const email = session.user?.email?.trim().toLowerCase();
+  const context = await authenticatedCustomer();
   const membershipId = String(formData.get('membershipId') ?? '').trim();
-  if (!session.user || !email || !membershipId || !admin) return;
-
-  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
-  const customerId = (customer as { id?: string } | null)?.id;
-  if (!customerId) return;
+  if (!context || !membershipId) return;
+  const { admin, customer } = context;
+  const customerId = customer.id;
 
   const { data: membership } = await admin
     .from('customer_memberships')
@@ -151,20 +251,16 @@ export async function pauseCustomerMembershipAction(formData: FormData) {
       }
     }
   }
-  await admin.from('customer_memberships').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', membershipId);
+  await admin.from('customer_memberships').update({ status: 'paused', updated_at: new Date().toISOString() }).eq('id', membershipId).eq('customer_id', customerId);
   revalidatePath('/dashboard/settings');
 }
 
 export async function resumeCustomerMembershipAction(formData: FormData) {
-  const session = await getSessionWithProfile();
-  const admin = tryCreateAdminSupabase();
-  const email = session.user?.email?.trim().toLowerCase();
+  const context = await authenticatedCustomer();
   const membershipId = String(formData.get('membershipId') ?? '').trim();
-  if (!session.user || !email || !membershipId || !admin) return;
-
-  const { data: customer } = await admin.from('customers').select('id').ilike('email', email).maybeSingle();
-  const customerId = (customer as { id?: string } | null)?.id;
-  if (!customerId) return;
+  if (!context || !membershipId) return;
+  const { admin, customer } = context;
+  const customerId = customer.id;
 
   const { data: membership } = await admin
     .from('customer_memberships')
@@ -184,6 +280,6 @@ export async function resumeCustomerMembershipAction(formData: FormData) {
       }
     }
   }
-  await admin.from('customer_memberships').update({ status: 'active', updated_at: new Date().toISOString() }).eq('id', membershipId);
+  await admin.from('customer_memberships').update({ status: 'active', updated_at: new Date().toISOString() }).eq('id', membershipId).eq('customer_id', customerId);
   revalidatePath('/dashboard/settings');
 }

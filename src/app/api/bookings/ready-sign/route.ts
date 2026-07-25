@@ -147,7 +147,7 @@ export async function GET(request: Request) {
     }
 
     if (!appt) {
-      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+      return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
     }
 
     appointmentId = str(appt.id) || appointmentId;
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
     sessionId ||= str(appt.stripe_checkout_session_id);
     const rowToken = str(appt.access_token);
     if (!agreementTokenValidated && token && rowToken && rowToken !== token) {
-      return NextResponse.json({ error: 'Invalid booking' }, { status: 403 });
+      return NextResponse.json({ error: 'This secure booking link could not be verified.' }, { status: 403 });
     }
 
     // Payment proof comes only from canonical, successful payment rows linked to this order.

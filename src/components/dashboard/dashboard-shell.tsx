@@ -136,11 +136,14 @@ const techLinks = [
 
 const customerLinks = [
   { href: '/dashboard', label: 'Overview' },
+  { href: '/dashboard#appointments', label: 'Appointments' },
+  { href: '/dashboard#rewards', label: 'Rewards' },
+  { href: '/dashboard#documents', label: 'Payments & Documents' },
+  { href: '/dashboard/settings#garage', label: 'Garage & Profile' },
+  { href: '/dashboard/settings#memberships', label: 'Memberships' },
   { href: '/dashboard/messages', label: 'Messages' },
   { href: '/book', label: 'Book Again' },
   { href: '/gift-cards', label: 'Gift Cards' },
-  { href: '/services', label: 'Services' },
-  { href: '/dashboard/settings', label: 'Settings' },
 ];
 
 function getPayloadPreview(evt: any) {

@@ -29,6 +29,7 @@ export default function SignupForm() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
   const [resendBusy, setResendBusy] = useState(false);
+  const confirmationDestination = getSafeInternalRedirect(searchParams.get('next'), '/dashboard');
 
   useEffect(() => {
     setSupabase(createSupabaseBrowserClient());
@@ -51,7 +52,7 @@ export default function SignupForm() {
     try {
       const emailRedirectTo =
         typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/dashboard')}&type=signup`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(confirmationDestination)}&type=signup`
           : signupConfirmRedirectUrl();
       const { error: resendError } = await client.auth.resend({
         type: 'signup',
@@ -94,7 +95,7 @@ export default function SignupForm() {
 
       const emailRedirectTo =
         typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/dashboard')}&type=signup`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(confirmationDestination)}&type=signup`
           : signupConfirmRedirectUrl();
 
       const { data, error: signUpError } = await client.auth.signUp({

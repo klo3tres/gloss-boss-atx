@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CustomerBookingLifecycle } from '@/components/booking/customer-booking-lifecycle';
 import { SocialLinksRow } from '@/components/marketing/social-links';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 type VehicleView = {
   description: string;
@@ -43,6 +44,10 @@ type Summary = {
     paidInFull: boolean;
     payOnArrival: boolean;
     accountClaimed: boolean;
+    paymentFailed: boolean;
+    paymentCancelled: boolean;
+    canReschedule: boolean;
+    canCancel: boolean;
     nextStep: 'inactive' | 'acknowledgement' | 'payment' | 'confirmation';
   };
 };
@@ -98,8 +103,9 @@ function ConfirmationInner() {
       setError('Missing booking reference. Check your email for a confirmation link.');
       return;
     }
-    void fetch(
+    void fetchWithTimeout(
       `/api/public/booking-confirmation?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`,
+      { cache: 'no-store', timeoutMs: 10000 },
     )
       .then(async (r) => {
         const j = (await r.json()) as Summary & { ok?: boolean; error?: string };
@@ -120,21 +126,25 @@ function ConfirmationInner() {
     return <p className='text-zinc-400'>Loading your confirmation…</p>;
   }
 
-  const paidDeposit = summary.depositPaidCents > 0;
+  const paidDeposit = summary.depositCents > 0 && summary.depositPaidCents >= summary.depositCents;
   const paidInFull = summary.finalTotalCents > 0 && summary.totalPaidCents >= summary.finalTotalCents;
   const depositRequired = summary.depositCents > 0 && !paidDeposit && !paidInFull;
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
 
-  const openDepositCheckout = async () => {
+  const openDepositCheckout = async (paymentChoice: 'deposit' | 'full' = 'deposit') => {
     setCheckoutBusy(true);
     setCheckoutError(null);
     try {
       const res = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointmentId, accessToken: token, paymentChoice: 'deposit' }),
+        body: JSON.stringify({ appointmentId, accessToken: token, paymentChoice }),
       });
-      const json = (await res.json()) as { url?: string; customerMessage?: string; error?: string };
+      const json = (await res.json()) as { url?: string; skipPayment?: boolean; customerMessage?: string; error?: string };
+      if (res.ok && json.skipPayment) {
+        window.location.reload();
+        return;
+      }
       if (!res.ok || !json.url) throw new Error(json.customerMessage ?? json.error ?? 'Secure checkout could not be opened.');
       window.location.assign(json.url);
     } catch (e) {
@@ -248,15 +258,33 @@ function ConfirmationInner() {
             <dd className='font-bold text-gold-soft'>{money(summary.balanceDueCents)}</dd>
           </div>
         </dl>
+        {summary.sessionState.paymentFailed || summary.sessionState.paymentCancelled || sp.get('payment_cancelled') === '1' ? (
+          <p className='mt-5 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
+            Your booking is still saved. The last checkout did not complete; use the button below to open a fresh secure checkout.
+          </p>
+        ) : null}
         {depositRequired && summary.sessionState.nextStep === 'payment' ? (
           <div className='mt-5 border-t border-white/10 pt-5'>
             <button
               type='button'
               disabled={checkoutBusy}
-              onClick={() => void openDepositCheckout()}
+              onClick={() => void openDepositCheckout('deposit')}
               className='w-full rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase text-black disabled:opacity-60'
             >
               {checkoutBusy ? 'Opening secure checkout…' : `Pay ${money(summary.depositCents)} deposit`}
+            </button>
+            {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
+          </div>
+        ) : null}
+        {!depositRequired && summary.balanceDueCents > 0 && summary.sessionState.appointmentActive ? (
+          <div className='mt-5 border-t border-white/10 pt-5'>
+            <button
+              type='button'
+              disabled={checkoutBusy}
+              onClick={() => void openDepositCheckout('full')}
+              className='w-full rounded-2xl border border-gold/50 bg-gold/10 px-6 py-4 text-sm font-black uppercase text-gold-soft disabled:opacity-60'
+            >
+              {checkoutBusy ? 'Opening secure checkout…' : `Pay ${money(summary.balanceDueCents)} remaining balance`}
             </button>
             {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
           </div>
@@ -294,7 +322,14 @@ function ConfirmationInner() {
         </p>
       </section>
 
-      {appointmentId && token ? <CustomerBookingLifecycle appointmentId={appointmentId} token={token} /> : null}
+      {appointmentId && token ? (
+        <CustomerBookingLifecycle
+          appointmentId={appointmentId}
+          token={token}
+          canReschedule={summary.sessionState.canReschedule}
+          canCancel={summary.sessionState.canCancel}
+        />
+      ) : null}
 
       <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm text-zinc-300'>
         <p className='font-black uppercase tracking-wider text-gold-soft'>Next steps</p>

@@ -19,8 +19,18 @@ function statusLabel(status: string) {
 
 export function CustomerRewardWallet({ items }: { items: CustomerRewardWalletItem[] }) {
   const available = items.filter((item) => item.usable);
-  const pending = items.filter((item) => !item.usable && ['pending', 'pending_completion'].includes(item.status));
-  const history = items.filter((item) => !item.usable && !pending.some((pendingItem) => pendingItem.id === item.id));
+  const unavailable = items.filter((item) => !item.usable);
+  const groups = [
+    { label: 'Available', rows: available },
+    { label: 'Reserved', rows: unavailable.filter((item) => ['reserved', 'held'].includes(item.status.toLowerCase())) },
+    { label: 'Pending', rows: unavailable.filter((item) => ['pending', 'pending_completion', 'processing'].includes(item.status.toLowerCase())) },
+    { label: 'Redeemed', rows: unavailable.filter((item) => ['redeemed', 'consumed', 'used'].includes(item.status.toLowerCase())) },
+    { label: 'Expired', rows: unavailable.filter((item) => item.status.toLowerCase() === 'expired') },
+    { label: 'Cancelled / voided', rows: unavailable.filter((item) => ['cancelled', 'canceled', 'void', 'voided'].includes(item.status.toLowerCase())) },
+  ];
+  const assigned = new Set(groups.flatMap((group) => group.rows.map((item) => item.id)));
+  const other = unavailable.filter((item) => !assigned.has(item.id));
+  if (other.length) groups.push({ label: 'History', rows: other });
 
   return (
     <section className="rounded-3xl border border-gold/20 bg-card p-5 sm:p-6">
@@ -37,7 +47,7 @@ export function CustomerRewardWallet({ items }: { items: CustomerRewardWalletIte
         <div className="mt-5 rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No rewards yet. Loyalty punches, referrals, membership credits, and promotions will appear here.</div>
       ) : (
         <div className="mt-5 space-y-5">
-          {[{ label: 'Available', rows: available }, { label: 'Pending', rows: pending }, { label: 'History', rows: history }].map((group) => group.rows.length ? (
+          {groups.map((group) => group.rows.length ? (
             <div key={group.label}>
               <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-muted-foreground">{group.label}</p>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

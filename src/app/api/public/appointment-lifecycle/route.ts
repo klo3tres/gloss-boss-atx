@@ -34,7 +34,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing appointmentId and token' }, { status: 400 });
   }
   if (!(await verifyAppointmentAccessToken(appointmentId, token))) {
-    return NextResponse.json({ error: 'Invalid token' }, { status: 403 });
+    return NextResponse.json({ error: 'This secure appointment link could not be verified.' }, { status: 403 });
+  }
+  const { data: appointment } = await admin
+    .from('appointments')
+    .select('status, scheduled_start, job_started_at, job_completed_at')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (!appointment) return NextResponse.json({ error: 'Appointment not found.' }, { status: 404 });
+  const status = String(appointment.status ?? '').toLowerCase();
+  const scheduledTime = new Date(String(appointment.scheduled_start ?? '')).getTime();
+  const canModify =
+    !['cancelled', 'voided', 'deleted', 'in_progress', 'completed'].includes(status) &&
+    !appointment.job_started_at &&
+    !appointment.job_completed_at &&
+    (Number.isNaN(scheduledTime) || scheduledTime > Date.now());
+  if (!canModify) {
+    return NextResponse.json(
+      { error: 'Online changes are closed for this appointment. Send Gloss Boss a message for help.' },
+      { status: 409 },
+    );
   }
 
   if (action === 'cancel') {

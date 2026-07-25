@@ -4,6 +4,7 @@ import { canAccessCustomerPortal } from '@/lib/auth/customer-portal';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { notifyBusinessOfContactMessage } from '@/lib/email/contact-notify';
 import { resendDomainVerified } from '@/lib/resend-config';
+import { customerOwnsWorkOrder } from '@/lib/customer-account';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -55,6 +56,25 @@ export async function POST(request: Request) {
 
   const admin = tryCreateAdminSupabase();
   if (!admin) return NextResponse.json({ error: 'Messaging unavailable' }, { status: 503 });
+  const appointmentId = str(body.appointmentId);
+  if (appointmentId) {
+    const { data: appointment } = await admin
+      .from('appointments')
+      .select('customer_id, guest_email')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (
+      !appointment ||
+      !(await customerOwnsWorkOrder(admin, {
+        authUserId: session.user!.id,
+        email,
+        customerId: appointment.customer_id,
+        guestEmail: appointment.guest_email,
+      }))
+    ) {
+      return NextResponse.json({ error: 'This appointment is not connected to your account.' }, { status: 403 });
+    }
+  }
 
   const row = {
     from_name: name,
@@ -62,7 +82,7 @@ export async function POST(request: Request) {
     subject: str(body.subject) || 'Customer portal message',
     body: message,
     message,
-    appointment_id: str(body.appointmentId) || null,
+    appointment_id: appointmentId || null,
     status: 'new',
     direction: 'inbound',
   };

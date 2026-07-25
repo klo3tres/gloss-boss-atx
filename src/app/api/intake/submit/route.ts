@@ -110,7 +110,7 @@ export async function POST(req: Request) {
 
     if (apptErr || !appt || appt.access_token !== token) {
 
-      return NextResponse.json({ ok: false, error: 'Invalid booking link' }, { status: 403 });
+      return NextResponse.json({ ok: false, error: 'This secure booking link could not be verified.' }, { status: 403 });
 
     }
 

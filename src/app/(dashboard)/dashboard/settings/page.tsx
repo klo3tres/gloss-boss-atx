@@ -7,6 +7,9 @@ import { parseUserUiPreferences } from '@/lib/user-ui-preferences';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
+import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
+import { listCustomerVehicles } from '@/lib/crm-vehicles-db';
+import { CustomerProfileGaragePanel } from '@/components/customer/customer-profile-garage-panel';
 import { cancelCustomerMembershipAction, pauseCustomerMembershipAction, resumeCustomerMembershipAction, updateCustomerEmailPreferencesAction, updateCustomerSmsPreferencesAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +20,17 @@ export default async function CustomerSettingsPage() {
   const email = session.user?.email?.trim().toLowerCase();
   if (!session.user || !email) notFound();
 
-  const { data: customer } = admin
-    ? await admin
-        .from('customers')
-        .select('id, full_name, email, phone, sms_consent, sms_status, email_marketing_opt_in')
-        .ilike('email', email)
-        .maybeSingle()
-    : { data: null };
+  const resolvedCustomer = admin
+    ? await resolveAuthenticatedCustomer(admin, {
+        authUserId: session.user.id,
+        email,
+        fullName: session.profile?.full_name,
+      })
+    : null;
+  const { data: customer } =
+    admin && resolvedCustomer?.id
+      ? await admin.from('customers').select('*').eq('id', resolvedCustomer.id).maybeSingle()
+      : { data: null };
 
   const row = customer as
     | {
@@ -34,8 +41,14 @@ export default async function CustomerSettingsPage() {
         sms_consent?: boolean | null;
         sms_status?: string | null;
         email_marketing_opt_in?: boolean | null;
+        address_line1?: string | null;
+        address_line2?: string | null;
+        city?: string | null;
+        state?: string | null;
+        postal_code?: string | null;
       }
     | null;
+  const vehicles = admin && row?.id ? await listCustomerVehicles(admin, row.id).catch(() => []) : [];
 
   const { data: profileRow } = session.user?.id && admin
     ? await admin.from('profiles').select('theme_preference, ui_accent, ui_sidebar_density, ui_dashboard_density').eq('id', session.user.id).maybeSingle()
@@ -62,6 +75,20 @@ export default async function CustomerSettingsPage() {
 
   return (
     <DashboardShell title='Settings' subtitle='Communication preferences, account access, and customer profile controls.' role='customer'>
+      <CustomerProfileGaragePanel
+        initialProfile={{
+          fullName: row?.full_name ?? session.profile?.full_name ?? '',
+          email: row?.email ?? email,
+          phone: row?.phone ?? '',
+          addressLine1: row?.address_line1 ?? '',
+          addressLine2: row?.address_line2 ?? '',
+          city: row?.city ?? '',
+          state: row?.state ?? '',
+          postalCode: row?.postal_code ?? '',
+        }}
+        initialVehicles={vehicles}
+      />
+
       <section className='grid gap-4 lg:grid-cols-3'>
         <div className='rounded-3xl border border-gold/20 bg-card p-5 lg:col-span-2 shadow-sm'>
           <p className='flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-gold-soft'>
@@ -130,7 +157,7 @@ export default async function CustomerSettingsPage() {
         </div>
       </section>
 
-      <section className='rounded-3xl border border-gold/20 bg-card p-5 shadow-sm'>
+      <section id='memberships' className='scroll-mt-28 rounded-3xl border border-gold/20 bg-card p-5 shadow-sm'>
         <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Membership subscription</p>
         {memberships.length === 0 ? (
           <p className='mt-3 text-sm text-muted-foreground'>No membership is attached to this customer profile yet.</p>

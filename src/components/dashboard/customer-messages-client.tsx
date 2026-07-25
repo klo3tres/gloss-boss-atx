@@ -18,7 +18,13 @@ function chicago(v: string) {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v));
 }
 
-export function CustomerMessagesClient({ customerEmail }: { customerEmail: string }) {
+export function CustomerMessagesClient({
+  customerEmail,
+  initialAppointmentId,
+}: {
+  customerEmail: string;
+  initialAppointmentId?: string;
+}) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -45,7 +51,11 @@ export function CustomerMessagesClient({ customerEmail }: { customerEmail: strin
     const res = await fetch('/api/customer/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject: subject.trim() || 'Question', message: body.trim() }),
+      body: JSON.stringify({
+        subject: subject.trim() || (initialAppointmentId ? 'Appointment question' : 'Question'),
+        message: body.trim(),
+        appointmentId: initialAppointmentId,
+      }),
     });
     const json = (await res.json()) as { ok?: boolean; error?: string; note?: string | null };
     setBusy(false);
@@ -75,6 +85,11 @@ export function CustomerMessagesClient({ customerEmail }: { customerEmail: strin
           . We usually reply within 24–48 hours.
         </p>
         <form onSubmit={send} className='mt-4 space-y-3'>
+          {initialAppointmentId ? (
+            <p className='rounded-xl border border-gold/20 bg-gold/5 px-3 py-2 text-xs text-gold-soft'>
+              This message will be attached to appointment {initialAppointmentId.slice(0, 8).toUpperCase()}.
+            </p>
+          ) : null}
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder='Subject (optional)' className='gb-input w-full' />
           <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder='Your message' required rows={5} className='gb-input w-full' />
           <button type='submit' disabled={busy} className='rounded-2xl bg-gold px-6 py-3 text-xs font-black uppercase text-black disabled:opacity-50'>
