@@ -25,9 +25,9 @@ function Recovery({ temporary = false }: { temporary?: boolean }) {
             : 'The secure link may be incomplete or no longer match a booking. Request an updated link or start a new booking.'}
         </p>
         <div className='mt-6 grid gap-3 sm:grid-cols-2'>
-          <Link href='.' className='rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black'>
+          <a href='' className='rounded-xl bg-gold px-5 py-3 text-xs font-black uppercase text-black'>
             Retry
-          </Link>
+          </a>
           <a href='tel:+15124812319' className='rounded-xl border border-gold/40 px-5 py-3 text-xs font-black uppercase text-gold-soft'>
             Call (512) 481-2319
           </a>
@@ -50,7 +50,7 @@ export default async function CanonicalBookingPage({
   params: Promise<{ token: string }>;
   searchParams: Promise<{ source?: string }>;
 }) {
-  const token = decodeURIComponent(String((await params).token ?? '')).trim();
+  const token = String((await params).token ?? '').trim();
   if (!token) return <Recovery />;
 
   const admin = tryCreateAdminSupabase();
