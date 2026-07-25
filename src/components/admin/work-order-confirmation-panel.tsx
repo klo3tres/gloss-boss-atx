@@ -10,10 +10,7 @@ import {
   getConfirmationDeliveryStatusAction,
   previewBookingConfirmationAction,
   regenerateCustomerPortalLinkAction,
-  resendBookingConfirmationEmailAction,
-  resendBookingConfirmationSmsAction,
   sendBookingConfirmationAction,
-  sendBookingConfirmationBothAction,
 } from '@/app/(dashboard)/admin/confirmation-actions';
 import { useToast } from '@/components/ui/toast-provider';
 import type { ConfirmationDeliveryStatus, DeliveryChannelStatus } from '@/lib/confirmation-delivery-status';
@@ -80,7 +77,7 @@ export function WorkOrderConfirmationPanel({
     });
   };
 
-  const openConfirmationPreview = (title: string) => {
+  const openConfirmationPreview = (title: string, preferredChannel?: 'sms' | 'email') => {
     startTransition(async () => {
       const preview = await previewBookingConfirmationAction(appointmentId);
       if (preview.error || !preview.smsBody) {
@@ -95,7 +92,7 @@ export function WorkOrderConfirmationPanel({
       });
       openPreview({
         title,
-        channel: guestPhone ? 'sms' : 'email',
+        channel: preferredChannel ?? (guestPhone ? 'sms' : 'email'),
         channelOptions: [
           ...(guestPhone ? (['sms'] as const) : []),
           ...(guestEmail ? (['email'] as const) : []),
@@ -147,35 +144,11 @@ export function WorkOrderConfirmationPanel({
     openConfirmationPreview('Preview and send customer confirmation');
   };
 
-  const resendEmail = () => {
-    startTransition(async () => {
-      const res = await resendBookingConfirmationEmailAction(appointmentId);
-      if (res.error) toast.error('Email', res.error);
-      else toast.success('Email', res.message ?? 'Confirmation email sent.');
-      refreshStatus();
-      router.refresh();
-    });
-  };
+  const resendEmail = () => openConfirmationPreview('Preview confirmation email', 'email');
 
-  const resendSms = () => {
-    startTransition(async () => {
-      const res = await resendBookingConfirmationSmsAction(appointmentId);
-      if (res.error) toast.error('SMS', res.error);
-      else toast.success('SMS', res.message ?? 'Confirmation SMS sent.');
-      refreshStatus();
-      router.refresh();
-    });
-  };
+  const resendSms = () => openConfirmationPreview('Preview confirmation SMS', 'sms');
 
-  const sendBothDirect = () => {
-    startTransition(async () => {
-      const res = await sendBookingConfirmationBothAction(appointmentId);
-      if (res.error) toast.error('Confirmation', res.error);
-      else toast.success('Confirmation', res.message ?? 'Sent.');
-      refreshStatus();
-      router.refresh();
-    });
-  };
+  const sendBothDirect = () => openConfirmationPreview('Preview email and SMS before sending');
 
   const copyPortalLink = () => {
     startTransition(async () => {
