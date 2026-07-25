@@ -706,6 +706,13 @@ export default async function TechWorkOrderDetailPage({
     resetBehavior: rewardConfig.resetBehavior,
     tierThresholds: rewardConfig.tierThresholds,
   });
+  const { data: calendarSyncJob } = !isFallback
+    ? await admin
+        .from('google_calendar_sync_jobs')
+        .select('provider_status, sanitized_error_code, google_event_id, last_successful_sync_at')
+        .eq('appointment_id', queryId)
+        .maybeSingle()
+    : { data: null };
   const loyaltyRewardCredits = creditsList
     .filter((c) => c.type === 'loyalty_reward' && c.status === 'active' && (c.remaining_cents ?? 0) > 0)
     .map((c) => ({
@@ -931,6 +938,7 @@ export default async function TechWorkOrderDetailPage({
       : displayMoney(pricing.totalPaidCents),
     paymentMethod: displayLabel(row.payment_choice || row.payment_status, 'Pending'),
     paymentStatus: paymentStatusDisplay,
+    calendarSyncStatus: str((calendarSyncJob as Row | null)?.provider_status) || 'not connected',
     scheduledStart,
     scheduledEnd,
     scheduledStartIso: str(row.scheduled_start),

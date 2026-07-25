@@ -17,6 +17,7 @@ export function MessagePreviewModal({
   channel,
   channelOptions,
   recipient,
+  recipients,
   body,
   subject,
   contextLabel,
@@ -29,6 +30,8 @@ export function MessagePreviewModal({
   onCancel,
   onSend,
   onSchedule,
+  onSendBoth,
+  onTest,
   onCopy,
 }: {
   open: boolean;
@@ -36,6 +39,7 @@ export function MessagePreviewModal({
   channel: 'sms' | 'email';
   channelOptions?: Array<'sms' | 'email'>;
   recipient: string;
+  recipients?: Partial<Record<'sms' | 'email', string>>;
   body: string;
   subject?: string;
   contextLabel?: string;
@@ -48,6 +52,8 @@ export function MessagePreviewModal({
   onCancel: () => void;
   onSend: (final: { body: string; subject?: string; channel: 'sms' | 'email'; tone: MessageTone }) => void;
   onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string; tone: MessageTone }) => void;
+  onSendBoth?: (final: { body: string; subject?: string; tone: MessageTone }) => void;
+  onTest?: (final: { body: string; subject?: string; tone: MessageTone }) => void;
   onCopy?: (text: string) => void;
 }) {
   const [editBody, setEditBody] = useState(body);
@@ -96,7 +102,8 @@ export function MessagePreviewModal({
     tone,
   };
 
-  const canSubmit = Boolean(editBody.trim()) && Boolean(recipient) && (activeChannel !== 'email' || editSubject.trim());
+  const activeRecipient = recipients?.[activeChannel] ?? recipient;
+  const canSubmit = Boolean(editBody.trim()) && Boolean(activeRecipient) && (activeChannel !== 'email' || editSubject.trim());
 
   return (
     <div
@@ -108,7 +115,7 @@ export function MessagePreviewModal({
         <div className="shrink-0 border-b border-white/8 p-4 sm:p-5">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gold-soft">{title}</p>
           <p className="mt-1 text-xs text-zinc-500">
-            {activeChannel === 'sms' ? 'SMS' : 'Email'} → <span className="text-white">{recipient || '—'}</span>
+            {activeChannel === 'sms' ? 'SMS' : 'Email'} → <span className="text-white">{activeRecipient || 'Not available'}</span>
             {contextLabel ? <span className="text-zinc-600"> · {contextLabel}</span> : null}
           </p>
           {(priceCents != null || durationMinutes != null) && (
@@ -229,6 +236,26 @@ export function MessagePreviewModal({
           >
             {busy ? 'Working…' : sendMode === 'schedule' ? 'Schedule send' : sendLabel}
           </button>
+          {sendMode === 'now' && onSendBoth ? (
+            <button
+              type="button"
+              disabled={busy || !editBody.trim() || !editSubject.trim()}
+              onClick={() => onSendBoth({ body: editBody.trim(), subject: editSubject.trim(), tone })}
+              className="rounded-xl border border-gold/35 bg-gold/10 px-4 py-2.5 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50"
+            >
+              Send by both
+            </button>
+          ) : null}
+          {onTest ? (
+            <button
+              type="button"
+              disabled={busy || !editBody.trim()}
+              onClick={() => onTest({ body: editBody.trim(), subject: editSubject.trim() || subject, tone })}
+              className="rounded-xl border border-violet-500/35 bg-violet-500/10 px-4 py-2.5 text-[10px] font-black uppercase text-violet-200 disabled:opacity-50"
+            >
+              Send test to owner
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import {
   exchangeGoogleOAuthCode,
+  runGoogleCalendarSync,
   type GoogleOAuthExchangeResult,
 } from '@/lib/google/google-calendar-sync';
 import {
@@ -121,7 +122,27 @@ export async function GET(request: Request) {
       return redirectCalendarError(request, 'database_write_failed', insErr.message);
     }
 
-    const res = redirectSetup(request, { gcal: 'connected' }, returnTo);
+    const { data: pendingJobs } = await admin
+      .from('google_calendar_sync_jobs')
+      .select('appointment_id')
+      .in('provider_status', ['authentication_required', 'retry_scheduled', 'pending', 'update_pending', 'failed'])
+      .limit(25);
+    let syncedCount = 0;
+    for (const job of pendingJobs ?? []) {
+      const appointmentId = String(job.appointment_id ?? '');
+      if (!appointmentId) continue;
+      const sync = await runGoogleCalendarSync(admin, appointmentId, 'upsert');
+      if (!sync.ok) continue;
+      syncedCount += 1;
+      await admin
+        .from('titan_notification_events')
+        .update({ archived_at: new Date().toISOString(), read_at: new Date().toISOString() })
+        .eq('source', 'google_calendar')
+        .eq('related_id', appointmentId)
+        .is('archived_at', null);
+    }
+
+    const res = redirectSetup(request, { gcal: 'connected', gcal_synced: String(syncedCount) }, returnTo);
     res.cookies.set('gcal_oauth_state', '', { maxAge: 0, path: '/' });
     res.cookies.set('gcal_oauth_return', '', { maxAge: 0, path: '/' });
     return res;

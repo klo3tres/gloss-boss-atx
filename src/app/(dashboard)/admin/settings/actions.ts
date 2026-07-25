@@ -7,6 +7,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { ThemePreference } from '@/components/theme/theme-provider';
 import type { UiAccent, UiDensity } from '@/lib/user-ui-preferences';
 import { parseDiscountPolicy } from '@/lib/discount-policy';
+import { EXTERNAL_PAYMENT_SETTINGS_KEY, parseExternalPaymentSettings, type ExternalPaymentSettings } from '@/lib/external-payment-settings';
 
 function isSuperAdmin(role: string | null | undefined) {
   return role === 'super_admin';
@@ -128,4 +129,25 @@ export async function updateAppointmentNotificationPolicyAction(formData: FormDa
   const { error } = await admin.from('site_settings').upsert({ key: 'appointment_notification_policy', value: JSON.stringify(policy), updated_at: new Date().toISOString() }, { onConflict: 'key' });
   if (error) throw new Error(error.message);
   revalidatePath('/admin/settings');
+}
+
+export async function saveExternalPaymentSettingsAction(
+  input: ExternalPaymentSettings,
+): Promise<{ ok?: boolean; error?: string }> {
+  const session = await getSessionWithProfile();
+  const admin = tryCreateAdminSupabase();
+  if (!session.user || !isStaffRole(session.profile?.role) || !admin) return { error: 'Not authorized.' };
+
+  const settings = parseExternalPaymentSettings(input);
+  const { error } = await admin.from('site_settings').upsert(
+    {
+      key: EXTERNAL_PAYMENT_SETTINGS_KEY,
+      value: JSON.stringify(settings),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'key' },
+  );
+  if (error) return { error: error.message };
+  revalidatePath('/admin/settings');
+  return { ok: true };
 }

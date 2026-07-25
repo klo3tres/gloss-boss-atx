@@ -9,6 +9,7 @@ import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-prefe
 import { pushoverConfigured } from '@/lib/pushover';
 import { DEFAULT_DISCOUNT_POLICY, loadDiscountPolicy } from '@/lib/discount-policy';
 import { DEFAULT_APPOINTMENT_NOTIFICATION_POLICY, loadAppointmentNotificationPolicy } from '@/lib/appointment-notification-policy';
+import { DEFAULT_EXTERNAL_PAYMENT_SETTINGS, loadExternalPaymentSettings } from '@/lib/external-payment-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export default async function AdminSettingsPage() {
   let notifyPrefs = await loadOwnerNotificationPreferences(admin!);
   let discountPolicy = DEFAULT_DISCOUNT_POLICY;
   let appointmentNotificationPolicy = DEFAULT_APPOINTMENT_NOTIFICATION_POLICY;
+  let externalPaymentSettings = DEFAULT_EXTERNAL_PAYMENT_SETTINGS;
 
   if (admin && session.user.id) {
     const [{ data: profile }, siteRes] = await Promise.all([
@@ -40,6 +42,7 @@ export default async function AdminSettingsPage() {
     notifyPrefs = await loadOwnerNotificationPreferences(admin);
     discountPolicy = await loadDiscountPolicy(admin);
     appointmentNotificationPolicy = await loadAppointmentNotificationPolicy(admin);
+    externalPaymentSettings = await loadExternalPaymentSettings(admin);
   }
 
   return (
@@ -52,6 +55,7 @@ export default async function AdminSettingsPage() {
         notifyPrefs={notifyPrefs}
         discountPolicy={discountPolicy}
         appointmentNotificationPolicy={appointmentNotificationPolicy}
+        externalPaymentSettings={externalPaymentSettings}
       />
     </DashboardShell>
   );

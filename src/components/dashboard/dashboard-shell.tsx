@@ -12,6 +12,7 @@ import { DashboardAuthDebugFooter } from '@/components/dashboard/dashboard-auth-
 import { SafeRenderBoundary } from '@/components/ui/safe-render-boundary';
 import { NotificationBellDropdown } from '@/components/admin/notification-bell-dropdown';
 import { formatActivityEventLabel } from '@/lib/activity-event-labels';
+import { GoogleCalendarGlobalStatus } from '@/components/admin/google-calendar-global-status';
 
 export const GB_NAV_SIM_KEY = 'gb_nav_sim_role';
 export const GB_NAV_SIM_EVENT = 'gb_nav_sim_change';
@@ -594,6 +595,7 @@ export function DashboardShell({
               {navRole === 'admin' || navRole === 'super_admin' ? (
                 <>
                   <AdminCommandPalette enabled />
+                  {(role === 'admin' || role === 'super_admin' || role === 'dispatcher') ? <GoogleCalendarGlobalStatus /> : null}
                   <NotificationBellDropdown className="mt-1" />
                 </>
               ) : (

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
+import { enabledExternalPaymentMethods, loadExternalPaymentSettings } from '@/lib/external-payment-settings';
 
 export const runtime = 'nodejs';
 
@@ -54,11 +55,12 @@ export async function GET(req: Request) {
   }
 
   const p = snap?.pricing;
-  const [{ data: agreement }, { data: customer }] = await Promise.all([
+  const [{ data: agreement }, { data: customer }, externalPaymentSettings] = await Promise.all([
     admin.from('signed_agreements').select('id, signed_at').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
     snap?.refs.customerId
       ? admin.from('customers').select('id, auth_user_id').eq('id', snap.refs.customerId).maybeSingle()
       : Promise.resolve({ data: null }),
+    loadExternalPaymentSettings(admin),
   ]);
   const status = str(job.status).toLowerCase();
   const appointmentActive = !['cancelled', 'voided', 'deleted'].includes(status);
@@ -91,6 +93,7 @@ export async function GET(req: Request) {
     totalPaidCents: p?.totalPaidCents ?? 0,
     balanceDueCents: p?.remainingBalanceCents ?? 0,
     paymentStatus: snap?.paymentStatus ?? str(job.payment_status),
+    externalPaymentMethods: enabledExternalPaymentMethods(externalPaymentSettings),
     onlineDiscountCents: p?.onlineDiscountCents ?? 0,
     multiCarDiscountCents: p?.multiCarDiscountCents ?? 0,
     promoDiscountCents: p?.promoDiscountCents ?? 0,

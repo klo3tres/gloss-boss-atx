@@ -29,6 +29,7 @@ type Summary = {
   totalPaidCents: number;
   balanceDueCents: number;
   paymentStatus: string;
+  externalPaymentMethods: Array<{ key: string; label: string; instructions: string; proofRequired: boolean }>;
   onlineDiscountCents: number;
   multiCarDiscountCents: number;
   promoDiscountCents: number;
@@ -247,6 +248,22 @@ function ConfirmationInner() {
           </div>
         ) : null}
       </section>
+
+      {summary.sessionState.nextStep === 'payment' && summary.externalPaymentMethods?.length ? (
+        <section className='rounded-3xl border border-white/10 bg-black/50 p-6'>
+          <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Other enabled ways to pay</h2>
+          <p className='mt-2 text-sm text-zinc-400'>Use only the instructions shown here. Your work order is updated after Gloss Boss verifies an external payment.</p>
+          <div className='mt-4 space-y-3'>
+            {summary.externalPaymentMethods.map((method) => (
+              <div key={method.key} className='rounded-2xl border border-white/10 bg-zinc-950/70 p-4'>
+                <p className='font-black text-white'>{method.label}</p>
+                {method.instructions ? <p className='mt-1 whitespace-pre-wrap text-sm text-zinc-300'>{method.instructions}</p> : null}
+                {method.proofRequired ? <p className='mt-2 text-xs font-bold text-amber-200'>Keep the payment reference or proof for verification.</p> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className='rounded-2xl border border-gold/30 bg-gold/10 p-5'>
         <p className='text-xs font-black uppercase tracking-wider text-gold-soft'>Next step</p>

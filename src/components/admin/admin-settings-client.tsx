@@ -24,6 +24,8 @@ import type { DiscountPolicyConfig } from '@/lib/discount-policy';
 import { DiscountPolicyPanel } from '@/components/admin/discount-policy-panel';
 import type { AppointmentNotificationPolicy } from '@/lib/appointment-notification-policy';
 import { AppointmentNotificationPolicyPanel } from '@/components/admin/appointment-notification-policy-panel';
+import type { ExternalPaymentSettings } from '@/lib/external-payment-settings';
+import { ExternalPaymentSettingsPanel } from '@/components/admin/external-payment-settings-panel';
 
 type Tab = 'general' | 'business' | 'notifications' | 'appearance';
 
@@ -67,6 +69,7 @@ export function AdminSettingsClient({
   notifyPrefs,
   discountPolicy,
   appointmentNotificationPolicy,
+  externalPaymentSettings,
 }: {
   uiPreferences: UserUiPreferences;
   websiteDefault: 'light' | 'dark';
@@ -75,6 +78,7 @@ export function AdminSettingsClient({
   notifyPrefs: Parameters<typeof NotificationSettingsPanel>[0]['prefs'];
   discountPolicy: DiscountPolicyConfig;
   appointmentNotificationPolicy: AppointmentNotificationPolicy;
+  externalPaymentSettings: ExternalPaymentSettings;
 }) {
   const [tab, setTab] = useState<Tab>('general');
 
@@ -117,6 +121,7 @@ export function AdminSettingsClient({
             <SettingsLinkCard href="/admin/media-studio" title="Media Studio" desc="Unified asset manager" icon={<Image className="h-4 w-4" />} />
           </div>
           <DiscountPolicyPanel policy={discountPolicy} canEdit={isSuperAdmin} />
+          <ExternalPaymentSettingsPanel initial={externalPaymentSettings} />
         </div>
       )}
 

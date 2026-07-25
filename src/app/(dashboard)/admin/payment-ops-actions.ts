@@ -80,7 +80,7 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   if (!job) return actionErr('Work order not found.');
 
   const jobRow = job as Record<string, unknown>;
-  const allowedMethods = new Set(['cash', 'zelle', 'cash_app', 'venmo', 'check', 'external_card', 'manual_card', 'bank_transfer', 'other']);
+  const allowedMethods = new Set(['cash', 'zelle', 'cash_app', 'venmo', 'check', 'external_card', 'manual_card', 'bank_transfer', 'apple_pay_personal', 'other']);
   const paymentMethod = allowedMethods.has(method) ? method : 'other';
   const balanceBefore = Math.max(0, Number(jobRow.balance_due_cents ?? 0));
   if (appliedAmountCents > balanceBefore) return actionErr('Payment exceeds the outstanding balance. Put the difference in the tip field.');

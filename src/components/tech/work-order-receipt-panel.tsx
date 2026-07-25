@@ -126,8 +126,13 @@ export function WorkOrderReceiptPanel({
                 <select name='method' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' defaultValue='cash'>
                   <option value='cash'>Cash</option>
                   <option value='zelle'>Zelle</option>
+                  <option value='cash_app'>Cash App</option>
                   <option value='venmo'>Venmo</option>
                   <option value='check'>Check</option>
+                  <option value='bank_transfer'>Bank transfer</option>
+                  <option value='external_card'>External card terminal</option>
+                  <option value='apple_pay_personal'>Apple Pay received personally</option>
+                  <option value='other'>Other</option>
                 </select>
               </label>
               <div className='flex items-end sm:col-span-2'>
@@ -298,7 +303,13 @@ export function WorkOrderReceiptPanel({
               <select name='method' className='mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white' defaultValue='cash'>
                 <option value='cash'>Cash</option>
                 <option value='zelle'>Zelle</option>
+                <option value='cash_app'>Cash App</option>
                 <option value='venmo'>Venmo</option>
+                <option value='check'>Check</option>
+                <option value='bank_transfer'>Bank transfer</option>
+                <option value='external_card'>External card terminal</option>
+                <option value='apple_pay_personal'>Apple Pay received personally</option>
+                <option value='other'>Other</option>
                 <option value='check'>Check</option>
               </select>
             </label>

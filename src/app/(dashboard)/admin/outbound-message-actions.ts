@@ -304,3 +304,33 @@ export async function schedulePreviewedMessageAction(input: {
   });
   return { ok: true, scheduledId: res.id };
 }
+
+export async function sendPreviewedOwnerTestAction(input: {
+  subject?: string;
+  body: string;
+  contextLabel?: string;
+}): Promise<{ ok?: boolean; error?: string; destination?: string }> {
+  const gate = await requireStaffAdmin();
+  if (!gate) return { error: 'Unauthorized' };
+
+  const { resolveOwnerNotifyContact } = await import('@/lib/owner-contact');
+  const { resendConfigured, sendResendHtml } = await import('@/lib/email-send');
+  const { escapeEmailHtml, glossBossEmailLayout, sanitizeCustomerFacingCopy } = await import('@/lib/email/templates/layout');
+  const owner = await resolveOwnerNotifyContact(gate.admin);
+  if (!owner.email) return { error: 'No owner email is configured.' };
+  if (!resendConfigured()) return { error: 'Resend is not configured, so an owner test email cannot be sent.' };
+
+  const body = sanitizeCustomerFacingCopy(input.body);
+  const subject = `[TEST — NO CUSTOMER RECEIVED THIS] ${sanitizeCustomerFacingCopy(input.subject ?? 'Gloss Boss ATX message preview')}`.slice(0, 180);
+  const context = input.contextLabel ? `<p style="color:#71717a;font-size:12px">${escapeEmailHtml(input.contextLabel)}</p>` : '';
+  const sent = await sendResendHtml({
+    to: owner.email,
+    subject,
+    html: glossBossEmailLayout({
+      title: subject,
+      bodyHtml: `${context}<p style="color:#18181b;font-size:15px;line-height:1.6;white-space:pre-wrap">${escapeEmailHtml(body)}</p>`,
+    }),
+  });
+  if (!sent.ok) return { error: sent.error ?? 'Owner test email failed.' };
+  return { ok: true, destination: owner.email.replace(/(^.).*(@.*$)/, '$1***$2') };
+}

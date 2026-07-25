@@ -84,9 +84,11 @@ export async function createDepositCheckoutSession(params: {
       return { ok: false, error: 'Invalid access token' };
     }
 
-    const payStatus = String((appt as { payment_status?: string }).payment_status ?? '');
+    const payStatus = String((appt as { payment_status?: string }).payment_status ?? '').toLowerCase();
+    const appointmentStatus = String(appt.status ?? '').toLowerCase();
     const canCheckout =
-      appt.status === 'awaiting_payment' || payStatus === 'awaiting_deposit' || payStatus === 'pay_later';
+      !['cancelled', 'voided', 'deleted'].includes(appointmentStatus) &&
+      !['paid', 'full_paid', 'comped', 'manual_comped'].includes(payStatus);
     if (!canCheckout) {
       return { ok: false, error: 'Booking is not awaiting payment', code: 'INVALID_STATUS' };
     }
@@ -146,7 +148,7 @@ export async function createDepositCheckoutSession(params: {
             currency: 'usd',
             unit_amount: amountCents,
             product_data: {
-              name: isFullPay ? 'Gloss Boss ATX — Paid in full' : 'Gloss Boss ATX — Service deposit (30%)',
+              name: isFullPay ? 'Gloss Boss ATX — Paid in full' : 'Gloss Boss ATX — Service deposit',
               description: `${serviceName} · ${vehicleSummary}${serviceAddress ? ` · ${serviceAddress}` : ''}`.slice(0, 500),
             },
           },

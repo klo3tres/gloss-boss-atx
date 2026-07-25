@@ -33,6 +33,7 @@ import type { CreditHistoryItem, CreditRedemptionItem } from '@/components/admin
 import type { WeatherSnapshot } from '@/lib/weather-forecast';
 import { JobWeatherIndicator } from '@/components/weather/job-weather-indicator';
 import { WorkOrderAgreementPanel } from '@/components/tech/work-order-agreement-panel';
+import { WorkOrderDepositRequestModal } from '@/components/tech/work-order-deposit-request-modal';
 
 const DeferredWorkOrderPanel = () => <div className='h-40 animate-pulse rounded-2xl border border-white/5 bg-white/[0.03]' />;
 const WorkOrderLedgerPanel = dynamic(
@@ -119,6 +120,7 @@ export type WorkOrderConsoleData = {
   accessParking?: string;
   gateNotes?: string;
   paymentStatus: string;
+  calendarSyncStatus?: string;
   paymentComplete: boolean;
   agreementSigned: boolean;
   agreementStatus?: string;
@@ -321,6 +323,7 @@ export function WorkOrderConsoleClient({
   const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'payments' | 'receipt' | 'growth' | 'tools'>('overview');
   const [activeDrawer, setActiveDrawer] = useState<'customer' | 'vehicle' | 'loyalty' | 'notes' | 'advanced' | null>(null);
   const [isContactOpen, setIsContactOpen] = useState(false);
+  const [isDepositRequestOpen, setIsDepositRequestOpen] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
   const handleCopyAddress = () => {
@@ -560,16 +563,97 @@ export function WorkOrderConsoleClient({
         </div>
       </div>
 
-      {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
-        <WorkOrderConfirmationPanel
-          appointmentId={jobId}
-          guestName={data.guestName}
-          guestEmail={data.guestEmail}
-          guestPhone={data.guestPhone}
-          customerId={data.customerId}
-          initialStatus={data.confirmationStatus}
-        />
+      {canAdminOverride && !data.isFallback ? (
+        <section className='sticky top-[8.5rem] z-30 rounded-2xl border border-gold/25 bg-zinc-950/95 p-3 shadow-xl backdrop-blur-xl'>
+          <div className='flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none]'>
+            <button type='button' onClick={() => setIsDepositRequestOpen(true)} className='min-h-11 shrink-0 rounded-xl bg-gold px-5 text-xs font-black uppercase text-black'>
+              Request deposit
+            </button>
+            <button type='button' onClick={() => setActiveTab('payments')} className='min-h-11 shrink-0 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-black uppercase text-emerald-200'>
+              Mark payment
+            </button>
+            <button type='button' onClick={() => setIsContactOpen(true)} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'>
+              Contact customer
+            </button>
+            <button type='button' onClick={() => {
+              document.getElementById('wo-confirmation-panel')?.scrollIntoView({ behavior: 'smooth' });
+            }} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'>
+              Send confirmation
+            </button>
+            <button type='button' onClick={() => {
+              setActiveTab('overview');
+              setTimeout(() => document.getElementById('wo-preinspect')?.scrollIntoView({ behavior: 'smooth' }), 50);
+            }} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'>
+              Start job
+            </button>
+            <button type='button' onClick={() => {
+              const element = document.getElementById('wo-schedule-panel');
+              element?.scrollIntoView({ behavior: 'smooth' });
+            }} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'>
+              Edit appointment
+            </button>
+            <button type='button' onClick={() => setActiveTab('receipt')} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'>
+              Invoice & receipt
+            </button>
+            {data.accessToken ? (
+              <a
+                href={`/book/confirmation?appointment_id=${encodeURIComponent(data.canonicalId)}&token=${encodeURIComponent(data.accessToken)}`}
+                target='_blank'
+                rel='noreferrer'
+                className='inline-flex min-h-11 shrink-0 items-center rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-200'
+              >
+                Open customer experience
+              </a>
+            ) : null}
+            <button type='button' onClick={() => setActiveDrawer('advanced')} className='min-h-11 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-black uppercase text-zinc-400'>
+              More actions
+            </button>
+          </div>
+        </section>
       ) : null}
+
+      <section className='grid gap-2 rounded-2xl border border-white/10 bg-black/35 p-3 sm:grid-cols-2 lg:grid-cols-4'>
+        {[
+          ['Service address', data.fullAddress || 'Not set'],
+          ['Services', data.serviceLabel],
+          ['Final total', data.finalTotal || data.baseSubtotal],
+          ['Deposit required', data.depositRequired || data.depositOnFile || '$0.00'],
+          ['Amount paid', data.totalPaid || '$0.00'],
+          ['Acknowledgment', data.agreementSigned ? 'Completed' : 'Required'],
+          ['Confirmation', data.confirmationStatus
+            ? data.confirmationStatus.sms.status === 'sent' || data.confirmationStatus.email.status === 'sent'
+              ? 'Sent'
+              : 'Not sent'
+            : data.statusLabel],
+          ['Calendar sync', (data.calendarSyncStatus || 'Not connected').replace(/_/g, ' ')],
+        ].map(([label, value]) => (
+          <div key={label} className='rounded-xl border border-white/5 bg-zinc-950/60 px-3 py-2'>
+            <p className='text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500'>{label}</p>
+            <p className='mt-1 truncate text-xs font-bold capitalize text-zinc-200'>{value}</p>
+          </div>
+        ))}
+      </section>
+
+      {canAdminOverride && !data.isFallback && data.source === 'appointment' ? (
+        <div id='wo-confirmation-panel' className='scroll-mt-36'>
+          <WorkOrderConfirmationPanel
+            appointmentId={jobId}
+            guestName={data.guestName}
+            guestEmail={data.guestEmail}
+            guestPhone={data.guestPhone}
+            customerId={data.customerId}
+            initialStatus={data.confirmationStatus}
+          />
+        </div>
+      ) : null}
+
+      <WorkOrderDepositRequestModal
+        open={isDepositRequestOpen}
+        appointmentId={data.canonicalId}
+        receiptPdfHref={data.receiptPdfHref}
+        onClose={() => setIsDepositRequestOpen(false)}
+        onUpdated={() => {}}
+      />
 
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-6'>
         {[
@@ -768,7 +852,7 @@ export function WorkOrderConsoleClient({
                 className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-2xl border border-white/5 bg-zinc-950/40 hover:border-gold/30 hover:bg-gold/5 transition duration-200"
               >
                 <PhoneCall className="h-5 w-5 text-gold-soft" />
-                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact Client</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Contact customer</span>
               </button>
 
               {/* Customer Profile Drawer */}

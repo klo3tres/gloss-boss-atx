@@ -5,6 +5,7 @@ import { MessagePreviewModal } from '@/components/admin/message-preview-modal';
 import type { MessageTone } from '@/lib/outbound-message-tones';
 import {
   schedulePreviewedMessageAction,
+  sendPreviewedOwnerTestAction,
   sendPreviewedEmailAction,
   sendPreviewedSmsAction,
 } from '@/app/(dashboard)/admin/outbound-message-actions';
@@ -14,6 +15,7 @@ export type OutboundPreviewConfig = {
   channel: 'sms' | 'email';
   channelOptions?: Array<'sms' | 'email'>;
   recipient: string;
+  recipients?: Partial<Record<'sms' | 'email', string>>;
   body: string;
   subject?: string;
   contextLabel?: string;
@@ -21,6 +23,7 @@ export type OutboundPreviewConfig = {
   priceCents?: number;
   durationMinutes?: number;
   allowSchedule?: boolean;
+  allowOwnerTest?: boolean;
   sendLabel?: string;
   kind?: string;
   appointmentId?: string;
@@ -44,6 +47,7 @@ export type OutboundPreviewConfig = {
     };
   }>;
   onSchedule?: (final: { body: string; subject?: string; channel: 'sms' | 'email'; scheduledFor: string; tone: MessageTone }) => Promise<{ ok?: boolean; error?: string }>;
+  onSendBoth?: (final: { body: string; subject?: string; tone: MessageTone }) => Promise<{ ok?: boolean; error?: string }>;
 };
 
 type Ctx = {
@@ -70,10 +74,12 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
 
   const defaultOnSend = async (final: { body: string; subject?: string; channel: 'sms' | 'email'; tone: MessageTone }) => {
     if (!config) return { error: 'No config' };
+    const recipient = config.recipients?.[final.channel] ?? config.recipient;
+    if (!recipient) return { error: `No ${final.channel === 'sms' ? 'phone number' : 'email address'} is available for this customer.` };
     const kind = config.kind ?? `manual_${final.channel}`;
     if (final.channel === 'sms') {
       return sendPreviewedSmsAction({
-        to: config.recipient,
+        to: recipient,
         body: final.body,
         kind,
         appointmentId: config.appointmentId,
@@ -84,7 +90,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
       });
     }
     return sendPreviewedEmailAction({
-      to: config.recipient,
+      to: recipient,
       subject: final.subject ?? config.subject ?? 'Gloss Boss ATX',
       body: final.body,
       kind,
@@ -104,9 +110,11 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
     tone: MessageTone;
   }) => {
     if (!config) return { error: 'No config' };
+    const recipient = config.recipients?.[final.channel] ?? config.recipient;
+    if (!recipient) return { error: `No ${final.channel === 'sms' ? 'phone number' : 'email address'} is available for this customer.` };
     return schedulePreviewedMessageAction({
       channel: final.channel,
-      to: config.recipient,
+      to: recipient,
       body: final.body,
       subject: final.subject ?? config.subject,
       kind: config.kind ?? `scheduled_${final.channel}`,
@@ -120,6 +128,14 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const defaultOnSendBoth = async (final: { body: string; subject?: string; tone: MessageTone }) => {
+    const sms = await defaultOnSend({ ...final, channel: 'sms' });
+    if (sms.error) return { error: `SMS was not sent: ${sms.error}` };
+    const email = await defaultOnSend({ ...final, channel: 'email' });
+    if (email.error) return { error: `SMS sent, but email failed: ${email.error}` };
+    return { ok: true };
+  };
+
   return (
     <OutboundMessageContext.Provider value={value}>
       {children}
@@ -130,6 +146,7 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
           channel={config.channel}
           channelOptions={config.channelOptions}
           recipient={config.recipient}
+          recipients={config.recipients}
           body={config.body}
           subject={config.subject}
           contextLabel={config.contextLabel}
@@ -172,6 +189,29 @@ export function OutboundMessageProvider({ children }: { children: ReactNode }) {
               })
               .finally(() => setBusy(false));
           }}
+          onSendBoth={config.recipients?.sms && config.recipients?.email ? (final) => {
+            setBusy(true);
+            const handler = config.onSendBoth ?? defaultOnSendBoth;
+            void handler(final)
+              .then((res) => {
+                if (res.error) setToast(res.error);
+                else {
+                  setConfig(null);
+                  setToast('SMS and email sent.');
+                }
+              })
+              .finally(() => setBusy(false));
+          } : undefined}
+          onTest={config.allowOwnerTest ? (final) => {
+            setBusy(true);
+            void sendPreviewedOwnerTestAction({
+              body: final.body,
+              subject: final.subject ?? config.subject,
+              contextLabel: config.contextLabel,
+            })
+              .then((res) => setToast(res.error ?? `Test sent to ${res.destination ?? 'owner'}.`))
+              .finally(() => setBusy(false));
+          } : undefined}
         />
       ) : null}
       {toast ? (

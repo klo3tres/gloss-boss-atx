@@ -19,7 +19,8 @@ export type JobTimelineEventType =
   | 'technician_acknowledged'
   | 'technician_arrived'
   | 'running_late'
-  | 'payment_link_clicked';
+  | 'payment_link_clicked'
+  | 'deposit_requested';
 
 /**
  * Best-effort audit log — never throws; ignores schema drift.
