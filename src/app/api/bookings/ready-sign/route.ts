@@ -7,6 +7,8 @@ import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 const APPT_SELECT =
   'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, vehicle_id, stripe_checkout_session_id, payment_status';
+const APPT_SELECT_COMPAT =
+  'id, access_token, status, guest_name, guest_email, guest_phone, vehicle_description, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, assigned_technician_id, customer_id, stripe_checkout_session_id, payment_status';
 
 const FB_SELECT =
   'id, status, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_slug, vehicle_class, base_price_cents, deposit_amount_cents, scheduled_start, service_address, service_city, service_state, service_zip, service_address_notes, assigned_technician_id, customer_id, payload, stripe_checkout_session_id, payment_status, access_token';
@@ -17,6 +19,13 @@ function str(v: unknown) {
 
 function apptFromFallback(fb: Record<string, unknown>, fallbackId: string): Record<string, unknown> {
   return { ...fb, id: '', fallback_booking_id: fallbackId, access_token: fb.access_token ?? '' };
+}
+
+async function loadAppointment(admin: NonNullable<ReturnType<typeof tryCreateAdminSupabase>>, appointmentId: string) {
+  const primary = await admin.from('appointments').select(APPT_SELECT).eq('id', appointmentId).maybeSingle();
+  if (!primary.error) return (primary.data as Record<string, unknown> | null) ?? null;
+  const compat = await admin.from('appointments').select(APPT_SELECT_COMPAT).eq('id', appointmentId).maybeSingle();
+  return (compat.data as Record<string, unknown> | null) ?? null;
 }
 
 export async function GET(request: Request) {
@@ -93,8 +102,7 @@ export async function GET(request: Request) {
         appt = apptFromFallback(fb as Record<string, unknown>, resolvedFallbackId);
       }
     } else if (appointmentId) {
-      const { data } = await admin.from('appointments').select(APPT_SELECT).eq('id', appointmentId).maybeSingle();
-      appt = (data as Record<string, unknown> | null) ?? null;
+      appt = await loadAppointment(admin, appointmentId);
     } else if (customerId) {
       const { data } = await admin.from('appointments').select(APPT_SELECT).eq('customer_id', customerId).order('created_at', { ascending: false }).limit(1).maybeSingle();
       appt = (data as Record<string, unknown> | null) ?? null;
