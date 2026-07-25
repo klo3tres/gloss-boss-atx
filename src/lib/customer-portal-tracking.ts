@@ -133,6 +133,7 @@ export async function recordCustomerPortalEvent(
     method: input.method,
   });
   let counted = classification.counted && input.eventType !== 'portal_rendered';
+  let duplicateNavigation = false;
 
   // A browser retry or redirect loop is one customer action, not dozens of clicks.
   if (counted) {
@@ -145,13 +146,19 @@ export async function recordCustomerPortalEvent(
       .eq('token_fingerprint', portalTokenFingerprint(str(input.token)))
       .eq('counted', true)
       .gte('occurred_at', since);
-    if (!error && (count ?? 0) > 0) counted = false;
+    if (!error && (count ?? 0) > 0) {
+      counted = false;
+      duplicateNavigation = true;
+    }
   }
 
+  const exclusionReason =
+    classification.exclusionReason ||
+    (input.eventType === 'portal_rendered' ? 'server_render_only' : null) ||
+    (duplicateNavigation ? 'duplicate_navigation' : null);
   const metadata = {
     ...(input.metadata ?? {}),
-    ...(classification.exclusionReason ? { exclusion_reason: classification.exclusionReason } : {}),
-    ...(!classification.exclusionReason && !counted ? { exclusion_reason: 'duplicate_navigation' } : {}),
+    ...(exclusionReason ? { exclusion_reason: exclusionReason } : {}),
   };
   const args = {
     p_appointment_id: input.appointmentId,
@@ -178,7 +185,6 @@ export async function recordCustomerPortalEvent(
   }
   return {
     counted,
-    exclusionReason:
-      classification.exclusionReason || (!counted ? 'duplicate_navigation' : null),
+    exclusionReason,
   };
 }
