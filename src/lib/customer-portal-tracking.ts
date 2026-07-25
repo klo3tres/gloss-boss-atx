@@ -4,6 +4,7 @@ import { isStaffRole, type AppRole } from '@/lib/auth/roles';
 
 export type PortalEventType =
   | 'admin_preview_opened'
+  | 'portal_rendered'
   | 'portal_opened'
   | 'acknowledgement_started'
   | 'payment_page_opened'
@@ -131,7 +132,7 @@ export async function recordCustomerPortalEvent(
     adminPreview: input.adminPreview,
     method: input.method,
   });
-  let counted = classification.counted;
+  let counted = classification.counted && input.eventType !== 'portal_rendered';
 
   // A browser retry or redirect loop is one customer action, not dozens of clicks.
   if (counted) {

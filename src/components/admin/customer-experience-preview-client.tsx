@@ -14,7 +14,19 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { repairCustomerAccountLinkageAction } from '@/app/(dashboard)/admin/customer-preview/[id]/actions';
+import {
+  cleanupCustomerQaCloneAction,
+  createCustomerQaCloneAction,
+  repairCustomerAccountLinkageAction,
+} from '@/app/(dashboard)/admin/customer-preview/[id]/actions';
+import {
+  getCustomerPortalLinkAction,
+  regenerateCustomerPortalLinkAction,
+} from '@/app/(dashboard)/admin/confirmation-actions';
+import {
+  BookingConfirmationExperience,
+  type BookingConfirmationSummary,
+} from '@/components/booking/booking-confirmation-experience';
 import type {
   CustomerExperienceDiagnostics,
   DiagnosticCheck,
@@ -42,21 +54,30 @@ function checkIcon(status: DiagnosticCheck['status']) {
 
 export function CustomerExperiencePreviewClient({
   diagnostics,
+  customerSummary,
+  privatePreviewUrl,
 }: {
   diagnostics: CustomerExperienceDiagnostics;
+  customerSummary: BookingConfirmationSummary;
+  privatePreviewUrl: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [tab, setTab] = useState<'view' | 'diagnostics' | 'timeline'>('view');
   const [simulation, setSimulation] = useState(false);
+  const [modeChooserOpen, setModeChooserOpen] = useState(false);
+  const [liveWarningOpen, setLiveWarningOpen] = useState(false);
+  const [qaClone, setQaClone] = useState<{ id: string; url: string } | null>(null);
   const [simAcknowledged, setSimAcknowledged] = useState(diagnostics.summary.acknowledgementCompleted);
   const [simPaid, setSimPaid] = useState(diagnostics.summary.depositPaidCents >= diagnostics.summary.depositCents);
   const [simAccount, setSimAccount] = useState(false);
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(diagnostics.portalUrl);
+      const result = await getCustomerPortalLinkAction(diagnostics.appointmentId);
+      if (!result.portalUrl) throw new Error(result.error || 'Link unavailable');
+      await navigator.clipboard.writeText(result.portalUrl);
       toast.success('Copied', 'Active customer link copied without changing tracking.');
     } catch {
       toast.error('Copy failed', 'The active link could not be copied.');
@@ -69,6 +90,62 @@ export function CustomerExperiencePreviewClient({
       if (result.error) toast.error('Repair stopped', result.error);
       else {
         toast.success('Customer linkage repaired', result.message ?? 'Safe repair completed.');
+        router.refresh();
+      }
+    });
+  };
+
+  const createQaClone = () => {
+    startTransition(async () => {
+      const result = await createCustomerQaCloneAction(diagnostics.appointmentId);
+      if (result.error || !result.cloneId || !result.previewUrl) {
+        toast.error('QA clone unavailable', result.error ?? 'The QA clone could not be created.');
+        return;
+      }
+      setQaClone({ id: result.cloneId, url: result.previewUrl });
+      setModeChooserOpen(false);
+      toast.success('QA clone ready', 'Opening an isolated test work order in a new tab.');
+      window.open(result.previewUrl, '_blank', 'noopener,noreferrer');
+    });
+  };
+
+  const cleanupQaClone = () => {
+    if (!qaClone) return;
+    startTransition(async () => {
+      const result = await cleanupCustomerQaCloneAction(qaClone.id);
+      if (result.error) toast.error('Cleanup stopped', result.error);
+      else {
+        setQaClone(null);
+        toast.success('QA clone removed', result.message ?? 'Test data cleaned up.');
+      }
+    });
+  };
+
+  const prepareLiveCustomerFlow = async () => {
+    const result = await getCustomerPortalLinkAction(diagnostics.appointmentId);
+    if (!result.portalUrl) {
+      toast.error('Live link unavailable', result.error ?? 'Could not load the link.');
+      return;
+    }
+    await navigator.clipboard.writeText(result.portalUrl);
+    setLiveWarningOpen(false);
+    toast.warning('Live link copied', 'Open it only in a signed-out private browser. Real customer state may change.');
+  };
+
+  const openSimulationState = (state: 'acknowledgement' | 'payment' | 'confirmation') => {
+    setSimulation(true);
+    setSimAcknowledged(state !== 'acknowledgement');
+    setSimPaid(state === 'confirmation');
+    setTab('view');
+  };
+
+  const regenerateLiveLink = () => {
+    if (!window.confirm('Production state changing: replace the live customer token? No message will be sent.')) return;
+    startTransition(async () => {
+      const result = await regenerateCustomerPortalLinkAction(diagnostics.appointmentId);
+      if (result.error) toast.error('Link not regenerated', result.error);
+      else {
+        toast.success('Live link regenerated', 'The old token was replaced. No message was sent.');
         router.refresh();
       }
     });
@@ -95,14 +172,11 @@ export function CustomerExperiencePreviewClient({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setSimulation((value) => !value);
-                  setTab('view');
-                }}
+                onClick={() => setModeChooserOpen(true)}
                 className="inline-flex items-center gap-2 rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-100"
               >
                 <FlaskConical className="h-4 w-4" />
-                {simulation ? 'Exit simulation' : 'Test interactive flow'}
+                {simulation ? 'Change test mode' : 'Test interactive flow'}
               </button>
               <button
                 type="button"
@@ -112,7 +186,7 @@ export function CustomerExperiencePreviewClient({
                 <Copy className="h-4 w-4" /> Copy customer link
               </button>
               <a
-                href={diagnostics.customerViewUrl}
+                href={privatePreviewUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs font-bold text-zinc-200"
@@ -161,6 +235,78 @@ export function CustomerExperiencePreviewClient({
           </nav>
         </header>
 
+        {modeChooserOpen ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+            <section className="w-full max-w-2xl rounded-3xl border border-white/15 bg-zinc-950 p-5 shadow-2xl sm:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-violet-200">Test interactive flow</p>
+                  <h2 className="mt-2 text-2xl font-black text-white">Choose the safety level</h2>
+                </div>
+                <button type="button" onClick={() => setModeChooserOpen(false)} className="rounded-xl border border-white/15 p-2 text-zinc-300" aria-label="Close test choices"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="mt-6 grid gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimulation(true);
+                    setTab('view');
+                    setModeChooserOpen(false);
+                  }}
+                  className="rounded-2xl border border-violet-400/35 bg-violet-500/10 p-5 text-left"
+                >
+                  <span className="text-xs font-black uppercase text-violet-200">A · Simulated · Default</span>
+                  <p className="mt-2 font-bold text-white">Click through every state without database, Stripe, reward, or customer changes.</p>
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={createQaClone}
+                  className="rounded-2xl border border-sky-400/35 bg-sky-500/10 p-5 text-left disabled:opacity-50"
+                >
+                  <span className="text-xs font-black uppercase text-sky-200">B · Controlled QA clone · QA only</span>
+                  <p className="mt-2 font-bold text-white">Create an isolated test work order for real acknowledgment and test-mode checkout when available. Auto-expires after 24 hours.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModeChooserOpen(false);
+                    setLiveWarningOpen(true);
+                  }}
+                  className="rounded-2xl border border-rose-400/35 bg-rose-500/10 p-5 text-left"
+                >
+                  <span className="text-xs font-black uppercase text-rose-200">C · Live customer flow · Production state changing</span>
+                  <p className="mt-2 font-bold text-white">Use the actual customer link. A second warning is required and real state may change.</p>
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {liveWarningOpen ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+            <section className="w-full max-w-lg rounded-3xl border border-rose-400/35 bg-zinc-950 p-6 text-center shadow-2xl">
+              <AlertTriangle className="mx-auto h-9 w-9 text-rose-300" />
+              <h2 className="mt-4 text-2xl font-black text-white">Live customer state can change</h2>
+              <p className="mt-3 text-sm text-zinc-300">Acknowledgment, Stripe checkout, account claim, rewards, and analytics may affect the real booking. The link will be copied for a signed-out private browser.</p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => setLiveWarningOpen(false)} className="rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-zinc-300">Cancel</button>
+                <button type="button" onClick={() => void prepareLiveCustomerFlow()} className="rounded-xl bg-rose-500 px-4 py-3 text-sm font-black uppercase text-white">I understand · copy live link</button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {qaClone ? (
+          <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 text-sm text-sky-100 sm:mx-6">
+            <span>Controlled QA clone active · excluded from revenue, reminders, campaigns, and customer communication.</span>
+            <div className="flex gap-2">
+              <a href={qaClone.url} target="_blank" rel="noreferrer" className="rounded-lg bg-sky-500 px-3 py-2 text-xs font-black uppercase text-white">Open QA clone</a>
+              <button type="button" disabled={pending} onClick={cleanupQaClone} className="rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-black uppercase">Clean up</button>
+            </div>
+          </div>
+        ) : null}
+
         {tab === 'view' ? (
           <div className="p-3 sm:p-6">
             {simulation ? (
@@ -191,6 +337,16 @@ export function CustomerExperiencePreviewClient({
                   <div className="rounded-2xl border border-white/10 p-4 text-sm text-zinc-300">Deposit: {simPaid ? 'Paid' : 'Due'}</div>
                   <div className="rounded-2xl border border-white/10 p-4 text-sm text-zinc-300">Account: {simAccount ? 'Claimed' : 'Optional'}</div>
                 </div>
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-zinc-300">What production would do</p>
+                  <ul className="mt-3 space-y-2 text-sm text-zinc-400">
+                    <li>{simAcknowledged ? '✓' : 'Next'} · Save one signed agreement and return to this booking session.</li>
+                    <li>{simPaid ? '✓' : simAcknowledged ? 'Next' : 'Then'} · Create or refresh a secure Stripe checkout for {money(diagnostics.summary.depositCents)}.</li>
+                    <li>{simPaid ? 'Then' : 'Later'} · Record the payment, advance to confirmation, and keep {money(Math.max(0, diagnostics.summary.finalTotalCents - diagnostics.summary.depositCents))} as remaining balance.</li>
+                    <li>{simAccount ? '✓' : 'Optional'} · Link the existing customer, vehicle, referral code, loyalty, and reward wallet to the new login.</li>
+                  </ul>
+                  <p className="mt-3 text-xs text-violet-200">Expected redirect: this same canonical booking session, resolving the next required state.</p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -203,16 +359,14 @@ export function CustomerExperiencePreviewClient({
                   Reset simulation
                 </button>
               </div>
-            ) : diagnostics.customerViewUrl ? (
-              <iframe
-                title="Exact customer confirmation preview"
-                src={diagnostics.customerViewUrl}
-                className="h-[calc(100vh-13rem)] min-h-[680px] w-full rounded-2xl border border-white/10 bg-black"
-              />
             ) : (
-              <p className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5 text-rose-100">
-                A secure token is required before the customer view can load.
-              </p>
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <BookingConfirmationExperience
+                  appointmentId={diagnostics.appointmentId}
+                  initialSummary={customerSummary}
+                  previewMode
+                />
+              </div>
             )}
           </div>
         ) : null}
@@ -231,6 +385,21 @@ export function CustomerExperiencePreviewClient({
                   <RefreshCw className={`h-4 w-4 ${pending ? 'animate-spin' : ''}`} /> Verify again
                 </button>
               </div>
+              <section className="rounded-3xl border border-white/10 bg-black/35 p-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-300">Owner QA actions</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => router.refresh()} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Verify active link</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={() => { setSimulation(false); setTab('view'); }} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Open exact guest view</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={() => openSimulationState('acknowledgement')} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Preview acknowledgment</b><span className="mt-1 block text-[10px] uppercase text-violet-300">Simulated</span></button>
+                  <button type="button" onClick={() => openSimulationState('payment')} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Preview deposit page</b><span className="mt-1 block text-[10px] uppercase text-violet-300">Simulated</span></button>
+                  <button type="button" onClick={() => toast.success('Deposit verified', `${money(diagnostics.summary.depositCents)} required · ${money(diagnostics.summary.depositPaidCents)} paid.`)} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Verify deposit and paid amount</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={() => toast.success('Next step verified', diagnostics.summary.nextStep)} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Verify next step</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={() => toast.success('Account claim', diagnostics.checks.find((check) => check.key === 'account')?.detail ?? 'Verified.')} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Verify account claim</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={() => toast.success('Rewards and referral', `${diagnostics.rewards.loyaltyPunches} punches · referral ${diagnostics.rewards.referralCodeReady ? 'ready' : 'not ready'}.`)} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Verify loyalty, reward, referral</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                  <button type="button" onClick={regenerateLiveLink} className="rounded-xl border border-amber-400/25 p-3 text-left text-xs text-amber-100"><b>Regenerate live link</b><span className="mt-1 block text-[10px] uppercase text-amber-300">Production state changing</span></button>
+                  <button type="button" onClick={() => { setSimulation(false); setTab('view'); }} className="rounded-xl border border-white/10 p-3 text-left text-xs text-zinc-200"><b>Preview updated confirmation</b><span className="mt-1 block text-[10px] uppercase text-emerald-300">Read only</span></button>
+                </div>
+              </section>
               {diagnostics.checks.map((check) => (
                 <div key={check.key} className="flex gap-3 rounded-2xl border border-white/10 bg-black/35 p-4">
                   {checkIcon(check.status)}
@@ -267,19 +436,30 @@ export function CustomerExperiencePreviewClient({
               </section>
 
               <section className="rounded-3xl border border-white/10 bg-black/35 p-5">
-                <h2 className="text-xs font-black uppercase tracking-widest text-zinc-300">Portal tracking</h2>
+                <h2 className="text-xs font-black uppercase tracking-widest text-zinc-300">Customer link activity</h2>
                 <dl className="mt-4 space-y-2 text-xs text-zinc-400">
                   <div className="flex justify-between gap-3"><dt>Link created</dt><dd>{when(diagnostics.tracking.createdAt)}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Last regenerated</dt><dd>{when(diagnostics.tracking.regeneratedAt)}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Message last sent</dt><dd>{when(diagnostics.tracking.lastSentAt)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Customer first opened</dt><dd>{when(diagnostics.tracking.firstOpenedAt)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Customer last opened</dt><dd>{when(diagnostics.tracking.lastOpenedAt)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Counted opens</dt><dd>{diagnostics.tracking.openCount}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>SMS delivered</dt><dd>{when(diagnostics.tracking.smsDeliveredAt)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Email delivered</dt><dd>{when(diagnostics.tracking.emailDeliveredAt)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Customer first viewed</dt><dd>{when(diagnostics.tracking.firstOpenedAt)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Customer last viewed</dt><dd>{when(diagnostics.tracking.lastOpenedAt)}</dd></div>
+                  <div className="flex justify-between gap-3 font-bold text-white"><dt>Valid customer views</dt><dd>{diagnostics.tracking.openCount}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Admin previews</dt><dd>{diagnostics.tracking.adminPreviewCount}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Automated scans ignored</dt><dd>{diagnostics.tracking.automatedIgnoredCount}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Acknowledgement started</dt><dd>{when(diagnostics.tracking.acknowledgementStartedAt)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Acknowledgement completed</dt><dd>{when(diagnostics.tracking.acknowledgementCompletedAt)}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Payment page opened</dt><dd>{when(diagnostics.tracking.paymentPageOpenedAt)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt>Deposit paid</dt><dd>{when(diagnostics.tracking.depositPaidAt)}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Account claim started</dt><dd>{when(diagnostics.tracking.accountClaimStartedAt)}</dd></div>
                   <div className="flex justify-between gap-3"><dt>Account created</dt><dd>{when(diagnostics.tracking.accountCreatedAt)}</dd></div>
                 </dl>
+                {diagnostics.tracking.automatedIgnoredCount > 0 ? (
+                  <p className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs text-amber-100">
+                    Possible automated link preview — not counted as a customer view.
+                  </p>
+                ) : null}
               </section>
 
               <section className="rounded-3xl border border-white/10 bg-black/35 p-5">

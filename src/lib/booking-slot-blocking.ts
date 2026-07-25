@@ -88,18 +88,20 @@ export async function fetchBookedBlocks(
 
   const { data: appts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test')
     .gte('scheduled_start', rangeStartIso)
     .lte('scheduled_start', rangeEndIso)
     .is('archived_at', null)
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    .eq('is_test', false);
 
   const { data: activeAppts } = await admin
     .from('appointments')
-    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override')
+    .select('id, scheduled_start, estimated_end, estimated_duration_minutes, service_slug, vehicle_class, booking_vehicles, status, payment_status, created_at, updated_at, archived_at, deleted_at, schedule_override, is_test')
     .in('status', ['in_progress', 'assigned', 'confirmed', 'deposit_paid', 'paid_in_full'])
     .is('archived_at', null)
     .is('deleted_at', null)
+    .eq('is_test', false)
     .lt('scheduled_start', rangeEndIso);
 
   for (const row of activeAppts ?? []) {

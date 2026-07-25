@@ -5,6 +5,7 @@ import { recordCustomerPortalEvent, type PortalEventType } from '@/lib/customer-
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 const allowed = new Set<PortalEventType>([
+  'portal_opened',
   'acknowledgement_started',
   'payment_page_opened',
   'account_claim_started',
@@ -15,6 +16,9 @@ export async function POST(request: Request) {
     appointmentId?: string;
     token?: string;
     eventType?: PortalEventType;
+    viewId?: string;
+    dwellMs?: number;
+    visibilityState?: string;
   } | null;
   const appointmentId = String(body?.appointmentId ?? '').trim();
   const token = String(body?.token ?? '').trim();
@@ -42,6 +46,14 @@ export async function POST(request: Request) {
     role: session.profile?.role,
     method: request.method,
     channelSource: 'customer_booking_session',
+    metadata: eventType === 'portal_opened'
+      ? {
+          interaction_confirmed: true,
+          view_id: String(body?.viewId ?? '').slice(0, 80) || null,
+          dwell_ms: Math.max(0, Math.min(10_000, Number(body?.dwellMs ?? 0))),
+          visibility_state: String(body?.visibilityState ?? '').slice(0, 20),
+        }
+      : undefined,
   });
   return NextResponse.json({ ok: true, counted: result.counted });
 }

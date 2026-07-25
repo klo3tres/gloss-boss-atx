@@ -3,8 +3,10 @@ import { notFound, redirect } from 'next/navigation';
 import { CustomerExperiencePreviewClient } from '@/components/admin/customer-experience-preview-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isAdminLevel } from '@/lib/auth/roles';
+import { loadBookingConfirmationSummary } from '@/lib/booking-confirmation-summary';
 import { loadCustomerExperienceDiagnostics } from '@/lib/customer-experience-diagnostics';
 import { recordCustomerPortalEvent } from '@/lib/customer-portal-tracking';
+import { createOwnerPreviewToken } from '@/lib/owner-preview-token';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +23,15 @@ export default async function CustomerPreviewPage({
   if (!admin) throw new Error('Customer preview is temporarily unavailable.');
 
   const { id } = await params;
-  const diagnostics = await loadCustomerExperienceDiagnostics(admin, id);
-  if (!diagnostics) notFound();
+  const [diagnostics, customerSummary, tokenResult] = await Promise.all([
+    loadCustomerExperienceDiagnostics(admin, id),
+    loadBookingConfirmationSummary(admin, id),
+    admin.from('appointments').select('access_token').eq('id', id).maybeSingle(),
+  ]);
+  if (!diagnostics || !customerSummary) notFound();
 
   const requestHeaders = await headers();
-  const token = diagnostics.portalUrl
-    ? new URL(diagnostics.portalUrl).searchParams.get('token')
-    : '';
+  const token = String(tokenResult.data?.access_token ?? '');
   await recordCustomerPortalEvent(admin, {
     appointmentId: id,
     token,
@@ -38,5 +42,15 @@ export default async function CustomerPreviewPage({
     channelSource: 'owner_qa_toolkit',
   });
 
-  return <CustomerExperiencePreviewClient diagnostics={diagnostics} />;
+  const privatePreviewToken = createOwnerPreviewToken({
+    appointmentId: id,
+    ownerUserId: session.user.id,
+  });
+  return (
+    <CustomerExperiencePreviewClient
+      diagnostics={diagnostics}
+      customerSummary={customerSummary}
+      privatePreviewUrl={`/admin/customer-preview-session/${encodeURIComponent(privatePreviewToken)}`}
+    />
+  );
 }

@@ -1,9 +1,11 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { PortalJobGateClient } from '@/components/portal/portal-job-gate-client';
+import { BookingConfirmationExperience } from '@/components/booking/booking-confirmation-experience';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { recordCustomerPortalEvent } from '@/lib/customer-portal-tracking';
+import { loadBookingConfirmationSummary } from '@/lib/booking-confirmation-summary';
 import {
   claimPortalAppointmentForUser,
   isPortalAccessExpired,
@@ -110,7 +112,7 @@ export default async function PortalJobPage({ searchParams }: Props) {
         appointmentId,
         customerId: claim.customerId ?? loaded.ctx.customerId,
         token,
-        eventType: 'portal_opened',
+        eventType: 'portal_rendered',
         headers: requestHeaders,
         role: session.profile?.role,
         channelSource: str(sp.source) || 'secure_portal_link',
@@ -134,11 +136,23 @@ export default async function PortalJobPage({ searchParams }: Props) {
       appointmentId,
       customerId: loaded.ctx.customerId,
       token,
-      eventType: 'portal_opened',
+      eventType: 'portal_rendered',
       headers: requestHeaders,
       role: session.profile?.role,
       channelSource: str(sp.source) || 'secure_portal_link',
     });
+  }
+
+  if (!accountAccessNotice) {
+    const customerSummary = await loadBookingConfirmationSummary(admin, appointmentId);
+    if (customerSummary) {
+      return (
+        <BookingConfirmationExperience
+          appointmentId={appointmentId}
+          initialSummary={customerSummary}
+        />
+      );
+    }
   }
 
   const { data: job } = await admin

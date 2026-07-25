@@ -223,9 +223,10 @@ export async function syncFollowUpQueue(admin: SupabaseClient): Promise<number> 
   const { data: apptRows } = await admin
     .from('appointments')
     .select(
-      'id, status, guest_name, guest_email, guest_phone, customer_id, vehicle_description, scheduled_start, job_completed_at, updated_at',
+      'id, status, guest_name, guest_email, guest_phone, customer_id, vehicle_description, scheduled_start, job_completed_at, updated_at, is_test',
     )
     .gte('scheduled_start', since)
+    .eq('is_test', false)
     .limit(5000);
 
   const rows = (apptRows ?? []) as Record<string, unknown>[];
@@ -288,8 +289,9 @@ export async function cancelFollowUpsForRebookedCustomers(admin: SupabaseClient)
   const since = new Date(Date.now() - 400 * 86400000).toISOString();
   const { data: apptRows } = await admin
     .from('appointments')
-    .select('guest_email, guest_phone, scheduled_start, status')
+    .select('guest_email, guest_phone, scheduled_start, status, is_test')
     .gte('scheduled_start', since)
+    .eq('is_test', false)
     .limit(5000);
 
   const rows = (apptRows ?? []) as Record<string, unknown>[];

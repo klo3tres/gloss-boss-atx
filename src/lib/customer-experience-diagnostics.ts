@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
-import { buildCustomerPortalAccessUrl, isPortalAccessExpired } from '@/lib/customer-portal-access';
+import { isPortalAccessExpired } from '@/lib/customer-portal-access';
+import { getStripeKeyHealth } from '@/lib/stripe/key-health';
 
 function str(value: unknown) {
   return value == null ? '' : String(value).trim();
@@ -21,8 +22,6 @@ export type CustomerExperienceDiagnostics = {
   appointmentId: string;
   overall: 'Valid' | 'Recoverable' | 'Repair required';
   checks: DiagnosticCheck[];
-  customerViewUrl: string;
-  portalUrl: string;
   summary: {
     scheduledStart: string;
     status: string;
@@ -38,13 +37,19 @@ export type CustomerExperienceDiagnostics = {
     createdAt: string | null;
     regeneratedAt: string | null;
     lastSentAt: string | null;
+    smsDeliveredAt: string | null;
+    emailDeliveredAt: string | null;
     firstOpenedAt: string | null;
     lastOpenedAt: string | null;
     openCount: number;
     acknowledgementStartedAt: string | null;
+    acknowledgementCompletedAt: string | null;
     paymentPageOpenedAt: string | null;
+    depositPaidAt: string | null;
     accountClaimStartedAt: string | null;
     accountCreatedAt: string | null;
+    adminPreviewCount: number;
+    automatedIgnoredCount: number;
   };
   rewards: {
     loyaltyPunches: number;
@@ -71,7 +76,7 @@ export async function loadCustomerExperienceDiagnostics(
   const { data: appointment } = await admin
     .from('appointments')
     .select(
-      'id, customer_id, access_token, status, scheduled_start, portal_access_expires_at, portal_link_revoked_at, portal_link_created_at, portal_link_last_regenerated_at, portal_link_last_sent_at, portal_link_first_opened_at, portal_link_last_opened_at, portal_link_open_count, acknowledgement_started_at, payment_page_opened_at, account_claim_started_at, account_created_at, guest_email, customer_claimed_account_at',
+      'id, customer_id, access_token, status, scheduled_start, portal_access_expires_at, portal_link_revoked_at, portal_link_created_at, portal_link_last_regenerated_at, portal_link_last_sent_at, portal_link_first_opened_at, portal_link_last_opened_at, portal_link_open_count, acknowledgement_started_at, payment_page_opened_at, deposit_paid_at, account_claim_started_at, account_created_at, guest_email, customer_claimed_account_at',
     )
     .eq('id', appointmentId)
     .maybeSingle();
@@ -81,6 +86,7 @@ export async function loadCustomerExperienceDiagnostics(
   const customerId = str(row.customer_id);
   const token = str(row.access_token);
   const snapshot = await loadOrderSnapshot(admin, { appointmentId });
+  const stripeHealth = await getStripeKeyHealth(admin);
   const identityEmail = str(row.guest_email || snapshot?.customer.email).toLowerCase();
 
   const [
@@ -193,6 +199,7 @@ export async function loadCustomerExperienceDiagnostics(
     { key: 'confirmation', label: 'Confirmation route', status: token ? 'pass' : 'fail', detail: token ? 'Canonical state resolver is available.' : 'Cannot resolve without a token.' },
     { key: 'acknowledgement', label: 'Acknowledgement path', status: active && token ? 'pass' : 'warning', detail: acknowledgementCompleted ? 'Completed.' : 'Available; currently required.' },
     { key: 'payment', label: 'Deposit and payment state', status: pricing ? 'pass' : 'fail', detail: depositRequired ? `${depositPaid ? 'Deposit paid' : 'Deposit CTA required'}; next step ${nextStep}.` : 'No deposit required.' },
+    { key: 'stripe', label: 'Stripe checkout readiness', status: stripeHealth.configured && !stripeHealth.mismatch ? 'pass' : 'warning', detail: stripeHealth.configured ? `${stripeHealth.secretMode || 'unknown'} mode${stripeHealth.mismatch ? ' with a key mismatch' : ' ready'}; payment source is the canonical order ledger.` : 'Stripe is not configured; booking remains recoverable.' },
     { key: 'account', label: 'Account claim readiness', status: accountMismatch ? 'fail' : duplicates.length > 1 ? 'warning' : 'pass', detail: accountMismatch ? 'Linked authentication account does not belong to this customer.' : duplicates.length > 1 ? 'Duplicate customer emails need review.' : authUserId ? 'Linked to a matching customer account.' : 'Ready to claim the existing customer record.' },
     { key: 'rewards', label: 'Loyalty, referral, and rewards', status: customerId ? 'pass' : 'warning', detail: customerId ? 'Wallet data resolves through the existing customer record.' : 'Booking needs a customer record before rewards can link.' },
     { key: 'calendar', label: 'Google Calendar sync', status: str(calendarRes.data?.provider_status) === 'synced' ? 'pass' : 'warning', detail: str(calendarRes.data?.provider_status).replace(/_/g, ' ') || 'No sync record.' },
@@ -220,22 +227,31 @@ export async function loadCustomerExperienceDiagnostics(
     counted: true,
     label: `${str(event.kind).replace(/_/g, ' ')} · ${str(event.channel)} ${str(event.status)}`,
   }));
-  const timeline = [...portalEvents, ...systemEvents].sort(
+  const outboxRows = (outboxRes.data ?? []) as Array<Record<string, unknown>>;
+  const deliveredAt = (channel: string) =>
+    str(outboxRows.find((event) =>
+      str(event.channel).toLowerCase() === channel &&
+      ['delivered', 'sent'].includes(str(event.status).toLowerCase()),
+    )?.sent_at || outboxRows.find((event) =>
+      str(event.channel).toLowerCase() === channel &&
+      ['delivered', 'sent'].includes(str(event.status).toLowerCase()),
+    )?.created_at) || null;
+  const lifecycleEvents = [
+    row.portal_link_created_at ? { id: 'lifecycle:created', type: 'link_created', at: str(row.portal_link_created_at), bucket: 'system' as const, counted: true, label: 'secure link created' } : null,
+    agreementRes.data?.signed_at ? { id: 'lifecycle:ack', type: 'acknowledgement_completed', at: str(agreementRes.data.signed_at), bucket: 'customer' as const, counted: true, label: 'acknowledgement completed' } : null,
+    row.deposit_paid_at ? { id: 'lifecycle:deposit', type: 'deposit_paid', at: str(row.deposit_paid_at), bucket: 'customer' as const, counted: true, label: 'deposit paid' } : null,
+    row.account_created_at ? { id: 'lifecycle:account', type: 'account_created', at: str(row.account_created_at), bucket: 'customer' as const, counted: true, label: 'account created' } : null,
+  ].filter((event): event is NonNullable<typeof event> => Boolean(event));
+  const timeline = [...portalEvents, ...systemEvents, ...lifecycleEvents].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
   const hasFail = checks.some((check) => check.status === 'fail');
   const hasWarning = checks.some((check) => check.status === 'warning');
   const overall = hasFail ? 'Repair required' : hasWarning ? 'Recoverable' : 'Valid';
-  const portalUrl = token ? buildCustomerPortalAccessUrl(appointmentId, token) : '';
-
   return {
     appointmentId,
     overall,
     checks,
-    customerViewUrl: token
-      ? `/book/confirmation?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}&admin_preview=1`
-      : '',
-    portalUrl,
     summary: {
       scheduledStart: str(row.scheduled_start),
       status: str(row.status),
@@ -251,13 +267,19 @@ export async function loadCustomerExperienceDiagnostics(
       createdAt: str(row.portal_link_created_at) || null,
       regeneratedAt: str(row.portal_link_last_regenerated_at) || null,
       lastSentAt: str(row.portal_link_last_sent_at) || null,
+      smsDeliveredAt: deliveredAt('sms'),
+      emailDeliveredAt: deliveredAt('email'),
       firstOpenedAt: str(row.portal_link_first_opened_at) || null,
       lastOpenedAt: str(row.portal_link_last_opened_at) || null,
       openCount: Number(row.portal_link_open_count ?? 0),
       acknowledgementStartedAt: str(row.acknowledgement_started_at) || null,
+      acknowledgementCompletedAt: str(agreementRes.data?.signed_at) || null,
       paymentPageOpenedAt: str(row.payment_page_opened_at) || null,
+      depositPaidAt: str(row.deposit_paid_at) || null,
       accountClaimStartedAt: str(row.account_claim_started_at) || null,
       accountCreatedAt: str(row.account_created_at) || null,
+      adminPreviewCount: portalEvents.filter((event) => event.bucket === 'admin').length,
+      automatedIgnoredCount: portalEvents.filter((event) => event.bucket === 'automated' && !event.counted).length,
     },
     rewards: {
       loyaltyPunches,

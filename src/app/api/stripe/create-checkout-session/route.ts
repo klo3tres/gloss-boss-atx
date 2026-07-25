@@ -113,12 +113,14 @@ export async function POST(request: Request) {
 
 
     let customerEmail: string | null = null;
+    let appointmentIsTest = false;
 
     if (appointmentId) {
 
-      const { data } = await admin.from('appointments').select('guest_email').eq('id', appointmentId).maybeSingle();
+      const { data } = await admin.from('appointments').select('guest_email, is_test').eq('id', appointmentId).maybeSingle();
 
       customerEmail = data?.guest_email ?? null;
+      appointmentIsTest = data?.is_test === true;
 
     } else if (fallbackBookingId) {
 
@@ -129,6 +131,17 @@ export async function POST(request: Request) {
     }
 
 
+
+    if (appointmentIsTest && keyHealth.secretMode !== 'test') {
+      return NextResponse.json(
+        {
+          error: 'Controlled QA checkout requires Stripe test mode.',
+          code: 'QA_REQUIRES_STRIPE_TEST_MODE',
+          customerMessage: 'This QA clone is protected from live Stripe. Switch Stripe to test mode to test checkout.',
+        },
+        { status: 409 },
+      );
+    }
 
     if (keyHealth.mismatch) {
 

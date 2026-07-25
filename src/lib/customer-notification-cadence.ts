@@ -489,10 +489,11 @@ export async function processAppointmentReminders(admin: SupabaseClient): Promis
 
   const { data: appts } = await admin
     .from('appointments')
-    .select('id, guest_name, guest_email, guest_phone, scheduled_start, service_address, service_city, customer_id, service_slug')
+    .select('id, guest_name, guest_email, guest_phone, scheduled_start, service_address, service_city, customer_id, service_slug, is_test')
     .gte('scheduled_start', windowStart)
     .lte('scheduled_start', windowEnd)
     .not('status', 'in', '("cancelled","completed")')
+    .eq('is_test', false)
     .limit(100);
 
   let sent = 0;

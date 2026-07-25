@@ -292,5 +292,20 @@ export async function claimPortalAppointmentForUser(
   }
 
   const dashboardUrl = `/dashboard?job=${encodeURIComponent(input.appointmentId)}`;
+  const { data: qaAppointment } = await admin
+    .from('appointments')
+    .select('is_test, qa_expires_at')
+    .eq('id', input.appointmentId)
+    .maybeSingle();
+  if (qaAppointment?.is_test === true && link.customerId) {
+    await admin
+      .from('customers')
+      .update({
+        is_test: true,
+        qa_expires_at: qaAppointment.qa_expires_at ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', link.customerId);
+  }
   return { ok: true, customerId: link.customerId, dashboardUrl, accountLinkedNow: Boolean(link.linked) };
 }
