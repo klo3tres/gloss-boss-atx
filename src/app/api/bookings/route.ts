@@ -332,12 +332,14 @@ export async function POST(request: Request) {
       );
     }
     if (existingSessionAppointment) {
+      const restoredPaymentStatus = String(existingSessionAppointment.payment_status ?? '').toLowerCase();
       return NextResponse.json({
         appointmentId: existingSessionAppointment.id,
         accessToken: existingSessionAppointment.access_token,
         depositAmountCents: Number(existingSessionAppointment.deposit_amount_cents ?? 0),
         restoredBookingSession: true,
-        status: existingSessionAppointment.payment_status ?? 'payment_pending',
+        status: restoredPaymentStatus || 'payment_pending',
+        skipPayment: ['paid', 'full_paid', 'deposit_paid', 'comped', 'manual_comped'].includes(restoredPaymentStatus),
       });
     }
 
