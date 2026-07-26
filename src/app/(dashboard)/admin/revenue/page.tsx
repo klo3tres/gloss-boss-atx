@@ -104,7 +104,7 @@ export default async function AdminRevenuePage({
     fetchPaymentsSince(admin, periodStartIso, now),
     fetchPaymentsSince(admin, startOfYearIso(), now),
     fetchPaymentsSince(admin, startOfSixMonthsAgoIso(), now),
-    admin.from('appointments').select('id, customer_id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, service_slug, assigned_technician_id, vehicle_class, vehicle_description, booking_pricing_breakdown, booking_source, campaign_id, promo_code, is_test').order('scheduled_start', { ascending: false }).limit(2000),
+    admin.from('appointments').select('id, customer_id, guest_name, guest_email, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, created_at, service_slug, assigned_technician_id, vehicle_class, vehicle_description, booking_pricing_breakdown, booking_source, campaign_id, promo_code, is_test').order('scheduled_start', { ascending: false }).limit(2000),
     admin.from('profiles').select('id, full_name, email').in('role', ['technician', 'admin', 'super_admin']),
     admin.from('customers').select('id, full_name, email, phone').order('full_name').limit(400),
     admin.from('customer_campaigns').select('id, name').limit(500),
@@ -144,9 +144,7 @@ export default async function AdminRevenuePage({
 
   const allAppts = (allApptsRes.data ?? []).filter((a) => includeTest ? true : !isTestLikeJob(a as any));
 
-  const balanceDueCents = financial.openBalancesCents || allAppts
-    .filter((a) => ['balance_due', 'deposit_paid', 'awaiting_deposit', 'pending'].includes(a.payment_status ?? ''))
-    .reduce((s, r) => s + (r.balance_due_cents ?? 0), 0);
+  const balanceDueCents = financial.openBalancesCents;
   const discountsGivenCents = allAppts.reduce((sum, a) => {
     const breakdown = a.booking_pricing_breakdown && typeof a.booking_pricing_breakdown === 'object' ? a.booking_pricing_breakdown as Record<string, unknown> : {};
     return sum + Number(breakdown.offerDiscountCents ?? 0) + Number(breakdown.websitePromoDiscountCents ?? 0) + Number(breakdown.multiCarDiscountCents ?? 0);
@@ -377,22 +375,35 @@ export default async function AdminRevenuePage({
     { label: 'Payment processing alerts', count: paymentAlerts.length, href: '/admin/payments', detail: 'Webhook or payment processing errors requiring review.' },
   ];
   const allApptsById = new Map(allAppts.map((row) => [String(row.id), row]));
-  const cfoTransactions: CfoTransactionRow[] = activePaymentRows.map((payment) => {
-    const appointment = payment.appointment_id ? allApptsById.get(String(payment.appointment_id)) : null;
+  const paymentsByAppointment = new Map<string, PayRow[]>();
+  for (const payment of activePaymentRows) {
+    const appointmentId = String(payment.appointment_id ?? '');
+    if (!appointmentId) continue;
+    const rows = paymentsByAppointment.get(appointmentId) ?? [];
+    rows.push(payment);
+    paymentsByAppointment.set(appointmentId, rows);
+  }
+  const actionableBalances = new Map(financial.openBalances.map((row) => [row.id, row.amountCents]));
+  const cfoTransactions: CfoTransactionRow[] = allAppts.map((appointment) => {
+    const appointmentId = String(appointment.id);
+    const linkedPayments = paymentsByAppointment.get(appointmentId) ?? [];
     const breakdown = appointment?.booking_pricing_breakdown && typeof appointment.booking_pricing_breakdown === 'object' ? appointment.booking_pricing_breakdown as Record<string, unknown> : {};
     const discountCents = Number(breakdown.offerDiscountCents ?? 0) + Number(breakdown.websitePromoDiscountCents ?? 0) + Number(breakdown.multiCarDiscountCents ?? 0) + Number(breakdown.referralDiscountCents ?? 0);
     const creditCents = Number(breakdown.creditAppliedCents ?? breakdown.creditsAppliedCents ?? 0);
+    const paymentCents = linkedPayments.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount_cents ?? 0) - Number(payment.refunded_amount_cents ?? 0)), 0);
+    const refundCents = linkedPayments.reduce((sum, payment) => sum + Math.max(0, Number(payment.refunded_amount_cents ?? 0)), 0);
+    const methods = [...new Set(linkedPayments.map((payment) => String(payment.payment_method ?? payment.payment_kind ?? 'other')))];
     return {
-      id: String(payment.id ?? payment.payment_id ?? `payment-${payment.appointment_id ?? 'unlinked'}-${payment.paid_at ?? payment.created_at ?? 'unknown'}`), kind: 'payment' as const,
-      customer: String(appointment?.guest_name ?? 'Unlinked payment'), workOrderId: payment.appointment_id ? String(payment.appointment_id) : null,
+      id: appointmentId, kind: 'work_order' as const,
+      customer: String(appointment?.guest_name ?? 'Guest'), workOrderId: appointmentId,
       service: String(appointment?.service_slug ?? 'Unlinked').replace(/-/g, ' '), vehicle: String(appointment?.vehicle_description ?? appointment?.vehicle_class ?? 'Not recorded'),
       technician: appointment?.assigned_technician_id ? techNames[String(appointment.assigned_technician_id)] ?? 'Unassigned' : 'Unassigned',
-      occurredAt: String(payment.paid_at ?? payment.created_at ?? new Date().toISOString()), grossCents: Number(appointment?.base_price_cents ?? payment.amount_cents ?? 0),
-      discountCents, creditCents, paymentCents: Math.max(0, Number(payment.amount_cents ?? 0) - Number(payment.refunded_amount_cents ?? 0)),
-      refundCents: Number(payment.refunded_amount_cents ?? 0), outstandingCents: Number(appointment?.balance_due_cents ?? 0),
-      method: String(payment.payment_method ?? payment.payment_kind ?? 'other'), source: String(appointment?.booking_source ?? payment.source_table ?? 'payment'),
+      occurredAt: String(appointment?.scheduled_start ?? appointment?.created_at ?? new Date().toISOString()), grossCents: Number(appointment?.base_price_cents ?? 0),
+      discountCents, creditCents, paymentCents,
+      refundCents, outstandingCents: actionableBalances.get(appointmentId) ?? 0,
+      method: methods.length ? methods.join(' + ') : 'unpaid', source: String(appointment?.booking_source ?? 'work order'),
       campaign: appointment?.campaign_id ? campaignNames.get(String(appointment.campaign_id)) ?? 'Campaign' : 'Unattributed',
-      receiptId: payment.source_table === 'receipts' ? String(payment.id ?? '') || null : null, status: String(payment.status ?? 'unknown'),
+      receiptId: null, status: String(appointment?.status ?? appointment?.payment_status ?? 'unknown'),
     };
   });
   for (const expense of financial.recentExpenses) cfoTransactions.push({
@@ -406,7 +417,7 @@ export default async function AdminRevenuePage({
     { id:'revenue-below-goal',label:'Revenue below goal',count:gapToGoalCents>0&&monthlyGoalCents>0?1:0,reason:'Month-to-date collected revenue is below the active monthly target.',calculation:`${displayMoney(financial.netCollectedRevenueCents)} collected against ${displayMoney(monthlyGoalCents)} goal.`,expectedImpact:`Close ${displayMoney(gapToGoalCents)} of the remaining gap.`,href:'/admin/goals' },
   ];
   const revenueBySegmentMap = new Map<string,number>();
-  for (const row of cfoTransactions.filter((item) => item.kind === 'payment')) {
+  for (const row of cfoTransactions.filter((item) => item.kind === 'work_order' && item.paymentCents > 0)) {
     const appointment = row.workOrderId ? allApptsById.get(row.workOrderId) : null;
     const customerVisits = appointment?.customer_id ? allAppts.filter((candidate) => candidate.customer_id === appointment.customer_id && candidate.status === 'completed').length : 0;
     const segment = appointment?.campaign_id ? 'Campaign-attributed' : appointment?.promo_code ? 'Promotion' : String(appointment?.service_slug ?? '').includes('fleet') ? 'Fleet' : customerVisits > 1 ? 'Returning customers' : 'New customers';
@@ -418,10 +429,10 @@ export default async function AdminRevenuePage({
   const cfoRevenueByTechnician = financial.revenueByTechnician.map((row) => ({ label: row.label, cents: row.revenueCents }));
   const cfoRevenueBySegment = [...revenueBySegmentMap].map(([label,cents]) => ({label,cents})).sort((a,b)=>b.cents-a.cents);
   const receivableBuckets = new Map([['0–30 days', 0], ['31–60 days', 0], ['61–90 days', 0], ['90+ days', 0]]);
-  for (const appointment of allAppts) {
-    const balance = Math.max(0, Number(appointment.balance_due_cents ?? 0));
+  for (const receivable of financial.openBalances) {
+    const balance = Math.max(0, receivable.amountCents);
     if (!balance) continue;
-    const ageDays = Math.max(0, Math.floor((Date.now() - new Date(String(appointment.scheduled_start ?? now)).getTime()) / 86_400_000));
+    const ageDays = Math.max(0, Math.floor((Date.now() - new Date(String(receivable.occurredAt ?? now)).getTime()) / 86_400_000));
     const bucket = ageDays > 90 ? '90+ days' : ageDays > 60 ? '61–90 days' : ageDays > 30 ? '31–60 days' : '0–30 days';
     receivableBuckets.set(bucket, (receivableBuckets.get(bucket) ?? 0) + balance);
   }

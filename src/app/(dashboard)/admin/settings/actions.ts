@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isStaffRole } from '@/lib/auth/roles';
+import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { ThemePreference } from '@/components/theme/theme-provider';
 import type { UiAccent, UiDensity } from '@/lib/user-ui-preferences';
@@ -112,7 +112,7 @@ export async function updateDiscountPolicyAction(formData: FormData): Promise<vo
 
 export async function updateAppointmentNotificationPolicyAction(formData: FormData): Promise<void> {
   const session = await getSessionWithProfile();
-  if (!session.user || !isSuperAdmin(session.profile?.role)) throw new Error('Super admin only');
+  if (!session.user || !isAdminLevel(session.profile?.role)) throw new Error('Admin access required');
   const admin = tryCreateAdminSupabase();
   if (!admin) throw new Error('Database unavailable');
   const { parseAppointmentNotificationPolicy } = await import('@/lib/appointment-notification-policy');

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Clock, CreditCard, FileSignature, Calendar, XCircle, PhoneCall, Copy, Check, MapPin, User, CheckCircle2, MessageSquare, FileText, X, Wrench, Sparkles, Car, Gift } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { PremiumBadge, ProgressTracker, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { WorkOrderMissionBar } from '@/components/tech/work-order-mission-bar';
 import { WorkOrderAssigneeChip } from '@/components/tech/work-order-assignee-chip';
@@ -316,6 +317,7 @@ export function WorkOrderConsoleClient({
   canAdminOverride?: boolean;
   canEditPricing?: boolean;
 }) {
+  const router = useRouter();
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -399,6 +401,7 @@ export function WorkOrderConsoleClient({
         setCancelError(res.error);
       } else {
         setIsCancelModalOpen(false);
+        router.refresh();
       }
     });
   };

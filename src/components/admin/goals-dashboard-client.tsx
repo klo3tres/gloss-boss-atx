@@ -287,10 +287,8 @@ export function GoalsDashboardClient({
             goals.map((g) => {
               const pct = g.target_value > 0 ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
               const auto = ['revenue_weekly', 'revenue_monthly', 'jobs_monthly', 'avg_ticket', 'profit_monthly'].includes(g.goal_type);
-              const dashOffset = 283 - (283 * pct) / 100;
-              
               return (
-                <GlassCard key={g.id} className='hover:border-gold/30 transition duration-300 flex flex-col justify-between space-y-4'>
+                <GlassCard key={g.id} className='flex flex-col justify-between space-y-4 border-white/10 bg-card'>
                   <div>
                     <div className='flex items-start justify-between gap-3'>
                       <div>
@@ -305,37 +303,17 @@ export function GoalsDashboardClient({
                         </div>
                       </div>
                       
-                      <div className='flex items-center gap-3 shrink-0'>
+                      <div className='flex shrink-0 items-center gap-3'>
                         <PremiumBadge tone={g.status === 'completed' ? 'emerald' : 'gold'}>
                           {g.status}
                         </PremiumBadge>
-                        
-                        <div className='relative h-14 w-14'>
-                          <svg className='h-14 w-14 -rotate-90' viewBox='0 0 100 100' aria-hidden='true'>
-                            <circle cx='50' cy='50' r='45' stroke='rgba(255,255,255,0.06)' strokeWidth='10' fill='none' />
-                            <circle
-                              cx='50'
-                              cy='50'
-                              r='45'
-                              stroke='#f4d35e'
-                              strokeWidth='10'
-                              fill='none'
-                              strokeLinecap='round'
-                              strokeDasharray='283'
-                              strokeDashoffset={dashOffset}
-                              className="transition-all duration-500"
-                            />
-                          </svg>
-                          <div className='absolute inset-0 flex items-center justify-center'>
-                            <span className='font-mono text-xs font-black text-gold-soft'>{pct}%</span>
-                          </div>
-                        </div>
+                        <span className='font-mono text-xl font-black text-foreground'>{pct}%</span>
                       </div>
                     </div>
 
                     <div className='mt-4 space-y-2'>
                       <div className='h-2 overflow-hidden rounded-full bg-zinc-950 border border-white/5'>
-                        <div className='h-full rounded-full bg-gradient-to-r from-gold via-gold-soft to-amber-400 shadow-[0_0_8px_rgba(212,175,55,0.4)] transition-all duration-500' style={{ width: `${pct}%` }} />
+                        <div className='h-full rounded-full bg-gold transition-all duration-500' style={{ width: `${pct}%` }} />
                       </div>
                       <div className='flex justify-between text-[10px] text-zinc-500 font-bold uppercase'>
                         <span>Current: <strong className="text-white font-mono">{displayValue(g.unit, g.current_value)}</strong></span>
@@ -354,63 +332,35 @@ export function GoalsDashboardClient({
                     )}
 
                     {canEdit ? (
-                      <div className='flex items-center gap-3 font-black uppercase text-[10px] tracking-wider'>
+                      <div className='flex items-center gap-3 text-[10px] font-black uppercase tracking-wider'>
                         <button type='button' onClick={() => setEditId(g.id)} className='text-gold hover:underline flex items-center gap-1'>
                           <Edit3 className="h-3 w-3" /> Edit
                         </button>
-                        
-                        {g.status !== 'completed' && (
-                          <button
-                            type='button'
-                            disabled={pending}
-                            onClick={() =>
-                              start(async () => {
-                                const fd = new FormData();
-                                fd.set('id', g.id);
-                                await completeAdminGoalAction(fd);
-                                refresh();
-                              })
-                            }
-                            className='text-emerald-400 hover:underline flex items-center gap-0.5'
-                          >
-                            <CheckCircle2 className="h-3 w-3" /> Complete
-                          </button>
-                        )}
-                        
-                        {g.status !== 'archived' && (
-                          <button
-                            type='button'
-                            disabled={pending}
-                            onClick={() =>
-                              start(async () => {
-                                const fd = new FormData();
-                                fd.set('id', g.id);
-                                await archiveAdminGoalAction(fd);
-                                refresh();
-                              })
-                            }
-                            className='text-amber-200 hover:underline flex items-center gap-0.5'
-                          >
-                            <Archive className="h-3 w-3" /> Archive
-                          </button>
-                        )}
-                        
-                        <button
-                          type='button'
-                          disabled={pending}
-                          onClick={() => {
-                            if (!confirm('Delete this goal permanently?')) return;
-                            start(async () => {
-                              const fd = new FormData();
-                              fd.set('id', g.id);
-                              await deleteAdminGoalAction(fd);
-                              refresh();
-                            });
-                          }}
-                          className='text-rose-300 hover:underline flex items-center gap-0.5'
-                        >
-                          <Trash2 className="h-3 w-3" /> Delete
-                        </button>
+                        <details className='relative'>
+                          <summary className='cursor-pointer list-none text-muted-foreground hover:text-foreground'>More</summary>
+                          <div className='absolute right-0 z-20 mt-2 grid min-w-36 gap-1 rounded-xl border border-border bg-card p-2 shadow-xl'>
+                            {g.status !== 'completed' ? (
+                              <button type='button' disabled={pending} onClick={() => start(async () => {
+                                const fd = new FormData(); fd.set('id', g.id); await completeAdminGoalAction(fd); refresh();
+                              })} className='flex items-center gap-2 rounded-lg px-2 py-2 text-left text-foreground hover:bg-muted'>
+                                <CheckCircle2 className="h-3 w-3" /> Complete
+                              </button>
+                            ) : null}
+                            {g.status !== 'archived' ? (
+                              <button type='button' disabled={pending} onClick={() => start(async () => {
+                                const fd = new FormData(); fd.set('id', g.id); await archiveAdminGoalAction(fd); refresh();
+                              })} className='flex items-center gap-2 rounded-lg px-2 py-2 text-left text-foreground hover:bg-muted'>
+                                <Archive className="h-3 w-3" /> Archive
+                              </button>
+                            ) : null}
+                            <button type='button' disabled={pending} onClick={() => {
+                              if (!confirm('Delete this goal permanently?')) return;
+                              start(async () => { const fd = new FormData(); fd.set('id', g.id); await deleteAdminGoalAction(fd); refresh(); });
+                            }} className='flex items-center gap-2 rounded-lg px-2 py-2 text-left text-destructive hover:bg-muted'>
+                              <Trash2 className="h-3 w-3" /> Delete
+                            </button>
+                          </div>
+                        </details>
                       </div>
                     ) : null}
                   </div>

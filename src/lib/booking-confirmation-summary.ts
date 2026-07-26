@@ -3,6 +3,7 @@ import { deliverableCustomerEmail } from '@/lib/customer-contact';
 import { enabledExternalPaymentMethods, loadExternalPaymentSettings } from '@/lib/external-payment-settings';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
+import { reconcilePricingDisplay } from '@/lib/pricing-display-invariants';
 
 function str(value: unknown) {
   return value == null ? '' : String(value).trim();
@@ -31,11 +32,15 @@ export async function loadBookingConfirmationSummary(
 
   if (snapshot) {
     for (let index = 0; index < snapshot.vehicles.length; index++) {
+      const canonicalVehiclePrice = snapshot.pricing.vehicleLines[index]?.priceCents;
       vehicles[index] = {
         description: snapshot.vehicles[index]!.description,
         serviceSlug: snapshot.vehicles[index]!.serviceSlug,
         vehicleClass: snapshot.vehicles[index]!.vehicleClass,
-        priceCents: snapshot.vehicles[index]!.priceCents,
+        priceCents:
+          typeof canonicalVehiclePrice === 'number' && canonicalVehiclePrice > 0
+            ? canonicalVehiclePrice
+            : snapshot.vehicles[index]!.priceCents,
         addOns: snapshot.vehicles[index]!.addOns.map((addOn) => ({
           label: addOn.label,
           priceCents: addOn.priceCents,
@@ -94,17 +99,16 @@ export async function loadBookingConfirmationSummary(
     (pricing?.totalPaidCents ?? 0) >= (pricing?.finalTotalCents ?? 0);
   const paymentChoice = str(job.payment_choice).toLowerCase();
   const payOnArrival = paymentChoice === 'pay_later' || paymentChoice === 'pay_on_arrival';
-  const knownDiscountCents =
-    (pricing?.onlineDiscountCents ?? 0) +
-    (pricing?.multiCarDiscountCents ?? 0) +
-    (pricing?.promoDiscountCents ?? 0) +
-    (pricing?.manualDiscountCents ?? 0);
-  const pricingAdjustmentCents = Math.max(
-    0,
-    (pricing?.prePromoCents ?? 0) -
-      knownDiscountCents -
-      (pricing?.finalTotalCents ?? 0),
-  );
+  const reconciledPricing = reconcilePricingDisplay({
+    vehicleSubtotalCents: pricing?.vehicleSubtotalCents ?? 0,
+    addOnSubtotalCents: pricing?.addOnSubtotalCents ?? 0,
+    prePromoCents: pricing?.prePromoCents ?? 0,
+    finalTotalCents: pricing?.finalTotalCents ?? 0,
+    onlineDiscountCents: pricing?.onlineDiscountCents ?? 0,
+    multiCarDiscountCents: pricing?.multiCarDiscountCents ?? 0,
+    promoDiscountCents: pricing?.promoDiscountCents ?? 0,
+    manualDiscountCents: pricing?.manualDiscountCents ?? 0,
+  });
   const nextStep = !appointmentActive
     ? 'inactive'
     : !acknowledgementCompleted
@@ -122,6 +126,7 @@ export async function loadBookingConfirmationSummary(
     serviceAddress: snapshot?.serviceAddress ?? '',
     vehicles,
     promoCode: snapshot?.promoCode ?? (str(job.promo_code) || null),
+    serviceSubtotalCents: reconciledPricing.serviceSubtotalCents,
     finalTotalCents: pricing?.finalTotalCents ?? 0,
     depositCents: pricing?.depositCents ?? 0,
     depositPaidCents: pricing?.depositPaidCents ?? 0,
@@ -133,7 +138,7 @@ export async function loadBookingConfirmationSummary(
     multiCarDiscountCents: pricing?.multiCarDiscountCents ?? 0,
     promoDiscountCents: pricing?.promoDiscountCents ?? 0,
     manualDiscountCents: pricing?.manualDiscountCents ?? 0,
-    pricingAdjustmentCents,
+    pricingAdjustmentCents: reconciledPricing.pricingAdjustmentCents,
     customerBenefits: {
       loyaltyPunches: loyalty.reduce(
         (sum, item) => sum + (item.voided ? 0 : Math.max(0, Number(item.stamp_count ?? 1))),

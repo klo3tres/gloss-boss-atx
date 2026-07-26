@@ -65,6 +65,7 @@ export function AdminSettingsClient({
   uiPreferences,
   websiteDefault,
   isSuperAdmin,
+  canManageOperations,
   pushoverConfigured,
   notifyPrefs,
   discountPolicy,
@@ -74,6 +75,7 @@ export function AdminSettingsClient({
   uiPreferences: UserUiPreferences;
   websiteDefault: 'light' | 'dark';
   isSuperAdmin: boolean;
+  canManageOperations: boolean;
   pushoverConfigured: boolean;
   notifyPrefs: Parameters<typeof NotificationSettingsPanel>[0]['prefs'];
   discountPolicy: DiscountPolicyConfig;
@@ -128,7 +130,7 @@ export function AdminSettingsClient({
       {tab === 'notifications' && (
         <div className="space-y-4">
           <NotificationSettingsPanel prefs={notifyPrefs} />
-          <AppointmentNotificationPolicyPanel policy={appointmentNotificationPolicy} canEdit={isSuperAdmin} />
+          <AppointmentNotificationPolicyPanel policy={appointmentNotificationPolicy} canEdit={canManageOperations} />
           <PushoverSetupPanel configured={pushoverConfigured} />
           <GoogleCalendarConnectPanel returnTo="/admin/settings" />
           <SettingsLinkCard href="/admin/integrations" title="Email & SMS integrations" desc="Twilio, Resend, maps" icon={<Bell className="h-4 w-4" />} />

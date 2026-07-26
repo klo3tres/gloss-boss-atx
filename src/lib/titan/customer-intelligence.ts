@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { displayMoney } from '@/lib/display-format';
 import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
 import { recommendMembershipTier } from '@/lib/membership-roi';
+import { isActionableOpenBalance } from '@/lib/open-balance-filters';
 
 export type CustomerIntelligence = {
   lifetimeValueCents: number;
@@ -61,7 +62,7 @@ export async function loadCustomerIntelligence(
   const { data: appts } = await admin
     .from('appointments')
     .select(
-      'id, status, scheduled_start, completed_at, job_completed_at, service_slug, vehicle_description, base_price_cents, payment_status, balance_due_cents, duration_minutes, assigned_tech_id',
+      'id, status, scheduled_start, completed_at, job_completed_at, service_slug, vehicle_description, base_price_cents, payment_status, balance_due_cents, duration_minutes, assigned_tech_id, archived, archived_at, deleted_at',
     )
     .eq('customer_id', customerId)
     .order('scheduled_start', { ascending: false })
@@ -133,7 +134,9 @@ export async function loadCustomerIntelligence(
     ? 'Ceramic client — schedule maintenance washes'
     : 'No ceramic on file';
 
-  const outstandingBalanceCents = rows.reduce((s, a) => s + Math.max(0, Number(a.balance_due_cents) || 0), 0);
+  const outstandingBalanceCents = rows
+    .filter((appointment) => isActionableOpenBalance(appointment))
+    .reduce((sum, appointment) => sum + Math.max(0, Number(appointment.balance_due_cents) || 0), 0);
 
   const [{ data: stamps }, rewardConfig, rewardState, plansRes, lastMsgRes, reviewRes] = await Promise.all([
     admin.from('loyalty_stamps').select('stamp_count, voided, voided_at').eq('customer_id', customerId),

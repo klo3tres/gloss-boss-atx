@@ -90,6 +90,23 @@ export async function cancelAppointmentLifecycle(
     p_notify_customer: input.notifyCustomer !== false,
   });
   if (error) return { ok: false, error: `Cancellation transaction failed: ${error.message}` };
+  const currentPaymentStatus = str(row.payment_status).toLowerCase();
+  const closedPaymentStatus = ['paid', 'paid_in_full', 'refunded', 'partially_refunded'].includes(currentPaymentStatus)
+    ? currentPaymentStatus
+    : 'cancelled';
+  const { error: normalizationError } = await admin
+    .from('appointments')
+    .update({
+      status: 'cancelled',
+      lifecycle_stage: 'cancelled',
+      balance_due_cents: 0,
+      payment_status: closedPaymentStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (normalizationError) {
+    return { ok: false, error: `Appointment cancelled, but final status normalization failed: ${normalizationError.message}` };
+  }
 
   try {
     const { cancelAgreementRemindersForAppointment } = await import('@/lib/agreements/reminders');

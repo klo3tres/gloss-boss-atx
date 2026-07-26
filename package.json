@@ -18,7 +18,8 @@
     "fix:chunks": "node scripts/flatten-server-chunks.cjs",
     "css:fallback": "node scripts/publish-css-fallback.cjs",
     "start": "next start -p 3000",
-    "health:check": "node scripts/run-production-health-check.cjs"
+    "health:check": "node scripts/run-production-health-check.cjs",
+    "qa:integrity": "node scripts/verify-product-integrity.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

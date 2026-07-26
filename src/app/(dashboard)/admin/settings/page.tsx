@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { AdminSettingsClient } from '@/components/admin/admin-settings-client';
 import { getSessionWithProfile } from '@/lib/auth/session';
-import { isStaffRole } from '@/lib/auth/roles';
+import { isAdminLevel, isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { parseUserUiPreferences } from '@/lib/user-ui-preferences';
 import { loadOwnerNotificationPreferences } from '@/lib/titan/notification-preferences';
@@ -19,6 +19,7 @@ export default async function AdminSettingsPage() {
 
   const admin = tryCreateAdminSupabase();
   const isSuperAdmin = session.profile?.role === 'super_admin';
+  const canManageOperations = isAdminLevel(session.profile?.role);
 
   let uiPreferences = parseUserUiPreferences(null);
   let websiteDefault: 'light' | 'dark' = 'dark';
@@ -51,6 +52,7 @@ export default async function AdminSettingsPage() {
         uiPreferences={uiPreferences}
         websiteDefault={websiteDefault}
         isSuperAdmin={isSuperAdmin}
+        canManageOperations={canManageOperations}
         pushoverConfigured={pushoverConfigured()}
         notifyPrefs={notifyPrefs}
         discountPolicy={discountPolicy}

@@ -66,10 +66,9 @@ function mapOutboxStatus(raw: string | null | undefined): DeliveryChannelStatus 
 function latestOutbox(
   rows: Array<Record<string, unknown>>,
   channel: 'email' | 'sms',
-  kind = 'booking_confirmation',
 ) {
   const filtered = rows.filter(
-    (r) => str(r.channel).toLowerCase() === channel && str(r.kind) === kind,
+    (r) => str(r.channel).toLowerCase() === channel,
   );
   if (filtered.length === 0) return null;
   return filtered[0];

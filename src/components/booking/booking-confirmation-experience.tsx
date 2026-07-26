@@ -24,6 +24,7 @@ export type BookingConfirmationSummary = {
   serviceAddress: string;
   vehicles: VehicleView[];
   promoCode: string | null;
+  serviceSubtotalCents: number;
   finalTotalCents: number;
   depositCents: number;
   depositPaidCents: number;
@@ -316,8 +317,8 @@ function ConfirmationInner({
         </ul>
         <dl className='mt-6 space-y-2 border-t border-white/10 pt-4 text-sm'>
           <div className='flex justify-between gap-4'>
-            <dt className='text-zinc-400'>Total</dt>
-            <dd className='font-bold text-white'>{money(summary.finalTotalCents)}</dd>
+            <dt className='text-zinc-400'>Service subtotal</dt>
+            <dd className='font-bold text-white'>{money(summary.serviceSubtotalCents)}</dd>
           </div>
           {summary.promoCode ? (
             <div className='flex justify-between gap-4'>
@@ -349,14 +350,18 @@ function ConfirmationInner({
               <dd>−{money(summary.manualDiscountCents)}</dd>
             </div>
           ) : null}
-          {summary.pricingAdjustmentCents > 0 ? (
-            <div className='flex justify-between gap-4 text-emerald-300'>
-              <dt>Work-order price adjustment</dt>
-              <dd>−{money(summary.pricingAdjustmentCents)}</dd>
+          {summary.pricingAdjustmentCents !== 0 ? (
+            <div className={`flex justify-between gap-4 ${summary.pricingAdjustmentCents < 0 ? 'text-emerald-300' : 'text-zinc-200'}`}>
+              <dt>Custom quote adjustment</dt>
+              <dd>{summary.pricingAdjustmentCents < 0 ? '−' : '+'}{money(Math.abs(summary.pricingAdjustmentCents))}</dd>
             </div>
           ) : null}
+          <div className='flex justify-between gap-4 border-t border-white/10 pt-2'>
+            <dt className='font-bold text-zinc-200'>Appointment total</dt>
+            <dd className='font-bold text-white'>{money(summary.finalTotalCents)}</dd>
+          </div>
           <div className='flex justify-between gap-4'>
-            <dt className='text-zinc-400'>Deposit</dt>
+            <dt className='text-zinc-400'>Deposit required</dt>
             <dd className='text-white'>{money(summary.depositCents)}</dd>
           </div>
           <div className='flex justify-between gap-4'>

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { displayMoney } from '@/lib/display-format';
+import { isActionableOpenBalance } from '@/lib/open-balance-filters';
 
 export type OwnerInsight = {
   id: string;
@@ -30,7 +31,7 @@ export async function loadOwnerInsights(admin: SupabaseClient): Promise<OwnerIns
     admin.from('titan_opportunities').select('id, source_type, status, estimated_revenue, created_at').gte('created_at', since).limit(200),
     admin.from('customer_reviews').select('id, published').eq('published', true).limit(1),
     admin.from('titan_lead_radar_items').select('id, source_type, confidence_score, status').gte('created_at', since).limit(200),
-    admin.from('appointments').select('id, balance_due_cents').gt('balance_due_cents', 0).in('status', ['confirmed', 'scheduled', 'booked', 'pending', 'completed']),
+    admin.from('appointments').select('id, status, payment_status, balance_due_cents, scheduled_start, archived, archived_at, deleted_at').gt('balance_due_cents', 0),
     admin.from('appointments').select('id, status, technician_id').eq('status', 'completed').gte('created_at', since),
   ]);
 
@@ -52,7 +53,8 @@ export async function loadOwnerInsights(admin: SupabaseClient): Promise<OwnerIns
   const best = ranked[0];
   const weakest = ranked.length > 1 ? ranked[ranked.length - 1] : null;
 
-  const openBalanceCents = (balances.data ?? []).reduce((s, r) => s + Number((r as { balance_due_cents?: number }).balance_due_cents ?? 0), 0);
+  const actionableBalances = (balances.data ?? []).filter((row) => isActionableOpenBalance(row));
+  const openBalanceCents = actionableBalances.reduce((sum, row) => sum + Number(row.balance_due_cents ?? 0), 0);
 
   const oppBySource = new Map<string, number>();
   for (const o of opps.data ?? []) {
@@ -76,7 +78,7 @@ export async function loadOwnerInsights(admin: SupabaseClient): Promise<OwnerIns
     weakest && weakest.count > 0
       ? { id: 'weak_conv', label: 'Weaker service volume', value: weakest.label, detail: `${weakest.count} completed — consider promotion`, tone: 'warn', href: '/admin/services' }
       : { id: 'weak_conv', label: 'Service conversion', value: 'OK', detail: 'No weak service signal yet.', tone: 'neutral' },
-    { id: 'open_bal', label: 'Open balances', value: money(openBalanceCents), detail: `${balances.data?.length ?? 0} appointment(s) with balance due`, tone: openBalanceCents > 0 ? 'action' : 'good', href: '/admin/work-orders' },
+    { id: 'open_bal', label: 'Open balances', value: money(openBalanceCents), detail: `${actionableBalances.length} appointment(s) with balance due`, tone: openBalanceCents > 0 ? 'action' : 'good', href: '/admin/work-orders' },
     { id: 'leads', label: 'Lead Radar today', value: String(highConfLeads), detail: `${needsReply} need reply · high-confidence captured (30d)`, tone: needsReply > 0 ? 'action' : 'neutral', href: '/admin/titan/lead-radar' },
     topLeadSource
       ? { id: 'lead_src', label: 'Top opportunity source', value: topLeadSource[0].replace(/_/g, ' '), detail: `${topLeadSource[1]} opportunities (30d)`, tone: 'neutral', href: '/admin/titan/opportunities' }

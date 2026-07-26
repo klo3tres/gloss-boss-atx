@@ -46,6 +46,7 @@ export async function adminCancelAppointmentAction(formData: FormData): Promise<
   const r = await cancelAppointmentLifecycle(gate.admin, { appointmentId, reason, actorId: gate.userId, refundDecision, notifyCustomer });
   if (!r.ok) return actionErr(r.error ?? 'Cancel failed');
   revalidatePath('/admin/work-orders');
+  revalidatePath(`/admin/work-orders/${appointmentId}`);
   revalidatePath('/admin/dispatch');
   revalidatePath('/admin/calendar');
   revalidatePath('/admin/revenue');

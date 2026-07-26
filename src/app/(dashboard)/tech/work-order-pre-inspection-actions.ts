@@ -193,6 +193,8 @@ export async function cancelWorkOrderAction(
       .from('booking_fallbacks')
       .update({
         status: 'cancelled',
+        payment_status: 'cancelled',
+        balance_due_cents: 0,
         archived_at: now,
         notes: `Cancelled: ${reason}`,
         updated_at: now,
@@ -208,5 +210,7 @@ export async function cancelWorkOrderAction(
   revalidatePath(`/tech/work-orders/${id}`);
   revalidatePath('/tech');
   revalidatePath('/admin/work-orders');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/payments');
   return { ok: true };
 }
