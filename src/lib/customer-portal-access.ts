@@ -150,7 +150,7 @@ export async function linkAuthUserToCustomer(
     customerIdHint?: string | null;
     fullName?: string | null;
   },
-): Promise<{ ok: boolean; customerId?: string; linked?: boolean; error?: string }> {
+): Promise<{ ok: boolean; customerId?: string; linked?: boolean; error?: string; errorCode?: 'conflict' | 'unavailable' }> {
   const authUserId = str(input.authUserId);
   const email = str(input.email).toLowerCase();
   if (!authUserId || !email.includes('@')) return { ok: false, error: 'Missing auth user or email' };
@@ -206,13 +206,17 @@ export async function linkAuthUserToCustomer(
 
   const existingAuth = str(customer.auth_user_id);
   if (existingAuth && existingAuth !== authUserId) {
-    return { ok: false, error: 'This customer record is linked to a different account. Sign in with the booking email or contact Gloss Boss.' };
+    return {
+      ok: false,
+      error: 'This customer record is linked to a different account. Sign in with the booking email or contact Gloss Boss.',
+      errorCode: 'conflict',
+    };
   }
 
   if (!existingAuth) {
     const now = new Date().toISOString();
     const currentEmail = deliverableCustomerEmail(customer.email);
-    const { error } = await admin
+    const { data, error } = await admin
       .from('customers')
       .update({
         auth_user_id: authUserId,
@@ -220,8 +224,26 @@ export async function linkAuthUserToCustomer(
         portal_account_linked_at: now,
         updated_at: now,
       })
-      .eq('id', customer.id);
+      .eq('id', customer.id)
+      .is('auth_user_id', null)
+      .select('id')
+      .maybeSingle();
     if (error) return { ok: false, error: error.message };
+    if (!data?.id) {
+      const { data: owner } = await admin
+        .from('customers')
+        .select('auth_user_id')
+        .eq('id', customer.id)
+        .maybeSingle();
+      if (str(owner?.auth_user_id) !== authUserId) {
+        return {
+          ok: false,
+          error: 'This customer record was linked to another account. Sign in with the booking email or contact Gloss Boss.',
+          errorCode: 'conflict',
+        };
+      }
+      return { ok: true, customerId: customer.id, linked: false };
+    }
     return { ok: true, customerId: customer.id, linked: true };
   }
 
@@ -237,11 +259,18 @@ export async function claimPortalAppointmentForUser(
     email: string;
     fullName?: string | null;
   },
-): Promise<{ ok: boolean; error?: string; customerId?: string; dashboardUrl?: string; accountLinkedNow?: boolean }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  errorCode?: 'invalid_link' | 'email_mismatch' | 'account_conflict' | 'temporarily_unavailable';
+  customerId?: string;
+  dashboardUrl?: string;
+  accountLinkedNow?: boolean;
+}> {
   const verified = await verifyPortalAccess(input.appointmentId, input.token);
-  if (!verified.ok) return { ok: false, error: verified.error };
+  if (!verified.ok) return { ok: false, error: verified.error, errorCode: 'invalid_link' };
   const loaded = await loadPortalAccessContext(admin, input.appointmentId);
-  if (!loaded.ok) return { ok: false, error: loaded.error };
+  if (!loaded.ok) return { ok: false, error: loaded.error, errorCode: 'temporarily_unavailable' };
 
   const signedInEmail = str(input.email).toLowerCase();
   const bookingEmail = deliverableCustomerEmail(loaded.ctx.guestEmail);
@@ -249,6 +278,7 @@ export async function claimPortalAppointmentForUser(
     return {
       ok: false,
       error: 'This account does not match the booking email. Sign out to continue as a guest, or sign in with the email on the booking.',
+      errorCode: 'email_mismatch',
     };
   }
 
@@ -265,6 +295,7 @@ export async function claimPortalAppointmentForUser(
     return {
       ok: false,
       error: 'This account belongs to a different customer record. Sign out to use the secure guest link.',
+      errorCode: 'account_conflict',
     };
   }
 
@@ -272,10 +303,16 @@ export async function claimPortalAppointmentForUser(
     authUserId: input.authUserId,
     email: input.email,
     phone: loaded.ctx.guestPhone,
-    customerIdHint: loaded.ctx.customerId,
+    customerIdHint: loaded.ctx.customerId ?? (alreadyLinked?.id ? String(alreadyLinked.id) : null),
     fullName: input.fullName ?? loaded.ctx.guestName,
   });
-  if (!link.ok) return { ok: false, error: link.error };
+  if (!link.ok) {
+    return {
+      ok: false,
+      error: link.error,
+      errorCode: link.errorCode === 'conflict' ? 'account_conflict' : 'temporarily_unavailable',
+    };
+  }
 
   if (link.customerId) {
     const now = new Date().toISOString();
@@ -289,17 +326,25 @@ export async function claimPortalAppointmentForUser(
         account_claim_error: null,
         updated_at: now,
       })
-      .eq('id', input.appointmentId);
-    if (claimUpdate.error) {
+      .eq('id', input.appointmentId)
+      .or(`customer_id.is.null,customer_id.eq.${link.customerId}`)
+      .select('id')
+      .maybeSingle();
+    if (claimUpdate.error || !claimUpdate.data?.id) {
+      const claimError = claimUpdate.error?.message ?? 'Booking ownership changed before the account claim completed.';
       await admin
         .from('appointments')
         .update({
           account_claim_status: 'failed',
-          account_claim_error: claimUpdate.error.message.slice(0, 1000),
+          account_claim_error: claimError.slice(0, 1000),
           updated_at: now,
         })
         .eq('id', input.appointmentId);
-      return { ok: false, error: 'Your account exists, but this booking could not be linked yet. Please retry or contact Gloss Boss.' };
+      return {
+        ok: false,
+        error: 'Your account exists, but this booking could not be linked yet. Please retry or contact Gloss Boss.',
+        errorCode: 'temporarily_unavailable',
+      };
     }
   }
 

@@ -69,6 +69,7 @@ export default async function CanonicalBookingPage({
   const requestHeaders = await headers();
   const source = String((await searchParams).source ?? 'canonical_booking_link').slice(0, 100);
   const staffPreview = Boolean(session.user && isStaffRole(session.profile?.role));
+  let accountClaimIssue: { message: string; temporary?: boolean } | null = null;
 
   if (staffPreview) {
     await recordCustomerPortalEvent(admin, {
@@ -101,6 +102,12 @@ export default async function CanonicalBookingPage({
       });
       redirect(claim.dashboardUrl);
     }
+    accountClaimIssue = {
+      message:
+        claim.error ??
+        'Your booking still exists, but the account link could not be completed. Retry or contact Gloss Boss for help.',
+      temporary: claim.errorCode === 'temporarily_unavailable',
+    };
   } else {
     await admin
       .from('appointments')
@@ -127,6 +134,7 @@ export default async function CanonicalBookingPage({
       accessToken={token}
       initialSummary={summary}
       previewMode={staffPreview}
+      accountClaimIssue={accountClaimIssue}
     />
   );
 }

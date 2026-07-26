@@ -18,6 +18,12 @@ const ownerInsights = read('src/lib/titan/owner-insights.ts');
 const adminMonitor = read('src/components/admin/admin-automation-boot.tsx');
 const staffMonitor = read('src/components/operations/staff-appointment-operations-monitor.tsx');
 const dailyFallback = read('src/app/api/cron/process-follow-ups/route.ts');
+const completionOrder = read('docs/PRODUCT_COMPLETION_ORDER.md');
+const customerAccount = read('src/lib/customer-account.ts');
+const portalAccess = read('src/lib/customer-portal-access.ts');
+const canonicalBooking = read('src/app/booking/[token]/page.tsx');
+const customerDashboard = read('src/app/(dashboard)/dashboard/page.tsx');
+const claimRecovery = read('src/components/customer/customer-account-conflict-recovery.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -70,6 +76,44 @@ check(
 check(
   !vercel.crons.some((job) => job.schedule.includes('*/5')),
   'Vercel Hobby rejects five-minute cron schedules; do not make production undeployable.',
+);
+const lockedPhases = [
+  '### 1. Account and Portal',
+  '### 2. Payment lifecycle',
+  '### 3. Appointment lifecycle',
+  '### 4. End-to-end acceptance',
+  '### 5. Admin UX consolidation',
+  '### 6. Technician OS',
+  '### 7. CFO Revenue',
+  '### 8. Quote Builder',
+  '### 9. Operations Center',
+  '### 10. Rewards, referrals, and loyalty expansion',
+  '### 11. Titan business automation',
+];
+check(
+  lockedPhases.every((phase, index) => {
+    const position = completionOrder.indexOf(phase);
+    const previous = index === 0 ? -1 : completionOrder.indexOf(lockedPhases[index - 1]);
+    return position > previous;
+  }),
+  'The locked product-completion phases must remain present and in order.',
+);
+check(
+  customerAccount.includes("status: 'conflict'") &&
+    customerAccount.includes('if (jobCustomerId) return jobCustomerId === customer.id'),
+  'Claimed customer data must fail closed when the email belongs to another auth account.',
+);
+check(
+  portalAccess.includes('.is(\'auth_user_id\', null)') &&
+    portalAccess.includes('customer_id.is.null,customer_id.eq.') &&
+    portalAccess.includes("errorCode: 'account_conflict'"),
+  'Guest booking claims must not overwrite customer or appointment ownership.',
+);
+check(
+  canonicalBooking.includes('accountClaimIssue={accountClaimIssue}') &&
+    claimRecovery.includes('Sign out and continue as guest') &&
+    customerDashboard.includes("customerResolution?.status === 'conflict'"),
+  'Account-claim failures must be visible and recoverable on both the secure link and dashboard.',
 );
 
 // Regression fixture from the real customer screenshot:

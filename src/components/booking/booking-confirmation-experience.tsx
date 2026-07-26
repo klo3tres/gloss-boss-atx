@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { CustomerBookingLifecycle } from '@/components/booking/customer-booking-lifecycle';
 import { SocialLinksRow } from '@/components/marketing/social-links';
+import { CustomerAccountConflictRecovery } from '@/components/customer/customer-account-conflict-recovery';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 type VehicleView = {
@@ -90,11 +91,13 @@ function ConfirmationInner({
   appointmentIdOverride,
   accessTokenOverride,
   previewMode,
+  accountClaimIssue,
 }: {
   initialSummary?: BookingConfirmationSummary | null;
   appointmentIdOverride?: string;
   accessTokenOverride?: string;
   previewMode: boolean;
+  accountClaimIssue?: { message: string; temporary?: boolean } | null;
 }) {
   const sp = useSearchParams();
   const pathname = usePathname();
@@ -254,6 +257,14 @@ function ConfirmationInner({
             Admin preview mode — no customer activity will be recorded
           </p>
         </div>
+      ) : null}
+      {accountClaimIssue && !adminPreview ? (
+        <CustomerAccountConflictRecovery
+          message={accountClaimIssue.message}
+          bookingPath={canonicalPath}
+          compact
+          title={accountClaimIssue.temporary ? 'We could not link your account yet' : undefined}
+        />
       ) : null}
       <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
         <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
@@ -536,11 +547,13 @@ export function BookingConfirmationExperience({
   appointmentId,
   accessToken,
   previewMode = false,
+  accountClaimIssue,
 }: {
   initialSummary?: BookingConfirmationSummary | null;
   appointmentId?: string;
   accessToken?: string;
   previewMode?: boolean;
+  accountClaimIssue?: { message: string; temporary?: boolean } | null;
 }) {
   return (
     <main className='gb-luxury-page min-h-screen px-4 py-20 text-foreground sm:px-6'>
@@ -551,6 +564,7 @@ export function BookingConfirmationExperience({
             appointmentIdOverride={appointmentId}
             accessTokenOverride={accessToken}
             previewMode={previewMode}
+            accountClaimIssue={accountClaimIssue}
           />
         </Suspense>
       </div>

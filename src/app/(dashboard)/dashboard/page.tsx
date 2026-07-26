@@ -9,7 +9,8 @@ import {
 } from '@/lib/customer-dashboard-snapshot';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
-import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
+import { resolveAuthenticatedCustomerAccount } from '@/lib/customer-account';
+import { CustomerAccountConflictRecovery } from '@/components/customer/customer-account-conflict-recovery';
 import { randomUUID } from 'crypto';
 
 
@@ -255,14 +256,39 @@ export default async function CustomerDashboardRootPage({
 
 
   const userEmail = session.user?.email?.trim().toLowerCase() ?? '';
-  const authenticatedCustomer =
+  const customerResolution =
     adminDb && session.user?.id && userEmail
-      ? await resolveAuthenticatedCustomer(adminDb, {
+      ? await resolveAuthenticatedCustomerAccount(adminDb, {
           authUserId: session.user.id,
           email: userEmail,
           fullName: session.profile?.full_name,
         })
       : null;
+  if (customerResolution?.status === 'conflict') {
+    return (
+      <DashboardShell title='Your dashboard' subtitle='Account access needs attention.' role='customer'>
+        <div className='mx-auto max-w-2xl py-8'>
+          <CustomerAccountConflictRecovery
+            message='This email is already connected to a different login. No booking or customer information has been exposed or changed. Sign in with the account that originally claimed the booking, or contact Gloss Boss for help.'
+          />
+        </div>
+      </DashboardShell>
+    );
+  }
+  if (session.user?.id && userEmail && customerResolution?.status !== 'resolved') {
+    return (
+      <DashboardShell title='Your dashboard' subtitle='Your booking data is still safe.' role='customer'>
+        <div className='mx-auto max-w-2xl py-8'>
+          <CustomerAccountConflictRecovery
+            title='Your account is temporarily unavailable'
+            message='We could not safely load your customer record. Retry this page. If it continues, sign back in or contact Gloss Boss; your booking has not been deleted or changed.'
+          />
+        </div>
+      </DashboardShell>
+    );
+  }
+  const authenticatedCustomer =
+    customerResolution?.status === 'resolved' ? customerResolution.customer : null;
   const customerId = authenticatedCustomer?.id ?? '';
   let referralCode: string | null = null;
   let referralLink: string | null = null;
@@ -284,9 +310,17 @@ export default async function CustomerDashboardRootPage({
   if (supabase && session.user && userEmail) {
     if (adminDb) {
       if (customerId) {
+        const claimedAt = new Date().toISOString();
         await adminDb
           .from('appointments')
-          .update({ customer_id: customerId, updated_at: new Date().toISOString() })
+          .update({
+            customer_id: customerId,
+            customer_claimed_account_at: claimedAt,
+            account_created_at: claimedAt,
+            account_claim_status: 'linked',
+            account_claim_error: null,
+            updated_at: claimedAt,
+          })
           .is('customer_id', null)
           .ilike('guest_email', userEmail);
         const { ensureCustomerReferralCode, loadReferralProgramSettings, referralLinkForCode } = await import('@/lib/referral/referral-codes');
@@ -323,9 +357,9 @@ export default async function CustomerDashboardRootPage({
       .limit(40);
 
     if (customerId) {
-      query = query.or(`guest_email.eq.${userEmail},customer_id.eq.${customerId}`);
+      query = query.eq('customer_id', customerId);
     } else {
-      query = query.eq('guest_email', userEmail);
+      query = query.eq('id', '__no_authenticated_customer__');
     }
 
     const { data } = await query;

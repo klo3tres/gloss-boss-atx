@@ -57,7 +57,9 @@ export async function POST(request: Request) {
   const row = appointment as { id?: string; customer_id?: string | null; guest_email?: string | null; status?: string | null } | null;
   const ownsAppointment =
     row?.id &&
-    (row.customer_id === customer.id || str(row.guest_email).toLowerCase() === email);
+    (row.customer_id
+      ? row.customer_id === customer.id
+      : str(row.guest_email).toLowerCase() === email);
   if (!ownsAppointment) return NextResponse.json({ error: 'This appointment is not connected to your account.' }, { status: 403 });
 
   const bucket = process.env.JOB_MEDIA_BUCKET?.trim() || 'job-media';
