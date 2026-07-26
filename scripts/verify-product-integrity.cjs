@@ -15,6 +15,9 @@ const cancellation = read('src/lib/appointment-lifecycle.ts');
 const delivery = read('src/lib/confirmation-delivery-status.ts');
 const customerIntelligence = read('src/lib/titan/customer-intelligence.ts');
 const ownerInsights = read('src/lib/titan/owner-insights.ts');
+const adminMonitor = read('src/components/admin/admin-automation-boot.tsx');
+const staffMonitor = read('src/components/operations/staff-appointment-operations-monitor.tsx');
+const dailyFallback = read('src/app/api/cron/process-follow-ups/route.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -54,8 +57,18 @@ check(
   'Last-contact status must not ignore valid messages because of a single template kind.',
 );
 check(
-  vercel.crons.some((job) => job.path === '/api/cron/missed-job-starts'),
-  'Late-job monitoring must have an actual scheduler entry.',
+  adminMonitor.includes('5 * 60 * 1000') &&
+    staffMonitor.includes('CHECK_INTERVAL_MS = 5 * 60 * 1000'),
+  'Late-job monitoring must run every five minutes in active admin and technician sessions.',
+);
+check(
+  dailyFallback.includes('processAppointmentOperationalAlerts') &&
+    dailyFallback.includes('processDueStaffJobReminders'),
+  'The supported daily host cron must sweep staff reminders and operational alerts.',
+);
+check(
+  !vercel.crons.some((job) => job.schedule.includes('*/5')),
+  'Vercel Hobby rejects five-minute cron schedules; do not make production undeployable.',
 );
 
 // Regression fixture from the real customer screenshot:
