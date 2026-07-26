@@ -63,7 +63,8 @@ check(
 );
 check(
   dailyFallback.includes('processAppointmentOperationalAlerts') &&
-    dailyFallback.includes('processDueStaffJobReminders'),
+    dailyFallback.includes('processDueStaffJobReminders') &&
+    dailyFallback.includes("request.headers.get('user-agent') === 'vercel-cron/1.0'"),
   'The supported daily host cron must sweep staff reminders and operational alerts.',
 );
 check(

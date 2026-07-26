@@ -11,7 +11,12 @@ export const maxDuration = 120;
 
 function authorized(request: Request) {
   const secret = titanConfig.cronSecret();
-  if (!secret) return false;
+  if (!secret) {
+    return (
+      process.env.VERCEL_ENV === 'production' &&
+      request.headers.get('user-agent') === 'vercel-cron/1.0'
+    );
+  }
   const auth = request.headers.get('authorization') ?? '';
   if (auth === `Bearer ${secret}`) return true;
   const url = new URL(request.url);
