@@ -165,6 +165,16 @@ export async function linkAuthUserToCustomer(
   }
 
   if (!customer) {
+    const { data } = await admin
+      .from('customers')
+      .select('id, auth_user_id, email')
+      .eq('auth_user_id', authUserId)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) customer = data as CustomerRow;
+  }
+
+  if (!customer) {
     const { data } = await admin.from('customers').select('id, auth_user_id, email').ilike('email', email).maybeSingle();
     if (data?.id) customer = data as CustomerRow;
   }

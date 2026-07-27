@@ -156,6 +156,7 @@ check(
     customerProfilePanel.includes('Changing email requires confirmation') &&
     customerAccount.includes("patch.email = email") &&
     portalAccess.includes("currentEmail !== email") &&
+    portalAccess.includes(".eq('auth_user_id', authUserId)") &&
     authCallback.includes("typeParam === 'signup' || typeParam === 'email'"),
   'Customer contact editing must verify email changes and synchronize owned active contact records.',
 );
