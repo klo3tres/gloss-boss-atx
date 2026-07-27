@@ -12,6 +12,7 @@ import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { humanizeAuthError } from '@/lib/auth/auth-event-log';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
 import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
+import { signupConfirmRedirectUrl } from '@/lib/auth/action-link-registry';
 
 function formatLoginFailure(outcome: { code: string; message?: string; rawRole?: string }): string {
   switch (outcome.code) {
@@ -122,7 +123,10 @@ export default function LoginForm() {
     try {
       clearAuthUxSession();
 
-      const { data, error: signInError } = await client.auth.signInWithPassword({ email, password });
+      const { data, error: signInError } = await client.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
       if (signInError) {
         setError(humanizeAuthError(signInError.message));
@@ -235,14 +239,11 @@ export default function LoginForm() {
     setError(null);
     setNotice(null);
     try {
-      const emailRedirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextDestination)}&type=signup`
-          : undefined;
+      const emailRedirectTo = signupConfirmRedirectUrl(nextDestination);
       const { error: resendErr } = await client.auth.resend({
         type: 'signup',
-        email: email.trim(),
-        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+        email: email.trim().toLowerCase(),
+        options: { emailRedirectTo },
       });
       if (resendErr) setError(humanizeAuthError(resendErr.message));
       else setNotice(`If ${email.trim()} needs confirmation, a new email was sent.`);
@@ -292,6 +293,7 @@ export default function LoginForm() {
             <span className='mb-2 block'>Email Address</span>
             <input
               type='email'
+              autoComplete='email'
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className='gb-input'
@@ -302,6 +304,7 @@ export default function LoginForm() {
             <span className='mb-2 block'>Password</span>
             <input
               type='password'
+              autoComplete='current-password'
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className='gb-input'

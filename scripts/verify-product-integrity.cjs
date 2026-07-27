@@ -27,6 +27,7 @@ const claimRecovery = read('src/components/customer/customer-account-conflict-re
 const signupForm = read('src/app/(auth)/signup/signup-form.tsx');
 const actionLinks = read('src/lib/auth/action-link-registry.ts');
 const roleGate = read('src/components/auth/dashboard-role-gate.tsx');
+const loginForm = read('src/app/(auth)/login/login-form.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -126,6 +127,14 @@ check(
     roleGate.includes("outcome.code === 'MISSING_PROFILE'") &&
     roleGate.includes("fetch('/api/auth/ensure-profile'"),
   'Account creation must preserve the booking destination, confirm the password, show email-confirmation recovery, and self-repair a missing profile.',
+);
+check(
+  loginForm.includes("email: email.trim().toLowerCase()") &&
+    loginForm.includes('resolveSafePostLoginRedirect') &&
+    loginForm.includes('signupConfirmRedirectUrl(nextDestination)') &&
+    loginForm.includes('timeoutMs: 5000') &&
+    loginForm.includes('Redirect is taking too long'),
+  'Login must normalize identity, preserve safe booking return, recover confirmation, and stop finite waits.',
 );
 
 // Regression fixture from the real customer screenshot:
