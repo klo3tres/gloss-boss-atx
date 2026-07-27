@@ -91,11 +91,20 @@ async function main() {
     const signedIn = await sessionClient.auth.signInWithPassword({ email: newEmail, password });
     if (signedIn.error) throw new Error(signedIn.error.message);
     const cookie = [...cookieJar.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
+    const profileSync = await fetch(`${appUrl}/api/auth/ensure-profile`, {
+      method: 'POST',
+      headers: { cookie },
+      redirect: 'follow',
+    });
+    if (!profileSync.ok) throw new Error(`Customer profile sync returned HTTP ${profileSync.status}.`);
     const settings = await fetch(`${appUrl}/dashboard/settings`, {
       headers: { cookie },
       redirect: 'follow',
     });
     if (!settings.ok) throw new Error(`Customer settings returned HTTP ${settings.status}.`);
+    if (!new URL(settings.url).pathname.startsWith('/dashboard/settings')) {
+      throw new Error(`Customer settings redirected to ${new URL(settings.url).pathname}.`);
+    }
 
     const refreshed = await admin
       .from('customers')

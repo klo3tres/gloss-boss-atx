@@ -87,6 +87,17 @@ export async function GET(request: Request) {
 
   const admin = tryCreateAdminSupabase();
   if (admin && user) {
+    if ((typeParam === 'signup' || typeParam === 'email') && user.email) {
+      const { linkAuthUserToCustomer } = await import('@/lib/customer-portal-access');
+      await linkAuthUserToCustomer(admin, {
+        authUserId: user.id,
+        email: user.email,
+        fullName:
+          typeof user.user_metadata?.full_name === 'string'
+            ? user.user_metadata.full_name
+            : undefined,
+      });
+    }
     await logAuthEvent(admin, {
       eventType: typeParam === 'recovery' ? 'reset_opened' : typeParam === 'signup' ? 'email_confirmed' : 'login_succeeded',
       subjectUserId: user.id,

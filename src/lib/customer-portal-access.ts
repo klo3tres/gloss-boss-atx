@@ -247,6 +247,37 @@ export async function linkAuthUserToCustomer(
     return { ok: true, customerId: customer.id, linked: true };
   }
 
+  const currentEmail = deliverableCustomerEmail(customer.email);
+  if (existingAuth === authUserId && currentEmail !== email) {
+    const { data: emailOwner, error: emailOwnerError } = await admin
+      .from('customers')
+      .select('id')
+      .ilike('email', email)
+      .limit(1)
+      .maybeSingle();
+    if (emailOwnerError) return { ok: false, error: emailOwnerError.message, errorCode: 'unavailable' };
+    if (emailOwner?.id && String(emailOwner.id) !== customer.id) {
+      return {
+        ok: false,
+        error: 'That email is already connected to a different customer account.',
+        errorCode: 'conflict',
+      };
+    }
+    const now = new Date().toISOString();
+    const synced = await admin
+      .from('customers')
+      .update({ email, updated_at: now })
+      .eq('id', customer.id)
+      .eq('auth_user_id', authUserId);
+    if (synced.error) return { ok: false, error: synced.error.message, errorCode: 'unavailable' };
+    await admin.from('profiles').update({ email }).eq('id', authUserId);
+    await admin
+      .from('appointments')
+      .update({ guest_email: email, updated_at: now })
+      .eq('customer_id', customer.id)
+      .not('status', 'in', '("cancelled","canceled","completed","no_show","deleted","archived")');
+  }
+
   return { ok: true, customerId: customer.id, linked: false };
 }
 
