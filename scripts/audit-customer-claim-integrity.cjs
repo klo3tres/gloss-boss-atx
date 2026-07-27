@@ -57,16 +57,33 @@ function normalizedEmail(value) {
   return email.includes('@') ? email : '';
 }
 
+function maskedEmail(value) {
+  const email = normalizedEmail(value);
+  if (!email) return 'no-email';
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 async function main() {
-  const [appointments, customers] = await Promise.all([
+  const [appointments, customers, profiles] = await Promise.all([
     readAll(
       'appointments',
       'id, customer_id, account_claim_status, customer_claimed_account_at',
     ),
     readAll('customers', 'id, auth_user_id, email'),
+    readAll('profiles', 'id, role, email'),
   ]);
+  const authUsers = [];
+  for (let page = 1; ; page += 1) {
+    const response = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (response.error) throw new Error(`auth users: ${response.error.message}`);
+    authUsers.push(...response.data.users);
+    if (response.data.users.length < 1000) break;
+  }
 
   const customersById = new Map(customers.map((row) => [String(row.id), row]));
+  const profilesById = new Map(profiles.map((row) => [String(row.id), row]));
+  const authUsersById = new Map(authUsers.map((user) => [String(user.id), user]));
   const claimedAppointments = appointments.filter(
     (row) =>
       String(row.account_claim_status || '') === 'linked' ||
@@ -97,15 +114,39 @@ async function main() {
 
   const duplicateAuthOwners = [...customersByAuth.values()].filter((ids) => ids.length > 1);
   const conflictingEmailOwners = [...authOwnersByEmail.values()].filter((owners) => owners.size > 1);
+  const confirmedUsersMissingProfile = authUsers.filter(
+    (user) => user.email_confirmed_at && !profilesById.has(String(user.id)),
+  );
+  const confirmedCustomersMissingCrmLink = profiles.filter((profile) => {
+    if (String(profile.role || '') !== 'customer') return false;
+    const authUser = authUsersById.get(String(profile.id));
+    if (!authUser?.email_confirmed_at) return false;
+    return !customersByAuth.has(String(profile.id));
+  });
+  const customerLinksMissingAuthUser = customers.filter(
+    (customer) => customer.auth_user_id && !authUsersById.has(String(customer.auth_user_id)),
+  );
   const failures = [
     ['claimed bookings missing a customer', claimedWithoutCustomer.length],
     ['claimed bookings whose customer has no login owner', claimedWithoutAuthOwner.length],
     ['login IDs attached to multiple customers', duplicateAuthOwners.length],
     ['customer emails attached to multiple login IDs', conflictingEmailOwners.length],
+    ['confirmed login accounts missing profiles', confirmedUsersMissingProfile.length],
+    ['confirmed customer profiles missing CRM links', confirmedCustomersMissingCrmLink.length],
+    ['customer links pointing to missing login accounts', customerLinksMissingAuthUser.length],
   ];
 
-  console.log(`Customer claim audit: ${claimedAppointments.length} claimed bookings, ${customers.length} customer records.`);
+  console.log(
+    `Customer claim audit: ${claimedAppointments.length} claimed bookings, ${customers.length} customer records, ${authUsers.length} login accounts.`,
+  );
   for (const [label, count] of failures) console.log(`- ${label}: ${count}`);
+  for (const user of confirmedUsersMissingProfile) {
+    console.log(`  missing-profile ${String(user.id).slice(-8)} ${maskedEmail(user.email)}`);
+  }
+  for (const profile of confirmedCustomersMissingCrmLink) {
+    const user = authUsersById.get(String(profile.id));
+    console.log(`  missing-customer-link ${String(profile.id).slice(-8)} ${maskedEmail(user?.email || profile.email)}`);
+  }
   if (failures.some(([, count]) => count > 0)) process.exit(1);
   console.log('Customer claim integrity passed.');
 }

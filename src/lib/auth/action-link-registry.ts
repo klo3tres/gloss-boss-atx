@@ -190,8 +190,9 @@ export function staffInviteUrl(token: string): string {
   return `${appOrigin()}${ACTION_LINK_REGISTRY.staff_invite.route}?token=${encodeURIComponent(token)}`;
 }
 
-export function signupConfirmRedirectUrl(): string {
-  return `${appOrigin()}/auth/callback?next=${encodeURIComponent('/dashboard')}&type=signup`;
+export function signupConfirmRedirectUrl(next = '/dashboard'): string {
+  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+  return `${appOrigin()}/auth/callback?next=${encodeURIComponent(safeNext)}&type=signup`;
 }
 
 /** Canonical customer agreement signing URL (token = appointment access_token). */

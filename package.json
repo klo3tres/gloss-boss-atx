@@ -20,7 +20,8 @@
     "start": "next start -p 3000",
     "health:check": "node scripts/run-production-health-check.cjs",
     "qa:integrity": "node scripts/verify-product-integrity.cjs",
-    "qa:claims": "node scripts/audit-customer-claim-integrity.cjs"
+    "qa:claims": "node scripts/audit-customer-claim-integrity.cjs",
+    "qa:claims:repair": "node scripts/repair-customer-account-integrity.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

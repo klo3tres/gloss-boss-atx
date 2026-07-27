@@ -24,11 +24,13 @@ export default function SignupForm() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [smsConsent, setSmsConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [phase, setPhase] = useState<'idle' | 'submitting' | 'finishing'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'submitting' | 'awaiting_confirmation' | 'finishing'>('idle');
   const [resendBusy, setResendBusy] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState('');
   const confirmationDestination = getSafeInternalRedirect(searchParams.get('next'), '/dashboard');
 
   useEffect(() => {
@@ -50,10 +52,7 @@ export default function SignupForm() {
     }
     setResendBusy(true);
     try {
-      const emailRedirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(confirmationDestination)}&type=signup`
-          : signupConfirmRedirectUrl();
+      const emailRedirectTo = signupConfirmRedirectUrl(confirmationDestination);
       const { error: resendError } = await client.auth.resend({
         type: 'signup',
         email: email.trim(),
@@ -82,6 +81,16 @@ export default function SignupForm() {
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    if (password.length < 8) {
+      setError('Use at least 8 characters for your password.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('The passwords do not match. Re-enter them and try again.');
+      return;
+    }
+
     const client = supabase ?? createSupabaseBrowserClient();
     if (!client) {
       setError('Auth client is not available. Check Supabase environment variables.');
@@ -93,13 +102,10 @@ export default function SignupForm() {
     try {
       clearAuthUxSession();
 
-      const emailRedirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(confirmationDestination)}&type=signup`
-          : signupConfirmRedirectUrl();
+      const emailRedirectTo = signupConfirmRedirectUrl(confirmationDestination);
 
       const { data, error: signUpError } = await client.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           emailRedirectTo,
@@ -118,12 +124,20 @@ export default function SignupForm() {
         return;
       }
 
-      if (!data.session?.user) {
-        const masked = email.trim().replace(/(.{2}).+(@.+)/, '$1***$2');
-        setInfoMessage(
-          `If confirmation is required, we asked Supabase to email ${masked}. Use Resend if nothing arrives within a few minutes.`,
-        );
+      const identities = data.user?.identities;
+      if (data.user && Array.isArray(identities) && identities.length === 0) {
+        setError('This email may already have an account. Sign in, reset the password, or resend confirmation below.');
         setPhase('idle');
+        return;
+      }
+
+      if (!data.session?.user) {
+        const masked = normalizedEmail.replace(/(.{2}).+(@.+)/, '$1***$2');
+        setSubmittedEmail(normalizedEmail);
+        setInfoMessage(
+          `We sent a confirmation link to ${masked}. Open it to finish linking your booking.`,
+        );
+        setPhase('awaiting_confirmation');
         return;
       }
 
@@ -190,6 +204,53 @@ export default function SignupForm() {
 
   const loginHref = `/login${searchParams.get('next') ? `?next=${encodeURIComponent(searchParams.get('next')!)}${searchParams.get('email') ? `&email=${encodeURIComponent(searchParams.get('email')!)}` : ''}` : ''}`;
 
+  if (phase === 'awaiting_confirmation') {
+    return (
+      <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 pb-16 pt-28 text-foreground">
+        <section className="w-full max-w-md rounded-2xl border border-emerald-500/30 bg-card p-6 shadow-lg">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Account created</p>
+          <h1 className="mt-3 text-3xl font-black">Check your email</h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            We sent the confirmation link to <strong className="text-foreground">{submittedEmail}</strong>.
+            Open it to confirm your email, claim this booking, and enter your dashboard.
+          </p>
+          <div className="mt-6 grid gap-3">
+            <a
+              href="mailto:"
+              className="min-h-11 rounded-xl bg-gold px-4 py-3 text-center text-sm font-black uppercase text-black"
+            >
+              Open email app
+            </a>
+            <button
+              type="button"
+              disabled={resendBusy}
+              onClick={() => void resendConfirmation()}
+              className="min-h-11 rounded-xl border border-border px-4 py-3 text-sm font-bold text-foreground disabled:opacity-50"
+            >
+              {resendBusy ? 'Sending…' : 'Resend confirmation'}
+            </button>
+            <Link href={loginHref} className="min-h-11 rounded-xl border border-border px-4 py-3 text-center text-sm font-bold text-foreground">
+              Already confirmed? Sign in
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setPhase('idle');
+                setInfoMessage(null);
+              }}
+              className="min-h-11 text-sm font-semibold text-muted-foreground underline underline-offset-4"
+            >
+              Change email
+            </button>
+          </div>
+          <p className="mt-5 text-xs leading-5 text-muted-foreground">
+            Nothing yet? Check spam, then resend. Your booking remains safe while you confirm.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <SafeRenderBoundary label="Create account">
       <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-28 text-foreground">
@@ -246,6 +307,20 @@ export default function SignupForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="gb-input w-full min-h-11 rounded-lg border border-border bg-input px-4 py-3"
+                minLength={8}
+                required
+              />
+              <span className="mt-1 block text-xs text-muted-foreground">At least 8 characters.</span>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-2 block text-muted-foreground">Confirm password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="gb-input w-full min-h-11 rounded-lg border border-border bg-input px-4 py-3"
+                minLength={8}
                 required
               />
             </label>

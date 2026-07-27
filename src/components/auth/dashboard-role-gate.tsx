@@ -107,7 +107,16 @@ export function DashboardRoleGate({ variant, children }: { variant: RoleGateVari
       logRoleDebug({ step: 'gate_start', variant, allowed: [...allowed] });
 
       try {
-        const outcome = await fetchUserRole(supabase);
+        let outcome = await fetchUserRole(supabase);
+
+        if (!outcome.ok && outcome.code === 'MISSING_PROFILE') {
+          await fetch('/api/auth/ensure-profile', {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+          }).catch(() => null);
+          outcome = await fetchUserRole(supabase);
+        }
 
         if (cancelled) return;
 

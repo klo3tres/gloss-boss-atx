@@ -24,6 +24,9 @@ const portalAccess = read('src/lib/customer-portal-access.ts');
 const canonicalBooking = read('src/app/booking/[token]/page.tsx');
 const customerDashboard = read('src/app/(dashboard)/dashboard/page.tsx');
 const claimRecovery = read('src/components/customer/customer-account-conflict-recovery.tsx');
+const signupForm = read('src/app/(auth)/signup/signup-form.tsx');
+const actionLinks = read('src/lib/auth/action-link-registry.ts');
+const roleGate = read('src/components/auth/dashboard-role-gate.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -114,6 +117,15 @@ check(
     claimRecovery.includes('Sign out and continue as guest') &&
     customerDashboard.includes("customerResolution?.status === 'conflict'"),
   'Account-claim failures must be visible and recoverable on both the secure link and dashboard.',
+);
+check(
+  signupForm.includes("phase === 'awaiting_confirmation'") &&
+    signupForm.includes('confirmPassword') &&
+    signupForm.includes('signupConfirmRedirectUrl(confirmationDestination)') &&
+    actionLinks.includes("safeNext = next.startsWith('/')") &&
+    roleGate.includes("outcome.code === 'MISSING_PROFILE'") &&
+    roleGate.includes("fetch('/api/auth/ensure-profile'"),
+  'Account creation must preserve the booking destination, confirm the password, show email-confirmation recovery, and self-repair a missing profile.',
 );
 
 // Regression fixture from the real customer screenshot:
