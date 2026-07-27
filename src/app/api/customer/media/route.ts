@@ -21,6 +21,68 @@ function str(value: unknown) {
   return value == null ? '' : String(value).trim();
 }
 
+export async function GET(request: Request) {
+  const session = await getSessionWithProfile();
+  const email = session.user?.email?.trim().toLowerCase() ?? '';
+  if (!session.user?.id || !email || !canAccessCustomerPortal(session.profile?.role)) {
+    return NextResponse.json({ error: 'Sign in to view photos.' }, { status: 401 });
+  }
+
+  const admin = tryCreateAdminSupabase();
+  if (!admin) return NextResponse.json({ error: 'Photos are temporarily unavailable.' }, { status: 503 });
+  const customer = await resolveAuthenticatedCustomer(admin, {
+    authUserId: session.user.id,
+    email,
+    fullName: session.profile?.full_name,
+  });
+  if (!customer?.id) return NextResponse.json({ error: 'Your customer profile could not be loaded.' }, { status: 409 });
+
+  const requestedAppointmentId = str(new URL(request.url).searchParams.get('appointmentId'));
+  let appointmentIds: string[] = [];
+  if (requestedAppointmentId) {
+    const { data: appointment } = await admin
+      .from('appointments')
+      .select('id, customer_id, guest_email')
+      .eq('id', requestedAppointmentId)
+      .maybeSingle();
+    const row = appointment as { id?: string; customer_id?: string | null; guest_email?: string | null } | null;
+    const ownsAppointment =
+      row?.id &&
+      (row.customer_id
+        ? row.customer_id === customer.id
+        : str(row.guest_email).toLowerCase() === email);
+    if (!ownsAppointment) {
+      return NextResponse.json({ error: 'This appointment is not connected to your account.' }, { status: 403 });
+    }
+    appointmentIds = [requestedAppointmentId];
+  } else {
+    const [linked, unclaimed] = await Promise.all([
+      admin.from('appointments').select('id').eq('customer_id', customer.id),
+      admin.from('appointments').select('id').is('customer_id', null).eq('guest_email', email),
+    ]);
+    if (linked.error || unclaimed.error) {
+      return NextResponse.json({ error: 'Your photos could not be loaded. Please try again.' }, { status: 500 });
+    }
+    appointmentIds = [
+      ...(linked.data ?? []).map((row) => String(row.id)),
+      ...(unclaimed.data ?? []).map((row) => String(row.id)),
+    ];
+  }
+
+  if (!appointmentIds.length) return NextResponse.json({ ok: true, photos: [] });
+  const photos = await admin
+    .from('job_media')
+    .select('id, appointment_id, file_url, category, notes, created_at')
+    .in('appointment_id', [...new Set(appointmentIds)])
+    .eq('visible_to_customer', true)
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (photos.error) {
+    return NextResponse.json({ error: 'Your photos could not be loaded. Please try again.' }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, photos: photos.data ?? [] });
+}
+
 export async function POST(request: Request) {
   const session = await getSessionWithProfile();
   const email = session.user?.email?.trim().toLowerCase() ?? '';

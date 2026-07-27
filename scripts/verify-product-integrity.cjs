@@ -34,6 +34,8 @@ const authCallback = read('src/app/auth/callback/route.ts');
 const customerSettingsActions = read('src/app/(dashboard)/dashboard/settings/actions.ts');
 const customerProfilePanel = read('src/components/customer/customer-profile-garage-panel.tsx');
 const crmVehicles = read('src/lib/crm-vehicles-db.ts');
+const customerPhotoUpload = read('src/components/customer/customer-photo-upload.tsx');
+const customerMediaRoute = read('src/app/api/customer/media/route.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -166,6 +168,16 @@ check(
     !customerProfilePanel.includes("id: `pending-") &&
     crmVehicles.includes("throw new Error('Vehicle does not belong to this customer.')"),
   'Vehicle add/edit must return the permanent record and enforce customer ownership.',
+);
+check(
+  customerPhotoUpload.includes("fetch('/api/customer/media'") &&
+    customerPhotoUpload.includes('result.fileUrl') &&
+    customerPhotoUpload.includes('router.refresh()') &&
+    customerMediaRoute.includes('export async function GET') &&
+    customerMediaRoute.includes('ownsAppointment') &&
+    customerMediaRoute.includes('visible_to_customer: true') &&
+    customerMediaRoute.includes('publish_to_gallery: false'),
+  'Customer photos must upload to an owned appointment, preview immediately, refresh the gallery, and stay out of marketing.',
 );
 
 // Regression fixture from the real customer screenshot:

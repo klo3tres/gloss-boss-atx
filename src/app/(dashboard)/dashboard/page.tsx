@@ -400,7 +400,7 @@ export default async function CustomerDashboardRootPage({
 
           .limit(400),
 
-        supabase
+        (adminDb ?? supabase)
 
           .from('job_media')
 

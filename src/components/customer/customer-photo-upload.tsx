@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, MessageSquare } from 'lucide-react';
 import { GlassCard, SectionEyebrow } from '@/components/ui/premium';
@@ -20,6 +21,7 @@ function label(appointment: AppointmentChoice) {
 }
 
 export function CustomerPhotoUpload({ appointments }: { appointments: AppointmentChoice[] }) {
+  const router = useRouter();
   const choices = useMemo(() => {
     const seen = new Set<string>();
     return appointments.filter((appointment) => {
@@ -32,6 +34,7 @@ export function CustomerPhotoUpload({ appointments }: { appointments: Appointmen
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [uploadedPhotos, setUploadedPhotos] = useState<Array<{ id: string; fileUrl: string }>>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const upload = async () => {
@@ -48,14 +51,28 @@ export function CustomerPhotoUpload({ appointments }: { appointments: Appointmen
     body.set('note', note);
     try {
       const response = await fetch('/api/customer/media', { method: 'POST', body });
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        id?: string;
+        fileUrl?: string;
+      };
       if (!response.ok) {
         setMessage({ ok: false, text: result.error ?? 'Upload failed. Please try again.' });
         return;
       }
+      if (!result.fileUrl) {
+        setMessage({ ok: false, text: 'The photo was saved, but its preview is unavailable. Refresh to view it.' });
+        router.refresh();
+        return;
+      }
       if (inputRef.current) inputRef.current.value = '';
       setNote('');
+      setUploadedPhotos((photos) => [
+        { id: result.id ?? result.fileUrl!, fileUrl: result.fileUrl! },
+        ...photos,
+      ]);
       setMessage({ ok: true, text: 'Photo attached to your appointment.' });
+      router.refresh();
     } catch {
       setMessage({ ok: false, text: 'The upload was interrupted. Please try again.' });
     } finally {
@@ -84,6 +101,24 @@ export function CustomerPhotoUpload({ appointments }: { appointments: Appointmen
             <ImagePlus className="h-4 w-4" /> {busy ? 'Uploading…' : 'Upload photo'}
           </button>
           {message ? <p role={message.ok ? 'status' : 'alert'} className={`text-sm ${message.ok ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>{message.text}</p> : null}
+          {uploadedPhotos.length ? (
+            <div aria-label="Photos uploaded this visit" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {uploadedPhotos.map((photo) => (
+                <a
+                  key={photo.id}
+                  href={photo.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="overflow-hidden rounded-2xl border border-emerald-500/30 bg-muted/30"
+                >
+                  <img src={photo.fileUrl} alt="Customer vehicle upload" className="aspect-square w-full object-cover" />
+                  <span className="block px-3 py-2 text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-300">
+                    Uploaded
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="mt-4 rounded-2xl border border-dashed border-border p-5 text-sm text-muted-foreground">

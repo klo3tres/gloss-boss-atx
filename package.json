@@ -25,7 +25,8 @@
     "qa:login": "node scripts/qa-customer-login.cjs",
     "qa:password-reset": "node scripts/qa-password-reset.cjs",
     "qa:contact": "node scripts/qa-customer-contact.cjs",
-    "qa:vehicles": "node scripts/qa-customer-vehicles.cjs"
+    "qa:vehicles": "node scripts/qa-customer-vehicles.cjs",
+    "qa:photos": "node scripts/qa-customer-photos.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
