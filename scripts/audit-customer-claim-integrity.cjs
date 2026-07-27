@@ -147,6 +147,9 @@ async function main() {
     const user = authUsersById.get(String(profile.id));
     console.log(`  missing-customer-link ${String(profile.id).slice(-8)} ${maskedEmail(user?.email || profile.email)}`);
   }
+  for (const customer of customerLinksMissingAuthUser) {
+    console.log(`  missing-auth-user ${String(customer.id).slice(-8)} ${maskedEmail(customer.email)}`);
+  }
   if (failures.some(([, count]) => count > 0)) process.exit(1);
   console.log('Customer claim integrity passed.');
 }

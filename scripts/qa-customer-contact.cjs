@@ -48,6 +48,11 @@ async function main() {
   let customerId = '';
 
   try {
+    await admin
+      .from('customers')
+      .delete()
+      .like('email', 'gbqa-contact-%');
+
     const created = await admin.auth.admin.createUser({
       email: oldEmail,
       password,
@@ -116,6 +121,10 @@ async function main() {
     }
     console.log('Customer contact QA passed: confirmed email synchronized to the owned customer profile.');
   } finally {
+    await admin
+      .from('customers')
+      .delete()
+      .in('email', [oldEmail, newEmail]);
     if (customerId) await admin.from('customers').delete().eq('id', customerId);
     if (authUserId) await admin.auth.admin.deleteUser(authUserId);
   }
