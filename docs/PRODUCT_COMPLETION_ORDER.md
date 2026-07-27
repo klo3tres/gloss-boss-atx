@@ -15,9 +15,10 @@ action, unexplained price, disconnected side effect, or unhandled retry path.
 
 ## Locked execution order
 
-Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**
+Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
+**1.4 Reset password**
 
-Current active item: **1.4 Reset password**
+Current active item: **1.5 Edit customer contact information**
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

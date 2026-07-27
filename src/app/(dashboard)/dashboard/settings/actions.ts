@@ -9,6 +9,9 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { ThemePreference } from '@/components/theme/theme-provider';
 import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
 import { insertCustomerVehicle, updateCustomerVehicle } from '@/lib/crm-vehicles-db';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { deliverableCustomerEmail } from '@/lib/customer-contact';
+import { appOrigin } from '@/lib/auth/action-link-registry';
 
 export type CustomerSettingsActionResult = { ok: true; message: string } | { ok: false; error: string };
 
@@ -96,6 +99,7 @@ export async function updateCustomerEmailPreferencesAction(formData: FormData) {
 
 export async function updateCustomerProfileAction(input: {
   fullName: string;
+  email: string;
   phone: string;
   addressLine1?: string;
   addressLine2?: string;
@@ -107,8 +111,22 @@ export async function updateCustomerProfileAction(input: {
   if (!context) return { ok: false, error: 'Your account could not be loaded. Please sign in again.' };
   const { admin, customer, session } = context;
   const fullName = str(input.fullName).slice(0, 120);
+  const nextEmail = deliverableCustomerEmail(input.email);
+  const currentEmail = deliverableCustomerEmail(session.user?.email);
   const phone = str(input.phone).slice(0, 40);
   if (!fullName) return { ok: false, error: 'Name is required.' };
+  if (!nextEmail) return { ok: false, error: 'Enter a valid email address.' };
+  if (nextEmail !== currentEmail) {
+    const { data: emailOwner } = await admin
+      .from('customers')
+      .select('id')
+      .ilike('email', nextEmail)
+      .limit(1)
+      .maybeSingle();
+    if (emailOwner?.id && String(emailOwner.id) !== customer.id) {
+      return { ok: false, error: 'That email is already connected to another customer account.' };
+    }
+  }
 
   const patch = {
     full_name: fullName,
@@ -130,9 +148,33 @@ export async function updateCustomerProfileAction(input: {
   if (update.error) return { ok: false, error: 'Your profile could not be saved. Please try again.' };
 
   await admin.from('profiles').update({ full_name: fullName }).eq('id', session.user!.id);
+  await admin
+    .from('appointments')
+    .update({
+      guest_name: fullName,
+      guest_phone: phone || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('customer_id', customer.id)
+    .not('status', 'in', '("cancelled","canceled","completed","no_show","deleted","archived")');
+
+  let message = 'Profile saved.';
+  if (nextEmail !== currentEmail) {
+    const authClient = await createSupabaseServerClient();
+    if (!authClient) return { ok: false, error: 'Email changes are temporarily unavailable.' };
+    const redirectTo = `${appOrigin()}/auth/callback?next=${encodeURIComponent('/dashboard/settings?email_changed=1')}&type=email`;
+    const emailChange = await authClient.auth.updateUser(
+      { email: nextEmail },
+      { emailRedirectTo: redirectTo },
+    );
+    if (emailChange.error) {
+      return { ok: false, error: 'Your profile was saved, but the email change could not be started. Please try again.' };
+    }
+    message = 'Profile saved. Check your email to confirm the new address.';
+  }
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/settings');
-  return { ok: true, message: 'Profile saved.' };
+  return { ok: true, message };
 }
 
 export async function addCustomerVehicleAction(input: {

@@ -100,7 +100,14 @@ export function CustomerProfileGaragePanel({
             </label>
             <label className="text-xs font-semibold text-muted-foreground">
               Email
-              <input className="gb-input mt-1 w-full opacity-70" value={profile.email} readOnly />
+              <input
+                className="gb-input mt-1 w-full"
+                type="email"
+                autoComplete="email"
+                value={profile.email}
+                onChange={(event) => setProfile({ ...profile, email: event.target.value })}
+              />
+              <span className="mt-1 block text-[10px] font-normal">Changing email requires confirmation from your inbox.</span>
             </label>
             <label className="text-xs font-semibold text-muted-foreground">
               Phone

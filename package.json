@@ -23,7 +23,8 @@
     "qa:claims": "node scripts/audit-customer-claim-integrity.cjs",
     "qa:claims:repair": "node scripts/repair-customer-account-integrity.cjs",
     "qa:login": "node scripts/qa-customer-login.cjs",
-    "qa:password-reset": "node scripts/qa-password-reset.cjs"
+    "qa:password-reset": "node scripts/qa-password-reset.cjs",
+    "qa:contact": "node scripts/qa-customer-contact.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

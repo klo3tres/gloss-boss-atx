@@ -31,6 +31,8 @@ const loginForm = read('src/app/(auth)/login/login-form.tsx');
 const forgotPassword = read('src/app/(auth)/forgot-password/page.tsx');
 const resetPassword = read('src/app/(auth)/reset-password/page.tsx');
 const authCallback = read('src/app/auth/callback/route.ts');
+const customerSettingsActions = read('src/app/(dashboard)/dashboard/settings/actions.ts');
+const customerProfilePanel = read('src/components/customer/customer-profile-garage-panel.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -146,6 +148,14 @@ check(
     resetPassword.includes("getSafeInternalRedirect(params.get('next')") &&
     authCallback.includes("nextParam.startsWith('/reset-password')"),
   'Password reset must preserve the safe booking destination from request through recovery callback and new login.',
+);
+check(
+  customerSettingsActions.includes('authClient.auth.updateUser') &&
+    customerSettingsActions.includes('Check your email to confirm the new address') &&
+    customerSettingsActions.includes("not('status', 'in'") &&
+    customerProfilePanel.includes('Changing email requires confirmation') &&
+    customerAccount.includes("patch.email = email"),
+  'Customer contact editing must verify email changes and synchronize owned active contact records.',
 );
 
 // Regression fixture from the real customer screenshot:

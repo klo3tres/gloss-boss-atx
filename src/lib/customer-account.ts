@@ -77,7 +77,19 @@ export async function resolveAuthenticatedCustomerAccount(
 
   const patch: Record<string, unknown> = {};
   if (!str(customer.auth_user_id)) patch.auth_user_id = authUserId;
-  if (!deliverableCustomerEmail(customer.email)) patch.email = email;
+  if (deliverableCustomerEmail(customer.email) !== email) {
+    const emailOwner = await admin
+      .from('customers')
+      .select('id, auth_user_id')
+      .ilike('email', email)
+      .limit(1)
+      .maybeSingle();
+    if (emailOwner.error) return { status: 'unavailable', customer: null };
+    if (emailOwner.data?.id && String(emailOwner.data.id) !== customer.id) {
+      return { status: 'conflict', customer: null };
+    }
+    patch.email = email;
+  }
   if (!str(customer.full_name) && str(input.fullName)) patch.full_name = str(input.fullName);
   if (Object.keys(patch).length) {
     patch.portal_account_linked_at = new Date().toISOString();
@@ -92,6 +104,18 @@ export async function resolveAuthenticatedCustomerAccount(
     if (updated.error) return { status: 'unavailable', customer: null };
     if (!updated.data) return { status: 'conflict', customer: null };
     customer = updated.data as CustomerAccountRow;
+  }
+
+  if (deliverableCustomerEmail(customer.email) === email) {
+    await admin
+      .from('profiles')
+      .update({ email })
+      .eq('id', authUserId);
+    await admin
+      .from('appointments')
+      .update({ guest_email: email, updated_at: new Date().toISOString() })
+      .eq('customer_id', customer.id)
+      .not('status', 'in', '("cancelled","canceled","completed","no_show","deleted","archived")');
   }
 
   return { status: 'resolved', customer };
