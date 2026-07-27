@@ -8,12 +8,14 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import type { ThemePreference } from '@/components/theme/theme-provider';
 import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
-import { insertCustomerVehicle, updateCustomerVehicle } from '@/lib/crm-vehicles-db';
+import { insertCustomerVehicle, updateCustomerVehicle, type CrmVehicleRow } from '@/lib/crm-vehicles-db';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { deliverableCustomerEmail } from '@/lib/customer-contact';
 import { appOrigin } from '@/lib/auth/action-link-registry';
 
-export type CustomerSettingsActionResult = { ok: true; message: string } | { ok: false; error: string };
+export type CustomerSettingsActionResult =
+  | { ok: true; message: string; vehicle?: CrmVehicleRow }
+  | { ok: false; error: string };
 
 function str(value: unknown) {
   return value == null ? '' : String(value).trim();
@@ -186,14 +188,24 @@ export async function addCustomerVehicleAction(input: {
   const description = str(input.description).slice(0, 160);
   if (!description) return { ok: false, error: 'Enter the vehicle year, make, and model.' };
   try {
-    await insertCustomerVehicle(context.admin, {
+    const inserted = await insertCustomerVehicle(context.admin, {
       customerId: context.customer.id,
       description,
       notes: str(input.notes).slice(0, 1000),
     });
     revalidatePath('/dashboard');
     revalidatePath('/dashboard/settings');
-    return { ok: true, message: 'Vehicle added to your garage.' };
+    return {
+      ok: true,
+      message: 'Vehicle added to your garage.',
+      vehicle: {
+        id: inserted.id,
+        customer_id: context.customer.id,
+        description,
+        notes: str(input.notes).slice(0, 1000) || null,
+        created_at: new Date().toISOString(),
+      },
+    };
   } catch {
     return { ok: false, error: 'The vehicle could not be added. Please try again.' };
   }

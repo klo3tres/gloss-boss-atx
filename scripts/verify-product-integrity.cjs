@@ -33,6 +33,7 @@ const resetPassword = read('src/app/(auth)/reset-password/page.tsx');
 const authCallback = read('src/app/auth/callback/route.ts');
 const customerSettingsActions = read('src/app/(dashboard)/dashboard/settings/actions.ts');
 const customerProfilePanel = read('src/components/customer/customer-profile-garage-panel.tsx');
+const crmVehicles = read('src/lib/crm-vehicles-db.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -159,6 +160,12 @@ check(
     portalAccess.includes(".eq('auth_user_id', authUserId)") &&
     authCallback.includes("typeParam === 'signup' || typeParam === 'email'"),
   'Customer contact editing must verify email changes and synchronize owned active contact records.',
+);
+check(
+  customerProfilePanel.includes('result.vehicle') &&
+    !customerProfilePanel.includes("id: `pending-") &&
+    crmVehicles.includes("throw new Error('Vehicle does not belong to this customer.')"),
+  'Vehicle add/edit must return the permanent record and enforce customer ownership.',
 );
 
 // Regression fixture from the real customer screenshot:

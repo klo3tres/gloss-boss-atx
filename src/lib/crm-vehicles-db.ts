@@ -72,7 +72,9 @@ export async function insertCustomerVehicle(
       .maybeSingle();
   }
   if (ins.error) throw new Error(ins.error.message);
-  return { id: str((ins.data as { id?: string } | null)?.id) };
+  const id = str((ins.data as { id?: string } | null)?.id);
+  if (!id) throw new Error('Vehicle was not created.');
+  return { id };
 }
 
 export async function updateCustomerVehicle(
@@ -84,13 +86,18 @@ export async function updateCustomerVehicle(
     .from(table)
     .update({ description: params.description, notes: params.notes })
     .eq('id', params.vehicleId)
-    .eq('customer_id', params.customerId);
+    .eq('customer_id', params.customerId)
+    .select('id')
+    .maybeSingle();
   if (up.error && /description|schema cache/i.test(up.error.message)) {
     up = await admin
       .from(table)
       .update({ notes: JSON.stringify({ display: params.description, meta: params.notes }) })
       .eq('id', params.vehicleId)
-      .eq('customer_id', params.customerId);
+      .eq('customer_id', params.customerId)
+      .select('id')
+      .maybeSingle();
   }
   if (up.error) throw new Error(up.error.message);
+  if (!up.data?.id) throw new Error('Vehicle does not belong to this customer.');
 }

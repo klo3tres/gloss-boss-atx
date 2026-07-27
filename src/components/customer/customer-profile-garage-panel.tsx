@@ -56,15 +56,9 @@ export function CustomerProfileGaragePanel({
     startSaving(async () => {
       const result = await addCustomerVehicleAction(newVehicle);
       setVehicleResult(result);
-      if (result.ok) {
+      if (result.ok && result.vehicle) {
         setVehicles((rows) => [
-          {
-            id: `pending-${Date.now()}`,
-            customer_id: '',
-            description: newVehicle.description.trim(),
-            notes: newVehicle.notes.trim() || null,
-            created_at: new Date().toISOString(),
-          },
+          result.vehicle!,
           ...rows,
         ]);
         setNewVehicle({ description: '', notes: '' });
@@ -204,13 +198,9 @@ export function CustomerProfileGaragePanel({
                   onChange={(event) => setVehicles((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, notes: event.target.value } : row))}
                 />
               </label>
-              {vehicle.id.startsWith('pending-') ? (
-                <p className="mt-3 text-xs text-emerald-600 dark:text-emerald-300">Saved. Refreshing the page will load the permanent record.</p>
-              ) : (
-                <button type="button" disabled={saving || !vehicle.description.trim()} onClick={() => saveVehicle(vehicle)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold/30 px-4 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">
-                  <Save className="h-3.5 w-3.5" /> Save vehicle
-                </button>
-              )}
+              <button type="button" disabled={saving || !vehicle.description.trim()} onClick={() => saveVehicle(vehicle)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-gold/30 px-4 text-[10px] font-black uppercase text-gold-soft disabled:opacity-50">
+                <Save className="h-3.5 w-3.5" /> Save vehicle
+              </button>
             </article>
           ))}
         </div>
