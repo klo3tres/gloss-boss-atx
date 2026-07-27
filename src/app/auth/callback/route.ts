@@ -98,7 +98,10 @@ export async function GET(request: Request) {
   // Explicit next wins when safe
   if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
     if (typeParam === 'recovery' || nextParam.includes('reset-password')) {
-      return NextResponse.redirect(new URL('/reset-password', origin));
+      const resetDestination = nextParam.startsWith('/reset-password')
+        ? nextParam
+        : '/reset-password';
+      return NextResponse.redirect(new URL(resetDestination, origin));
     }
     return NextResponse.redirect(new URL(nextParam, origin));
   }

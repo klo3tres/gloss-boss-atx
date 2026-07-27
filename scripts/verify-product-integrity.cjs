@@ -28,6 +28,9 @@ const signupForm = read('src/app/(auth)/signup/signup-form.tsx');
 const actionLinks = read('src/lib/auth/action-link-registry.ts');
 const roleGate = read('src/components/auth/dashboard-role-gate.tsx');
 const loginForm = read('src/app/(auth)/login/login-form.tsx');
+const forgotPassword = read('src/app/(auth)/forgot-password/page.tsx');
+const resetPassword = read('src/app/(auth)/reset-password/page.tsx');
+const authCallback = read('src/app/auth/callback/route.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -135,6 +138,14 @@ check(
     loginForm.includes('timeoutMs: 5000') &&
     loginForm.includes('Redirect is taking too long'),
   'Login must normalize identity, preserve safe booking return, recover confirmation, and stop finite waits.',
+);
+check(
+  forgotPassword.includes('passwordResetRedirectUrl(returnDestination)') &&
+    forgotPassword.includes("email.trim().toLowerCase()") &&
+    resetPassword.includes('resolveSafePostLoginRedirect') &&
+    resetPassword.includes("getSafeInternalRedirect(params.get('next')") &&
+    authCallback.includes("nextParam.startsWith('/reset-password')"),
+  'Password reset must preserve the safe booking destination from request through recovery callback and new login.',
 );
 
 // Regression fixture from the real customer screenshot:

@@ -181,8 +181,13 @@ export function appOrigin(): string {
 }
 
 /** Password recovery redirect that must be allow-listed in Supabase Auth settings. */
-export function passwordResetRedirectUrl(): string {
-  const next = encodeURIComponent(ACTION_LINK_REGISTRY.password_reset.successDestination);
+export function passwordResetRedirectUrl(nextAfterReset = '/dashboard'): string {
+  const safeNext =
+    nextAfterReset.startsWith('/') && !nextAfterReset.startsWith('//')
+      ? nextAfterReset
+      : '/dashboard';
+  const resetDestination = `/reset-password?next=${encodeURIComponent(safeNext)}`;
+  const next = encodeURIComponent(resetDestination);
   return `${appOrigin()}${ACTION_LINK_REGISTRY.password_reset.route}?next=${next}&type=recovery`;
 }
 

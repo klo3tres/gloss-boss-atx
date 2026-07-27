@@ -6,7 +6,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { clearAuthUxSession, setRoleCache, writeHydratedOnceFlag } from '@/lib/auth/auth-session-ux';
 import { fetchUserRole } from '@/lib/auth/fetchUserRole';
 import { humanizeAuthError } from '@/lib/auth/auth-event-log';
-import { resolveDashboardPathForRole } from '@/lib/auth/resolve-post-login-path';
+import { resolveDashboardPathForRole, resolveSafePostLoginRedirect } from '@/lib/auth/resolve-post-login-path';
+import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
 import { waitForSessionHydration } from '@/lib/auth/waitForSessionHydration';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
@@ -46,6 +47,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [returnDestination, setReturnDestination] = useState('/dashboard');
 
   useEffect(() => {
     const client = createSupabaseBrowserClient();
@@ -57,6 +59,7 @@ export default function ResetPasswordPage() {
 
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      setReturnDestination(getSafeInternalRedirect(params.get('next'), '/dashboard'));
       const err = params.get('error');
       if (err === 'expired' || err === 'otp_expired') {
         setState('expired');
@@ -163,7 +166,10 @@ export default function ResetPasswordPage() {
       setRoleCache(outcome.userId, outcome.role);
       writeHydratedOnceFlag();
 
-      const destination = resolveDashboardPathForRole(outcome.role, null, outcome.email);
+      const destination =
+        returnDestination === '/dashboard'
+          ? resolveDashboardPathForRole(outcome.role, null, outcome.email)
+          : resolveSafePostLoginRedirect(outcome.role, returnDestination, outcome.email);
       setState('success');
       setMessage(`Password updated. Opening your ${outcome.role.replace('_', ' ')} portal…`);
       window.setTimeout(() => {
@@ -208,10 +214,10 @@ export default function ResetPasswordPage() {
           <div className='mt-4 space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100'>
             <p>{error ?? 'This reset link is not valid.'}</p>
             <div className='flex flex-col gap-2'>
-              <Link href='/forgot-password' className='min-h-11 inline-flex items-center justify-center rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
+              <Link href={`/forgot-password?next=${encodeURIComponent(returnDestination)}${accountEmail ? `&email=${encodeURIComponent(accountEmail)}` : ''}`} className='min-h-11 inline-flex items-center justify-center rounded-xl bg-gold px-4 py-2 text-xs font-black uppercase tracking-wider text-black'>
                 Request a new reset link
               </Link>
-              <Link href='/login' className='min-h-11 inline-flex items-center justify-center rounded-xl border border-border px-4 py-2 text-xs font-semibold'>
+              <Link href={`/login?next=${encodeURIComponent(returnDestination)}${accountEmail ? `&email=${encodeURIComponent(accountEmail)}` : ''}`} className='min-h-11 inline-flex items-center justify-center rounded-xl border border-border px-4 py-2 text-xs font-semibold'>
                 Back to login
               </Link>
             </div>
@@ -276,7 +282,7 @@ export default function ResetPasswordPage() {
 
         <p className='mt-4 text-center text-xs text-muted-foreground'>
           Need help? Contact your administrator ·{' '}
-          <Link href='/login' className='text-gold-soft'>
+          <Link href={`/login?next=${encodeURIComponent(returnDestination)}${accountEmail ? `&email=${encodeURIComponent(accountEmail)}` : ''}`} className='text-gold-soft'>
             Back to login
           </Link>
         </p>

@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient, isSupabasePublicReady } from '@/lib/supabase/client';
 import { passwordResetRedirectUrl } from '@/lib/auth/action-link-registry';
 import { humanizeAuthError } from '@/lib/auth/auth-event-log';
+import { getSafeInternalRedirect } from '@/lib/auth/safe-redirect';
 
 export default function ForgotPasswordPage() {
   const envReady = isSupabasePublicReady();
@@ -14,11 +15,15 @@ export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [returnDestination, setReturnDestination] = useState('/dashboard');
 
   useEffect(() => {
     setSupabase(createSupabaseBrowserClient());
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      setReturnDestination(getSafeInternalRedirect(params.get('next'), '/dashboard'));
+      const prefillEmail = params.get('email');
+      if (prefillEmail) setEmail(prefillEmail);
       if (params.get('error') === 'expired') {
         setError('That reset link expired. Enter your email to send a new one.');
       }
@@ -43,19 +48,17 @@ export default function ForgotPasswordPage() {
 
     setBusy(true);
     try {
-      const redirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}&type=recovery`
-          : passwordResetRedirectUrl();
+      const redirectTo = passwordResetRedirectUrl(returnDestination);
 
-      const { error: resetError } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      const normalizedEmail = email.trim().toLowerCase();
+      const { error: resetError } = await client.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
 
       if (resetError) {
         setError(humanizeAuthError(resetError.message));
         return;
       }
 
-      setMessage(`If an account exists for ${email.trim()}, a reset link was sent. Open it on this device to set a new password.`);
+      setMessage(`If an account exists for ${normalizedEmail}, a reset link was sent. Open it on this device to set a new password.`);
     } catch (e) {
       setError(humanizeAuthError(e instanceof Error ? e.message : 'Something went wrong.'));
     } finally {
@@ -102,7 +105,10 @@ export default function ForgotPasswordPage() {
 
         <p className='mt-4 text-center text-xs text-muted-foreground'>
           Return to{' '}
-          <Link href='/login' className='text-gold-soft'>
+          <Link
+            href={`/login?next=${encodeURIComponent(returnDestination)}${email.trim() ? `&email=${encodeURIComponent(email.trim().toLowerCase())}` : ''}`}
+            className='text-gold-soft'
+          >
             login
           </Link>
         </p>

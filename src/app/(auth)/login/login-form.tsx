@@ -45,6 +45,10 @@ export default function LoginForm() {
     next: nextDestination,
     ...(searchParams.get('email') ? { email: searchParams.get('email')! } : {}),
   }).toString()}`;
+  const forgotPasswordHref = `/forgot-password?${new URLSearchParams({
+    next: nextDestination,
+    ...(email.trim() ? { email: email.trim().toLowerCase() } : {}),
+  }).toString()}`;
   
   const [brand, setBrand] = useState<{
     businessDisplayName: string;
@@ -350,7 +354,7 @@ export default function LoginForm() {
           <Link href={signupHref} className='hover:text-gold-soft font-semibold'>
             Create account
           </Link>
-          <Link href='/forgot-password' className='hover:text-gold-soft font-semibold'>
+          <Link href={forgotPasswordHref} className='hover:text-gold-soft font-semibold'>
             Forgot password?
           </Link>
         </div>
