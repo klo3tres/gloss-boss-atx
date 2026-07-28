@@ -36,6 +36,8 @@ const customerProfilePanel = read('src/components/customer/customer-profile-gara
 const crmVehicles = read('src/lib/crm-vehicles-db.ts');
 const customerPhotoUpload = read('src/components/customer/customer-photo-upload.tsx');
 const customerMediaRoute = read('src/app/api/customer/media/route.ts');
+const customerMemberships = read('src/lib/customer-memberships.ts');
+const customerMembershipsRoute = read('src/app/api/customer/memberships/route.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -178,6 +180,12 @@ check(
     customerMediaRoute.includes('visible_to_customer: true') &&
     customerMediaRoute.includes('publish_to_gallery: false'),
   'Customer photos must upload to an owned appointment, preview immediately, refresh the gallery, and stay out of marketing.',
+);
+check(
+  customerMemberships.includes(".eq('customer_id', customerId)") &&
+    customerMemberships.includes("String(row.status ?? 'unknown')") &&
+    customerMembershipsRoute.includes('listCustomerMemberships(admin, customer.id)'),
+  'Membership history must load every status through one customer-scoped source.',
 );
 
 // Regression fixture from the real customer screenshot:

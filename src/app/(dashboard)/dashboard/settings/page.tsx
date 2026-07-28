@@ -9,6 +9,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { SMS_CONSENT_COPY } from '@/lib/sms-consent';
 import { resolveAuthenticatedCustomer } from '@/lib/customer-account';
 import { listCustomerVehicles } from '@/lib/crm-vehicles-db';
+import { listCustomerMemberships } from '@/lib/customer-memberships';
 import { CustomerProfileGaragePanel } from '@/components/customer/customer-profile-garage-panel';
 import { cancelCustomerMembershipAction, pauseCustomerMembershipAction, resumeCustomerMembershipAction, updateCustomerEmailPreferencesAction, updateCustomerSmsPreferencesAction } from './actions';
 
@@ -54,24 +55,8 @@ export default async function CustomerSettingsPage() {
     ? await admin.from('profiles').select('theme_preference, ui_accent, ui_sidebar_density, ui_dashboard_density').eq('id', session.user.id).maybeSingle()
     : { data: null };
   const uiPreferences = parseUserUiPreferences(profileRow as Record<string, unknown> | null);
-  const { data: membershipRows } =
-    admin && row?.id
-      ? await admin
-          .from('customer_memberships')
-          .select('id, status, started_at, ends_at, stripe_subscription_id, stripe_checkout_session_id, membership_plans(name,tier)')
-          .eq('customer_id', row.id)
-          .order('created_at', { ascending: false })
-          .limit(10)
-      : { data: [] };
-  const memberships = (membershipRows ?? []) as Array<{
-    id: string;
-    status: string;
-    started_at?: string | null;
-    ends_at?: string | null;
-    stripe_subscription_id?: string | null;
-    stripe_checkout_session_id?: string | null;
-    membership_plans?: { name?: string | null; tier?: string | null } | null;
-  }>;
+  const memberships =
+    admin && row?.id ? await listCustomerMemberships(admin, row.id).catch(() => []) : [];
 
   return (
     <DashboardShell title='Settings' subtitle='Communication preferences, account access, and customer profile controls.' role='customer'>
