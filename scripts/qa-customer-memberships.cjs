@@ -127,6 +127,7 @@ async function main() {
           status: 'canceled',
           billing_interval: 'monthly',
           price_cents: 4900,
+          credit_balance_cents: 0,
           notes: 'Customer membership history QA',
         },
         {
@@ -135,6 +136,7 @@ async function main() {
           status: 'active',
           billing_interval: 'monthly',
           price_cents: 4900,
+          credit_balance_cents: 0,
           notes: 'Must not be visible to the signed-in customer',
         },
       ])
