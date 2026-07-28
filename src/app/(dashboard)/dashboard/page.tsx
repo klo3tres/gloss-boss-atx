@@ -9,6 +9,7 @@ import {
 } from '@/lib/customer-dashboard-snapshot';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
 import { buildLoyaltyRewardView, loadLoyaltyRewardConfig, loadLoyaltyRewardState } from '@/lib/loyalty-reward-claim';
+import { loadCustomerRewardWallet } from '@/lib/customer-reward-wallet-data';
 import { resolveAuthenticatedCustomerAccount } from '@/lib/customer-account';
 import { CustomerAccountConflictRecovery } from '@/components/customer/customer-account-conflict-recovery';
 import { randomUUID } from 'crypto';
@@ -553,68 +554,12 @@ export default async function CustomerDashboardRootPage({
           .map((service) => ({ slug: String(service.slug), name: String(service.name), priceCents: Number(service.base_price_cents ?? 0) }));
       }
       customerMembership = await loadActiveCustomerMembership(adminDb, String(cust.id));
-      const creditRes = await adminDb
-        .from('customer_credits')
-        .select('id, amount_cents, remaining_cents, type, reason, source, status, expires_at, redeemed_at')
-        .eq('customer_id', cust.id)
-        .order('issued_at', { ascending: false })
-        .limit(500);
-      if (!creditRes.error) {
-        const nowIso = new Date().toISOString();
-        accountCreditBalanceCents = (creditRes.data ?? []).reduce((sum, row) => {
-          if (!['active', 'partially_used'].includes(String(row.status))) return sum;
-          const expiresAt = typeof row.expires_at === 'string' ? row.expires_at : '';
-          if (expiresAt && expiresAt < nowIso) return sum;
-          return sum + (typeof row.remaining_cents === 'number' ? Math.max(0, row.remaining_cents) : 0);
-        }, 0);
-        rewardWalletItems = (creditRes.data ?? []).map((row) => {
-          const status = String(row.status ?? 'active');
-          const expired = Boolean(row.expires_at && String(row.expires_at) < nowIso);
-          const usable = ['active', 'partially_used'].includes(status) && !expired && Number(row.remaining_cents ?? 0) > 0;
-          return {
-            id: `credit:${row.id}`,
-            source: String(row.type ?? row.source ?? 'Account credit').replace(/_/g, ' '),
-            title: String(row.reason ?? 'Gloss Boss credit'),
-            valueLabel: `$${(Math.max(0, Number(row.remaining_cents ?? row.amount_cents ?? 0)) / 100).toFixed(2)}`,
-            status: expired ? 'expired' : status,
-            expiresAt: row.expires_at ? String(row.expires_at) : null,
-            usable,
-            terms: usable ? 'Choose how much credit to apply during booking. One-time balance; any remainder stays in your wallet.' : null,
-          };
-        });
-      }
-      const referralWallet = await adminDb.from('referral_rewards').select('id, reward_type, reward_value, reward_label, status, expires_at, metadata, eligibility, selected_service_slug, selected_addon_slug, reserved_appointment_id').eq('customer_id', cust.id).in('reward_type', ['percent', 'free_addon', 'free_service', 'custom']).order('created_at', { ascending: false }).limit(100);
-      if (!referralWallet.error) {
-        const { formatRewardSummary } = await import('@/lib/referral/referral-codes');
-        rewardWalletItems.push(...(referralWallet.data ?? []).map((row) => {
-          const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : {};
-          const expiresAt = row.expires_at ? String(row.expires_at) : typeof metadata.expires_at === 'string' ? metadata.expires_at : null;
-          const expired = Boolean(expiresAt && expiresAt < new Date().toISOString());
-          const status = expired ? 'expired' : String(row.status ?? 'pending');
-          const eligibility = row.eligibility && typeof row.eligibility === 'object' ? row.eligibility as Record<string, unknown> : {};
-          const serviceTerms = Array.isArray(eligibility.eligibleServiceSlugs) ? eligibility.eligibleServiceSlugs.map(String) : [];
-          const addonTerms = Array.isArray(eligibility.eligibleAddonSlugs) ? eligibility.eligibleAddonSlugs.map(String) : [];
-          const vehicleTerms = Array.isArray(eligibility.vehicleRestrictions) ? eligibility.vehicleRestrictions.map(String) : [];
-          const terms = [
-            serviceTerms.length ? `Services: ${serviceTerms.join(', ')}` : '',
-            addonTerms.length ? `Add-ons: ${addonTerms.join(', ')}` : '',
-            vehicleTerms.length ? `Vehicles: ${vehicleTerms.join(', ')}` : '',
-            eligibility.maximumRetailCents ? `Maximum value: $${(Number(eligibility.maximumRetailCents) / 100).toFixed(2)}` : '',
-            eligibility.customerPaysDifference === true ? 'You pay any difference.' : '',
-          ].filter(Boolean).join(' · ');
-          return {
-            id: `referral:${row.id}`,
-            source: 'Referral reward',
-            title: String(row.reward_label ?? formatRewardSummary(String(row.reward_type), Number(row.reward_value ?? 0))),
-            valueLabel: formatRewardSummary(String(row.reward_type), Number(row.reward_value ?? 0)),
-            status,
-            expiresAt,
-            usable: ['issued', 'available'].includes(status),
-            terms: `${terms ? `${terms} ` : ''}Selection is confirmed during booking. One-time use.`,
-            bookingHref: `/book?reward=${encodeURIComponent(String(row.id))}`,
-          };
-        }));
-      }
+      const rewardWallet = await loadCustomerRewardWallet(adminDb, String(cust.id)).catch(() => ({
+        items: [],
+        availableCreditCents: 0,
+      }));
+      rewardWalletItems = rewardWallet.items;
+      accountCreditBalanceCents = rewardWallet.availableCreditCents;
       activeDeals = await loadCustomerDeals(adminDb);
 
       const tier = (customerMembership?.tier || 'default').toLowerCase();

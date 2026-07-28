@@ -22,8 +22,9 @@ export function CustomerRewardWallet({ items }: { items: CustomerRewardWalletIte
   const unavailable = items.filter((item) => !item.usable);
   const groups = [
     { label: 'Available', rows: available },
-    { label: 'Reserved', rows: unavailable.filter((item) => ['reserved', 'held'].includes(item.status.toLowerCase())) },
-    { label: 'Pending', rows: unavailable.filter((item) => ['pending', 'pending_completion', 'processing'].includes(item.status.toLowerCase())) },
+    { label: 'Reserved', rows: unavailable.filter((item) => ['reserved', 'held', 'selected'].includes(item.status.toLowerCase())) },
+    { label: 'Pending', rows: unavailable.filter((item) => ['pending', 'pending_completion', 'processing', 'progress'].includes(item.status.toLowerCase())) },
+    { label: 'Locked', rows: unavailable.filter((item) => item.status.toLowerCase() === 'locked') },
     { label: 'Redeemed', rows: unavailable.filter((item) => ['redeemed', 'consumed', 'used'].includes(item.status.toLowerCase())) },
     { label: 'Expired', rows: unavailable.filter((item) => item.status.toLowerCase() === 'expired') },
     { label: 'Cancelled / voided', rows: unavailable.filter((item) => ['cancelled', 'canceled', 'void', 'voided'].includes(item.status.toLowerCase())) },

@@ -27,7 +27,8 @@
     "qa:contact": "node scripts/qa-customer-contact.cjs",
     "qa:vehicles": "node scripts/qa-customer-vehicles.cjs",
     "qa:photos": "node scripts/qa-customer-photos.cjs",
-    "qa:memberships": "node scripts/qa-customer-memberships.cjs"
+    "qa:memberships": "node scripts/qa-customer-memberships.cjs",
+    "qa:rewards": "node scripts/qa-customer-rewards.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

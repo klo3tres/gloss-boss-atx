@@ -38,6 +38,9 @@ const customerPhotoUpload = read('src/components/customer/customer-photo-upload.
 const customerMediaRoute = read('src/app/api/customer/media/route.ts');
 const customerMemberships = read('src/lib/customer-memberships.ts');
 const customerMembershipsRoute = read('src/app/api/customer/memberships/route.ts');
+const customerRewardWalletData = read('src/lib/customer-reward-wallet-data.ts');
+const customerRewardsRoute = read('src/app/api/customer/rewards/route.ts');
+const customerRewardWallet = read('src/components/customer/customer-reward-wallet.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -186,6 +189,14 @@ check(
     customerMemberships.includes("String(row.status ?? 'unknown')") &&
     customerMembershipsRoute.includes('listCustomerMemberships(admin, customer.id)'),
   'Membership history must load every status through one customer-scoped source.',
+);
+check(
+  customerRewardWalletData.includes(".eq('customer_id', customerId)") &&
+    customerRewardWalletData.includes("['issued', 'available'].includes(status)") &&
+    customerRewardWalletData.includes('customer_credit_id') &&
+    customerRewardsRoute.includes('loadCustomerRewardWallet(admin, customer.id)') &&
+    customerRewardWallet.includes("{ label: 'Locked'"),
+  'The customer reward wallet must show every lifecycle status without duplicate linked credits or cross-customer data.',
 );
 
 // Regression fixture from the real customer screenshot:
