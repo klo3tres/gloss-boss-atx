@@ -16,6 +16,7 @@ loaded._compile(compiled, sourcePath);
 
 const {
   resolveBookingCheckoutAmount,
+  isReusableCheckoutSession,
   validateCompletedBookingCheckout,
 } = loaded.exports;
 
@@ -86,7 +87,37 @@ assert(
   }).ok,
   'A matching webhook replay must remain idempotently valid.',
 );
+assert(
+  isReusableCheckoutSession({
+    status: 'open',
+    paymentStatus: 'unpaid',
+    url: 'https://checkout.stripe.test/session',
+    amountCents: 2900,
+    expectedAmountCents: 2900,
+  }),
+  'An open matching checkout must be reused after cancellation or a retryable card failure.',
+);
+assert(
+  !isReusableCheckoutSession({
+    status: 'expired',
+    paymentStatus: 'unpaid',
+    url: 'https://checkout.stripe.test/expired',
+    amountCents: 2900,
+    expectedAmountCents: 2900,
+  }),
+  'An expired checkout must be replaced.',
+);
+assert(
+  !isReusableCheckoutSession({
+    status: 'open',
+    paymentStatus: 'unpaid',
+    url: 'https://checkout.stripe.test/wrong-amount',
+    amountCents: 3900,
+    expectedAmountCents: 2900,
+  }),
+  'A stale checkout for the wrong balance must be replaced.',
+);
 
 console.log(
-  'Deposit lifecycle QA passed: partial, paid, full-balance, unpaid, mismatch, and idempotent replay rules are stable.',
+  'Deposit lifecycle QA passed: partial, paid, full-balance, unpaid, mismatch, retryable reuse, expired replacement, and idempotent replay rules are stable.',
 );

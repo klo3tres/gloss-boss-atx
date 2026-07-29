@@ -20,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ appo
 
   const { data: appt } = await admin
     .from('appointments')
-    .select('access_token, final_payment_url, balance_due_cents')
+    .select('access_token, final_payment_url, final_payment_checkout_session_id, balance_due_cents')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -37,9 +37,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ appo
   if (session.user && isStaffRole(session.profile?.role)) {
     return NextResponse.redirect(`${origin}/admin/customer-preview/${encodeURIComponent(appointmentId)}?tab=diagnostics`);
   }
-  let stripeUrl = typeof appt.final_payment_url === 'string' ? appt.final_payment_url : null;
+  let stripeUrl =
+    !appt.final_payment_checkout_session_id && typeof appt.final_payment_url === 'string'
+      ? appt.final_payment_url
+      : null;
   if (!stripeUrl) {
-    const checkout = await createCustomerFinalBalanceCheckoutSession({ admin, appointmentId, origin });
+    const checkout = await createCustomerFinalBalanceCheckoutSession({
+      admin,
+      appointmentId,
+      origin,
+      returnDirectUrl: true,
+    });
     if (checkout.ok && 'url' in checkout && checkout.url) stripeUrl = checkout.url;
   }
 

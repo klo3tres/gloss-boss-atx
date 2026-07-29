@@ -57,6 +57,7 @@ export type BookingConfirmationSummary = {
     accountClaimed: boolean;
     paymentFailed: boolean;
     paymentCancelled: boolean;
+    paymentExpired: boolean;
     canReschedule: boolean;
     canCancel: boolean;
     nextStep: 'inactive' | 'acknowledgement' | 'payment' | 'confirmation';
@@ -407,7 +408,7 @@ function ConfirmationInner({
             <dd className='font-bold text-gold-soft'>{money(summary.balanceDueCents)}</dd>
           </div>
         </dl>
-        {summary.sessionState.paymentFailed || summary.sessionState.paymentCancelled || sp.get('payment_cancelled') === '1' ? (
+        {summary.sessionState.paymentFailed || summary.sessionState.paymentCancelled || summary.sessionState.paymentExpired || sp.get('payment_cancelled') === '1' ? (
           <p className='mt-5 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-100'>
             Your booking is still saved. The last checkout did not complete; use the button below to open a fresh secure checkout.
           </p>

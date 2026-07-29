@@ -13,6 +13,8 @@ export type JobTimelineEventType =
   | 'pre_inspection_ack_saved'
   | 'job_completed'
   | 'payment_received'
+  | 'payment_failed'
+  | 'checkout_expired'
   | 'intake_submitted'
   | 'custom_sms_sent'
   | 'technician_on_the_way'

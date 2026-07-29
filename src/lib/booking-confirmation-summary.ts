@@ -169,6 +169,7 @@ export async function loadBookingConfirmationSummary(
       paymentChoice,
       paymentFailed: ['failed', 'payment_failed'].includes(str(job.payment_status).toLowerCase()),
       paymentCancelled: ['cancelled', 'payment_cancelled'].includes(str(job.payment_status).toLowerCase()),
+      paymentExpired: ['expired', 'payment_expired'].includes(str(job.payment_status).toLowerCase()),
       accountClaimed: Boolean(customer?.auth_user_id),
       workOrderCreated: Boolean(snapshot?.refs.workOrderId),
       canReschedule: customerCanModify,

@@ -3,7 +3,10 @@ import Stripe from 'stripe';
 import { headers } from 'next/headers';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
-import { processCheckoutSessionCompleted } from '@/lib/stripe/checkout';
+import {
+  processCheckoutSessionCompleted,
+  processCheckoutSessionUnsuccessful,
+} from '@/lib/stripe/checkout';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
 import { upsertLedgerFromBalanceTransaction } from '@/lib/financial-ledger';
 import { automateStripePayment, automateStripeRefund } from '@/lib/stripe-automation';
@@ -188,6 +191,19 @@ export async function POST(request: Request) {
         }
       }
       console.info('[stripe/webhook] checkout.session.completed processed', session.id, session.metadata?.appointment_id ?? 'gift');
+    } else if (
+      event.type === 'checkout.session.expired' ||
+      event.type === 'checkout.session.async_payment_failed'
+    ) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      await processCheckoutSessionUnsuccessful({
+        admin,
+        session,
+        reason:
+          event.type === 'checkout.session.expired'
+            ? 'payment_expired'
+            : 'payment_failed',
+      });
     } else if (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const status = event.type === 'payment_intent.succeeded' ? 'succeeded' : 'failed';
@@ -210,6 +226,13 @@ export async function POST(request: Request) {
       const appointmentId =
         typeof pi.metadata?.appointment_id === 'string' ? pi.metadata.appointment_id : null;
       if (admin) {
+        if (event.type === 'payment_intent.payment_failed' && appointmentId) {
+          await admin
+            .from('appointments')
+            .update({ payment_status: 'payment_failed', updated_at: new Date().toISOString() })
+            .eq('id', appointmentId)
+            .not('payment_status', 'in', '(paid,full_paid)');
+        }
         const row: Record<string, unknown> = {
           appointment_id: appointmentId,
           stripe_payment_intent_id: pi.id,

@@ -145,6 +145,22 @@ async function main() {
     assert(partialState.depositDueCents === 2900, 'Partial deposit did not leave exactly $29.00 due.');
     assert(partialState.sessionState?.nextStep === 'payment', 'Partial deposit incorrectly completed payment.');
 
+    const expiredAttempt = await admin
+      .from('appointments')
+      .update({
+        payment_status: 'payment_expired',
+        stripe_checkout_session_id: `cs_test_expired_${suffix}`,
+      })
+      .eq('id', appointmentId);
+    if (expiredAttempt.error) throw new Error(expiredAttempt.error.message);
+    const expiredState = await loadSummary(appointmentId, token);
+    assert(expiredState.sessionState?.paymentExpired === true, 'Expired checkout state was not visible.');
+    assert(expiredState.sessionState?.nextStep === 'payment', 'Expired checkout did not remain recoverable at payment.');
+    await admin
+      .from('appointments')
+      .update({ payment_status: 'pending', stripe_checkout_session_id: null })
+      .eq('id', appointmentId);
+
     const checkout = await fetch(`${appUrl}/api/stripe/create-checkout-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,7 +269,7 @@ async function main() {
     assert(paidInFull.sessionState?.paidInFull === true, 'Paid-in-full state did not resolve.');
 
     console.log(
-      `Customer payment production QA passed: acknowledgment → $39.00 deposit, $10.00 partial → $29.00 due, $91.00 final balance, repeat-safe tracked links, protected ${protectedLiveMode && balanceProtectedLiveMode ? 'live' : 'test'} Stripe checkout, and $130.00 paid-in-full state are operational.`,
+      `Customer payment production QA passed: acknowledgment → $39.00 deposit, $10.00 partial → $29.00 due, expired-attempt recovery, $91.00 final balance, repeat-safe tracked links, protected ${protectedLiveMode && balanceProtectedLiveMode ? 'live' : 'test'} Stripe checkout, and $130.00 paid-in-full state are operational.`,
     );
   } finally {
     if (paymentIds.length) await admin.from('payments').delete().in('id', paymentIds);

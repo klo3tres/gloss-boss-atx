@@ -50,6 +50,7 @@ const stripeCheckout = read('src/lib/stripe/checkout.ts');
 const bookingWizard = read('src/components/booking/booking-wizard.tsx');
 const trackedBalanceRoute = read('src/app/pay/balance/[appointmentId]/route.ts');
 const balanceCheckoutUi = read('src/components/tech/work-order-balance-checkout.tsx');
+const stripeWebhook = read('src/app/api/stripe/webhook/route.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -245,6 +246,16 @@ check(
     balanceCheckoutUi.includes('fetchWithTimeout') &&
     balanceCheckoutUi.includes('timeoutMs: 12000'),
   'Remaining-balance checkout must use the canonical amount, return to the secure booking, keep repeat-click links usable, and stop finite staff waits.',
+);
+check(
+  depositLifecycle.includes('isReusableCheckoutSession') &&
+    stripeCheckout.includes('existingSessionId || \'initial\'') &&
+    stripeCheckout.includes('processCheckoutSessionUnsuccessful') &&
+    stripeWebhook.includes("event.type === 'checkout.session.expired'") &&
+    stripeWebhook.includes("event.type === 'checkout.session.async_payment_failed'") &&
+    bookingSummary.includes('paymentExpired') &&
+    confirmationUi.includes('summary.sessionState.paymentExpired'),
+  'Failed and expired Stripe attempts must remain tied to the booking, expose recovery state, reuse retryable sessions, and replace expired or stale sessions.',
 );
 
 // Regression fixture from the real customer screenshot:

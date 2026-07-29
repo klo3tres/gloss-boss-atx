@@ -22,6 +22,21 @@ export function resolveBookingCheckoutAmount(input: DepositAmountInput) {
     : Math.max(0, depositCents - depositPaidCents);
 }
 
+export function isReusableCheckoutSession(input: {
+  status: string | null | undefined;
+  paymentStatus: string | null | undefined;
+  url: string | null | undefined;
+  amountCents: number | null | undefined;
+  expectedAmountCents: number;
+}) {
+  return (
+    String(input.status ?? '').toLowerCase() === 'open' &&
+    String(input.paymentStatus ?? '').toLowerCase() === 'unpaid' &&
+    Boolean(input.url) &&
+    cents(input.amountCents ?? 0) === cents(input.expectedAmountCents)
+  );
+}
+
 export type CheckoutAmountValidation =
   | { ok: true }
   | { ok: false; code: 'PAYMENT_NOT_SETTLED' | 'INVALID_AMOUNT' | 'AMOUNT_MISMATCH'; error: string };

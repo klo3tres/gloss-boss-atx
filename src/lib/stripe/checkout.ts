@@ -15,6 +15,7 @@ import {
 } from '@/lib/stripe-payment-resolve';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 import {
+  isReusableCheckoutSession,
   resolveBookingCheckoutAmount,
   validateCompletedBookingCheckout,
 } from '@/lib/deposit-lifecycle';
@@ -169,13 +170,14 @@ export async function createDepositCheckoutSession(params: {
     if (existingCheckoutId) {
       try {
         const existingCheckout = await stripe.checkout.sessions.retrieve(existingCheckoutId);
-        if (
-          existingCheckout.status === 'open' &&
-          existingCheckout.payment_status === 'unpaid' &&
-          existingCheckout.url &&
-          Number(existingCheckout.amount_total ?? amountCents) === amountCents
-        ) {
-          return { ok: true, url: existingCheckout.url };
+        if (isReusableCheckoutSession({
+          status: existingCheckout.status,
+          paymentStatus: existingCheckout.payment_status,
+          url: existingCheckout.url,
+          amountCents: existingCheckout.amount_total,
+          expectedAmountCents: amountCents,
+        })) {
+          return { ok: true, url: existingCheckout.url! };
         }
         if (existingCheckout.payment_status === 'paid') {
           return {
@@ -449,6 +451,7 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
   appointmentId: string;
   origin: string;
   technicianId?: string | null;
+  returnDirectUrl?: boolean;
 }): Promise<CreateDepositCheckoutResult & { balanceCents?: number }> {
   const { admin, appointmentId, origin, technicianId } = params;
   if (!admin) return { ok: false, error: 'Database unavailable', code: 'SUPABASE_NOT_READY' };
@@ -494,7 +497,25 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
       payment_type: 'remaining_balance',
       original_deposit_payment_id: depositPayment?.id ? String(depositPayment.id) : '',
     });
-    const session = await stripe.checkout.sessions.create({
+    const existingSessionId = String(appt.final_payment_checkout_session_id ?? '').trim();
+    let session: Stripe.Checkout.Session | null = null;
+    if (existingSessionId) {
+      try {
+        const existing = await stripe.checkout.sessions.retrieve(existingSessionId);
+        if (isReusableCheckoutSession({
+          status: existing.status,
+          paymentStatus: existing.payment_status,
+          url: existing.url,
+          amountCents: existing.amount_total,
+          expectedAmountCents: balanceCents,
+        })) {
+          session = existing;
+        }
+      } catch {
+        // Expired or missing provider session: create a fresh one for this work order.
+      }
+    }
+    if (!session) session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: typeof appt.guest_email === 'string' ? appt.guest_email : undefined,
       line_items: [
@@ -518,7 +539,12 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
         : `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
       ...stripeMeta,
     }, {
-      idempotencyKey: ['final-balance-checkout', appointmentId, String(balanceCents)].join('-').slice(0, 255),
+      idempotencyKey: [
+        'final-balance-checkout',
+        appointmentId,
+        String(balanceCents),
+        existingSessionId || 'initial',
+      ].join('-').slice(0, 255),
     });
 
     const { buildTrackedBalancePayUrl } = await import('@/lib/payment-link-tracking');
@@ -560,7 +586,8 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
 
     await syncJobBalanceDue(admin, jobRow, pricing, { appointmentId });
 
-    return trackedPayUrl ? { ok: true, url: trackedPayUrl, balanceCents } : { ok: false, error: 'No checkout URL returned' };
+    const resultUrl = params.returnDirectUrl ? session.url : trackedPayUrl;
+    return resultUrl ? { ok: true, url: resultUrl, balanceCents } : { ok: false, error: 'No checkout URL returned' };
   } catch (e) {
     console.warn('[checkout] createCustomerFinalBalanceCheckoutSession', e);
     return { ok: false, error: stripeErrorMessage(e).slice(0, 280), code: 'STRIPE_ERROR' };
@@ -1003,4 +1030,61 @@ export async function processCheckoutSessionCompleted(params: {
     }
     throw e;
   }
+}
+
+export async function processCheckoutSessionUnsuccessful(params: {
+  admin: SupabaseClient | null;
+  session: Stripe.Checkout.Session;
+  reason: 'payment_failed' | 'payment_expired';
+}): Promise<void> {
+  const { admin, session, reason } = params;
+  if (!admin) return;
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null;
+  const target = await resolveStripePaymentTarget(admin, null, {
+    session,
+    sessionId: session.id,
+    paymentIntentId,
+    amountCents: session.amount_total ?? 0,
+    customerEmail: session.customer_details?.email ?? session.customer_email,
+  });
+  const appointmentId = session.metadata?.appointment_id || target.appointmentId;
+  if (!appointmentId) return;
+
+  const finalBalance = session.metadata?.stripe_checkout_kind === 'customer_final_balance';
+  const patch: Record<string, unknown> = {
+    payment_status: reason,
+    updated_at: new Date().toISOString(),
+  };
+  if (reason === 'payment_expired') {
+    if (finalBalance) {
+      patch.final_payment_checkout_session_id = null;
+      patch.final_payment_url = null;
+    } else {
+      patch.stripe_checkout_session_id = null;
+    }
+  }
+
+  let update = await admin
+    .from('appointments')
+    .update(patch)
+    .eq('id', appointmentId)
+    .not('payment_status', 'in', '(paid,full_paid)');
+  if (update.error && isSchemaDriftError(update.error.message)) {
+    update = await admin
+      .from('appointments')
+      .update({ payment_status: reason, updated_at: new Date().toISOString() })
+      .eq('id', appointmentId)
+      .not('payment_status', 'in', '(paid,full_paid)');
+  }
+  if (update.error) throw new Error(update.error.message);
+
+  await recordJobTimelineEvent(admin, {
+    appointmentId,
+    eventType: reason === 'payment_expired' ? 'checkout_expired' : 'payment_failed',
+    meta: {
+      stripe_checkout_session_id: session.id,
+      stripe_checkout_kind: session.metadata?.stripe_checkout_kind ?? 'deposit',
+    },
+  });
 }
