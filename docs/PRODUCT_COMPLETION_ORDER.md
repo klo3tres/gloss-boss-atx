@@ -19,11 +19,16 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **1.4 Reset password**, **1.5 Edit customer contact information**,
 **1.6 Add and edit vehicles**, **1.7 Upload and view customer photos**,
 **1.8 View memberships**, **1.9 View rewards**, **1.10 View referrals**,
-**1.11 Send and receive messages**
+**1.11 Send and receive messages**, **2.1 Pay deposit**
 
-Current active item: **2.1 Pay deposit**
+Current active item: **2.2 Pay remaining balance**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
+
+Payment 2.1 evidence: **Passed** with `npm run qa:deposit` against production,
+including acknowledgment-first state resolution, partial-deposit math, live
+Stripe QA protection, settled-payment validation, and confirmation-state
+advance.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery
