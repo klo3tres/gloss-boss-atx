@@ -29,6 +29,7 @@ export type BookingConfirmationSummary = {
   finalTotalCents: number;
   depositCents: number;
   depositPaidCents: number;
+  depositDueCents: number;
   totalPaidCents: number;
   balanceDueCents: number;
   paymentStatus: string;
@@ -52,6 +53,7 @@ export type BookingConfirmationSummary = {
     depositPaid: boolean;
     paidInFull: boolean;
     payOnArrival: boolean;
+    paymentChoice: string;
     accountClaimed: boolean;
     paymentFailed: boolean;
     paymentCancelled: boolean;
@@ -198,6 +200,10 @@ function ConfirmationInner({
     !paidDeposit &&
     !paidInFull &&
     !summary.sessionState.payOnArrival;
+  const selectedPaymentChoice =
+    summary.sessionState.paymentChoice === 'full' ? 'full' : 'deposit';
+  const checkoutAmountCents =
+    selectedPaymentChoice === 'full' ? summary.balanceDueCents : summary.depositDueCents;
   const signHref = `/book/complete?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''}`;
 
   const openDepositCheckout = async (paymentChoice: 'deposit' | 'full' = 'deposit') => {
@@ -211,10 +217,11 @@ function ConfirmationInner({
         body: JSON.stringify({ appointmentId, token, eventType: 'payment_page_opened' }),
         keepalive: true,
       }).catch(() => null);
-      const res = await fetch('/api/stripe/create-checkout-session', {
+      const res = await fetchWithTimeout('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointmentId, accessToken: token, paymentChoice }),
+        timeoutMs: 12000,
       });
       const json = (await res.json()) as { url?: string; skipPayment?: boolean; customerMessage?: string; error?: string };
       if (res.ok && json.skipPayment) {
@@ -224,7 +231,13 @@ function ConfirmationInner({
       if (!res.ok || !json.url) throw new Error(json.customerMessage ?? json.error ?? 'Secure checkout could not be opened.');
       window.location.assign(json.url);
     } catch (e) {
-      setCheckoutError(e instanceof Error ? e.message : 'Secure checkout could not be opened.');
+      setCheckoutError(
+        e instanceof Error && e.name === 'AbortError'
+          ? 'Secure checkout took too long. Your booking is saved—try again.'
+          : e instanceof Error
+            ? e.message
+            : 'Secure checkout could not be opened.',
+      );
       setCheckoutBusy(false);
     }
   };
@@ -404,10 +417,14 @@ function ConfirmationInner({
             <button
               type='button'
               disabled={checkoutBusy}
-              onClick={() => void openDepositCheckout('deposit')}
+              onClick={() => void openDepositCheckout(selectedPaymentChoice)}
               className='w-full rounded-2xl bg-gold px-6 py-4 text-sm font-black uppercase text-black disabled:opacity-60'
             >
-              {checkoutBusy ? 'Opening secure checkout…' : `Pay ${money(summary.depositCents)} deposit`}
+              {checkoutBusy
+                ? 'Opening secure checkout…'
+                : selectedPaymentChoice === 'full'
+                  ? `Pay ${money(checkoutAmountCents)} in full`
+                  : `Pay ${money(checkoutAmountCents)} deposit`}
             </button>
             {checkoutError ? <p className='mt-3 text-sm text-red-200'>{checkoutError}</p> : null}
           </div>
@@ -474,7 +491,9 @@ function ConfirmationInner({
           {summary.sessionState.nextStep === 'acknowledgement'
             ? 'Review and sign the service acknowledgment. Your deposit step will follow.'
             : summary.sessionState.nextStep === 'payment'
-              ? `Pay the required ${money(summary.depositCents)} deposit to complete your booking.`
+              ? selectedPaymentChoice === 'full'
+                ? `Pay the selected ${money(checkoutAmountCents)} full balance to complete your booking.`
+                : `Pay the required ${money(checkoutAmountCents)} deposit to complete your booking.`
               : summary.sessionState.nextStep === 'inactive'
                 ? 'This appointment is no longer active. Contact Gloss Boss ATX if you need help.'
                 : summary.sessionState.payOnArrival

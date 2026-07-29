@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getCanvasSignatureDataUrl } from '@/components/booking/agreement-sign';
-import {
-  buildNativeAgreementSnapshot,
-  DEFAULT_AGREEMENT_TITLE,
-  parseAgreementSnapshotSections,
-} from '@/lib/default-gloss-boss-agreement';
+import {
+  buildNativeAgreementSnapshot,
+  DEFAULT_AGREEMENT_TITLE,
+  parseAgreementSnapshotSections,
+} from '@/lib/default-gloss-boss-agreement';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 type ApptLite = {
   guest_name?: string | null;
@@ -160,7 +161,7 @@ export default function CompleteContent() {
     if (workOrderId) q.set('workOrderId', workOrderId);
     if (email) q.set('email', email);
     if (phone) q.set('phone', phone);
-    fetch(`/api/bookings/ready-sign?${q.toString()}`)
+    fetchWithTimeout(`/api/bookings/ready-sign?${q.toString()}`, { timeoutMs: 12000 })
       .then((r) => r.json())
       .then((data: {
         error?: string;
@@ -313,9 +314,9 @@ export default function CompleteContent() {
     const signatureData =
       signatureMode === 'drawn' ? getCanvasSignatureDataUrl(canvasRef.current) : legalName.trim();
 
-    const res = await fetch('/api/agreements/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetchWithTimeout('/api/agreements/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         appointmentId: resolvedAppointmentId,
         fallbackBookingId: resolvedFallbackBookingId,
@@ -328,19 +329,56 @@ export default function CompleteContent() {
         agreementSnapshot: agreementBody,
         acknowledged: true,
         marketingMediaConsent,
-        smsConsent,
-      }),
-    });
-    const json = await res.json();
+        smsConsent,
+      }),
+      timeoutMs: 12000,
+    }).catch(() => null);
+    if (!res) {
+      setError('Saving took too long. Your booking is safe—try signing again.');
+      setSubmitting(false);
+      return;
+    }
+    const json = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      appointmentId?: string | null;
+      accessToken?: string | null;
+      fallbackBookingId?: string | null;
+    };
     if (!res.ok) {
       setError(json.error ?? 'Could not save signature');
       setSubmitting(false);
       return;
     }
-    const nextAppointmentId = resolvedAppointmentId || appointmentId;
-    const nextToken = resolvedToken || token;
+    const nextAppointmentId = json.appointmentId || resolvedAppointmentId || appointmentId;
+    const nextToken = json.accessToken || resolvedToken || token;
     if (nextAppointmentId && nextToken) {
       window.location.assign(`/book/confirmation?appointment_id=${encodeURIComponent(nextAppointmentId)}&token=${encodeURIComponent(nextToken)}`);
+      return;
+    }
+    const nextFallbackId = json.fallbackBookingId || resolvedFallbackBookingId || fallbackBookingId;
+    if (nextFallbackId && nextToken) {
+      try {
+        const checkout = await fetchWithTimeout('/api/stripe/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fallbackBookingId: nextFallbackId,
+            accessToken: nextToken,
+            paymentChoice: 'deposit',
+          }),
+          timeoutMs: 12000,
+        });
+        const checkoutJson = (await checkout.json()) as { url?: string; error?: string };
+        if (checkout.ok && checkoutJson.url) {
+          window.location.assign(checkoutJson.url);
+          return;
+        }
+        setError(checkoutJson.error ?? 'Your booking is saved, but checkout could not open. Please try again.');
+      } catch {
+        setError('Your booking is saved, but checkout could not open. Please try again.');
+      }
+      setSubmitting(false);
       return;
     }
     setDone(true);

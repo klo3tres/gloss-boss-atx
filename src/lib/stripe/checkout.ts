@@ -14,6 +14,10 @@ import {
   upsertMergedStripePayment,
 } from '@/lib/stripe-payment-resolve';
 import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
+import {
+  resolveBookingCheckoutAmount,
+  validateCompletedBookingCheckout,
+} from '@/lib/deposit-lifecycle';
 
 export type CreateDepositCheckoutResult =
   | { ok: true; url: string }
@@ -85,6 +89,22 @@ export async function createDepositCheckoutSession(params: {
       return { ok: false, error: 'Invalid access token' };
     }
 
+    const [{ data: signedAgreement }, { data: intake }] = await Promise.all([
+      admin.from('signed_agreements').select('id').eq('appointment_id', appt.id).limit(1).maybeSingle(),
+      admin.from('intake_submissions').select('form_data').eq('appointment_id', appt.id).limit(1).maybeSingle(),
+    ]);
+    const intakeForm =
+      intake?.form_data && typeof intake.form_data === 'object'
+        ? (intake.form_data as Record<string, unknown>)
+        : null;
+    if (!signedAgreement && !intakeForm?.deposit_legal_ack) {
+      return {
+        ok: false,
+        error: 'Review and sign the service acknowledgment before payment.',
+        code: 'ACKNOWLEDGEMENT_REQUIRED',
+      };
+    }
+
     const payStatus = String((appt as { payment_status?: string }).payment_status ?? '').toLowerCase();
     const appointmentStatus = String(appt.status ?? '').toLowerCase();
     const canCheckout =
@@ -100,11 +120,18 @@ export async function createDepositCheckoutSession(params: {
     const isFullPay = params.paymentChoice === 'full';
     const snapshot = await loadOrderSnapshot(admin, { appointmentId: String(appt.id) });
     const isBalancePayment = isFullPay && (snapshot?.pricing.totalPaidCents ?? 0) > 0;
-    const rawAmountCents = isFullPay
-      ? snapshot?.pricing.remainingBalanceCents ??
-        (typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0 ? appt.base_price_cents : 0)
-      : snapshot
-        ? Math.max(0, snapshot.pricing.depositCents - snapshot.pricing.depositPaidCents)
+    const rawAmountCents = snapshot
+      ? resolveBookingCheckoutAmount({
+          depositCents: snapshot.pricing.depositCents,
+          depositPaidCents: snapshot.pricing.depositPaidCents,
+          finalTotalCents: snapshot.pricing.finalTotalCents,
+          totalPaidCents: snapshot.pricing.totalPaidCents,
+          paymentChoice: isFullPay ? 'full' : 'deposit',
+        })
+      : isFullPay
+        ? typeof appt.base_price_cents === 'number' && appt.base_price_cents > 0
+          ? appt.base_price_cents
+          : 0
         : appt.deposit_amount_cents;
     const creditPaymentsRes = await admin
       .from('payments')
@@ -248,6 +275,19 @@ async function createFallbackDepositCheckoutSession(params: {
   }
   if (String(row.status) === 'converted') {
     return { ok: false, error: 'Booking already converted' };
+  }
+  const { data: signedAgreement } = await admin
+    .from('signed_agreements')
+    .select('id')
+    .eq('fallback_booking_id', row.id)
+    .limit(1)
+    .maybeSingle();
+  if (!signedAgreement) {
+    return {
+      ok: false,
+      error: 'Review and sign the service acknowledgment before payment.',
+      code: 'ACKNOWLEDGEMENT_REQUIRED',
+    };
   }
 
   const isFullPay = params.paymentChoice === 'full';
@@ -709,6 +749,35 @@ export async function processCheckoutSessionCompleted(params: {
   const technicianId = session.metadata?.technician_id ?? null;
 
   try {
+    const existingPayment = await admin
+      .from('payments')
+      .select('id, amount_cents, status')
+      .eq('stripe_checkout_session_id', session.id)
+      .limit(1)
+      .maybeSingle();
+    const existingSucceeded =
+      existingPayment.data &&
+      ['succeeded', 'paid'].includes(String(existingPayment.data.status ?? '').toLowerCase());
+    const beforeSnapshot = await loadOrderSnapshot(admin, { appointmentId });
+    if (!isField && beforeSnapshot) {
+      const expectedAmountCents = resolveBookingCheckoutAmount({
+        depositCents: beforeSnapshot.pricing.depositCents,
+        depositPaidCents: beforeSnapshot.pricing.depositPaidCents,
+        finalTotalCents: beforeSnapshot.pricing.finalTotalCents,
+        totalPaidCents: beforeSnapshot.pricing.totalPaidCents,
+        paymentChoice: isBookingFull || isFinalBalance ? 'full' : 'deposit',
+      });
+      const validation = validateCompletedBookingCheckout({
+        paymentStatus: session.payment_status,
+        amountCents: amount,
+        expectedAmountCents,
+        alreadyRecordedAmountCents: existingSucceeded ? Number(existingPayment.data?.amount_cents ?? 0) : null,
+      });
+      if (!validation.ok) {
+        throw new Error(`${validation.code}: ${validation.error}`);
+      }
+    }
+
     const apptForPay = await admin
       .from('appointments')
       .select('customer_id, guest_email')
@@ -769,6 +838,20 @@ export async function processCheckoutSessionCompleted(params: {
         console.warn('[checkout] owner notify payment upsert failed', notifyErr);
       }
       throw new Error(payResult.error ?? 'payment row upsert failed');
+    }
+
+    const completedSnapshot = await loadOrderSnapshot(admin, { appointmentId });
+    if (!isField && completedSnapshot) {
+      const depositSatisfied =
+        completedSnapshot.pricing.depositCents <= 0 ||
+        completedSnapshot.pricing.depositPaidCents >= completedSnapshot.pricing.depositCents ||
+        completedSnapshot.pricing.totalPaidCents >= completedSnapshot.pricing.finalTotalCents;
+      const fullSatisfied =
+        completedSnapshot.pricing.finalTotalCents > 0 &&
+        completedSnapshot.pricing.totalPaidCents >= completedSnapshot.pricing.finalTotalCents;
+      if ((paymentKind === 'deposit' && !depositSatisfied) || (paymentKind !== 'deposit' && !fullSatisfied)) {
+        throw new Error('PAYMENT_STATE_MISMATCH: Successful payment did not satisfy the canonical amount due.');
+      }
     }
 
     if (technicianId && typeof technicianId === 'string' && payResult.paymentId) {

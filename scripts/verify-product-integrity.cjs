@@ -45,6 +45,9 @@ const customerReferralsRoute = read('src/app/api/customer/referrals/route.ts');
 const referralEvents = read('src/lib/referral/referral-events.ts');
 const customerMessagesRoute = read('src/app/api/customer/messages/route.ts');
 const customerMessagesClient = read('src/components/dashboard/customer-messages-client.tsx');
+const depositLifecycle = read('src/lib/deposit-lifecycle.ts');
+const stripeCheckout = read('src/lib/stripe/checkout.ts');
+const bookingWizard = read('src/components/booking/booking-wizard.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -219,6 +222,17 @@ check(
     customerMessagesClient.includes('window.setInterval') &&
     customerMessagesClient.includes('RefreshCw'),
   'Customer messaging must be identity-scoped, appointment-safe, finite, refreshable, and visible even when email notification is unavailable.',
+);
+check(
+  depositLifecycle.includes('resolveBookingCheckoutAmount') &&
+    depositLifecycle.includes('validateCompletedBookingCheckout') &&
+    stripeCheckout.includes('ACKNOWLEDGEMENT_REQUIRED') &&
+    stripeCheckout.includes('PAYMENT_STATE_MISMATCH') &&
+    confirmationUi.includes('summary.depositDueCents') &&
+    confirmationUi.includes('timeoutMs: 12000') &&
+    bookingWizard.includes('Reserve appointment') &&
+    bookingWizard.includes('The secure payment step follows'),
+  'Deposit checkout must follow acknowledgment, charge only the canonical amount due, stop finite waits, and advance only from a settled matching payment.',
 );
 
 // Regression fixture from the real customer screenshot:

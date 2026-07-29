@@ -5,6 +5,7 @@ import { buildNativeAgreementSnapshot } from '@/lib/default-gloss-boss-agreement
 import { insertJobAgreementFlexible, insertSignedAgreementFlexible } from '@/lib/signed-agreement-insert';
 import { getAgreementRequestByToken, markAgreementSigned } from '@/lib/agreements/requests';
 import { buildAgreementSnapshotForOrder } from '@/lib/agreements/snapshot';
+import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 
 export async function POST(request: Request) {
   try {
@@ -268,6 +269,7 @@ export async function POST(request: Request) {
       console.warn('[agreements/sign] job_agreements', ja.error.message);
     }
 
+    let promotedAppointment: { id: string; access_token: string } | null = null;
     if (appointmentId) {
       await admin
         .from('appointments')
@@ -301,12 +303,30 @@ export async function POST(request: Request) {
         .from('booking_fallbacks')
         .update({ status: 'confirmed', updated_at: new Date().toISOString() })
         .eq('id', resolvedFallbackId);
+      promotedAppointment = accessToken
+        ? await promoteFallbackToAppointment(admin, resolvedFallbackId, accessToken)
+        : null;
+      if (promotedAppointment?.id) {
+        await Promise.all([
+          admin
+            .from('signed_agreements')
+            .update({ appointment_id: promotedAppointment.id })
+            .eq('fallback_booking_id', resolvedFallbackId),
+          admin
+            .from('job_agreements')
+            .update({ appointment_id: promotedAppointment.id })
+            .eq('fallback_booking_id', resolvedFallbackId),
+        ]);
+      }
     }
 
     return NextResponse.json({
       ok: true,
       marketingMediaConsent: marketingOk,
       smsConsent: smsOk,
+      appointmentId: appointmentId || promotedAppointment?.id || null,
+      accessToken: promotedAppointment?.access_token || accessToken || null,
+      fallbackBookingId: resolvedFallbackId || null,
     });
   } catch (e) {
     console.error(e);

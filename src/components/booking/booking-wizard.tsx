@@ -1494,7 +1494,10 @@ export function BookingWizard() {
         return;
       }
       setSavedBooking(ref);
-      await startStripeCheckout({ ...ref, accessToken: ref.accessToken });
+      clearBookingDraft();
+      window.location.href = ref.usedFallback && ref.fallbackBookingId
+        ? `/book/complete?fallback_booking_id=${encodeURIComponent(ref.fallbackBookingId)}&token=${encodeURIComponent(ref.accessToken)}`
+        : `/booking/${encodeURIComponent(ref.accessToken)}`;
     } catch {
       setCheckoutPhase('idle');
       setError('Network error while saving your booking. Please try again.');
@@ -1508,7 +1511,7 @@ export function BookingWizard() {
     if (checkoutPhase === 'redirecting') return 'Opening Stripe…';
     if (checkoutPhase === 'pay_later_saving') return 'Saving pay-later…';
     if (freePromoEligible) return 'Continue with FREE comp';
-    return paymentChoice === 'full' ? 'Pay full amount (Stripe)' : 'Continue to deposit (Stripe)';
+    return 'Reserve appointment';
   };
 
   const lastWizardStep = BOOKING_WIZARD_STEPS.length - 1;
@@ -2271,7 +2274,9 @@ export function BookingWizard() {
               </button>
             </div>
             <p>
-              {freePromoEligible ? 'FREE test comp is applied. Stripe will be bypassed and you will continue to agreement signing.' : 'After checkout, you will continue to sign the liability agreement. Your booking is confirmed only after the agreement is signed. If Stripe is disabled, you will continue without card checkout.'}
+              {freePromoEligible
+                ? 'FREE test comp is applied. Stripe will be bypassed and you will continue to agreement signing.'
+                : 'After reserving, review and sign the service acknowledgment. The secure payment step follows, and your booking remains saved if checkout needs to be retried.'}
             </p>
           </section>
           ) : null}

@@ -99,6 +99,10 @@ export async function loadBookingConfirmationSummary(
     (pricing?.totalPaidCents ?? 0) >= (pricing?.finalTotalCents ?? 0);
   const paymentChoice = str(job.payment_choice).toLowerCase();
   const payOnArrival = paymentChoice === 'pay_later' || paymentChoice === 'pay_on_arrival';
+  const depositDueCents = Math.max(
+    0,
+    (pricing?.depositCents ?? 0) - (pricing?.depositPaidCents ?? 0),
+  );
   const reconciledPricing = reconcilePricingDisplay({
     vehicleSubtotalCents: pricing?.vehicleSubtotalCents ?? 0,
     addOnSubtotalCents: pricing?.addOnSubtotalCents ?? 0,
@@ -130,6 +134,7 @@ export async function loadBookingConfirmationSummary(
     finalTotalCents: pricing?.finalTotalCents ?? 0,
     depositCents: pricing?.depositCents ?? 0,
     depositPaidCents: pricing?.depositPaidCents ?? 0,
+    depositDueCents,
     totalPaidCents: pricing?.totalPaidCents ?? 0,
     balanceDueCents: pricing?.remainingBalanceCents ?? 0,
     paymentStatus: snapshot?.paymentStatus ?? str(job.payment_status),
@@ -161,6 +166,7 @@ export async function loadBookingConfirmationSummary(
       depositPaid,
       paidInFull,
       payOnArrival,
+      paymentChoice,
       paymentFailed: ['failed', 'payment_failed'].includes(str(job.payment_status).toLowerCase()),
       paymentCancelled: ['cancelled', 'payment_cancelled'].includes(str(job.payment_status).toLowerCase()),
       accountClaimed: Boolean(customer?.auth_user_id),
