@@ -30,7 +30,8 @@
     "qa:memberships": "node scripts/qa-customer-memberships.cjs",
     "qa:rewards": "node scripts/qa-customer-rewards.cjs",
     "qa:referrals": "node scripts/qa-customer-referrals.cjs",
-    "qa:messages": "node scripts/qa-customer-messages.cjs"
+    "qa:messages": "node scripts/qa-customer-messages.cjs",
+    "qa:portal": "npm run qa:integrity && npm run qa:claims && npm run qa:login && npm run qa:password-reset && npm run qa:contact && npm run qa:vehicles && npm run qa:photos && npm run qa:memberships && npm run qa:rewards && npm run qa:referrals && npm run qa:messages"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

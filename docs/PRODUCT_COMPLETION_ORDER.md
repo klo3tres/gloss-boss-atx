@@ -18,9 +18,12 @@ action, unexplained price, disconnected side effect, or unhandled retry path.
 Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **1.4 Reset password**, **1.5 Edit customer contact information**,
 **1.6 Add and edit vehicles**, **1.7 Upload and view customer photos**,
-**1.8 View memberships**, **1.9 View rewards**, **1.10 View referrals**
+**1.8 View memberships**, **1.9 View rewards**, **1.10 View referrals**,
+**1.11 Send and receive messages**
 
-Current active item: **1.11 Send and receive messages**
+Current active item: **2.1 Pay deposit**
+
+Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery
