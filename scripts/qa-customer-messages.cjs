@@ -193,13 +193,13 @@ async function main() {
 
     const stored = await admin
       .from('messages')
-      .select('id, customer_id, appointment_id, from_email, body, status')
+      .select('id, customer_id, thread_id, from_email, body, status')
       .eq('id', sentMessageId)
       .maybeSingle();
     if (
       stored.error ||
       String(stored.data?.customer_id) !== customerId ||
-      String(stored.data?.appointment_id) !== appointmentId ||
+      String(stored.data?.thread_id) !== appointmentId ||
       stored.data?.from_email !== email ||
       stored.data?.status !== 'new'
     ) {

@@ -11,12 +11,12 @@ function str(v: unknown) {
 }
 
 const MESSAGE_SELECT =
-  'id, customer_id, appointment_id, from_name, from_email, subject, body, message, status, direction, created_at, admin_reply, replied_at';
+  'id, customer_id, thread_id, from_name, from_email, subject, body, message, status, direction, created_at, admin_reply, replied_at';
 
 function normalizeMessage(row: Record<string, unknown>) {
   return {
     id: str(row.id),
-    appointmentId: str(row.appointment_id) || null,
+    appointmentId: str(row.thread_id) || null,
     subject: str(row.subject) || 'Message',
     body: str(row.body || row.message),
     status: str(row.status),
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
     subject: str(body.subject).slice(0, 160) || 'Customer portal message',
     body: message,
     message,
-    appointment_id: appointmentId || null,
+    thread_id: appointmentId || null,
     status: 'new',
     direction: 'inbound',
   };
@@ -134,6 +134,7 @@ export async function POST(request: Request) {
         from_name: name,
         from_email: email,
         customer_id: customer.id,
+        thread_id: appointmentId || null,
         subject: row.subject,
         body: message,
         status: 'new',
