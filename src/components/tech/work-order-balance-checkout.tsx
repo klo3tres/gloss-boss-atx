@@ -6,6 +6,7 @@ import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { ToastActionForm } from '@/components/ui/toast-action-form';
 import { SubmitStatusButton } from '@/components/ui/submit-status-button';
 import { recordManualPaymentActionState } from '@/app/(dashboard)/admin/payment-ops-actions';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 
 type CheckoutResponse = {
   ok?: boolean;
@@ -55,10 +56,11 @@ export function WorkOrderBalanceCheckout({
   const requiredDisplay = depositRequired && depositRequired !== '—' ? depositRequired : null;
 
   const createSession = useCallback(async (): Promise<{ url: string; balanceCents: number }> => {
-    const res = await fetch('/api/tech/final-balance-checkout', {
+    const res = await fetchWithTimeout('/api/tech/final-balance-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appointmentId }),
+      timeoutMs: 12000,
     });
     const data = (await res.json().catch(() => ({}))) as CheckoutResponse;
     if (!res.ok || !data.ok || !data.url) {

@@ -33,6 +33,7 @@
     "qa:messages": "node scripts/qa-customer-messages.cjs",
     "qa:deposit:rules": "node scripts/qa-deposit-lifecycle.cjs",
     "qa:deposit": "node scripts/qa-deposit-lifecycle.cjs && node scripts/qa-customer-deposit.cjs",
+    "qa:balance": "node scripts/qa-deposit-lifecycle.cjs && node scripts/qa-customer-deposit.cjs",
     "qa:portal": "npm run qa:integrity && npm run qa:claims && npm run qa:login && npm run qa:password-reset && npm run qa:contact && npm run qa:vehicles && npm run qa:photos && npm run qa:memberships && npm run qa:rewards && npm run qa:referrals && npm run qa:messages"
   },
   "dependencies": {

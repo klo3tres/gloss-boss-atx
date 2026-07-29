@@ -29,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ appo
   }
 
   const session = await getSessionWithProfile();
-  const click = await logBalancePaymentLinkClick(admin, appointmentId, {
+  await logBalancePaymentLinkClick(admin, appointmentId, {
     headers: request.headers,
     role: session.profile?.role,
     token,
@@ -37,13 +37,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ appo
   if (session.user && isStaffRole(session.profile?.role)) {
     return NextResponse.redirect(`${origin}/admin/customer-preview/${encodeURIComponent(appointmentId)}?tab=diagnostics`);
   }
-  if (!click.counted) {
-    return new NextResponse(null, {
-      status: 204,
-      headers: { 'Cache-Control': 'no-store, private' },
-    });
-  }
-
   let stripeUrl = typeof appt.final_payment_url === 'string' ? appt.final_payment_url : null;
   if (!stripeUrl) {
     const checkout = await createCustomerFinalBalanceCheckoutSession({ admin, appointmentId, origin });

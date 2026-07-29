@@ -469,6 +469,10 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
     const pricing = resolveJobPricing(jobRow, payments);
     const balanceCents = pricing.remainingBalanceCents;
     const depositPayment = findDepositPayment(payments);
+    const appointmentStatus = String(appt.status ?? '').toLowerCase();
+    if (['cancelled', 'voided', 'deleted'].includes(appointmentStatus)) {
+      return { ok: false, error: 'This appointment is not active', code: 'INVALID_STATUS', balanceCents };
+    }
 
     if (balanceCents < 50) {
       await admin
@@ -506,9 +510,15 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/customer?payment=success&appointment_id=${appointmentId}`,
-      cancel_url: `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
+      success_url: token
+        ? `${origin}/booking/${encodeURIComponent(token)}?session_id={CHECKOUT_SESSION_ID}`
+        : `${origin}/customer?payment=success&appointment_id=${appointmentId}`,
+      cancel_url: token
+        ? `${origin}/booking/${encodeURIComponent(token)}?payment_cancelled=1`
+        : `${origin}/customer?payment=cancelled&appointment_id=${appointmentId}`,
       ...stripeMeta,
+    }, {
+      idempotencyKey: ['final-balance-checkout', appointmentId, String(balanceCents)].join('-').slice(0, 255),
     });
 
     const { buildTrackedBalancePayUrl } = await import('@/lib/payment-link-tracking');

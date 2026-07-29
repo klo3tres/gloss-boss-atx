@@ -48,6 +48,8 @@ const customerMessagesClient = read('src/components/dashboard/customer-messages-
 const depositLifecycle = read('src/lib/deposit-lifecycle.ts');
 const stripeCheckout = read('src/lib/stripe/checkout.ts');
 const bookingWizard = read('src/components/booking/booking-wizard.tsx');
+const trackedBalanceRoute = read('src/app/pay/balance/[appointmentId]/route.ts');
+const balanceCheckoutUi = read('src/components/tech/work-order-balance-checkout.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -233,6 +235,15 @@ check(
     bookingWizard.includes('Reserve appointment') &&
     bookingWizard.includes('The secure payment step follows'),
   'Deposit checkout must follow acknowledgment, charge only the canonical amount due, stop finite waits, and advance only from a settled matching payment.',
+);
+check(
+  !trackedBalanceRoute.includes('status: 204') &&
+    stripeCheckout.includes("stripe_checkout_kind: 'customer_final_balance'") &&
+    stripeCheckout.includes("'final-balance-checkout'") &&
+    stripeCheckout.includes('/booking/${encodeURIComponent(token)}?session_id=') &&
+    balanceCheckoutUi.includes('fetchWithTimeout') &&
+    balanceCheckoutUi.includes('timeoutMs: 12000'),
+  'Remaining-balance checkout must use the canonical amount, return to the secure booking, keep repeat-click links usable, and stop finite staff waits.',
 );
 
 // Regression fixture from the real customer screenshot:

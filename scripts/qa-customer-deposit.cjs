@@ -182,9 +182,79 @@ async function main() {
     assert(complete.depositPaidCents === 3900, 'Completed deposit was not exactly $39.00.');
     assert(complete.depositDueCents === 0, 'Completed deposit still showed an amount due.');
     assert(complete.sessionState?.nextStep === 'confirmation', 'Completed deposit did not resolve confirmation.');
+    assert(complete.balanceDueCents === 9100, 'Post-deposit balance was not exactly $91.00.');
+
+    const balanceCheckout = await fetch(`${appUrl}/api/stripe/create-checkout-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId, accessToken: token, paymentChoice: 'full' }),
+    });
+    const balanceCheckoutBody = await balanceCheckout.json().catch(() => ({}));
+    const balanceProtectedLiveMode =
+      balanceCheckout.status === 409 && balanceCheckoutBody.code === 'QA_REQUIRES_STRIPE_TEST_MODE';
+    const balanceTestCheckoutCreated =
+      balanceCheckout.ok &&
+      balanceCheckoutBody.ok === true &&
+      /^https:\/\//.test(String(balanceCheckoutBody.url || ''));
+    assert(
+      balanceProtectedLiveMode || balanceTestCheckoutCreated,
+      balanceCheckoutBody.error || `Controlled balance checkout returned HTTP ${balanceCheckout.status}.`,
+    );
+
+    const fakeBalanceUrl = `https://example.com/gbqa-balance-${suffix}`;
+    const linkUpdate = await admin
+      .from('appointments')
+      .update({
+        final_payment_url: fakeBalanceUrl,
+        final_payment_tracked_url: `${appUrl}/pay/balance/${appointmentId}?t=${token}`,
+        balance_due_cents: 9100,
+      })
+      .eq('id', appointmentId);
+    if (linkUpdate.error) throw new Error(linkUpdate.error.message);
+
+    for (let clickIndex = 0; clickIndex < 2; clickIndex++) {
+      const tracked = await fetch(
+        `${appUrl}/pay/balance/${encodeURIComponent(appointmentId)}?t=${encodeURIComponent(token)}`,
+        { redirect: 'manual' },
+      );
+      assert(
+        [302, 303, 307, 308].includes(tracked.status),
+        `Tracked balance link click ${clickIndex + 1} returned HTTP ${tracked.status} instead of redirecting.`,
+      );
+      assert(
+        tracked.headers.get('location') === fakeBalanceUrl,
+        `Tracked balance link click ${clickIndex + 1} did not preserve the secure payment destination.`,
+      );
+    }
+
+    const finalBalance = await admin
+      .from('payments')
+      .insert({
+        appointment_id: appointmentId,
+        customer_id: customerId,
+        amount_cents: 9100,
+        status: 'succeeded',
+        payment_method: 'stripe',
+        payment_kind: 'customer_final_balance',
+        provider: 'stripe',
+        stripe_checkout_session_id: `cs_test_balance_${suffix}`,
+        paid_at: new Date().toISOString(),
+        is_test: true,
+      })
+      .select('id')
+      .maybeSingle();
+    if (finalBalance.error || !finalBalance.data?.id) {
+      throw new Error(finalBalance.error?.message || 'Final balance fixture failed.');
+    }
+    paymentIds.push(String(finalBalance.data.id));
+
+    const paidInFull = await loadSummary(appointmentId, token);
+    assert(paidInFull.totalPaidCents === 13000, 'Paid-in-full total was not exactly $130.00.');
+    assert(paidInFull.balanceDueCents === 0, 'Paid-in-full booking still showed a balance.');
+    assert(paidInFull.sessionState?.paidInFull === true, 'Paid-in-full state did not resolve.');
 
     console.log(
-      `Customer deposit production QA passed: acknowledgment → $39.00 deposit, $10.00 partial → $29.00 due, protected ${protectedLiveMode ? 'live' : 'test'} Stripe checkout, and confirmation state are operational.`,
+      `Customer payment production QA passed: acknowledgment → $39.00 deposit, $10.00 partial → $29.00 due, $91.00 final balance, repeat-safe tracked links, protected ${protectedLiveMode && balanceProtectedLiveMode ? 'live' : 'test'} Stripe checkout, and $130.00 paid-in-full state are operational.`,
     );
   } finally {
     if (paymentIds.length) await admin.from('payments').delete().in('id', paymentIds);
