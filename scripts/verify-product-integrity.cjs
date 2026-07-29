@@ -43,6 +43,8 @@ const customerRewardsRoute = read('src/app/api/customer/rewards/route.ts');
 const customerRewardWallet = read('src/components/customer/customer-reward-wallet.tsx');
 const customerReferralsRoute = read('src/app/api/customer/referrals/route.ts');
 const referralEvents = read('src/lib/referral/referral-events.ts');
+const customerMessagesRoute = read('src/app/api/customer/messages/route.ts');
+const customerMessagesClient = read('src/components/dashboard/customer-messages-client.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -207,6 +209,16 @@ check(
     referralEvents.includes("'reward_available'") &&
     referralEvents.includes("['issued', 'available']"),
   'Customer referrals must expose a durable owned link and count every current event/reward status accurately.',
+);
+check(
+  customerMessagesRoute.includes('resolveAuthenticatedCustomer(admin') &&
+    customerMessagesRoute.includes('customer_id: customer.id') &&
+    customerMessagesRoute.includes(".eq('customer_id', customer.id)") &&
+    customerMessagesRoute.includes('test notification skipped') &&
+    customerMessagesClient.includes('controller.abort()') &&
+    customerMessagesClient.includes('window.setInterval') &&
+    customerMessagesClient.includes('RefreshCw'),
+  'Customer messaging must be identity-scoped, appointment-safe, finite, refreshable, and visible even when email notification is unavailable.',
 );
 
 // Regression fixture from the real customer screenshot:
