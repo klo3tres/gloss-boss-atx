@@ -240,6 +240,7 @@ check(
   !trackedBalanceRoute.includes('status: 204') &&
     stripeCheckout.includes("stripe_checkout_kind: 'customer_final_balance'") &&
     stripeCheckout.includes("'final-balance-checkout'") &&
+    stripeCheckout.includes("code: 'CHECKOUT_SAVE_FAILED'") &&
     stripeCheckout.includes('/booking/${encodeURIComponent(token)}?session_id=') &&
     balanceCheckoutUi.includes('fetchWithTimeout') &&
     balanceCheckoutUi.includes('timeoutMs: 12000'),

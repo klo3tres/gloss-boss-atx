@@ -206,7 +206,6 @@ async function main() {
       .from('appointments')
       .update({
         final_payment_url: fakeBalanceUrl,
-        final_payment_tracked_url: `${appUrl}/pay/balance/${appointmentId}?t=${token}`,
         balance_due_cents: 9100,
       })
       .eq('id', appointmentId);

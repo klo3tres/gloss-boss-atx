@@ -525,7 +525,7 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
     const trackedPayUrl =
       session.url && token ? buildTrackedBalancePayUrl(origin, appointmentId, token) : session.url ?? null;
 
-    await admin
+    let balanceUpdate = await admin
       .from('appointments')
       .update({
         final_payment_checkout_session_id: session.id,
@@ -537,6 +537,26 @@ export async function createCustomerFinalBalanceCheckoutSession(params: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', appointmentId);
+    if (balanceUpdate.error && isSchemaDriftError(balanceUpdate.error.message)) {
+      balanceUpdate = await admin
+        .from('appointments')
+        .update({
+          final_payment_checkout_session_id: session.id,
+          final_payment_url: session.url ?? null,
+          balance_due_cents: balanceCents,
+          payment_status: 'balance_due',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', appointmentId);
+    }
+    if (balanceUpdate.error) {
+      return {
+        ok: false,
+        error: `Checkout was created but the work order could not save it: ${balanceUpdate.error.message}`,
+        code: 'CHECKOUT_SAVE_FAILED',
+        balanceCents,
+      };
+    }
 
     await syncJobBalanceDue(admin, jobRow, pricing, { appointmentId });
 
