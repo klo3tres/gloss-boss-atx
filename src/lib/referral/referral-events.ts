@@ -1,6 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type ReferralEventStatus = 'clicked' | 'signed_up' | 'booked' | 'completed' | 'reward_issued' | 'expired';
+export type ReferralEventStatus =
+  | 'shared'
+  | 'clicked'
+  | 'signed_up'
+  | 'booked'
+  | 'pending_completion'
+  | 'completed'
+  | 'reward_issued'
+  | 'reward_available'
+  | 'redeemed'
+  | 'expired'
+  | 'voided';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -73,12 +84,16 @@ export async function loadReferralStatsForCustomer(
   ]);
 
   const rows = events ?? [];
-  const booked = rows.filter((e) => ['booked', 'completed', 'reward_issued'].includes(String(e.status))).length;
-  const completed = rows.filter((e) => ['completed', 'reward_issued'].includes(String(e.status))).length;
-  const pending = rows.filter((e) => String(e.status) === 'booked').length;
+  const booked = rows.filter((e) =>
+    ['booked', 'pending_completion', 'completed', 'reward_issued', 'reward_available', 'redeemed'].includes(String(e.status)),
+  ).length;
+  const completed = rows.filter((e) =>
+    ['completed', 'reward_issued', 'reward_available', 'redeemed'].includes(String(e.status)),
+  ).length;
+  const pending = rows.filter((e) => ['booked', 'pending_completion'].includes(String(e.status))).length;
   const rewardRows = rewards ?? [];
   const rewardsEarned = rewardRows.length;
-  const rewardsAvailable = rewardRows.filter((r) => ['pending', 'issued', 'available'].includes(String(r.status))).length;
+  const rewardsAvailable = rewardRows.filter((r) => ['issued', 'available'].includes(String(r.status))).length;
 
   return { sent: sent ?? rows.length, booked, completed, pending, rewardsEarned, rewardsAvailable };
 }

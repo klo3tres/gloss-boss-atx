@@ -41,6 +41,8 @@ const customerMembershipsRoute = read('src/app/api/customer/memberships/route.ts
 const customerRewardWalletData = read('src/lib/customer-reward-wallet-data.ts');
 const customerRewardsRoute = read('src/app/api/customer/rewards/route.ts');
 const customerRewardWallet = read('src/components/customer/customer-reward-wallet.tsx');
+const customerReferralsRoute = read('src/app/api/customer/referrals/route.ts');
+const referralEvents = read('src/lib/referral/referral-events.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -197,6 +199,14 @@ check(
     customerRewardsRoute.includes('loadCustomerRewardWallet(admin, customer.id)') &&
     customerRewardWallet.includes("{ label: 'Locked'"),
   'The customer reward wallet must show every lifecycle status without duplicate linked credits or cross-customer data.',
+);
+check(
+  customerReferralsRoute.includes('ensureCustomerReferralCode(admin, customer.id)') &&
+    customerReferralsRoute.includes('loadReferralStatsForCustomer(admin, customer.id)') &&
+    referralEvents.includes("'pending_completion'") &&
+    referralEvents.includes("'reward_available'") &&
+    referralEvents.includes("['issued', 'available']"),
+  'Customer referrals must expose a durable owned link and count every current event/reward status accurately.',
 );
 
 // Regression fixture from the real customer screenshot:
