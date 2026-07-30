@@ -58,6 +58,7 @@ const paymentRefundState = read('src/lib/payment-refund-state.ts');
 const paymentActions = read('src/app/(dashboard)/admin/payments/payment-actions.ts');
 const stripeAutomation = read('src/lib/stripe-automation.ts');
 const appointmentLifecycle = read('src/lib/appointment-lifecycle.ts');
+const workOrderLifecycle = read('src/lib/work-order-lifecycle.ts');
 const bookingCheckoutNotify = read('src/lib/booking-checkout-notify.ts');
 const bookingConfirmationSend = read('src/lib/booking-confirmation-send.ts');
 const agreementSignRoute = read('src/app/api/agreements/sign/route.ts');
@@ -391,6 +392,10 @@ check(
     crmActions.includes('confirmAppointmentLifecycle') &&
     confirmationActions.includes('confirmAppointmentAction'),
   'Appointment confirmation must use one audited, idempotent eligibility gate across customer payment, acknowledgement, admin, CRM, dispatch, and technician workflows.',
+);
+check(
+  workOrderLifecycle.includes('(WORK_ORDER_STAGES as readonly string[]).includes(value)'),
+  'Canonical work-order stages must resolve to themselves instead of falling back to a legacy lead state.',
 );
 check(
   confirmationUi.includes('setPaymentReconciling') &&

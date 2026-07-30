@@ -30,6 +30,9 @@ const transitions: Record<WorkOrderStage, WorkOrderStage[]> = {
 
 export function stageFromLegacyStatus(status: unknown): WorkOrderStage {
   const value = String(status ?? '').trim().toLowerCase();
+  if ((WORK_ORDER_STAGES as readonly string[]).includes(value)) {
+    return value as WorkOrderStage;
+  }
   if (['awaiting_payment', 'pending', 'new'].includes(value)) return 'approved';
   if (['deposit_paid', 'confirmed', 'assigned', 'scheduled'].includes(value)) return 'scheduled';
   if (value === 'en_route') return 'en_route';
