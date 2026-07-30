@@ -179,11 +179,11 @@ export function classifyPaymentChannel(methodRaw: string, kindRaw: string, row?:
   if (source.includes('check')) return 'check';
   if (source.includes('bank_transfer') || source.includes('bank transfer') || source.includes('ach')) return 'bank_transfer';
   if (source.includes('cash')) return 'cash';
+  if (source.includes('manual_card') || source.includes('external_card') || source.includes('card terminal')) return 'manual_card';
   if (row && isRealStripePayment(row)) return 'stripe';
   if (source.includes('stripe') || source.includes('card')) {
     if (row && hasStripeProviderEvidence(row)) return 'stripe';
     return 'other';
   }
-  if (source.includes('manual') && source.includes('card')) return 'manual_card';
   return 'other';
 }

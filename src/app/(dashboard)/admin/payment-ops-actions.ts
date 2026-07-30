@@ -8,6 +8,7 @@ import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
 import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
 import { findDuplicatePaymentGroups, repairDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
 import type { PayRow } from '@/lib/revenue-metrics';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -80,11 +81,26 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   if (!job) return actionErr('Work order not found.');
 
   const jobRow = job as Record<string, unknown>;
+  const jobStatus = str(jobRow.status).toLowerCase();
+  if (['cancelled', 'canceled', 'voided', 'deleted', 'archived'].includes(jobStatus)) {
+    return actionErr('Cannot record payment on an inactive work order.');
+  }
   const allowedMethods = new Set(['cash', 'zelle', 'cash_app', 'venmo', 'check', 'external_card', 'manual_card', 'bank_transfer', 'apple_pay_personal', 'other']);
   const paymentMethod = allowedMethods.has(method) ? method : 'other';
-  const balanceBefore = Math.max(0, Number(jobRow.balance_due_cents ?? 0));
+  const snapshot = await loadOrderSnapshot(gate.admin, appointmentId
+    ? { appointmentId }
+    : { fallbackBookingId });
+  const balanceBefore = snapshot
+    ? snapshot.pricing.remainingBalanceCents
+    : Math.max(0, Number(jobRow.balance_due_cents ?? 0));
   if (appliedAmountCents > balanceBefore) return actionErr('Payment exceeds the outstanding balance. Put the difference in the tip field.');
   const paidAt = paidAtInput && !Number.isNaN(new Date(paidAtInput).getTime()) ? new Date(paidAtInput).toISOString() : new Date().toISOString();
+
+  const balanceSync = await gate.admin
+    .from(table)
+    .update({ balance_due_cents: balanceBefore, updated_at: new Date().toISOString() })
+    .eq('id', jobId);
+  if (balanceSync.error) return actionErr(`Could not synchronize the work-order balance: ${balanceSync.error.message}`);
 
   const recentCutoff = new Date(Date.now() - 30_000).toISOString();
   let recentQuery = gate.admin

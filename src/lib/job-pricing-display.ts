@@ -54,6 +54,13 @@ function isVoided(p: Row) {
   return isPaymentVoided(p);
 }
 
+function appliedPaymentCents(p: Row) {
+  if (typeof p.applied_amount_cents === 'number' && Number.isFinite(p.applied_amount_cents)) {
+    return Math.max(0, p.applied_amount_cents);
+  }
+  return Math.max(0, num(p.amount_cents) - num(p.tip_amount_cents));
+}
+
 /** Single pricing snapshot for work order, receipt HTML/PDF, and email. */
 export type JobPricingDisplay = {
   vehicleLines: Array<{ name: string; service: string; color: string; priceCents: number }>;
@@ -201,7 +208,7 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
     if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id || p.exclude_from_revenue === true) continue;
     if (pid) seenPayIds.add(pid);
-    const amt = num(p.amount_cents);
+    const amt = appliedPaymentCents(p);
     totalPaidCents += amt;
     if (isNonCash(p)) creditPaidCents += amt;
     else if (isCash(p)) cashPaidCents += amt;
@@ -211,16 +218,10 @@ export function resolveJobPricing(job: Row, payments: Row[] = []): JobPricingDis
     else manualPaidCents += amt;
   }
 
-  let depositPaidCents = 0;
-  for (const p of succeeded) {
-    const kind = str(p.payment_kind).toLowerCase();
-    if (isRealStripeDeposit(p) || kind.includes('deposit') || kind === 'booking_deposit') {
-      depositPaidCents += num(p.amount_cents);
-    }
-  }
+  let depositPaidCents = Math.min(depositOnFile, totalPaidCents);
   const depositPayment = findDepositPayment(succeeded);
   if (depositPayment && isRealStripeDeposit(depositPayment)) {
-    depositPaidCents = Math.max(depositPaidCents, num(depositPayment.amount_cents));
+    depositPaidCents = Math.max(depositPaidCents, appliedPaymentCents(depositPayment));
   }
 
   const rawTotalPaidCents = totalPaidCents;

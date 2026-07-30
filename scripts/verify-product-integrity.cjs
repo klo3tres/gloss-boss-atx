@@ -51,6 +51,9 @@ const bookingWizard = read('src/components/booking/booking-wizard.tsx');
 const trackedBalanceRoute = read('src/app/pay/balance/[appointmentId]/route.ts');
 const balanceCheckoutUi = read('src/components/tech/work-order-balance-checkout.tsx');
 const stripeWebhook = read('src/app/api/stripe/webhook/route.ts');
+const paymentOpsActions = read('src/app/(dashboard)/admin/payment-ops-actions.ts');
+const jobPricingDisplay = read('src/lib/job-pricing-display.ts');
+const paymentClassification = read('src/lib/payment-classification.ts');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -256,6 +259,16 @@ check(
     bookingSummary.includes('paymentExpired') &&
     confirmationUi.includes('summary.sessionState.paymentExpired'),
   'Failed and expired Stripe attempts must remain tied to the booking, expose recovery state, reuse retryable sessions, and replace expired or stale sessions.',
+);
+check(
+  paymentOpsActions.includes('loadOrderSnapshot') &&
+    paymentOpsActions.includes('snapshot.pricing.remainingBalanceCents') &&
+    paymentOpsActions.includes('balance_due_cents: balanceBefore') &&
+    paymentOpsActions.includes('record_manual_payment_atomic') &&
+    jobPricingDisplay.includes('appliedPaymentCents') &&
+    jobPricingDisplay.includes('Math.min(depositOnFile, totalPaidCents)') &&
+    paymentClassification.includes("source.includes('external_card')"),
+  'Manual and external payments must use the canonical balance, remain atomic and idempotent, keep tips outside service principal, satisfy deposits, and classify external card tender correctly.',
 );
 
 // Regression fixture from the real customer screenshot:
