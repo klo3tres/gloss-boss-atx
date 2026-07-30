@@ -18,6 +18,7 @@ import { SocialLinksRow, hasConfiguredSocialLinks } from '@/components/marketing
 import { LoyaltyClaimButton } from '@/components/dashboard/loyalty-claim-button';
 import { CustomerRewardWallet, type CustomerRewardWalletItem } from '@/components/customer/customer-reward-wallet';
 import { CustomerPhotoUpload } from '@/components/customer/customer-photo-upload';
+import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 
 export type CustomerAppt = {
   id: string;
@@ -48,7 +49,15 @@ export type CustomerDashboardProps = {
   pending?: CustomerAppt[];
   history: CustomerAppt[];
   eventsByAppt: Record<string, Array<{ event_type: string; created_at: string }>>;
-  paymentsByAppt: Record<string, Array<{ amount_cents: number; status: string; payment_method?: string | null; paid_at?: string | null }>>;
+  paymentsByAppt: Record<string, Array<{
+    amount_cents: number;
+    applied_amount_cents?: number | null;
+    tip_amount_cents?: number | null;
+    refunded_amount_cents?: number | null;
+    status: string;
+    payment_method?: string | null;
+    paid_at?: string | null;
+  }>>;
   receiptsByAppt: Record<string, Array<{ id: string; receipt_number: string | null; created_at: string; amount_cents?: number; payment_method?: string | null }>>;
   agreementByAppt: Record<string, boolean>;
   agreementHrefByAppt: Record<string, string>;
@@ -59,6 +68,7 @@ export type CustomerDashboardProps = {
   agreementTotal: number;
   appointmentCount: number;
   snapshotByAppt?: Record<string, CustomerApptSnapshotView>;
+  documentLoadError?: string;
   loyaltyStampsCount?: number;
   loyaltyCanClaim?: boolean;
   loyaltyClaimableCount?: number;
@@ -147,6 +157,16 @@ function chicago(value: string) {
 
 function friendlyEvent(t: string) {
   return t.replace(/_/g, ' ');
+}
+
+function InvoiceDocumentActions({ appointmentId }: { appointmentId: string }) {
+  const href = `/api/receipts/${encodeURIComponent(appointmentId)}/pdf?source=appointment&document=invoice`;
+  return (
+    <div className="flex flex-wrap gap-2">
+      <ReceiptPdfDownloadButton href={`${href}&view=1`} className="min-w-36" label="View invoice" mode="view" />
+      <ReceiptPdfDownloadButton href={href} className="min-w-44" label="Download invoice" />
+    </div>
+  );
 }
 
 function vehiclesFrom(appt: CustomerAppt) {
@@ -666,12 +686,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                           {a.balance_due_cents != null && a.balance_due_cents > 0 ? 'Pay or manage appointment' : 'Manage appointment'}
                         </Link>
                       ) : null}
-                      <a
-                        href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground"
-                      >
-                        <FileDown className="h-4 w-4" /> Download invoice
-                      </a>
+                      <InvoiceDocumentActions appointmentId={a.id} />
                       <Link href={`/dashboard/messages?appointment=${encodeURIComponent(a.id)}`} className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
                         Contact business
                       </Link>
@@ -735,6 +750,18 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
               </div>
               <CreditCard className="h-5 w-5 text-gold-soft" />
             </div>
+            {props.documentLoadError ? (
+              <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4" role="alert">
+                <p className="text-sm font-bold text-red-700">{props.documentLoadError}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-3 min-h-11 rounded-xl border border-red-500/30 px-4 text-[10px] font-black uppercase text-red-700"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : null}
             <div className="mt-5 space-y-3">
               {documentAppointments.length === 0 ? <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-muted-foreground">Documents will appear after your first booking.</p> : null}
               {documentAppointments.map((raw) => {
@@ -756,8 +783,20 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         {payments.map((payment, index) => (
                           <div key={`${appointment.id}-payment-${index}`} className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
-                            <p className="font-mono font-bold text-foreground">{money(payment.amount_cents)} · {payment.status.replace(/_/g, ' ')}</p>
+                            <p className="font-mono font-bold text-foreground">
+                              {money(Math.max(
+                                0,
+                                (payment.applied_amount_cents ?? Math.max(0, payment.amount_cents - (payment.tip_amount_cents ?? 0))) -
+                                  (payment.refunded_amount_cents ?? 0),
+                              ))} applied · {payment.status.replace(/_/g, ' ')}
+                            </p>
                             <p className="mt-1 text-muted-foreground">{payment.payment_method?.replace(/_/g, ' ') || 'Payment method on file'}{payment.paid_at ? ` · ${chicago(payment.paid_at)}` : ''}</p>
+                            {payment.refunded_amount_cents ? (
+                              <p className="mt-1 text-amber-700">{money(payment.refunded_amount_cents)} refunded</p>
+                            ) : null}
+                            {payment.tip_amount_cents ? (
+                              <p className="mt-1 text-muted-foreground">{money(payment.tip_amount_cents)} tip (not applied to invoice)</p>
+                            ) : null}
                           </div>
                         ))}
                       </div>
@@ -765,9 +804,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                       <p className="mt-3 text-xs text-muted-foreground">No completed payment is recorded for this appointment yet.</p>
                     )}
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <a href={`/api/receipts/${encodeURIComponent(appointment.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
-                        <FileDown className="h-3.5 w-3.5" /> Download invoice
-                      </a>
+                      <InvoiceDocumentActions appointmentId={appointment.id} />
                       {receipts.map((receipt) => (
                         <a key={receipt.id} href={`/api/receipts/${encodeURIComponent(receipt.id)}/pdf`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-500/30 px-4 text-[10px] font-black uppercase text-emerald-600">
                           <FileDown className="h-3.5 w-3.5" /> {receipt.receipt_number || 'Download receipt'}
@@ -922,9 +959,13 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                   </p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
-                  <a href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
-                    <FileDown className="h-3.5 w-3.5" /> Download {a.balance_due_cents && a.balance_due_cents > 0 ? 'invoice' : 'receipt'}
-                  </a>
+                  {a.balance_due_cents && a.balance_due_cents > 0 ? (
+                    <InvoiceDocumentActions appointmentId={a.id} />
+                  ) : (
+                    <a href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
+                      <FileDown className="h-3.5 w-3.5" /> Download receipt
+                    </a>
+                  )}
                   <Link href={`/dashboard/messages?appointment=${encodeURIComponent(a.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
                     <MessageSquare className="h-3.5 w-3.5" /> Message us
                   </Link>

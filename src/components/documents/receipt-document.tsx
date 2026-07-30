@@ -76,10 +76,12 @@ export function ReceiptDocument(props: ReceiptDocumentProps) {
         </section>
         <section className='p-6'>
           <dl className='space-y-2 text-sm'>
-            <div className='flex justify-between gap-4'>
-              <dt className='text-zinc-500'>Paid</dt>
-              <dd className='font-semibold'>{props.paidAt}</dd>
-            </div>
+            {props.paidAt ? (
+              <div className='flex justify-between gap-4'>
+                <dt className='text-zinc-500'>Payment received</dt>
+                <dd className='font-semibold'>{props.paidAt}</dd>
+              </div>
+            ) : null}
             {props.serviceAt ? (
               <div className='flex justify-between gap-4'>
                 <dt className='text-zinc-500'>Service</dt>

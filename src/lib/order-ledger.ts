@@ -93,7 +93,11 @@ export type LedgerPayment = {
   id: string;
   bucket: PaymentBucket;
   label: string;
+  /** Net service principal still applied after refunds. */
   amountCents: number;
+  appliedAmountCents: number;
+  tipAmountCents: number;
+  refundedAmountCents: number;
   status: string;
   method: string;
   paymentKind: string;
@@ -253,11 +257,21 @@ function paymentLabel(bucket: PaymentBucket, p: Row): string {
 function mapPayments(rows: Row[], isTest: boolean): LedgerPayment[] {
   return rows.map((p) => {
     const bucket = classifyPayment(p);
+    const grossAmountCents = num(p.amount_cents);
+    const tipAmountCents = num(p.tip_amount_cents);
+    const appliedAmountCents =
+      typeof p.applied_amount_cents === 'number' && Number.isFinite(p.applied_amount_cents)
+        ? Math.max(0, p.applied_amount_cents)
+        : Math.max(0, grossAmountCents - tipAmountCents);
+    const refundedAmountCents = Math.min(appliedAmountCents, Math.max(0, num(p.refunded_amount_cents)));
     return {
       id: str(p.id),
       bucket,
       label: paymentLabel(bucket, p),
-      amountCents: num(p.amount_cents),
+      amountCents: Math.max(0, appliedAmountCents - refundedAmountCents),
+      appliedAmountCents,
+      tipAmountCents,
+      refundedAmountCents,
       status: str(p.status),
       method: str(p.payment_method || p.payment_kind),
       paymentKind: str(p.payment_kind),

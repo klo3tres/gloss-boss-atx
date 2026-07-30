@@ -3,6 +3,7 @@ import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 
 export type ReceiptPdfInput = {
   receiptNumber: string;
+  documentKind?: 'invoice' | 'receipt';
   brandName: string;
   customerName: string;
   customerEmail: string;
@@ -55,7 +56,7 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
     input.remainingBalance.trim() === '—' ||
     input.remainingBalance.trim() === '' ||
     input.status?.toLowerCase() === 'paid';
-  const headerText = isPaid ? 'RECEIPT' : 'INVOICE';
+  const headerText = input.documentKind?.toUpperCase() ?? (isPaid ? 'RECEIPT' : 'INVOICE');
 
   doc.setFillColor(10, 10, 10);
   doc.rect(0, 0, 612, 72, 'F');
@@ -87,8 +88,10 @@ export function buildReceiptPdfBytes(input: ReceiptPdfInput): Uint8Array {
     y += addrLines.length * 14;
   }
 
-  doc.text(`Paid: ${input.paidAt}`, margin, y);
-  y += 14;
+  if (input.paidAt) {
+    doc.text(`Payment received: ${input.paidAt}`, margin, y);
+    y += 14;
+  }
   if (input.serviceAt) {
     doc.text(`Service: ${input.serviceAt}`, margin, y);
     y += 14;

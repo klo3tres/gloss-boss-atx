@@ -7,15 +7,28 @@ export function ReceiptPdfDownloadButton({
   href,
   className = '',
   label = 'Download invoice PDF',
+  mode = 'download',
 }: {
   href: string;
   className?: string;
   label?: string;
+  mode?: 'download' | 'view';
 }) {
   const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
   const [message, setMessage] = useState('');
 
   async function onClick() {
+    const preview = mode === 'view' ? window.open('about:blank', '_blank') : null;
+    if (mode === 'view' && !preview) {
+      setState('err');
+      setMessage('Your browser blocked the invoice window. Allow pop-ups, then try again.');
+      return;
+    }
+    if (preview) {
+      preview.opener = null;
+      preview.document.title = 'Preparing invoice';
+      preview.document.body.textContent = 'Preparing your invoice...';
+    }
     setState('loading');
     setMessage('');
     try {
@@ -29,35 +42,43 @@ export function ReceiptPdfDownloadButton({
         } catch {
           /* ignore */
         }
+        preview?.close();
         setState('err');
         setMessage(err);
         return;
       }
       if (!contentType.includes('pdf')) {
+        preview?.close();
         setState('err');
         setMessage('Server did not return a PDF. Generate a receipt from the work order first.');
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const cd = res.headers.get('content-disposition') ?? '';
-      const match = /filename="?([^";]+)"?/i.exec(cd);
-      a.href = url;
-      a.download = match?.[1] ?? 'gloss-boss-invoice.pdf';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      if (mode === 'view' && preview) {
+        preview.location.href = url;
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } else {
+        const a = document.createElement('a');
+        const cd = res.headers.get('content-disposition') ?? '';
+        const match = /filename="?([^";]+)"?/i.exec(cd);
+        a.href = url;
+        a.download = match?.[1] ?? 'gloss-boss-invoice.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
       setState('ok');
-      setMessage('PDF downloaded.');
+      setMessage(mode === 'view' ? 'Invoice opened.' : 'PDF downloaded.');
       window.setTimeout(() => {
         setState('idle');
         setMessage('');
       }, 4000);
     } catch {
+      preview?.close();
       setState('err');
-      setMessage('Network error while downloading PDF.');
+      setMessage(`Network error while ${mode === 'view' ? 'opening' : 'downloading'} the PDF. Try again.`);
     }
   }
 

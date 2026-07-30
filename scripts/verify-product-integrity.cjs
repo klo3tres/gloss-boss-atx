@@ -58,6 +58,12 @@ const paymentRefundState = read('src/lib/payment-refund-state.ts');
 const paymentActions = read('src/app/(dashboard)/admin/payments/payment-actions.ts');
 const stripeAutomation = read('src/lib/stripe-automation.ts');
 const paymentsManager = read('src/components/admin/payments-manager.tsx');
+const receiptPdfRoute = read('src/app/api/receipts/[id]/pdf/route.ts');
+const receiptResolver = read('src/lib/receipt-resolve.ts');
+const receiptPdf = read('src/lib/receipt-pdf.ts');
+const receiptFromLedger = read('src/lib/receipt-from-ledger.ts');
+const orderLedger = read('src/lib/order-ledger.ts');
+const customerDashboardClient = read('src/components/dashboard/customer-dashboard-client.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -286,6 +292,31 @@ check(
     paymentsManager.includes('blank = full remaining') &&
     paymentsManager.includes('name="reason"'),
   'Full and partial refunds must validate the refundable remainder, support Stripe and manual/external tender, remain cumulative and idempotent, reopen the canonical balance, and require an operator reason.',
+);
+check(
+  receiptPdfRoute.includes("autoCreateReceipt: role !== 'customer'") &&
+    receiptPdfRoute.includes('customerOwnsWorkOrder') &&
+    receiptPdfRoute.includes("const disposition = url.searchParams.get('view') === '1' ? 'inline' : 'attachment'") &&
+    receiptPdfRoute.includes('ctx.pricing.remainingBalanceCents > 0') &&
+    receiptPdfRoute.includes("requestedKind === 'invoice'") &&
+    receiptResolver.includes('documentNumber || receiptNumber') &&
+    receiptResolver.includes('canonicalInvoiceNumber') &&
+    receiptPdf.includes('input.documentKind?.toUpperCase()') &&
+    receiptFromLedger.includes('item.customerVisible === false') &&
+    receiptFromLedger.includes('p.refundedAmountCents') &&
+    receiptFromLedger.includes('Tip (not applied to invoice)') &&
+    orderLedger.includes('appliedAmountCents') &&
+    orderLedger.includes('refundedAmountCents') &&
+    customerDashboard.includes("let documentLoadError = ''") &&
+    customerDashboard.includes("documentLoadError = 'Payment and document history could not be refreshed.'") &&
+    !customerDashboard.includes(".limit(40)") &&
+    !customerDashboard.includes(".slice(0, 12)") &&
+    customerDashboardClient.includes('function InvoiceDocumentActions') &&
+    customerDashboardClient.includes('View invoice') &&
+    customerDashboardClient.includes('ReceiptPdfDownloadButton') &&
+    customerDashboardClient.includes('payment.refunded_amount_cents') &&
+    customerDashboardClient.includes('Try again'),
+  'Customer invoices must be owner-scoped, retain stable identity, preserve unpaid state without creating a receipt, show canonical custom charges/payments/tips/refunds, expose every appointment, and support visible view/download recovery.',
 );
 
 // Regression fixture from the real customer screenshot:

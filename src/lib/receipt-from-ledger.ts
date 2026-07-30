@@ -8,6 +8,7 @@ import { buildReceiptEmailHtml, type ReceiptEmailLine } from '@/lib/email/templa
 import type { ReceiptPdfInput } from '@/lib/receipt-pdf';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import type { LedgerDiscount, OrderLedger } from '@/lib/order-ledger';
+import { isPricingDuplicateOrPaymentLine } from '@/lib/pricing-custom-lines';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
 
 const ADMIN_LINE =
@@ -38,6 +39,22 @@ export function ledgerReceiptLines(ledger: OrderLedger, opts?: { includeAdmin?: 
     });
   }
 
+  for (const item of readCustomLineItems(ledger._job)) {
+    if (
+      item.customerVisible === false ||
+      item.amountCents <= 0 ||
+      item.kind === 'discount_adjustment' ||
+      isPricingDuplicateOrPaymentLine(item)
+    ) {
+      continue;
+    }
+    lines.push({
+      label: item.label || 'Additional service',
+      amount: displayMoney(item.amountCents),
+      tone: 'charge',
+    });
+  }
+
   const pricedDiscounts = ledger.discounts.filter((d) => d.amountCents > 0);
   if (pricedDiscounts.length > 0) {
     for (const d of pricedDiscounts) {
@@ -52,16 +69,38 @@ export function ledgerReceiptLines(ledger: OrderLedger, opts?: { includeAdmin?: 
   lines.push({ label: 'Final total', amount: displayMoney(ledger.totals.finalTotalCents), tone: 'total' });
 
   const paySource = ledger.customerPayments.length > 0 ? ledger.customerPayments : ledger.payments;
-  const succeeded = paySource.filter(
-    (p) => !p.voided && ['succeeded', 'paid', 'comped'].some((s) => p.status.toLowerCase().includes(s)),
-  );
+  const succeeded = paySource.filter((p) => {
+    const status = p.status.toLowerCase();
+    return (
+      !p.voided &&
+      (['succeeded', 'paid', 'comped', 'partially_refunded', 'refunded'].some((s) => status.includes(s)) ||
+        p.amountCents > 0 ||
+        p.refundedAmountCents > 0)
+    );
+  });
 
   const paymentLines: ReceiptBreakdownLine[] = [];
   const shown = new Set<string>();
   for (const p of succeeded) {
     if (shown.has(p.id)) continue;
     shown.add(p.id);
-    paymentLines.push({ label: p.label, amount: displayMoney(p.amountCents), tone: 'paid' });
+    if (p.appliedAmountCents > 0) {
+      paymentLines.push({ label: p.label, amount: displayMoney(p.appliedAmountCents), tone: 'paid' });
+    }
+    if (p.refundedAmountCents > 0) {
+      paymentLines.push({
+        label: `Refunded from ${p.label.toLowerCase()}`,
+        amount: `−${displayMoney(p.refundedAmountCents)}`,
+        tone: 'discount',
+      });
+    }
+    if (p.tipAmountCents > 0) {
+      paymentLines.push({
+        label: 'Tip (not applied to invoice)',
+        amount: displayMoney(p.tipAmountCents),
+        tone: 'charge',
+      });
+    }
   }
 
   if (paymentLines.length > 0) {
@@ -69,9 +108,7 @@ export function ledgerReceiptLines(ledger: OrderLedger, opts?: { includeAdmin?: 
     lines.push(...paymentLines);
   }
 
-  if (ledger.totals.totalPaidCents > 0) {
-    lines.push({ label: 'Total paid', amount: displayMoney(ledger.totals.totalPaidCents), tone: 'paid' });
-  }
+  lines.push({ label: 'Total paid', amount: displayMoney(ledger.totals.totalPaidCents), tone: 'paid' });
 
   lines.push({
     label: 'Balance due',
@@ -103,14 +140,14 @@ export function buildReceiptFromLedger(
 
   const disc = (kind: LedgerDiscount['kind']) => ledger.discounts.find((d) => d.kind === kind)?.amountCents ?? 0;
 
-  const primaryPay = ledger.customerPayments.find((p) => !p.voided && p.amountCents > 0) ?? ledger.payments.find((p) => !p.voided);
+  const primaryPay =
+    ledger.customerPayments.find((p) => !p.voided && (p.amountCents > 0 || p.refundedAmountCents > 0)) ??
+    ledger.payments.find((p) => !p.voided);
   const methodLabel = primaryPay?.method?.replace(/_/g, ' ') || primaryPay?.paymentKind?.replace(/_/g, ' ') || '—';
 
   const documentProps: ReceiptDocumentProps = {
     receiptNumber,
-    paidAt: ledger.schedule.completedAt
-      ? new Date(ledger.schedule.completedAt).toLocaleString()
-      : ledger.schedule.appointmentAtDisplay,
+    paidAt: primaryPay?.paidAt ? new Date(primaryPay.paidAt).toLocaleString() : '',
     serviceAt: ledger.schedule.appointmentAtDisplay,
     completedAt: ledger.schedule.completedAt ? new Date(ledger.schedule.completedAt).toLocaleString() : '',
     serviceDuration: '',

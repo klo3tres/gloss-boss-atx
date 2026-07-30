@@ -27,6 +27,11 @@ export type ResolvedReceiptContext = {
   snapshot: OrderSnapshot | null;
 };
 
+/** The appointment/work-order ledger is the canonical invoice; its identity never changes after payment. */
+export function canonicalInvoiceNumber(workOrderId: string) {
+  return `INV-${str(workOrderId).slice(0, 8).toUpperCase()}`;
+}
+
 function obj(v: unknown): Row {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {};
 }
@@ -205,15 +210,20 @@ function address(job: Row) {
 export async function buildReceiptPdfFromContext(
   ctx: ResolvedReceiptContext,
   admin: import('@supabase/supabase-js').SupabaseClient,
+  documentNumber?: string,
+  documentKind?: 'invoice' | 'receipt',
 ): Promise<Uint8Array> {
   const { job, techName, receiptNumber, isFallback, workOrderId } = ctx;
   const view = await buildUnifiedReceiptView(admin, {
     job,
     appointmentId: isFallback ? undefined : workOrderId,
     fallbackBookingId: isFallback ? workOrderId : undefined,
-    receiptNumber,
+    receiptNumber: documentNumber || receiptNumber,
     techName,
     receiptId: str(ctx.receipt?.id) || undefined,
   });
-  return buildReceiptPdfBytes(view.pdfInput);
+  return buildReceiptPdfBytes({
+    ...view.pdfInput,
+    documentKind,
+  });
 }

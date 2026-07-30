@@ -82,6 +82,9 @@ type MediaRow = {
 type PaymentRow = {
   appointment_id: string;
   amount_cents: number;
+  applied_amount_cents?: number | null;
+  tip_amount_cents?: number | null;
+  refunded_amount_cents?: number | null;
   status: string;
   payment_method: string | null;
   paid_at: string | null;
@@ -253,6 +256,7 @@ export default async function CustomerDashboardRootPage({
   const paymentsByAppt = new Map<string, PaymentRow[]>();
   const receiptsByAppt = new Map<string, ReceiptRow[]>();
   const agreementByAppt = new Map<string, AgreementRow>();
+  let documentLoadError = '';
 
 
 
@@ -349,13 +353,12 @@ export default async function CustomerDashboardRootPage({
       }
     }
 
-    let query = supabase
+    let query = (adminDb ?? supabase)
       .from('appointments')
       .select(
         'id, status, scheduled_start, service_slug, vehicle_class, booking_vehicles, service_address, service_city, service_state, service_zip, base_price_cents, deposit_amount_cents, balance_due_cents, payment_status, job_started_at, job_completed_at, guest_email, access_token',
       )
-      .order('scheduled_start', { ascending: false })
-      .limit(40);
+      .order('scheduled_start', { ascending: false });
 
     if (customerId) {
       query = query.eq('customer_id', customerId);
@@ -363,7 +366,11 @@ export default async function CustomerDashboardRootPage({
       query = query.eq('id', '__no_authenticated_customer__');
     }
 
-    const { data } = await query;
+    const { data, error: appointmentsError } = await query;
+    if (appointmentsError) {
+      console.error('[customer dashboard] appointment document query failed', appointmentsError);
+      documentLoadError = 'Appointments and invoices could not be refreshed.';
+    }
     appointments = (data ?? []) as ApptRow[];
     if (adminDb) {
       await Promise.all(
@@ -412,26 +419,29 @@ export default async function CustomerDashboardRootPage({
           .order('created_at', { ascending: false })
 
           .limit(200),
-        supabase
+        (adminDb ?? supabase)
           .from('payments')
-          .select('appointment_id, amount_cents, status, payment_method, paid_at')
+          .select('appointment_id, amount_cents, applied_amount_cents, tip_amount_cents, refunded_amount_cents, status, payment_method, paid_at')
           .in('appointment_id', ids)
-          .order('paid_at', { ascending: false })
-          .limit(100),
+          .order('paid_at', { ascending: false }),
         supabase
           .from('signed_agreements')
           .select('id, appointment_id, signed_at')
           .in('appointment_id', ids)
           .order('signed_at', { ascending: false })
           .limit(100),
-        supabase
+        (adminDb ?? supabase)
           .from('receipts')
           .select('id, appointment_id, receipt_number, amount_cents, payment_method, created_at')
           .in('appointment_id', ids)
-          .order('created_at', { ascending: false })
-          .limit(100),
+          .order('created_at', { ascending: false }),
 
       ]);
+
+      if (payRes.error || receiptRes.error) {
+        console.error('[customer dashboard] payment document query failed', payRes.error || receiptRes.error);
+        documentLoadError = 'Payment and document history could not be refreshed.';
+      }
 
 
 
@@ -482,7 +492,7 @@ export default async function CustomerDashboardRootPage({
 
 
   const now = Date.now();
-  const history = appointments.filter((a) => ['completed', 'cancelled'].includes(a.status)).slice(0, 12);
+  const history = appointments.filter((a) => ['completed', 'cancelled'].includes(a.status));
   let reviewEligible = false;
   const completedAppointments = appointments.filter((a) => a.status === 'completed');
   if (adminDb && userEmail && completedAppointments.length > 0) {
@@ -621,6 +631,10 @@ export default async function CustomerDashboardRootPage({
     for (const row of snaps) {
       if (row) snapshotByAppt[row[0]] = row[1];
     }
+    if (Object.keys(snapshotByAppt).length !== appointments.length) {
+      console.error('[customer dashboard] one or more canonical order snapshots could not be loaded');
+      documentLoadError = 'One or more invoice totals could not be refreshed.';
+    }
   }
 
   const { resolveGoogleReviewUrl } = await import('@/lib/site-defaults');
@@ -684,6 +698,7 @@ export default async function CustomerDashboardRootPage({
         agreementTotal={agreementTotal}
         appointmentCount={appointments.length}
         snapshotByAppt={snapshotByAppt}
+        documentLoadError={documentLoadError}
         loyaltyStampsCount={loyaltyStampsCount}
       loyaltyRewardThreshold={loyaltyRewardThreshold}
         loyaltyCanClaim={loyaltyCanClaim}
