@@ -1105,7 +1105,7 @@ export default async function TechWorkOrderDetailPage({
       stripeIntent: str(p.stripe_payment_intent_id),
       at: displayChicago(p.paid_at || p.created_at),
     })),
-    receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`,
+    receiptPdfHref: `/api/receipts/${encodeURIComponent(queryId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}&document=receipt`,
     growthData,
   };
 

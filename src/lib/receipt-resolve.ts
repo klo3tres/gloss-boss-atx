@@ -222,8 +222,20 @@ export async function buildReceiptPdfFromContext(
     techName,
     receiptId: str(ctx.receipt?.id) || undefined,
   });
+  const receiptAmountCents = num(ctx.receipt?.amount_cents ?? ctx.payment?.amount_cents);
   return buildReceiptPdfBytes({
     ...view.pdfInput,
     documentKind,
+    breakdownLines:
+      documentKind === 'receipt' && receiptAmountCents > 0
+        ? [
+            {
+              label: 'Payment documented by this receipt',
+              amount: displayMoney(receiptAmountCents),
+              tone: 'paid',
+            },
+            ...(view.pdfInput.breakdownLines ?? []),
+          ]
+        : view.pdfInput.breakdownLines,
   });
 }

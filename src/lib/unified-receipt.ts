@@ -60,7 +60,7 @@ export async function buildUnifiedReceiptView(
   }
 
   const appBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://glossbossatx.com';
-  const receiptPdfHref = `${appBase}/api/receipts/${encodeURIComponent(workOrderId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}`;
+  const receiptPdfHref = `${appBase}/api/receipts/${encodeURIComponent(workOrderId)}/pdf?source=${isFallback ? 'fallback' : 'appointment'}&document=receipt`;
   const receiptAdminHref = params.receiptId
     ? `${appBase}/admin/receipts/${encodeURIComponent(params.receiptId)}`
     : `${appBase}/admin/receipts/${encodeURIComponent(workOrderId)}`;

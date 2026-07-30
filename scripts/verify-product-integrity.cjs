@@ -64,6 +64,10 @@ const receiptPdf = read('src/lib/receipt-pdf.ts');
 const receiptFromLedger = read('src/lib/receipt-from-ledger.ts');
 const orderLedger = read('src/lib/order-ledger.ts');
 const customerDashboardClient = read('src/components/dashboard/customer-dashboard-client.tsx');
+const unifiedReceipt = read('src/lib/unified-receipt.ts');
+const adminReceiptDetail = read('src/app/(dashboard)/admin/receipts/[id]/page.tsx');
+const adminReceiptList = read('src/app/(dashboard)/admin/receipts/page.tsx');
+const techWorkOrder = read('src/app/(dashboard)/tech/work-orders/[id]/page.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -317,6 +321,19 @@ check(
     customerDashboardClient.includes('payment.refunded_amount_cents') &&
     customerDashboardClient.includes('Try again'),
   'Customer invoices must be owner-scoped, retain stable identity, preserve unpaid state without creating a receipt, show canonical custom charges/payments/tips/refunds, expose every appointment, and support visible view/download recovery.',
+);
+check(
+  receiptPdfRoute.includes("requestedKind === 'invoice'") &&
+    receiptPdfRoute.includes("requestedKind !== 'receipt'") &&
+    receiptResolver.includes('Payment documented by this receipt') &&
+    customerDashboardClient.includes('function ReceiptDocumentActions') &&
+    customerDashboardClient.includes('document=receipt') &&
+    customerDashboardClient.includes('Receipt pending') &&
+    unifiedReceipt.includes('&document=receipt') &&
+    adminReceiptDetail.includes('document=receipt') &&
+    adminReceiptList.includes('document=receipt') &&
+    techWorkOrder.includes('&document=receipt'),
+  'Receipts must retain receipt identity even with an open balance, identify their exact transaction, remain owner-scoped and retryable, and use explicit receipt links across customer, admin, and technician surfaces.',
 );
 
 // Regression fixture from the real customer screenshot:

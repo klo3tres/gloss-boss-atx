@@ -23,9 +23,10 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **2.2 Pay remaining balance**,
 **2.3 Recover failed, cancelled, and expired checkout**,
 **2.4 Record manual and external payments**,
-**2.5 Refund and partially refund**
+**2.5 Refund and partially refund**,
+**2.6 View and download invoices**
 
-Current active item: **2.6 View and download invoices**
+Current active item: **2.7 View and download receipts**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 
@@ -53,6 +54,13 @@ Payment 2.5 evidence: **Passed** with `npm run qa:refunds` against production,
 including a $30.00 partial refund, $100.00 net collected, a $30.00 reopened
 balance, cumulative $130.00 full refund, manual/external and Stripe-compatible
 state, and durable refund records.
+
+Payment 2.6 evidence: **Passed** with `npm run qa:invoices` against production,
+including owner-only view/download, stable invoice identity before and after
+payment, canonical $130.00 total, $39.00 applied plus a separate $1.00 tip,
+$91.00 due, itemized custom charges and partial refunds, inline and repeated PDF
+delivery, recoverable missing-document handling, full appointment history, and
+no false receipt creation.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

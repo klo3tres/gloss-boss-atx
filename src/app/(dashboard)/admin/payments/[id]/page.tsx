@@ -82,7 +82,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   const total = pricing.finalTotalCents;
   const deposit = pricing.depositCents;
   const balance = pricing.remainingBalanceCents;
-  const pdfHref = `/api/receipts/${encodeURIComponent(id)}/pdf`;
+  const pdfHref = `/api/receipts/${encodeURIComponent(id)}/pdf?document=receipt`;
   const sessionId = str(p.stripe_checkout_session_id || linked.stripe_checkout_session_id);
   const paymentIntentId = str(p.stripe_payment_intent_id);
   const agreement = (agreementRes.data ?? intakeRes.data ?? null) as Row | null;

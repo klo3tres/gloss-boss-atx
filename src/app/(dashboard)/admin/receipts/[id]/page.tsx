@@ -66,7 +66,8 @@ async function renderReceiptPage(admin: NonNullable<ReturnType<typeof tryCreateA
     receiptId: str(receipt?.id) || undefined,
   });
 
-  const pdfHref = `/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId || workOrderId))}/pdf${isFallback ? '?source=fallback' : appointmentId ? '?source=appointment' : ''}`;
+  const sourceQuery = isFallback ? 'source=fallback' : appointmentId ? 'source=appointment' : '';
+  const pdfHref = `/api/receipts/${encodeURIComponent(str(receipt?.id || paymentId || workOrderId))}/pdf?${sourceQuery ? `${sourceQuery}&` : ''}document=receipt`;
 
   return (
     <DashboardShell title='Receipt detail' subtitle='Unified ledger receipt — matches PDF and email.' role='admin'>

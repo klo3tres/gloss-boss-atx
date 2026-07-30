@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight, FileDown, Settings } from 'lucide-react';
+import { Car, Gift, MessageSquare, Sparkles, Star, Award, Calendar, Image, CreditCard, ShieldCheck, Tag, ArrowUpRight, Settings } from 'lucide-react';
 import { GlassCard, IconTile, PremiumBadge, SectionEyebrow, TimelineRail } from '@/components/ui/premium';
 import { LoyaltyCard3D } from '@/components/dashboard/loyalty-card-3d';
 import { calculateLoyaltyStatus } from '@/lib/loyalty-ledger';
@@ -165,6 +165,23 @@ function InvoiceDocumentActions({ appointmentId }: { appointmentId: string }) {
     <div className="flex flex-wrap gap-2">
       <ReceiptPdfDownloadButton href={`${href}&view=1`} className="min-w-36" label="View invoice" mode="view" />
       <ReceiptPdfDownloadButton href={href} className="min-w-44" label="Download invoice" />
+    </div>
+  );
+}
+
+function ReceiptDocumentActions({
+  receiptId,
+  receiptNumber,
+}: {
+  receiptId: string;
+  receiptNumber?: string | null;
+}) {
+  const href = `/api/receipts/${encodeURIComponent(receiptId)}/pdf?document=receipt`;
+  const number = receiptNumber || 'Receipt';
+  return (
+    <div className="flex flex-wrap gap-2">
+      <ReceiptPdfDownloadButton href={`${href}&view=1`} className="min-w-36" label={`View ${number}`} mode="view" />
+      <ReceiptPdfDownloadButton href={href} className="min-w-44" label={`Download ${number}`} />
     </div>
   );
 }
@@ -692,9 +709,12 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                       </Link>
                     </div>
                     {receipts[0] ? (
-                      <a href={`/api/receipts/${encodeURIComponent(receipts[0].id)}/pdf`} className="mt-3 inline-flex items-center gap-2 text-xs font-black text-emerald-600 hover:underline">
-                        <FileDown className="h-3.5 w-3.5" /> Receipt {receipts[0].receipt_number ?? 'on file'} · {chicago(receipts[0].created_at)}
-                      </a>
+                      <div className="mt-3">
+                        <ReceiptDocumentActions
+                          receiptId={receipts[0].id}
+                          receiptNumber={receipts[0].receipt_number}
+                        />
+                      </div>
                     ) : null}
                   </li>
                 );
@@ -806,9 +826,11 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <InvoiceDocumentActions appointmentId={appointment.id} />
                       {receipts.map((receipt) => (
-                        <a key={receipt.id} href={`/api/receipts/${encodeURIComponent(receipt.id)}/pdf`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-500/30 px-4 text-[10px] font-black uppercase text-emerald-600">
-                          <FileDown className="h-3.5 w-3.5" /> {receipt.receipt_number || 'Download receipt'}
-                        </a>
+                        <ReceiptDocumentActions
+                          key={receipt.id}
+                          receiptId={receipt.id}
+                          receiptNumber={receipt.receipt_number}
+                        />
                       ))}
                       {appointment.access_token ? (
                         <Link href={`/book/confirmation?appointment_id=${encodeURIComponent(appointment.id)}&token=${encodeURIComponent(appointment.access_token)}`} className="inline-flex min-h-11 items-center rounded-xl border border-gold/30 px-4 text-[10px] font-black uppercase text-gold-soft">
@@ -948,6 +970,7 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
             const a = apptFromSnapshot(raw, props.snapshotByAppt?.[raw.id]);
             const photos = props.photosByAppt[a.id] ?? [];
             const payments = props.paymentsByAppt[a.id] ?? [];
+            const receipts = props.receiptsByAppt[a.id] ?? [];
             return (
               <li key={a.id} className="rounded-2xl border border-border bg-muted/40 p-5 hover:border-gold/20 transition">
                 <p className="font-black uppercase text-foreground tracking-tight">{safeSlug(a.service_slug)}</p>
@@ -961,10 +984,15 @@ export function CustomerDashboardClient(props: CustomerDashboardProps) {
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
                   {a.balance_due_cents && a.balance_due_cents > 0 ? (
                     <InvoiceDocumentActions appointmentId={a.id} />
+                  ) : receipts[0] ? (
+                    <ReceiptDocumentActions
+                      receiptId={receipts[0].id}
+                      receiptNumber={receipts[0].receipt_number}
+                    />
                   ) : (
-                    <a href={`/api/receipts/${encodeURIComponent(a.id)}/pdf?source=appointment`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
-                      <FileDown className="h-3.5 w-3.5" /> Download receipt
-                    </a>
+                    <span className="inline-flex min-h-11 items-center rounded-xl border border-dashed border-border px-4 text-[10px] font-black uppercase text-muted-foreground">
+                      Receipt pending
+                    </span>
                   )}
                   <Link href={`/dashboard/messages?appointment=${encodeURIComponent(a.id)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-[10px] font-black uppercase text-foreground">
                     <MessageSquare className="h-3.5 w-3.5" /> Message us

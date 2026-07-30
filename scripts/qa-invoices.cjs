@@ -47,7 +47,7 @@ function assert(condition, message) {
 }
 
 async function createCustomerSession(label, suffix) {
-  const email = `gbqa-invoice-${label}-${suffix}@example.invalid`;
+  const email = `gbqa-invoice-${label}-${suffix}@example.net`;
   const password = `Gb!${randomBytes(18).toString('base64url')}`;
   const created = await admin.auth.admin.createUser({
     email,
@@ -187,7 +187,10 @@ async function main() {
       .select('id', { count: 'exact', head: true })
       .eq('appointment_id', appointmentId);
     const download = await fetch(endpoint, { headers: { cookie: owner.cookie } });
-    assert(download.ok, `Owned invoice download returned HTTP ${download.status}.`);
+    if (!download.ok) {
+      const detail = await download.text().catch(() => '');
+      throw new Error(`Owned invoice download returned HTTP ${download.status}: ${detail.slice(0, 300)}`);
+    }
     assert(
       (download.headers.get('content-type') || '').includes('application/pdf'),
       'Owned invoice download did not return a PDF.',

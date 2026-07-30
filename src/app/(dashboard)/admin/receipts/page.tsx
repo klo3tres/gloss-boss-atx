@@ -208,7 +208,11 @@ export default async function AdminReceiptsPage() {
                       sentStatus: str(receipt.sent_status || receipt.last_send_status),
                       lineItems,
                       discounts: str(receipt.discount_label || r.promo_code),
-                      pdfHref: `/api/receipts/${encodeURIComponent(id)}/pdf${workOrderId && !str(receipt.id) && !str(r.payment_id) ? (str(r.fallback_booking_id) ? '?source=fallback' : '?source=appointment') : ''}`,
+                      pdfHref: `/api/receipts/${encodeURIComponent(id)}/pdf?${
+                        workOrderId && !str(receipt.id) && !str(r.payment_id)
+                          ? `${str(r.fallback_booking_id) ? 'source=fallback' : 'source=appointment'}&`
+                          : ''
+                      }document=receipt`,
                       receiptHref: `/admin/receipts/${encodeURIComponent(id)}`,
                       paymentHref: str(r.payment_id) ? `/admin/payments/${str(r.payment_id)}` : undefined,
                     }}
