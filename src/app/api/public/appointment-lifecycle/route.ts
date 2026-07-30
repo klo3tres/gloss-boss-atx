@@ -132,7 +132,7 @@ export async function POST(req: Request) {
   }
   const { data: appointment, error: appointmentError } = await admin
     .from('appointments')
-    .select('access_token, status, scheduled_start, estimated_end, estimated_duration_minutes, job_started_at, job_completed_at, archived_at, deleted_at')
+    .select('access_token, status, lifecycle_stage, scheduled_start, estimated_end, estimated_duration_minutes, job_started_at, job_completed_at, archived_at, deleted_at, cancelled_at, cancellation_completed_at, cancellation_refund_decision')
     .eq('id', appointmentId)
     .maybeSingle();
   if (appointmentError) {
@@ -141,6 +141,29 @@ export async function POST(req: Request) {
   if (!appointment) return NextResponse.json({ error: 'Appointment not found.' }, { status: 404 });
   if (!secureTokenMatches(appointment.access_token, token)) {
     return NextResponse.json({ error: 'This secure appointment link could not be verified.' }, { status: 403 });
+  }
+  const currentStatus = String(appointment.status ?? '').toLowerCase();
+  const alreadyCancelled =
+    ['cancelled', 'canceled'].includes(currentStatus) ||
+    String(appointment.lifecycle_stage ?? '').toLowerCase() === 'cancelled';
+  if (action === 'cancel' && alreadyCancelled) {
+    const retry = await cancelAppointmentLifecycle(admin, {
+      appointmentId,
+      reason: 'Cancelled by customer',
+    });
+    return NextResponse.json({
+      ok: true,
+      message:
+        String(appointment.cancellation_refund_decision ?? '') === 'review_required'
+          ? 'Appointment is already cancelled. Any payment remains on file for review.'
+          : 'Appointment is already cancelled.',
+      appointmentStatus: 'cancelled',
+      appointmentActive: false,
+      alreadyCancelled: true,
+      cancelledAt: appointment.cancelled_at ?? appointment.cancellation_completed_at ?? null,
+      refundDecision: appointment.cancellation_refund_decision ?? null,
+      warnings: retry.warnings ?? [],
+    });
   }
   const scheduledTime = new Date(String(appointment.scheduled_start ?? '')).getTime();
   const canModify = appointmentCanBeModified(appointment as Record<string, unknown>);
@@ -154,10 +177,56 @@ export async function POST(req: Request) {
   if (action === 'cancel') {
     const r = await cancelAppointmentLifecycle(admin, {
       appointmentId,
-      reason: String(body.reason ?? 'Cancelled by customer'),
+      reason: 'Cancelled by customer',
     });
-    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
-    return NextResponse.json({ ok: true, message: 'Appointment cancelled.' });
+    if (!r.ok) {
+      return NextResponse.json(
+        { error: r.error ?? 'Appointment could not be cancelled.', code: 'CANCELLATION_FAILED' },
+        { status: 409 },
+      );
+    }
+    const warnings: string[] = Array.isArray(r.warnings) ? r.warnings.filter(Boolean) : [];
+    if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {
+      warnings.push(`Calendar removal is still retrying: ${r.googleCalendar.error ?? 'sync failed'}`);
+    }
+    const { data: cancelled, error: cancelledError } = await admin
+      .from('appointments')
+      .select('status, lifecycle_stage, cancelled_at, cancellation_completed_at, cancellation_refund_decision')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (cancelledError || !cancelled) {
+      return NextResponse.json({
+        ok: true,
+        message: 'Appointment cancelled. Refresh to verify all connected updates.',
+        appointmentStatus: 'cancelled',
+        appointmentActive: false,
+        visibilityWarning: true,
+        warnings,
+      });
+    }
+    const cancelledStatus = String(cancelled.status ?? '').toLowerCase();
+    const cancelledStage = String(cancelled.lifecycle_stage ?? '').toLowerCase();
+    if (!['cancelled', 'canceled'].includes(cancelledStatus) && cancelledStage !== 'cancelled') {
+      return NextResponse.json(
+        { error: 'Cancellation did not reach its final state. Please retry.', code: 'CANCELLATION_NOT_VISIBLE' },
+        { status: 503 },
+      );
+    }
+    const refundDecision = String(cancelled.cancellation_refund_decision ?? '') || null;
+    return NextResponse.json({
+      ok: true,
+      message:
+        refundDecision === 'review_required'
+          ? 'Appointment cancelled and slot released. Any payment remains on file for review.'
+          : warnings.length > 0
+            ? 'Appointment cancelled and slot released. One connected update is still retrying.'
+            : 'Appointment cancelled and slot released.',
+      appointmentStatus: 'cancelled',
+      appointmentActive: false,
+      cancelledAt: cancelled.cancelled_at ?? cancelled.cancellation_completed_at ?? null,
+      refundDecision,
+      warnings,
+    });
   }
 
   if (action === 'reschedule') {

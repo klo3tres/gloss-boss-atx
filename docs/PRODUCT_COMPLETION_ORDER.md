@@ -27,9 +27,10 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **2.6 View and download invoices**,
 **2.7 View and download receipts**,
 **2.8 Resolve one consistent payment status everywhere**,
-**3.1 Confirm**
+**3.1 Confirm**,
+**3.2 Reschedule**
 
-Current active item: **3.2 Reschedule**
+Current active item: **3.3 Cancel**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 Phase 2 exit gate: **Passed** with the payment lifecycle acceptance suite against production.
@@ -85,6 +86,14 @@ idempotency without duplicate transition events, secure delivery links, stale
 Stripe-return recovery, and inactive-appointment rejection. The production
 acceptance run also caught and verified the fix for canonical `approved` stages
 being misread as legacy leads.
+
+Appointment 3.2 evidence: **Passed** with
+`npm run qa:appointment-reschedule` against production, including secure-token
+rejection, available-time selection in Central Time, booking-hour and
+full-service-duration enforcement, occupied-slot rejection, unchanged original
+state after rejection, a race-safe slot hold, canonical new start/end and
+original-time audit storage, immediate customer visibility, idempotent retry,
+and the moved availability reservation.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

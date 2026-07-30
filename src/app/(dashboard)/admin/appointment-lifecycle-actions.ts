@@ -55,6 +55,8 @@ export async function adminCancelAppointmentAction(formData: FormData): Promise<
   revalidatePath('/book');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
   const gNote = googleSyncNote(r.googleCalendar);
+  const warningNote = r.warnings?.length ? ` ${r.warnings.join(' ')}` : '';
+  if (r.warnings?.length) return actionWarn(`Appointment cancelled and slot released.${gNote}${warningNote}`);
   if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {
     return actionWarn(`Appointment cancelled — slot released.${gNote}`);
   }

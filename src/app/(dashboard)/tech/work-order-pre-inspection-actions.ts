@@ -187,20 +187,10 @@ export async function cancelWorkOrderAction(
   const admin = tryCreateAdminSupabase();
   if (!admin) return { error: 'Database unavailable.' };
 
-  const now = new Date().toISOString();
   if (source === 'fallback') {
-    const { error } = await admin
-      .from('booking_fallbacks')
-      .update({
-        status: 'cancelled',
-        payment_status: 'cancelled',
-        balance_due_cents: 0,
-        archived_at: now,
-        notes: `Cancelled: ${reason}`,
-        updated_at: now,
-      })
-      .eq('id', id);
-    if (error) return { error: error.message };
+    const { cancelFallbackBookingLifecycle } = await import('@/lib/appointment-lifecycle');
+    const result = await cancelFallbackBookingLifecycle(admin, { fallbackBookingId: id, reason });
+    if (!result.ok) return { error: result.error ?? 'Cancel failed' };
   } else {
     const { cancelAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
     const r = await cancelAppointmentLifecycle(admin, { appointmentId: id, reason });

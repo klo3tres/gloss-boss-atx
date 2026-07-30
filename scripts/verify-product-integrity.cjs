@@ -67,6 +67,7 @@ const crmActions = read('src/app/(dashboard)/admin/crm-actions.ts');
 const confirmationActions = read('src/app/(dashboard)/admin/confirmation-actions.ts');
 const publicAppointmentLifecycle = read('src/app/api/public/appointment-lifecycle/route.ts');
 const customerBookingLifecycle = read('src/components/booking/customer-booking-lifecycle.tsx');
+const techWorkOrderActions = read('src/app/(dashboard)/tech/work-order-pre-inspection-actions.ts');
 const bookingAvailability = read('src/lib/booking-availability.ts');
 const bookingAvailabilityBlock = read('src/lib/booking-availability-block.ts');
 const paymentsManager = read('src/components/admin/payments-manager.tsx');
@@ -88,6 +89,7 @@ const operationsSnapshot = read('src/lib/operations-snapshot.ts');
 const receiptDocument = read('src/components/documents/receipt-document.tsx');
 const financialLedger = read('src/lib/financial-ledger.ts');
 const paymentStatusQa = read('scripts/qa-payment-status.cjs');
+const appointmentCancelQa = read('scripts/qa-appointment-cancel.cjs');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -431,6 +433,25 @@ check(
     bookingAvailability.includes('isBookingInstantAllowedInChicago') &&
     bookingAvailabilityBlock.includes('if (updated.error) throw new Error'),
   'Customer rescheduling must be secure, Central-time correct, availability-driven, race-protected, idempotent, finite, immediately visible, and move its canonical availability block.',
+);
+check(
+  appointmentLifecycle.includes('cancel_appointment_atomic') &&
+    appointmentLifecycle.includes('alreadyCancelled: true') &&
+    appointmentLifecycle.includes('removeAppointmentAvailabilityBlock') &&
+    appointmentLifecycle.includes("runGoogleCalendarSync(admin, id, 'delete')") &&
+    appointmentLifecycle.includes("kind: 'booking_cancelled'") &&
+    appointmentLifecycle.includes('cancelFallbackBookingLifecycle') &&
+    publicAppointmentLifecycle.includes("reason: 'Cancelled by customer'") &&
+    publicAppointmentLifecycle.includes("'CANCELLATION_NOT_VISIBLE'") &&
+    publicAppointmentLifecycle.includes('appointmentActive: false') &&
+    bookingSummary.includes('cancellationRefundDecision') &&
+    customerBookingLifecycle.includes('setCancelled(true)') &&
+    confirmationUi.includes('Cancellation complete') &&
+    techWorkOrderActions.includes('cancelFallbackBookingLifecycle') &&
+    !techWorkOrderActions.includes("payment_status: 'cancelled'") &&
+    appointmentCancelQa.includes('Cancellation retry was not idempotent') &&
+    appointmentCancelQa.includes('Cancellation erased the collected-payment state'),
+  'Appointment cancellation must be secure, atomic, idempotent, immediately visible, release the slot, stop reminders, preserve payment history, sync connected systems, and cover fallback work orders.',
 );
 
 // Regression fixture from the real customer screenshot:

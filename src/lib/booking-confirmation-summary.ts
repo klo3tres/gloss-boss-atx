@@ -15,7 +15,7 @@ export async function loadBookingConfirmationSummary(
 ) {
   const { data: appointment } = await admin
     .from('appointments')
-    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code, job_started_at, job_completed_at, archived_at, deleted_at')
+    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code, job_started_at, job_completed_at, archived_at, deleted_at, cancelled_at, cancellation_refund_decision')
     .eq('id', appointmentId)
     .maybeSingle();
   if (!appointment) return null;
@@ -77,6 +77,7 @@ export async function loadBookingConfirmationSummary(
   const loyalty = (loyaltyResult.data ?? []) as Array<{ stamp_count?: number; voided?: boolean }>;
   const rewards = (rewardsResult.data ?? []) as Array<{ status?: string }>;
   const status = str(job.status).toLowerCase();
+  const cancelled = ['cancelled', 'canceled'].includes(status);
   const appointmentActive =
     !['cancelled', 'canceled', 'voided', 'deleted', 'archived', 'no_show'].includes(status) &&
     !job.archived_at &&
@@ -168,6 +169,9 @@ export async function loadBookingConfirmationSummary(
     sessionState: {
       bookingExists: true,
       appointmentActive,
+      cancelled,
+      cancelledAt: str(job.cancelled_at) || null,
+      cancellationRefundDecision: str(job.cancellation_refund_decision) || null,
       acknowledgementCompleted,
       depositRequired,
       depositPaid,

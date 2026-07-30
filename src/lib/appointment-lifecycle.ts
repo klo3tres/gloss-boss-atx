@@ -309,13 +309,34 @@ export async function confirmAppointmentLifecycle(
 export async function cancelAppointmentLifecycle(
   admin: SupabaseClient,
   input: { appointmentId: string; reason?: string; notifyCustomer?: boolean; actorId?: string | null; refundDecision?: string },
-): Promise<{ ok: boolean; error?: string; googleCalendar?: { ok: boolean; skipped?: boolean; error?: string } }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  alreadyCancelled?: boolean;
+  warnings?: string[];
+  googleCalendar?: { ok: boolean; skipped?: boolean; error?: string };
+}> {
   const id = str(input.appointmentId);
   if (!id) return { ok: false, error: 'Missing appointment' };
 
   const { data: appt } = await admin.from('appointments').select('*').eq('id', id).maybeSingle();
   if (!appt) return { ok: false, error: 'Appointment not found' };
   const row = appt as Record<string, unknown>;
+  const warnings: string[] = [];
+  const alreadyCancelled =
+    stageFromLegacyStatus(row.lifecycle_stage || row.status) === 'cancelled' ||
+    ['cancelled', 'canceled'].includes(str(row.status).toLowerCase());
+  if (alreadyCancelled) {
+    try {
+      const { removeAppointmentAvailabilityBlock } = await import('@/lib/booking-availability-block');
+      await removeAppointmentAvailabilityBlock(admin, id);
+    } catch (error) {
+      warnings.push(
+        `Availability release needs attention: ${error instanceof Error ? error.message : 'release failed'}`,
+      );
+    }
+    return { ok: true, alreadyCancelled: true, warnings };
+  }
   const { error } = await admin.rpc('cancel_appointment_atomic', {
     p_appointment_id: id,
     p_reason: str(input.reason) || 'Cancelled',
@@ -324,17 +345,12 @@ export async function cancelAppointmentLifecycle(
     p_notify_customer: input.notifyCustomer !== false,
   });
   if (error) return { ok: false, error: `Cancellation transaction failed: ${error.message}` };
-  const currentPaymentStatus = str(row.payment_status).toLowerCase();
-  const closedPaymentStatus = ['paid', 'paid_in_full', 'refunded', 'partially_refunded'].includes(currentPaymentStatus)
-    ? currentPaymentStatus
-    : 'cancelled';
   const { error: normalizationError } = await admin
     .from('appointments')
     .update({
       status: 'cancelled',
       lifecycle_stage: 'cancelled',
       balance_due_cents: 0,
-      payment_status: closedPaymentStatus,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id);
@@ -347,19 +363,61 @@ export async function cancelAppointmentLifecycle(
     await cancelAgreementRemindersForAppointment(admin, id);
   } catch (e) {
     console.warn('[lifecycle] cancel agreement reminders', e);
+    warnings.push(
+      `Agreement reminders need attention: ${e instanceof Error ? e.message : 'cancellation failed'}`,
+    );
   }
 
   const guest = str(row.guest_name) || 'Customer';
   const email = str(row.guest_email);
+  const phone = str(row.guest_phone);
   const when = whenChicago(str(row.scheduled_start));
   const reason = str(input.reason) || 'schedule change';
+  const suppressNotifications =
+    row.is_test === true ||
+    row.exclude_from_automations === true ||
+    row.exclude_from_customer_communications === true;
 
-  if (input.notifyCustomer !== false && email) {
+  if (!suppressNotifications && input.notifyCustomer !== false && email) {
     const html = `<p>Hi ${guest},</p><p>Your Gloss Boss ATX appointment on <strong>${when}</strong> has been cancelled.</p><p>Reason: ${reason}</p><p>Rebook anytime at <a href="${appBase()}/book">${appBase()}/book</a>.</p>`;
-    await emailCustomer(admin, email, 'Gloss Boss ATX — Appointment cancelled', html, id, 'booking_cancelled');
+    try {
+      const emailResult = await emailCustomer(
+        admin,
+        email,
+        'Gloss Boss ATX — Appointment cancelled',
+        html,
+        id,
+        'booking_cancelled',
+      );
+      if (emailResult.status === 'failed' || emailResult.error) {
+        warnings.push(`Customer email needs attention: ${emailResult.error ?? 'send failed'}`);
+      }
+    } catch (error) {
+      warnings.push(`Customer email needs attention: ${error instanceof Error ? error.message : 'send failed'}`);
+    }
   }
 
-  try {
+  if (!suppressNotifications && input.notifyCustomer !== false && phone) {
+    const { sendCustomerSms } = await import('@/lib/sms-send');
+    const smsResult = await sendCustomerSms({
+      db: admin,
+      kind: 'booking_cancelled',
+      template_key: 'reschedule_cancel',
+      to: phone,
+      body: `Gloss Boss ATX: Your appointment for ${when} has been cancelled. Rebook anytime: ${appBase()}/book`,
+      appointment_id: id,
+      customer_id: row.customer_id ? str(row.customer_id) : null,
+      requireConsent: false,
+    });
+    if (!smsResult.ok && !smsResult.skipped) {
+      warnings.push(`Customer SMS needs attention: ${smsResult.error ?? 'send failed'}`);
+    }
+  }
+  if (!suppressNotifications && input.notifyCustomer !== false && !email && !phone) {
+    warnings.push('Customer notification skipped: no email or phone on file.');
+  }
+
+  if (!suppressNotifications) try {
     const addr = [row.service_address, row.service_city, row.service_state, row.service_zip].filter(Boolean).join(', ');
     const total = typeof row.base_price_cents === 'number' ? row.base_price_cents : 0;
     await notifyBusinessNewBookingFull({
@@ -382,17 +440,73 @@ export async function cancelAppointmentLifecycle(
     }
   } catch (e) {
     console.warn('[lifecycle] owner cancel notify', e);
+    warnings.push(
+      `Internal cancellation notification needs attention: ${e instanceof Error ? e.message : 'send failed'}`,
+    );
   }
 
-  const googleCalendar = await runGoogleCalendarSync(admin, id, 'delete');
+  let googleCalendar: { ok: boolean; skipped?: boolean; error?: string };
+  if (suppressNotifications) {
+    googleCalendar = { ok: false, skipped: true, error: 'This appointment is excluded from Google Calendar.' };
+  } else {
+    try {
+      googleCalendar = await runGoogleCalendarSync(admin, id, 'delete');
+    } catch (error) {
+      googleCalendar = {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Calendar removal failed',
+      };
+    }
+  }
+  if (!googleCalendar.ok && !googleCalendar.skipped) {
+    warnings.push(`Google Calendar will retry: ${googleCalendar.error ?? 'delete failed'}`);
+  }
   try {
     const { removeAppointmentAvailabilityBlock } = await import('@/lib/booking-availability-block');
     await removeAppointmentAvailabilityBlock(admin, id);
-  } catch (e) {
-    console.warn('[lifecycle] availability block verification', e);
+  } catch (error) {
+    console.warn('[lifecycle] availability block verification', error);
+    warnings.push(
+      `Availability release needs attention: ${error instanceof Error ? error.message : 'release failed'}`,
+    );
   }
 
-  return { ok: true, googleCalendar };
+  return { ok: true, googleCalendar, warnings };
+}
+
+export async function cancelFallbackBookingLifecycle(
+  admin: SupabaseClient,
+  input: { fallbackBookingId: string; reason?: string },
+): Promise<{ ok: boolean; error?: string; alreadyCancelled?: boolean }> {
+  const id = str(input.fallbackBookingId);
+  if (!id) return { ok: false, error: 'Missing fallback work order.' };
+  const { data, error } = await admin
+    .from('booking_fallbacks')
+    .select('id, status, payment_status, notes')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Fallback work order not found.' };
+  if (['cancelled', 'canceled'].includes(str(data.status).toLowerCase())) {
+    return { ok: true, alreadyCancelled: true };
+  }
+  const reason = str(input.reason) || 'Cancelled';
+  const now = new Date().toISOString();
+  const updated = await admin
+    .from('booking_fallbacks')
+    .update({
+      status: 'cancelled',
+      balance_due_cents: 0,
+      notes: [str(data.notes), `Cancelled: ${reason}`].filter(Boolean).join('\n'),
+      updated_at: now,
+    })
+    .eq('id', id)
+    .not('status', 'in', '("cancelled","canceled")')
+    .select('id')
+    .maybeSingle();
+  if (updated.error) return { ok: false, error: updated.error.message };
+  if (!updated.data?.id) return { ok: true, alreadyCancelled: true };
+  return { ok: true };
 }
 
 export async function rescheduleAppointmentLifecycle(

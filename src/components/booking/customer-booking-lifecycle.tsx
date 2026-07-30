@@ -20,12 +20,16 @@ export function CustomerBookingLifecycle({
   appointmentId,
   token,
   scheduledStart,
+  initialCancelled,
+  initialRefundDecision,
   canReschedule,
   canCancel,
 }: {
   appointmentId: string;
   token: string;
   scheduledStart: string;
+  initialCancelled: boolean;
+  initialRefundDecision: string | null;
   canReschedule: boolean;
   canCancel: boolean;
 }) {
@@ -40,6 +44,8 @@ export function CustomerBookingLifecycle({
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
   const [currentScheduledStart, setCurrentScheduledStart] = useState(scheduledStart);
+  const [cancelled, setCancelled] = useState(initialCancelled);
+  const [refundDecision, setRefundDecision] = useState(initialRefundDecision);
   const chicagoToday = chicagoDateKey();
 
   useEffect(() => {
@@ -100,6 +106,9 @@ export function CustomerBookingLifecycle({
         scheduledStart?: string;
         visibilityWarning?: boolean;
         warnings?: string[];
+        appointmentStatus?: string;
+        appointmentActive?: boolean;
+        refundDecision?: string | null;
       } | null;
       if (!res.ok) {
         setMsgTone('error');
@@ -113,12 +122,17 @@ export function CustomerBookingLifecycle({
         setShowReschedule(false);
         setNewDate('');
       }
+      if (j?.appointmentStatus === 'cancelled' || j?.appointmentActive === false) {
+        setCancelled(true);
+        setRefundDecision(j.refundDecision ?? null);
+        setShowReschedule(false);
+      }
       router.refresh();
     } catch (error) {
       setMsgTone('error');
       setMsg(
         error instanceof DOMException && error.name === 'AbortError'
-          ? 'The update is taking too long. Please retry; your original time is still shown below until the change is verified.'
+          ? 'The update is taking too long. Refresh or retry; the current appointment status remains shown until the change is verified.'
           : 'Network error. Please check your connection and retry.',
       );
     } finally {
@@ -140,12 +154,21 @@ export function CustomerBookingLifecycle({
   return (
     <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm'>
       <p className='font-black uppercase tracking-wider text-gold-soft'>Need to change your appointment?</p>
-      <p className='mt-2 text-sm font-bold text-white'>Current time: {currentTimeLabel} CT</p>
+      <p className='mt-2 text-sm font-bold text-white'>
+        {cancelled ? 'Cancelled appointment time' : 'Current time'}: {currentTimeLabel} CT
+      </p>
       <p className='mt-2 text-xs text-zinc-400'>
-        {canReschedule || canCancel
+        {cancelled
+          ? 'This appointment is cancelled and its time has been released.'
+          : canReschedule || canCancel
           ? 'Cancel frees your slot. Reschedule sends updated confirmation email.'
           : 'Online changes are closed because this appointment has started, finished, or passed. Message Gloss Boss if you still need help.'}
       </p>
+      {cancelled && refundDecision === 'review_required' ? (
+        <p className='mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100'>
+          A payment remains on file. Gloss Boss will review the refund or credit decision separately.
+        </p>
+      ) : null}
       {msg ? (
         <p
           aria-live='polite'
@@ -161,7 +184,7 @@ export function CustomerBookingLifecycle({
         </p>
       ) : null}
       <div className='mt-4 flex flex-wrap gap-2'>
-        {canReschedule ? <button
+        {canReschedule && !cancelled ? <button
           type='button'
           disabled={busy}
           onClick={() => setShowReschedule((v) => !v)}
@@ -169,19 +192,19 @@ export function CustomerBookingLifecycle({
         >
           Reschedule
         </button> : null}
-        {canCancel ? <button
+        {canCancel && !cancelled ? <button
           type='button'
           disabled={busy}
           onClick={() => {
-            if (!window.confirm('Cancel this appointment?')) return;
-            void call({ action: 'cancel', reason: 'Cancelled by customer' });
+            if (!window.confirm('Cancel this appointment and release the reserved time? Payments, if any, are reviewed separately.')) return;
+            void call({ action: 'cancel' });
           }}
           className='rounded-xl border border-red-500/40 px-4 py-2 text-xs font-black uppercase text-red-200'
         >
           Cancel booking
         </button> : null}
       </div>
-      {showReschedule && canReschedule ? (
+      {showReschedule && canReschedule && !cancelled ? (
         <div className='mt-4 grid gap-2 sm:grid-cols-2'>
           <label className='text-xs text-zinc-400'>
             New date

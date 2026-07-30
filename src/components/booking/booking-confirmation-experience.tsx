@@ -48,6 +48,9 @@ export type BookingConfirmationSummary = {
   };
   sessionState: {
     appointmentActive: boolean;
+    cancelled: boolean;
+    cancelledAt: string | null;
+    cancellationRefundDecision: string | null;
     acknowledgementCompleted: boolean;
     depositRequired: boolean;
     depositPaid: boolean;
@@ -330,13 +333,20 @@ function ConfirmationInner({
       <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
         <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>
         <h1 className='gb-display-serif mt-3 text-3xl font-black text-white sm:text-5xl'>
-          {summary.sessionState.nextStep === 'confirmation' ? 'You’re booked' : 'Your appointment is reserved'}
+          {summary.sessionState.cancelled
+            ? 'Appointment cancelled'
+            : summary.sessionState.nextStep === 'confirmation'
+              ? 'You’re booked'
+              : 'Your appointment is reserved'}
         </h1>
         <p className='mt-2 text-sm text-zinc-400'>Ref {summary.bookingNumber}</p>
-        <p className='mt-4 text-xl font-bold text-white'>{chicago(summary.scheduledStart)}</p>
+        <p className='mt-4 text-xl font-bold text-white'>
+          {summary.sessionState.cancelled ? 'Former time: ' : ''}
+          {chicago(summary.scheduledStart)}
+        </p>
         <p className='mt-2 text-sm text-zinc-300'>{summary.serviceAddress || 'Mobile service at your address'}</p>
         <div className='mt-6 flex flex-wrap justify-center gap-3'>
-          {calHref ? (
+          {calHref && !summary.sessionState.cancelled ? (
             <a
               href={calHref}
               target='_blank'
@@ -346,7 +356,7 @@ function ConfirmationInner({
               Add to Google Calendar
             </a>
           ) : null}
-          {icsHref ? (
+          {icsHref && !summary.sessionState.cancelled ? (
             <a
               href={icsHref}
               className='inline-flex rounded-2xl border border-white/20 px-6 py-3 text-xs font-black uppercase text-zinc-200'
@@ -357,7 +367,15 @@ function ConfirmationInner({
         </div>
       </section>
 
-      <section className='grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/50 p-3 sm:grid-cols-4' aria-label='Booking progress'>
+      {summary.sessionState.cancelled ? (
+        <section className='rounded-2xl border border-red-400/30 bg-red-500/10 p-5 text-center' aria-label='Cancellation status'>
+          <p className='text-sm font-black uppercase tracking-wider text-red-100'>Cancellation complete</p>
+          <p className='mt-2 text-xs text-red-100/80'>The reserved time has been released.</p>
+          {summary.sessionState.cancellationRefundDecision === 'review_required' ? (
+            <p className='mt-3 text-xs text-amber-100'>A payment remains on file for refund or credit review.</p>
+          ) : null}
+        </section>
+      ) : <section className='grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/50 p-3 sm:grid-cols-4' aria-label='Booking progress'>
         {lifecycleSteps.map((step, index) => (
           <div
             key={step.label}
@@ -369,7 +387,7 @@ function ConfirmationInner({
             <p className='mt-1 text-[10px]'>{step.done ? 'Complete' : 'Next'}</p>
           </div>
         ))}
-      </section>
+      </section>}
 
       <section className='gb-glass rounded-3xl border border-gold/20 p-6'>
         <h2 className='text-sm font-black uppercase tracking-widest text-gold-soft'>Your detail</h2>
@@ -543,7 +561,9 @@ function ConfirmationInner({
                 ? `Pay the selected ${money(checkoutAmountCents)} full balance to complete your booking.`
                 : `Pay the required ${money(checkoutAmountCents)} deposit to complete your booking.`
               : summary.sessionState.nextStep === 'inactive'
-                ? 'This appointment is no longer active. Contact Gloss Boss ATX if you need help.'
+                ? summary.sessionState.cancelled
+                  ? 'This appointment is cancelled and its reserved time has been released.'
+                  : 'This appointment is no longer active. Contact Gloss Boss ATX if you need help.'
                 : summary.sessionState.payOnArrival
                   ? 'Your appointment is confirmed. Payment is due on arrival.'
                   : 'Your appointment requirements are complete.'}
@@ -555,12 +575,14 @@ function ConfirmationInner({
           appointmentId={appointmentId}
           token={token}
           scheduledStart={summary.scheduledStart}
+          initialCancelled={summary.sessionState.cancelled}
+          initialRefundDecision={summary.sessionState.cancellationRefundDecision}
           canReschedule={summary.sessionState.canReschedule}
           canCancel={summary.sessionState.canCancel}
         />
       ) : null}
 
-      <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm text-zinc-300'>
+      {!summary.sessionState.cancelled ? <section className='rounded-2xl border border-white/10 bg-black/50 p-5 text-sm text-zinc-300'>
         <p className='font-black uppercase tracking-wider text-gold-soft'>Next steps</p>
         <ol className='mt-3 space-y-2'>
           <li>1 — Sign your service agreement (required)</li>
@@ -568,7 +590,11 @@ function ConfirmationInner({
           <li>3 — Water & power access ready at arrival</li>
           <li>4 — Track live updates in your dashboard</li>
         </ol>
-      </section>
+      </section> : (
+        <Link href='/book' className='block rounded-2xl border border-gold/40 px-6 py-4 text-center text-sm font-black uppercase text-gold-soft'>
+          Book another appointment
+        </Link>
+      )}
 
       <div className='grid gap-3 sm:grid-cols-2'>
         {adminPreview ? (
