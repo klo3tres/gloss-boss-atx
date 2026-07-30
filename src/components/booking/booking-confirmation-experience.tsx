@@ -113,6 +113,7 @@ function ConfirmationInner({
   const [error, setError] = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [paymentReconciling, setPaymentReconciling] = useState(Boolean(sessionId));
   const [socialLinks, setSocialLinks] = useState({ instagramUrl: '', facebookUrl: '', tiktokUrl: '', youtubeUrl: '' });
 
   useEffect(() => {
@@ -183,6 +184,47 @@ function ConfirmationInner({
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Load failed'));
   }, [appointmentId, token, initialSummary]);
+
+  useEffect(() => {
+    if (adminPreview || !sessionId || !appointmentId || !token) {
+      setPaymentReconciling(false);
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const refresh = async () => {
+      attempts += 1;
+      try {
+        const response = await fetchWithTimeout(
+          `/api/public/booking-confirmation?appointment_id=${encodeURIComponent(appointmentId)}&token=${encodeURIComponent(token)}`,
+          { cache: 'no-store', timeoutMs: 10000 },
+        );
+        const json = (await response.json()) as BookingConfirmationSummary & { ok?: boolean; error?: string };
+        if (!response.ok || !json.ok) throw new Error(json.error ?? 'Payment status could not be refreshed.');
+        const { ok: _ok, error: _error, ...nextSummary } = json;
+        if (cancelled) return;
+        setSummary(nextSummary as BookingConfirmationSummary);
+        setError(null);
+        if (nextSummary.sessionState.nextStep === 'confirmation') {
+          setPaymentReconciling(false);
+          return;
+        }
+      } catch {
+        // A webhook may still be settling. Keep the booking usable and retry for a bounded period.
+      }
+      if (!cancelled && attempts < 15) {
+        timer = setTimeout(refresh, 1500);
+      } else if (!cancelled) {
+        setPaymentReconciling(false);
+      }
+    };
+    void refresh();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [adminPreview, appointmentId, sessionId, token]);
 
   if (error) {
     return (
@@ -279,6 +321,11 @@ function ConfirmationInner({
           compact
           title={accountClaimIssue.temporary ? 'We could not link your account yet' : undefined}
         />
+      ) : null}
+      {paymentReconciling ? (
+        <div className='rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-center text-sm text-sky-100'>
+          Confirming your secure payment… Your booking is saved. This page will update automatically.
+        </div>
       ) : null}
       <section className='gb-premium-hero rounded-3xl px-6 py-8 text-center sm:px-10'>
         <p className='text-xs font-black uppercase tracking-[0.28em] text-gold-soft'>Gloss Boss ATX</p>

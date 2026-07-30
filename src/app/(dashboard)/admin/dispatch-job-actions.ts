@@ -7,6 +7,7 @@ import { isAdminLevel } from '@/lib/auth/roles';
 import { recordAssignmentEvent } from '@/lib/assignment-events';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { stageFromLegacyStatus, transitionWorkOrder } from '@/lib/work-order-lifecycle';
+import { confirmAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -121,13 +122,20 @@ export async function updateAppointmentDispatchStatusAction(formData: FormData) 
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const transition = await transitionWorkOrder(gate.supabase, {
-    appointmentId,
-    to: stageFromLegacyStatus(status),
-    legacyStatus: status,
-    actorId: gate.userId,
-    reason: 'Dispatch status change',
-  });
+  const transition =
+    status === 'confirmed'
+      ? await confirmAppointmentLifecycle(gate.supabase, {
+          appointmentId,
+          actorId: gate.userId,
+          reason: 'Dispatch appointment confirmation',
+        })
+      : await transitionWorkOrder(gate.supabase, {
+          appointmentId,
+          to: stageFromLegacyStatus(status),
+          legacyStatus: status,
+          actorId: gate.userId,
+          reason: 'Dispatch status change',
+        });
   if (!transition.ok) return { ok: false as const, error: transition.error ?? 'Invalid transition' };
 
   revalidatePath('/admin/dispatch');

@@ -57,6 +57,13 @@ const paymentClassification = read('src/lib/payment-classification.ts');
 const paymentRefundState = read('src/lib/payment-refund-state.ts');
 const paymentActions = read('src/app/(dashboard)/admin/payments/payment-actions.ts');
 const stripeAutomation = read('src/lib/stripe-automation.ts');
+const appointmentLifecycle = read('src/lib/appointment-lifecycle.ts');
+const bookingCheckoutNotify = read('src/lib/booking-checkout-notify.ts');
+const bookingConfirmationSend = read('src/lib/booking-confirmation-send.ts');
+const agreementSignRoute = read('src/app/api/agreements/sign/route.ts');
+const dispatchActions = read('src/app/(dashboard)/admin/dispatch-job-actions.ts');
+const crmActions = read('src/app/(dashboard)/admin/crm-actions.ts');
+const confirmationActions = read('src/app/(dashboard)/admin/confirmation-actions.ts');
 const paymentsManager = read('src/components/admin/payments-manager.tsx');
 const receiptPdfRoute = read('src/app/api/receipts/[id]/pdf/route.ts');
 const receiptResolver = read('src/lib/receipt-resolve.ts');
@@ -370,6 +377,33 @@ check(
     operationsSnapshot.includes("['succeeded', 'paid', 'partially_refunded']") &&
     operationsSnapshot.includes('refunded_amount_cents'),
   'Refunds must reopen the balance without cancelling the appointment, releasing its slot, or dropping net collected money from operations.',
+);
+check(
+  appointmentLifecycle.includes('export async function confirmAppointmentLifecycle') &&
+    appointmentLifecycle.includes("'ACKNOWLEDGEMENT_REQUIRED'") &&
+    appointmentLifecycle.includes("'PAYMENT_REQUIRED'") &&
+    appointmentLifecycle.includes('ensureConfirmationTransitionEvent') &&
+    stripeCheckout.includes('await confirmAppointmentLifecycle') &&
+    stripeAutomation.includes('await confirmAppointmentLifecycle') &&
+    agreementSignRoute.includes('await confirmAppointmentLifecycle') &&
+    dispatchActions.includes("status === 'confirmed'") &&
+    dispatchActions.includes('confirmAppointmentLifecycle') &&
+    crmActions.includes('confirmAppointmentLifecycle') &&
+    confirmationActions.includes('confirmAppointmentAction'),
+  'Appointment confirmation must use one audited, idempotent eligibility gate across customer payment, acknowledgement, admin, CRM, dispatch, and technician workflows.',
+);
+check(
+  confirmationUi.includes('setPaymentReconciling') &&
+    confirmationUi.includes('attempts < 15') &&
+    confirmationUi.includes('This page will update automatically') &&
+    bookingConfirmationSend.includes("confirmationStage !== 'scheduled'") &&
+    bookingCheckoutNotify.includes('buildCustomerPortalAccessUrl') &&
+    bookingCheckoutNotify.includes('reserveAutomaticConfirmation') &&
+    bookingCheckoutNotify.includes('markPortalLinkSent') &&
+    stripeCheckout.includes('await notifyBookingCheckoutPaid') &&
+    delivery.includes(".eq('kind', 'booking_confirmation')") &&
+    delivery.includes('acceptedAt(emailRow)'),
+  'Confirmation delivery must recover stale Stripe returns, reject unconfirmed sends, use secure links, dedupe webhook retries, record accepted delivery, and never confuse receipts with confirmations.',
 );
 
 // Regression fixture from the real customer screenshot:

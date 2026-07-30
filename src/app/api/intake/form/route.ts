@@ -3,6 +3,7 @@ import { promoteFallbackToAppointment } from '@/lib/booking-diagnostics';
 import { intakeCmsMarkupToPlainText, sanitizeIntakeCmsHtml } from '@/lib/intake-html';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 export const runtime = 'nodejs';
 
@@ -87,7 +88,7 @@ export async function GET(req: Request) {
 
   const { data: appt, error: apptErr } = await admin
     .from('appointments')
-    .select('id, access_token, status, stripe_checkout_session_id')
+    .select('id, access_token, status, payment_choice, stripe_checkout_session_id')
     .eq('id', appointmentId)
     .maybeSingle();
 
@@ -95,17 +96,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: 'This secure booking link could not be verified.' }, { status: 403 });
   }
 
-  const paidStatuses = ['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'completed'];
-  let paymentOk = paidStatuses.includes(String(appt.status));
+  const snapshot = await loadOrderSnapshot(admin, { appointmentId });
+  let paymentOk = Boolean(
+    snapshot &&
+    (
+      ['deposit_paid', 'paid', 'comped', 'no_payment_required'].includes(snapshot.paymentStatus) ||
+      ['pay_later', 'pay_on_arrival'].includes(String(appt.payment_choice ?? '').toLowerCase())
+    )
+  );
   if (!paymentOk && sessionId) {
     paymentOk = await verifyPaidSession(admin, appointmentId, sessionId);
-    if (paymentOk) {
-      await admin
-        .from('appointments')
-        .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
-        .eq('id', appointmentId)
-        .eq('status', 'awaiting_payment');
-    }
   }
 
   if (!paymentOk) {

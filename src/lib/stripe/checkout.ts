@@ -151,10 +151,17 @@ export async function createDepositCheckoutSession(params: {
         .from('appointments')
         .update({
           payment_status: isFullPay ? 'paid' : 'deposit_paid',
-          status: isFullPay ? 'confirmed' : 'deposit_paid',
           updated_at: new Date().toISOString(),
         })
         .eq('id', appt.id);
+      const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+      const confirmation = await confirmAppointmentLifecycle(admin, {
+        appointmentId: String(appt.id),
+        reason: 'Customer credits satisfied booking payment',
+      });
+      if (!confirmation.ok && !confirmation.code) {
+        return { ok: false, error: confirmation.error ?? 'Appointment confirmation failed', code: 'CONFIRMATION_FAILED' };
+      }
       return {
         ok: true,
         skipPayment: true,
@@ -693,16 +700,16 @@ async function updateAppointmentPaidSafe(
   appointmentId: string,
   extras: Record<string, unknown>,
 ): Promise<void> {
-  const base = { status: 'deposit_paid', payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...extras };
+  const base = { payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...extras };
   let u = await admin.from('appointments').update(base).eq('id', appointmentId);
   if (u.error && isSchemaDriftError(u.error.message)) {
     u = await admin
       .from('appointments')
-      .update({ status: 'deposit_paid', payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({ payment_status: 'deposit_paid', deposit_paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', appointmentId);
   }
   if (u.error && isSchemaDriftError(u.error.message)) {
-    u = await admin.from('appointments').update({ status: 'deposit_paid' }).eq('id', appointmentId);
+    u = await admin.from('appointments').update({ payment_status: 'deposit_paid' }).eq('id', appointmentId);
   }
   if (u.error) {
     console.warn('[checkout] appointment paid update', u.error.message);
@@ -937,7 +944,7 @@ export async function processCheckoutSessionCompleted(params: {
       }
     } else if (isBookingFull) {
       extras.stripe_checkout_kind = 'booking_full';
-      extras.payment_status = 'full_paid';
+      extras.payment_status = 'paid';
       extras.balance_due_cents = 0;
       extras.full_paid_at = new Date().toISOString();
     } else if (isField) {
@@ -949,6 +956,14 @@ export async function processCheckoutSessionCompleted(params: {
 
     if (!isFinalBalance) {
       await updateAppointmentPaidSafe(admin, appointmentId, extras);
+    }
+    const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+    const confirmation = await confirmAppointmentLifecycle(admin, {
+      appointmentId,
+      reason: `Payment satisfied appointment confirmation (${paymentKind})`,
+    });
+    if (!confirmation.ok && !confirmation.code && !confirmation.error?.includes('inactive')) {
+      throw new Error(`APPOINTMENT_CONFIRMATION_FAILED: ${confirmation.error}`);
     }
 
     try {
@@ -992,12 +1007,12 @@ export async function processCheckoutSessionCompleted(params: {
       .eq('id', appointmentId)
       .maybeSingle();
 
-    void notifyBookingCheckoutPaid({
+    await notifyBookingCheckoutPaid({
       admin,
       appointmentId,
       paidCents: amount,
       paymentKind,
-    }).catch((e) => console.warn('[checkout] booking notify', e));
+    });
 
     console.info(
       '[checkout] checkout.session.completed',

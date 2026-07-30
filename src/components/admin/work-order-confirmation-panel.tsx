@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Mail, MessageSquare, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { useOutboundPreview } from '@/components/admin/outbound-message-provider';
 import {
+  confirmAppointmentAction,
   getCustomerPortalLinkAction,
   getConfirmationDeliveryStatusAction,
   previewBookingConfirmationAction,
@@ -135,6 +136,19 @@ export function WorkOrderConfirmationPanel({
           return { ok: true };
         },
       });
+    });
+  };
+
+  const confirmAppointment = () => {
+    startTransition(async () => {
+      const result = await confirmAppointmentAction(appointmentId);
+      if (result.error) {
+        toast.error('Not confirmed', result.error);
+        return;
+      }
+      toast.success('Appointment', result.message ?? 'Appointment confirmed.');
+      refreshStatus();
+      router.refresh();
     });
   };
 
@@ -277,6 +291,14 @@ export function WorkOrderConfirmationPanel({
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={confirmAppointment}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-[10px] font-black uppercase text-black disabled:opacity-50"
+        >
+          <CheckCircle2 className="h-3 w-3" /> Confirm appointment
+        </button>
         <Link
           href={`/admin/customer-preview/${encodeURIComponent(appointmentId)}`}
           target="_blank"

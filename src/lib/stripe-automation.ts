@@ -201,6 +201,14 @@ async function updateJobAfterPayment(admin: SupabaseClient, appointment: Row | n
       : { payment_status: 'deposit_paid', balance_due_cents: remainingCents, deposit_paid_at: now, updated_at: now };
   const { error } = await admin.from('appointments').update(patch).eq('id', appointmentId);
   if (error && !isSchemaDriftError(error.message)) console.warn('[stripe-automation] appointment payment patch', error.message);
+  const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+  const confirmation = await confirmAppointmentLifecycle(admin, {
+    appointmentId,
+    reason: 'Stripe automation verified collected payment',
+  });
+  if (!confirmation.ok && !confirmation.code && !confirmation.error?.includes('inactive')) {
+    console.warn('[stripe-automation] appointment confirmation', confirmation.error);
+  }
   return {
     remainingCents,
     totalCents,
@@ -313,7 +321,7 @@ export async function automateStripePayment(params: {
         appointmentId,
         paidCents: amountCents,
         paymentKind: totals.kind,
-      }).catch((e) => console.warn('[stripe-automation] customer receipt notify', e));
+      });
     }
   }
 

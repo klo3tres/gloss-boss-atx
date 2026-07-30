@@ -44,7 +44,13 @@ export async function POST(request: Request) {
     const marketingOk = Boolean(marketingMediaConsent);
     const smsOk = Boolean(smsConsent);
 
-    if ((!appointmentId && !fallbackBookingId && !accessToken) || !signerLegalName || !signatureType || !acknowledged) {
+    if (
+      (!appointmentId && !fallbackBookingId) ||
+      (!accessToken && !sessionId) ||
+      !signerLegalName ||
+      !signatureType ||
+      !acknowledged
+    ) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -68,17 +74,18 @@ export async function POST(request: Request) {
       }
     }
 
+    let paidSessionValidated = false;
     if (sessionId) {
       const stripe = await getStripeSdk(admin);
-      if (stripe) {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
-          return NextResponse.json({ error: 'Payment not completed' }, { status: 400 });
-        }
-        if (session.metadata?.appointment_id && session.metadata.appointment_id !== appointmentId) {
-          return NextResponse.json({ error: 'Session mismatch' }, { status: 400 });
-        }
+      if (!stripe) return NextResponse.json({ error: 'Payment verification unavailable' }, { status: 503 });
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
+        return NextResponse.json({ error: 'Payment not completed' }, { status: 400 });
       }
+      if (!session.metadata?.appointment_id || session.metadata.appointment_id !== appointmentId) {
+        return NextResponse.json({ error: 'Session mismatch' }, { status: 403 });
+      }
+      paidSessionValidated = true;
     }
 
     let { data: appt, error: apptErr } = appointmentId
@@ -106,7 +113,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
     }
     const rowToken = appt.access_token ? String(appt.access_token) : '';
-    if (!agreementTokenValidated && accessToken && rowToken && rowToken !== accessToken) {
+    if (
+      !agreementTokenValidated &&
+      !paidSessionValidated &&
+      (!accessToken || !rowToken || rowToken !== accessToken)
+    ) {
       return NextResponse.json({ error: 'This secure booking link could not be verified.' }, { status: 403 });
     }
 
@@ -135,7 +146,23 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (existing) {
-      return NextResponse.json({ error: 'Agreement already signed' }, { status: 400 });
+      let confirmationPending: string | null = null;
+      if (appointmentId) {
+        const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+        const confirmation = await confirmAppointmentLifecycle(admin, {
+          appointmentId,
+          reason: 'Existing acknowledgement rechecked confirmation eligibility',
+        });
+        if (!confirmation.ok) confirmationPending = confirmation.error ?? 'Confirmation pending';
+      }
+      return NextResponse.json({
+        ok: true,
+        alreadySigned: true,
+        appointmentId: appointmentId || null,
+        fallbackBookingId: resolvedFallbackId || null,
+        accessToken: accessToken || null,
+        confirmationPending,
+      });
     }
 
     let template = null as { id: string; version: number; body: string; title: string } | null;
@@ -270,11 +297,35 @@ export async function POST(request: Request) {
     }
 
     let promotedAppointment: { id: string; access_token: string } | null = null;
+    let appointmentConfirmed = false;
+    let confirmationDelivery: Record<string, unknown> | null = null;
     if (appointmentId) {
-      await admin
-        .from('appointments')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-        .eq('id', appointmentId);
+      const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+      const confirmation = await confirmAppointmentLifecycle(admin, {
+        appointmentId,
+        reason: 'Customer acknowledgement completed',
+      });
+      if (!confirmation.ok && !confirmation.code) {
+        return NextResponse.json(
+          { error: `Acknowledgement saved, but confirmation failed: ${confirmation.error}` },
+          { status: 500 },
+        );
+      }
+      appointmentConfirmed = confirmation.ok;
+      if (appointmentConfirmed) {
+        const { sendBookingConfirmation } = await import('@/lib/booking-confirmation-send');
+        const delivery = await sendBookingConfirmation(admin, {
+          appointmentId,
+          channel: 'both',
+          skipOwnerNotify: true,
+        });
+        confirmationDelivery = {
+          ok: delivery.ok,
+          emailStatus: delivery.email?.status ?? 'not_sent',
+          smsStatus: delivery.sms?.status ?? 'not_sent',
+          error: delivery.error ?? delivery.email?.error ?? delivery.sms?.error ?? null,
+        };
+      }
 
       let signedAgreementId: string | null = null;
       try {
@@ -299,10 +350,6 @@ export async function POST(request: Request) {
         mode: 'signed',
       });
     } else if (resolvedFallbackId) {
-      await admin
-        .from('booking_fallbacks')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-        .eq('id', resolvedFallbackId);
       promotedAppointment = accessToken
         ? await promoteFallbackToAppointment(admin, resolvedFallbackId, accessToken)
         : null;
@@ -318,6 +365,28 @@ export async function POST(request: Request) {
             .eq('fallback_booking_id', resolvedFallbackId),
         ]);
       }
+      if (promotedAppointment?.id) {
+        const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+        const confirmation = await confirmAppointmentLifecycle(admin, {
+          appointmentId: promotedAppointment.id,
+          reason: 'Promoted fallback acknowledgement completed',
+        });
+        appointmentConfirmed = confirmation.ok;
+        if (appointmentConfirmed) {
+          const { sendBookingConfirmation } = await import('@/lib/booking-confirmation-send');
+          const delivery = await sendBookingConfirmation(admin, {
+            appointmentId: promotedAppointment.id,
+            channel: 'both',
+            skipOwnerNotify: true,
+          });
+          confirmationDelivery = {
+            ok: delivery.ok,
+            emailStatus: delivery.email?.status ?? 'not_sent',
+            smsStatus: delivery.sms?.status ?? 'not_sent',
+            error: delivery.error ?? delivery.email?.error ?? delivery.sms?.error ?? null,
+          };
+        }
+      }
     }
 
     return NextResponse.json({
@@ -327,6 +396,8 @@ export async function POST(request: Request) {
       appointmentId: appointmentId || promotedAppointment?.id || null,
       accessToken: promotedAppointment?.access_token || accessToken || null,
       fallbackBookingId: resolvedFallbackId || null,
+      appointmentConfirmed,
+      confirmationDelivery,
     });
   } catch (e) {
     console.error(e);

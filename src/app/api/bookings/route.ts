@@ -23,7 +23,7 @@ import { incrementPromoUse } from '@/lib/promo-engine';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { normalizeUsPhone10Digits } from '@/lib/us-phone';
-import { notifyBookingConfirmationQueued, notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
+import { notifyBusinessNewBookingQueued } from '@/lib/notifications-placeholder';
 import { syncVehiclesForAppointment, syncVehiclesToCustomer } from '@/lib/crm-vehicle-sync';
 import { buildBookingOrderSnapshot, mergeSnapshotIntoBreakdown } from '@/lib/booking-order-snapshot';
 import { logSmsConsentChange, normalizeSmsConsentStatus, SMS_CONSENT_COPY, type SmsConsentSource } from '@/lib/sms-consent';
@@ -808,7 +808,7 @@ export async function POST(request: Request) {
       water_access: waterAccess,
       power_access: powerAccess,
       parking_access: parkingAccess,
-      status: freePromoApplied ? 'test_comped' : 'awaiting_payment',
+      status: 'awaiting_payment',
       payment_status: freePromoApplied ? 'comped' : 'awaiting_deposit',
       payment_choice: paymentChoice,
       balance_due_cents: paymentChoice === 'full' || freePromoApplied ? 0 : Math.max(0, adjustedTotalCents - depositAmountCents),
@@ -1036,17 +1036,6 @@ export async function POST(request: Request) {
       });
 
       if (!isQaTest) {
-        void notifyBookingConfirmationQueued({
-          toEmail: emailNorm,
-          toPhone: phoneDigits,
-          guestName: guestName.trim(),
-          whenIso: scheduled.toISOString(),
-          totalCents: priced.finalTotalCents,
-          depositCents: 0,
-          vehicles: vehicleDescriptionJoined,
-          appointmentId: appointment.id,
-        }).catch(() => {});
-
         void notifyBusinessNewBookingQueued({
           eventKind: 'free_booking',
           guestName: guestName.trim(),
@@ -1079,27 +1068,14 @@ export async function POST(request: Request) {
     const isFullCovered = paymentChoice === 'full' ? (appliedCreditCents >= totalBaseCents) : (appliedCreditCents >= depositAmountCents);
 
     if (isFullCovered) {
-      const newStatus = paymentChoice === 'full' ? 'confirmed' : 'deposit_paid';
       const newPaymentStatus = paymentChoice === 'full' ? 'paid' : 'deposit_paid';
       await admin
         .from('appointments')
         .update({
-          status: newStatus,
           payment_status: newPaymentStatus,
           updated_at: new Date().toISOString(),
         })
         .eq('id', appointment.id);
-
-      if (!isQaTest) void notifyBookingConfirmationQueued({
-        toEmail: emailNorm,
-        toPhone: phoneDigits,
-        guestName: guestName.trim(),
-        whenIso: scheduled.toISOString(),
-        totalCents: totalBaseCents,
-        depositCents: depositAmountCents,
-        vehicles: vehicleDescriptionJoined,
-        appointmentId: appointment.id,
-      }).catch(() => {});
 
       const hasCeramic = resolved.some((r) => r.serviceSlug === 'ceramic-coating');
       if (!isQaTest) void notifyBusinessNewBookingQueued({

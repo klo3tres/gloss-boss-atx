@@ -9,6 +9,7 @@ const STATUSES = ['awaiting_payment', 'deposit_paid', 'confirmed', 'assigned', '
 
 import { recordAssignmentEvent } from '@/lib/assignment-events';
 import { stageFromLegacyStatus, transitionWorkOrder } from '@/lib/work-order-lifecycle';
+import { confirmAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 
 async function requireAdminSupabase() {
   const session = await getSessionWithProfile();
@@ -40,13 +41,20 @@ export async function updateAppointmentStatusAction(formData: FormData) {
     }
   }
 
-  const transition = await transitionWorkOrder(gate.supabase, {
-    appointmentId,
-    to: stageFromLegacyStatus(status),
-    legacyStatus: status,
-    actorId: gate.userId,
-    reason: 'Admin CRM status change',
-  });
+  const transition =
+    status === 'confirmed'
+      ? await confirmAppointmentLifecycle(gate.supabase, {
+          appointmentId,
+          actorId: gate.userId,
+          reason: 'Admin CRM appointment confirmation',
+        })
+      : await transitionWorkOrder(gate.supabase, {
+          appointmentId,
+          to: stageFromLegacyStatus(status),
+          legacyStatus: status,
+          actorId: gate.userId,
+          reason: 'Admin CRM status change',
+        });
   if (!transition.ok) {
     console.error('[crm] updateAppointmentStatusAction', transition.error);
     return;

@@ -79,6 +79,19 @@ function scrollToSection(id: string) {
   }
 }
 
+function confirmationDeliveryLabel(status: ConfirmationDeliveryStatus | null | undefined, fallback: string) {
+  if (!status) return fallback;
+  const channels = [status.email.status, status.sms.status];
+  const hasFailure = channels.some((value) => ['failed', 'undelivered'].includes(value));
+  const suffix = hasFailure ? ' · other channel failed' : '';
+  if (channels.includes('delivered')) return `Delivered${suffix}`;
+  if (channels.includes('sent')) return `Sent${suffix}`;
+  if (channels.includes('queued')) return `Queued${suffix}`;
+  if (hasFailure) return 'Delivery failed';
+  if (channels.includes('skipped')) return 'Skipped';
+  return 'Not sent';
+}
+
 export type WorkOrderConsoleData = {
   id: string;
   canonicalId: string;
@@ -623,11 +636,7 @@ export function WorkOrderConsoleClient({
           ['Deposit required', data.depositRequired || data.depositOnFile || '$0.00'],
           ['Amount paid', data.totalPaid || '$0.00'],
           ['Acknowledgment', data.agreementSigned ? 'Completed' : 'Required'],
-          ['Confirmation', data.confirmationStatus
-            ? data.confirmationStatus.sms.status === 'sent' || data.confirmationStatus.email.status === 'sent'
-              ? 'Sent'
-              : 'Not sent'
-            : data.statusLabel],
+          ['Confirmation', confirmationDeliveryLabel(data.confirmationStatus, data.statusLabel)],
           ['Calendar sync', (data.calendarSyncStatus || 'Not connected').replace(/_/g, ' ')],
         ].map(([label, value]) => (
           <div key={label} className='rounded-xl border border-white/5 bg-zinc-950/60 px-3 py-2'>

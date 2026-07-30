@@ -13,6 +13,7 @@ import {
 import { loadPortalAccessContext } from '@/lib/customer-portal-access';
 import { loadConfirmationDeliveryStatus } from '@/lib/confirmation-delivery-status';
 import { buildCustomerPortalAccessUrl, defaultPortalAccessExpiry } from '@/lib/customer-portal-access';
+import { confirmAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 
 async function requireStaffAdmin() {
   const session = await getSessionWithProfile();
@@ -119,6 +120,21 @@ export async function getConfirmationDeliveryStatusAction(appointmentId: string)
   if (!admin) return { error: 'Forbidden' as const };
   const status = await loadConfirmationDeliveryStatus(admin, appointmentId);
   return { status };
+}
+
+export async function confirmAppointmentAction(appointmentId: string): Promise<ActionResult> {
+  const admin = await requireStaffAdmin();
+  if (!admin) return actionErr('Forbidden');
+  const result = await confirmAppointmentLifecycle(admin, {
+    appointmentId,
+    reason: 'Appointment confirmed from work-order controls',
+  });
+  revalidatePath(`/tech/work-orders/${appointmentId}`);
+  revalidatePath('/admin/dispatch');
+  revalidatePath('/admin/work-orders');
+  revalidatePath('/dashboard');
+  if (!result.ok) return actionErr(result.error ?? 'Appointment could not be confirmed.');
+  return actionOk(result.alreadyConfirmed ? 'Appointment is already confirmed.' : 'Appointment confirmed.');
 }
 
 export async function sendBookingConfirmationBothAction(appointmentId: string): Promise<ActionResult & { smsDetail?: string }> {

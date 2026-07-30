@@ -10,6 +10,7 @@ import { bookingConfirmationEmailHtml } from '@/lib/email/templates/booking';
 import { sendCustomerSms } from '@/lib/sms-send';
 import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { buildCustomerPortalAccessUrl } from '@/lib/customer-portal-access';
 
 /**
  * Safe notification hooks — never throw; no-op with logs when providers are missing.
@@ -32,10 +33,17 @@ export async function notifyBookingConfirmationQueued(params: {
   });
   const admin = tryCreateAdminSupabase();
   const email = params.toEmail.trim().toLowerCase();
+  const apptId = params.appointmentId ?? '';
+  const { data: appointmentAccess } =
+    admin && apptId
+      ? await admin.from('appointments').select('access_token').eq('id', apptId).maybeSingle()
+      : { data: null };
+  const accessToken = String(appointmentAccess?.access_token ?? '').trim();
+  const confirmationUrl =
+    apptId && accessToken ? buildCustomerPortalAccessUrl(apptId, accessToken) : '';
   try {
     if (email.includes('@') && resendConfigured()) {
       const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://glossbossatx.com').replace(/\/$/, '');
-      const apptId = params.appointmentId ?? '';
       const html = bookingConfirmationEmailHtml({
         guestName: params.guestName,
         whenLabel,
@@ -45,7 +53,7 @@ export async function notifyBookingConfirmationQueued(params: {
         serviceAddress: '',
         remainingBalance: `$${(Math.max(0, params.totalCents - params.depositCents) / 100).toFixed(2)}`,
         calendarUrl: apptId ? `${base}/api/calendar/appointment/${apptId}` : undefined,
-        confirmationUrl: apptId ? `${base}/book/confirmation?appointment_id=${encodeURIComponent(apptId)}` : undefined,
+        confirmationUrl: confirmationUrl || undefined,
       });
       const sent = await sendResendHtml({ to: email, subject: 'Gloss Boss ATX — Booking confirmed', html });
       if (admin) {
@@ -84,7 +92,7 @@ export async function notifyBookingConfirmationQueued(params: {
         template_key: 'booking_confirmation',
         to: phone,
         appointment_id: params.appointmentId ?? null,
-        body: `Gloss Boss ATX: Booking confirmed for ${whenLabel}. ${params.vehicles.slice(0, 80)}. Deposit $${(params.depositCents / 100).toFixed(2)}. Total $${(params.totalCents / 100).toFixed(2)}.`,
+        body: `Gloss Boss ATX: Booking confirmed for ${whenLabel}. ${params.vehicles.slice(0, 80)}. Deposit $${(params.depositCents / 100).toFixed(2)}. Total $${(params.totalCents / 100).toFixed(2)}.${confirmationUrl ? ` Details: ${confirmationUrl}` : ''}`,
         extraPayload: { guest_name: params.guestName, when_iso: params.whenIso },
       });
     }

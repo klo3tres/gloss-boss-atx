@@ -39,6 +39,7 @@
     "qa:invoices": "node scripts/qa-invoices.cjs",
     "qa:receipts": "node scripts/qa-receipts.cjs",
     "qa:payment-status": "node scripts/qa-payment-status.cjs",
+    "qa:appointment-confirmation": "node scripts/qa-appointment-confirmation.cjs",
     "qa:portal": "npm run qa:integrity && npm run qa:claims && npm run qa:login && npm run qa:password-reset && npm run qa:contact && npm run qa:vehicles && npm run qa:photos && npm run qa:memberships && npm run qa:rewards && npm run qa:referrals && npm run qa:messages"
   },
   "dependencies": {

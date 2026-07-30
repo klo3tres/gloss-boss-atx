@@ -68,10 +68,19 @@ function latestOutbox(
   channel: 'email' | 'sms',
 ) {
   const filtered = rows.filter(
-    (r) => str(r.channel).toLowerCase() === channel,
+    (r) =>
+      str(r.kind).toLowerCase() === 'booking_confirmation' &&
+      str(r.channel).toLowerCase() === channel,
   );
   if (filtered.length === 0) return null;
   return filtered[0];
+}
+
+function acceptedAt(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  const status = mapOutboxStatus(str(row.provider_status || row.status));
+  if (!['queued', 'sent', 'delivered'].includes(status)) return null;
+  return str(row.sent_at || row.status_updated_at || row.created_at) || null;
 }
 
 export async function loadConfirmationDeliveryStatus(
@@ -95,6 +104,7 @@ export async function loadConfirmationDeliveryStatus(
         'id, kind, channel, status, provider_status, error_message, skipped_reason, provider_message_id, sent_at, delivered_at, status_updated_at, created_at, payload',
       )
       .eq('appointment_id', id)
+      .eq('kind', 'booking_confirmation')
       .order('created_at', { ascending: false })
       .limit(40),
   ]);
@@ -134,14 +144,14 @@ export async function loadConfirmationDeliveryStatus(
     portalUrl,
     email: {
       status: emailRow ? mapOutboxStatus(str(emailRow.provider_status || emailRow.status)) : 'not_sent',
-      lastSentAt: str(emailRow?.sent_at || emailRow?.created_at) || null,
+      lastSentAt: acceptedAt(emailRow),
       deliveredAt: str(emailRow?.delivered_at) || null,
       lastError: str(emailRow?.error_message || emailRow?.skipped_reason) || null,
       providerMessageId: str(emailRow?.provider_message_id) || null,
     },
     sms: {
       status: smsRow ? mapOutboxStatus(str(smsRow.provider_status || smsRow.status)) : 'not_sent',
-      lastSentAt: str(smsRow?.sent_at || smsRow?.created_at) || null,
+      lastSentAt: acceptedAt(smsRow),
       deliveredAt: str(smsRow?.delivered_at) || null,
       lastError: str(smsRow?.error_message || smsRow?.skipped_reason) || null,
       providerMessageId: str(smsRow?.provider_message_id) || null,
@@ -169,7 +179,7 @@ export async function loadConfirmationDeliveryStatus(
 
 export async function markPortalLinkCreated(admin: SupabaseClient, appointmentId: string) {
   const now = new Date().toISOString();
-  await admin
+  const { error } = await admin
     .from('appointments')
     .update({
       portal_link_created_at: now,
@@ -177,26 +187,29 @@ export async function markPortalLinkCreated(admin: SupabaseClient, appointmentId
     })
     .eq('id', appointmentId)
     .is('portal_link_created_at', null);
+  if (error) throw new Error(`Could not record portal-link creation: ${error.message}`);
 }
 
 export async function markPortalLinkSent(admin: SupabaseClient, appointmentId: string) {
   const now = new Date().toISOString();
-  await admin
+  const { error } = await admin
     .from('appointments')
     .update({
       portal_link_last_sent_at: now,
       updated_at: now,
     })
     .eq('id', appointmentId);
+  if (error) throw new Error(`Could not record portal-link delivery: ${error.message}`);
 }
 
 export async function markPortalLinkRegenerated(admin: SupabaseClient, appointmentId: string) {
   const now = new Date().toISOString();
-  await admin
+  const { error } = await admin
     .from('appointments')
     .update({
       portal_link_last_regenerated_at: now,
       updated_at: now,
     })
     .eq('id', appointmentId);
+  if (error) throw new Error(`Could not record portal-link regeneration: ${error.message}`);
 }

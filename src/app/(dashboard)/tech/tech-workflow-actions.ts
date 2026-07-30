@@ -423,10 +423,13 @@ export async function techSignWalkInAgreementAction(input: {
         },
         { onConflict: 'appointment_id' },
       );
-    await admin
-      .from('appointments')
-      .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-      .eq('id', appointmentId);
+    const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+    const confirmation = await confirmAppointmentLifecycle(admin, {
+      appointmentId,
+      actorId: session.user.id,
+      reason: 'Technician verified existing walk-in acknowledgement',
+    });
+    if (!confirmation.ok) return { ok: false, error: confirmation.error ?? 'Appointment confirmation failed.' };
     revalidatePath('/tech');
     revalidatePath('/tech/workflow');
     revalidatePath(`/tech/work-orders/${appointmentId}`);
@@ -608,10 +611,13 @@ export async function techSignWalkInAgreementAction(input: {
     console.warn('[techSignWalkIn] job_agreements', ja.error.message);
   }
 
-  await admin
-    .from('appointments')
-    .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-    .eq('id', appointmentId);
+  const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+  const confirmation = await confirmAppointmentLifecycle(admin, {
+    appointmentId,
+    actorId: session.user.id,
+    reason: 'Technician completed walk-in acknowledgement',
+  });
+  if (!confirmation.ok) return { ok: false, error: confirmation.error ?? 'Appointment confirmation failed.' };
 
   revalidatePath('/tech');
   revalidatePath('/tech/workflow');

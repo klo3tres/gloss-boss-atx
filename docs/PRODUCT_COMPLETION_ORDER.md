@@ -25,11 +25,13 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **2.4 Record manual and external payments**,
 **2.5 Refund and partially refund**,
 **2.6 View and download invoices**,
-**2.7 View and download receipts**
+**2.7 View and download receipts**,
+**2.8 Resolve one consistent payment status everywhere**
 
-Current active item: **2.8 Resolve one consistent payment status everywhere**
+Current active item: **3.1 Confirm**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
+Phase 2 exit gate: **Passed** with the payment lifecycle acceptance suite against production.
 
 Payment 2.1 evidence: **Passed** with `npm run qa:deposit` against production,
 including acknowledgment-first state resolution, partial-deposit math, live
@@ -68,6 +70,11 @@ including owner-only inline view and repeated download, stable receipt identity,
 explicit receipt labeling while a balance remains open, exact $40.00 tender,
 $39.00 applied principal, separate $1.00 tip, $91.00 balance due, and no
 duplicate receipt creation.
+
+Payment 2.8 evidence: **Passed** with `npm run qa:payment-status` against
+production, including deposit due, pending, processing, failed, cancelled,
+expired, deposit paid, paid in full, partial refund, full refund, repayment,
+customer recovery flags, and retained calendar-slot blocking after a refund.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

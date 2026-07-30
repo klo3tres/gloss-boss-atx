@@ -3,6 +3,11 @@ import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
 import { runGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import {
+  stageFromLegacyStatus,
+  transitionWorkOrder,
+  type WorkOrderStage,
+} from '@/lib/work-order-lifecycle';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -70,6 +75,228 @@ async function emailCustomer(
     error_message: err,
     payload: { to },
   });
+}
+
+const CONFIRMED_OR_LATER_STAGES = new Set<WorkOrderStage>([
+  'scheduled',
+  'en_route',
+  'in_progress',
+  'quality_check',
+  'payment_due',
+  'completed',
+]);
+
+async function ensureConfirmationTransitionEvent(
+  admin: SupabaseClient,
+  input: {
+    appointmentId: string;
+    fromStage: WorkOrderStage;
+    actorId?: string | null;
+    reason?: string;
+    adminOverride?: boolean;
+  },
+) {
+  const existing = await admin
+    .from('work_order_transition_events')
+    .select('id')
+    .eq('appointment_id', input.appointmentId)
+    .eq('to_stage', 'scheduled')
+    .limit(1)
+    .maybeSingle();
+  if (existing.error && /relation|does not exist|schema cache/i.test(existing.error.message)) return null;
+  if (existing.error) return existing.error.message;
+  if (existing.data) return null;
+  const inserted = await admin.from('work_order_transition_events').insert({
+    appointment_id: input.appointmentId,
+    from_stage: input.fromStage,
+    to_stage: 'scheduled',
+    actor_id: input.actorId ?? null,
+    reason: str(input.reason) || 'Appointment confirmed',
+    admin_override: input.adminOverride === true,
+  });
+  if (inserted.error && !/relation|does not exist|schema cache/i.test(inserted.error.message)) {
+    return inserted.error.message;
+  }
+  return null;
+}
+
+/**
+ * Canonical appointment confirmation transition.
+ * Payment state stays separate; confirmation changes only the appointment/work-order lifecycle.
+ */
+export async function confirmAppointmentLifecycle(
+  admin: SupabaseClient,
+  input: {
+    appointmentId: string;
+    actorId?: string | null;
+    reason?: string;
+    allowAdminOverride?: boolean;
+    overrideEligibility?: boolean;
+  },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  code?: 'ACKNOWLEDGEMENT_REQUIRED' | 'PAYMENT_REQUIRED';
+  alreadyConfirmed?: boolean;
+  previousStage?: WorkOrderStage;
+}> {
+  const appointmentId = str(input.appointmentId);
+  if (!appointmentId) return { ok: false, error: 'Missing appointment.' };
+
+  const { data, error } = await admin
+    .from('appointments')
+    .select('id, status, lifecycle_stage, payment_choice, archived_at, deleted_at, is_test')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Appointment not found.' };
+
+  const row = data as Record<string, unknown>;
+  const rawStatus = str(row.status).toLowerCase();
+  const previousStage = stageFromLegacyStatus(row.lifecycle_stage || rawStatus);
+  if (
+    previousStage === 'cancelled' ||
+    row.archived_at ||
+    row.deleted_at ||
+    ['cancelled', 'canceled', 'voided', 'deleted', 'archived'].includes(rawStatus)
+  ) {
+    return { ok: false, error: 'An inactive appointment cannot be confirmed.', previousStage };
+  }
+
+  if (CONFIRMED_OR_LATER_STAGES.has(previousStage) && rawStatus !== 'deposit_paid') {
+    if (previousStage === 'scheduled' && rawStatus === 'scheduled') {
+      const normalized = await admin
+        .from('appointments')
+        .update({
+          status: 'confirmed',
+          lifecycle_stage: 'scheduled',
+          lifecycle_changed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', appointmentId)
+        .in('status', ['deposit_paid', 'scheduled']);
+      if (normalized.error) return { ok: false, error: normalized.error.message, previousStage };
+    }
+    const eventError = await ensureConfirmationTransitionEvent(admin, {
+      appointmentId,
+      fromStage: previousStage,
+      actorId: input.actorId,
+      reason: input.reason,
+      adminOverride: input.allowAdminOverride,
+    });
+    if (eventError) {
+      return {
+        ok: false,
+        error: `Appointment is confirmed, but its audit event could not be recorded: ${eventError}`,
+        previousStage,
+      };
+    }
+    return { ok: true, alreadyConfirmed: true, previousStage };
+  }
+
+  if (!input.overrideEligibility) {
+    const [{ data: agreement }, { data: intake }, snapshot] = await Promise.all([
+      admin.from('signed_agreements').select('id').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
+      admin.from('intake_submissions').select('form_data').eq('appointment_id', appointmentId).limit(1).maybeSingle(),
+      import('@/lib/order-snapshot-engine').then(({ loadOrderSnapshot }) =>
+        loadOrderSnapshot(admin, { appointmentId }),
+      ),
+    ]);
+    const intakeForm =
+      intake?.form_data && typeof intake.form_data === 'object'
+        ? (intake.form_data as Record<string, unknown>)
+        : null;
+    if (!agreement && !intakeForm?.deposit_legal_ack) {
+      return {
+        ok: false,
+        error: 'The service acknowledgement must be completed before confirmation.',
+        code: 'ACKNOWLEDGEMENT_REQUIRED',
+        previousStage,
+      };
+    }
+    if (!snapshot) {
+      return { ok: false, error: 'The canonical work order could not be loaded.', previousStage };
+    }
+    const paymentChoice = str(row.payment_choice).toLowerCase();
+    const explicitlyNoDeposit =
+      snapshot.pricing.finalTotalCents <= 0 ||
+      ['comped', 'no_payment_required'].includes(snapshot.paymentStatus) ||
+      ['pay_later', 'pay_on_arrival', 'no_deposit', 'none'].includes(paymentChoice);
+    const paymentEligible =
+      explicitlyNoDeposit ||
+      (snapshot.pricing.depositCents > 0 &&
+        snapshot.pricing.depositPaidCents >= snapshot.pricing.depositCents) ||
+      snapshot.pricing.totalPaidCents >= snapshot.pricing.finalTotalCents ||
+      ['paid', 'deposit_paid'].includes(snapshot.paymentStatus);
+    if (!paymentEligible) {
+      return {
+        ok: false,
+        error: 'The required deposit or approved pay-on-arrival choice is missing.',
+        code: 'PAYMENT_REQUIRED',
+        previousStage,
+      };
+    }
+  }
+
+  if (previousStage === 'scheduled' && rawStatus === 'deposit_paid') {
+    const normalized = await admin
+      .from('appointments')
+      .update({
+        status: 'confirmed',
+        lifecycle_stage: 'scheduled',
+        lifecycle_changed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', appointmentId)
+      .eq('status', 'deposit_paid');
+    if (normalized.error) return { ok: false, error: normalized.error.message, previousStage };
+    const eventError = await ensureConfirmationTransitionEvent(admin, {
+      appointmentId,
+      fromStage: previousStage,
+      actorId: input.actorId,
+      reason: input.reason,
+      adminOverride: input.allowAdminOverride,
+    });
+    if (eventError) {
+      return {
+        ok: false,
+        error: `Appointment is confirmed, but its audit event could not be recorded: ${eventError}`,
+        previousStage,
+      };
+    }
+    return { ok: true, alreadyConfirmed: false, previousStage };
+  }
+
+  const transition = await transitionWorkOrder(admin, {
+    appointmentId,
+    to: 'scheduled',
+    legacyStatus: 'confirmed',
+    actorId: input.actorId ?? null,
+    reason: str(input.reason) || 'Appointment confirmed',
+    allowAdminOverride: input.allowAdminOverride === true,
+  });
+  if (!transition.ok) {
+    return {
+      ok: false,
+      error: transition.error ?? 'Appointment confirmation failed.',
+      previousStage,
+    };
+  }
+  const eventError = await ensureConfirmationTransitionEvent(admin, {
+    appointmentId,
+    fromStage: transition.from ?? previousStage,
+    actorId: input.actorId,
+    reason: input.reason,
+    adminOverride: input.allowAdminOverride,
+  });
+  if (eventError) {
+    return {
+      ok: false,
+      error: `Appointment is confirmed, but its audit event could not be recorded: ${eventError}`,
+      previousStage,
+    };
+  }
+  return { ok: true, alreadyConfirmed: false, previousStage };
 }
 
 export async function cancelAppointmentLifecycle(

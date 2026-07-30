@@ -8,6 +8,7 @@ import { isStaffRole } from '@/lib/auth/roles';
 import { syncRecentStripeFinance } from '@/lib/stripe-finance-sync';
 import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { confirmAppointmentLifecycle } from '@/lib/appointment-lifecycle';
 
 export async function resyncStripeTransactionsAction(formData?: FormData) {
   const session = await getSessionWithProfile();
@@ -187,9 +188,14 @@ export async function fixStripePaymentAction(params: {
     const isFull = appt?.base_price_cents === params.amountCents;
     await admin.from('appointments').update({
       payment_status: isFull ? 'paid' : 'deposit_paid',
-      status: isFull ? 'confirmed' : 'deposit_paid',
       updated_at: new Date().toISOString(),
     }).eq('id', appointmentId);
+    const confirmation = await confirmAppointmentLifecycle(admin, {
+      appointmentId,
+      actorId: session.user.id,
+      reason: 'Stripe reconciliation verified collected payment',
+    });
+    if (!confirmation.ok && !confirmation.code) throw new Error(confirmation.error ?? 'Appointment confirmation failed');
   }
 
   // 5. Sync balance transaction to financial ledger

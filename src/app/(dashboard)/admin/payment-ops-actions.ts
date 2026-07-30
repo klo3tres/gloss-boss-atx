@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getSessionWithProfile } from '@/lib/auth/session';
 import { isStaffRole } from '@/lib/auth/roles';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
-import { actionErr, actionOk, type ActionResult } from '@/lib/action-result';
+import { actionErr, actionOk, actionWarn, type ActionResult } from '@/lib/action-result';
 import { generateWorkOrderReceiptActionState } from '@/app/(dashboard)/tech/work-order-payment-actions';
 import { findDuplicatePaymentGroups, repairDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
 import type { PayRow } from '@/lib/revenue-metrics';
@@ -180,6 +180,28 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
 
   if (error) return actionErr(error.message);
 
+  let confirmationWarning = '';
+  if (appointmentId) {
+    const refreshed = await loadOrderSnapshot(gate.admin, { appointmentId });
+    const depositSatisfied = Boolean(
+      refreshed &&
+      (
+        refreshed.pricing.depositCents <= 0 ||
+        refreshed.pricing.depositPaidCents >= refreshed.pricing.depositCents ||
+        refreshed.pricing.totalPaidCents >= refreshed.pricing.finalTotalCents
+      )
+    );
+    if (depositSatisfied) {
+      const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+      const confirmation = await confirmAppointmentLifecycle(gate.admin, {
+        appointmentId,
+        actorId: gate.userId,
+        reason: 'Manual or external payment satisfied confirmation requirement',
+      });
+      if (!confirmation.ok) confirmationWarning = confirmation.error ?? 'Appointment confirmation failed.';
+    }
+  }
+
   const fd = new FormData();
   if (appointmentId) fd.set('appointmentId', appointmentId);
   if (fallbackBookingId) fd.set('fallbackBookingId', fallbackBookingId);
@@ -194,7 +216,10 @@ export async function recordManualPaymentActionState(_prev: ActionResult | null,
   const workOrderPath = str(formData.get('workOrderPath'));
   revalidatePath(`/tech/work-orders/${jobId}`);
   if (workOrderPath) revalidatePath(workOrderPath);
-  return actionOk(`${paymentMethod.replace(/_/g, ' ')} payment of $${(appliedAmountCents / 100).toFixed(2)}${tipAmountCents ? ` plus $${(tipAmountCents / 100).toFixed(2)} tip` : ''} recorded.`);
+  const successMessage = `${paymentMethod.replace(/_/g, ' ')} payment of $${(appliedAmountCents / 100).toFixed(2)}${tipAmountCents ? ` plus $${(tipAmountCents / 100).toFixed(2)} tip` : ''} recorded.`;
+  return confirmationWarning
+    ? actionWarn(`${successMessage} Confirmation needs attention: ${confirmationWarning}`)
+    : actionOk(successMessage);
 }
 
 export async function rebuildReceiptFromWorkOrderActionState(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {

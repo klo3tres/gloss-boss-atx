@@ -1345,6 +1345,15 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
       { payment_status: paidStatus },
     ]);
     if (admin) await syncJobBalanceDue(admin, freshRow, pricingAfter, { appointmentId });
+    const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+    const confirmation = await confirmAppointmentLifecycle(db, {
+      appointmentId,
+      actorId: gate.userId,
+      reason: 'Technician manual payment satisfied confirmation requirement',
+    });
+    if (!confirmation.ok) {
+      console.warn('[tech] appointment confirmation after manual payment', confirmation.error);
+    }
     await recordJobTimelineEvent(db, {
       appointmentId,
       eventType: 'checklist_saved',

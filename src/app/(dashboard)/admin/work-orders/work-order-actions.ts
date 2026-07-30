@@ -12,7 +12,7 @@ async function requireAdmin() {
   if (!session.user || !isAdminLevel(session.profile?.role ?? null) || !admin) {
     return { ok: false as const, error: 'Forbidden' };
   }
-  return { ok: true as const, admin };
+  return { ok: true as const, admin, userId: session.user.id };
 }
 
 export async function archiveAppointmentWorkOrderAction(formData: FormData) {
@@ -234,8 +234,18 @@ export async function adminRecordCashPaymentAction(formData: FormData) {
     .from(table)
     .update({ payment_status: 'paid', balance_due_cents: 0, paid_at: now, updated_at: now })
     .eq('id', id);
+  let confirmationWarning: string | null = null;
+  if (source !== 'fallback') {
+    const { confirmAppointmentLifecycle } = await import('@/lib/appointment-lifecycle');
+    const confirmation = await confirmAppointmentLifecycle(gate.admin, {
+      appointmentId: id,
+      actorId: gate.userId,
+      reason: 'Admin cash payment satisfied confirmation requirement',
+    });
+    if (!confirmation.ok) confirmationWarning = confirmation.error ?? 'Appointment confirmation failed.';
+  }
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/payments');
   revalidatePath('/tech');
-  return { ok: true };
+  return { ok: true, warning: confirmationWarning };
 }

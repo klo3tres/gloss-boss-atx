@@ -10,6 +10,7 @@ import { vehiclesFromRow, type Row } from '@/lib/work-order-resolve';
 import { describeTwilioDelivery } from '@/lib/twilio-delivery';
 import { buildCustomerPortalAccessUrl, ensurePortalAccessExpiry } from '@/lib/customer-portal-access';
 import { markPortalLinkCreated, markPortalLinkSent } from '@/lib/confirmation-delivery-status';
+import { stageFromLegacyStatus } from '@/lib/work-order-lifecycle';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -240,6 +241,24 @@ export async function sendBookingConfirmation(
   const loaded = await loadBookingConfirmationContext(admin, input.appointmentId);
   if (!loaded.ok) return { ok: false, error: loaded.error };
   const ctx = loaded.ctx;
+  const { data: appointmentState } = await admin
+    .from('appointments')
+    .select('status, lifecycle_stage')
+    .eq('id', ctx.appointmentId)
+    .maybeSingle();
+  const confirmationStage = stageFromLegacyStatus(
+    (appointmentState as Record<string, unknown> | null)?.lifecycle_stage ||
+      (appointmentState as Record<string, unknown> | null)?.status,
+  );
+  if (confirmationStage !== 'scheduled') {
+    return {
+      ok: false,
+      error:
+        confirmationStage === 'cancelled'
+          ? 'A cancelled appointment cannot receive a confirmation.'
+          : 'Confirm the appointment before sending its customer confirmation.',
+    };
+  }
 
   let emailStatus = 'skipped';
   let emailError: string | undefined;

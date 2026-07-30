@@ -7,14 +7,11 @@ import { recordJobTimelineEvent } from '@/lib/job-timeline-server';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 
 import { getStripeSdk } from '@/lib/stripe/stripeService';
+import { loadOrderSnapshot } from '@/lib/order-snapshot-engine';
 
 
 
 export const runtime = 'nodejs';
-
-
-
-const PAID_STATUSES = ['deposit_paid', 'confirmed', 'assigned', 'in_progress', 'completed'];
 
 
 
@@ -100,7 +97,7 @@ export async function POST(req: Request) {
 
       .from('appointments')
 
-      .select('id, access_token, status, customer_id')
+      .select('id, access_token, status, payment_choice, customer_id')
 
       .eq('id', appointmentId)
 
@@ -116,25 +113,18 @@ export async function POST(req: Request) {
 
 
 
-    let paymentOk = PAID_STATUSES.includes(String(appt.status));
+    const snapshot = await loadOrderSnapshot(admin, { appointmentId });
+    let paymentOk = Boolean(
+      snapshot &&
+      (
+        ['deposit_paid', 'paid', 'comped', 'no_payment_required'].includes(snapshot.paymentStatus) ||
+        ['pay_later', 'pay_on_arrival'].includes(String(appt.payment_choice ?? '').toLowerCase())
+      )
+    );
 
     if (!paymentOk && sessionId) {
 
       paymentOk = await verifyPaidSession(admin, appointmentId, sessionId);
-
-      if (paymentOk) {
-
-        await admin
-
-          .from('appointments')
-
-          .update({ status: 'deposit_paid', updated_at: new Date().toISOString() })
-
-          .eq('id', appointmentId)
-
-          .eq('status', 'awaiting_payment');
-
-      }
 
     }
 
