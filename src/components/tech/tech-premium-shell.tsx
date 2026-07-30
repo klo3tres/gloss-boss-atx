@@ -32,6 +32,7 @@ import { techArchiveTestWorkOrderAction, techRecordCashPaymentAction } from '@/a
 import { techClearStaleJobsFormAction } from '@/app/(dashboard)/tech/tech-actions';
 import { NotificationSendForm } from '@/components/tech/notification-send-form';
 import { appleMapsDirectionsUrl, googleMapsDirectionsUrl } from '@/lib/map-links';
+import { paymentStatusLabel } from '@/lib/payment-truth';
 import { 
   techArchiveOwnLeadAction, 
   techClaimLeadAction, 
@@ -643,7 +644,11 @@ export function TechPremiumShell({
                   <p className='mt-1 text-xs text-zinc-500'>
                     {activeJob.guest_phone ? <a href={`tel:${activeJob.guest_phone}`} className='text-gold-soft underline underline-offset-4'>{activeJob.guest_phone}</a> : 'No phone on file'} ·{' '}
                     {activeJob.base_price_cents != null ? `$${(activeJob.base_price_cents / 100).toFixed(2)} quote` : 'Quote pending'} ·{' '}
-                    {activeJob.payment_status ?? 'payment pending'}
+                    {paymentStatusLabel({
+                      paymentStatus: activeJob.payment_status,
+                      totalCents: activeJob.base_price_cents,
+                      balanceDueCents: activeJob.balance_due_cents,
+                    })}
                   </p>
                   <p className='mt-1 text-xs text-zinc-500'>
                     Directions:{' '}

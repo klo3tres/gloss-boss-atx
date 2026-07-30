@@ -2,6 +2,7 @@ import Image from 'next/image';
 import { GLOSS_BOSS_BRAND_NAME, GLOSS_BOSS_SUPPORT_EMAIL } from '@/lib/branding';
 import { PremiumBadge } from '@/components/ui/premium';
 import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
+import type { CanonicalPaymentStatus } from '@/lib/payment-truth';
 
 export type ReceiptDocumentVehicle = {
   name: string;
@@ -19,6 +20,7 @@ export type ReceiptDocumentProps = {
   technicianName?: string;
   method: string;
   status: string;
+  paymentStatusCode?: CanonicalPaymentStatus;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -45,7 +47,9 @@ export type ReceiptDocumentProps = {
 };
 
 export function ReceiptDocument(props: ReceiptDocumentProps) {
-  const paid = ['paid', 'succeeded', 'full_paid', 'comped'].some((s) => props.status.toLowerCase().includes(s));
+  const paid = props.paymentStatusCode
+    ? ['paid', 'comped', 'no_payment_required'].includes(props.paymentStatusCode)
+    : ['paid', 'succeeded', 'full_paid', 'comped'].includes(props.status.toLowerCase());
 
   return (
     <article className='gb-print-document mx-auto max-w-4xl overflow-hidden rounded-3xl border border-gold/25 bg-white text-zinc-900 shadow-[0_0_60px_rgba(212,175,55,0.15)] print:shadow-none'>

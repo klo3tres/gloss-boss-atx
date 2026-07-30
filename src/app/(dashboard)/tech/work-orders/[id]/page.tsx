@@ -490,12 +490,6 @@ export default async function TechWorkOrderDetailPage({
       : null;
   const canManagePayments = isStaffRole(session.profile?.role ?? null);
   const workOrderPath = `/tech/work-orders/${encodeURIComponent(id)}${shellRole === 'admin' ? '?shell=admin' : ''}`;
-  await syncJobBalanceDue(admin, row, pricing, {
-    appointmentId: !isFallback ? queryId : undefined,
-    fallbackBookingId: isFallback ? queryId : undefined,
-    isFallback,
-  });
-
   const paymentComplete = pricing.remainingBalanceCents <= 0;
 
   const guestName = displayText(row.guest_name, resolved.orphanSession ? 'Walk-in customer' : 'Customer');

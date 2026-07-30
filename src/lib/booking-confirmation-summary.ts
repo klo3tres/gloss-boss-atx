@@ -121,6 +121,8 @@ export async function loadBookingConfirmationSummary(
         ? 'payment'
         : 'confirmation';
 
+  const canonicalPaymentStatus = snapshot?.paymentStatus ?? str(job.payment_status).toLowerCase();
+
   return {
     bookingNumber: appointmentId.slice(0, 8).toUpperCase(),
     guestName: snapshot?.customer.name ?? str(job.guest_name),
@@ -138,6 +140,7 @@ export async function loadBookingConfirmationSummary(
     totalPaidCents: pricing?.totalPaidCents ?? 0,
     balanceDueCents: pricing?.remainingBalanceCents ?? 0,
     paymentStatus: snapshot?.paymentStatus ?? str(job.payment_status),
+    paymentStatusLabel: snapshot?.paymentStatusLabel ?? str(job.payment_status).replace(/_/g, ' '),
     externalPaymentMethods: enabledExternalPaymentMethods(externalPaymentSettings),
     onlineDiscountCents: pricing?.onlineDiscountCents ?? 0,
     multiCarDiscountCents: pricing?.multiCarDiscountCents ?? 0,
@@ -167,9 +170,9 @@ export async function loadBookingConfirmationSummary(
       paidInFull,
       payOnArrival,
       paymentChoice,
-      paymentFailed: ['failed', 'payment_failed'].includes(str(job.payment_status).toLowerCase()),
-      paymentCancelled: ['cancelled', 'payment_cancelled'].includes(str(job.payment_status).toLowerCase()),
-      paymentExpired: ['expired', 'payment_expired'].includes(str(job.payment_status).toLowerCase()),
+      paymentFailed: canonicalPaymentStatus === 'failed',
+      paymentCancelled: canonicalPaymentStatus === 'cancelled',
+      paymentExpired: canonicalPaymentStatus === 'expired',
       accountClaimed: Boolean(customer?.auth_user_id),
       workOrderCreated: Boolean(snapshot?.refs.workOrderId),
       canReschedule: customerCanModify,

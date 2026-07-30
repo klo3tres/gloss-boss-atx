@@ -232,7 +232,7 @@ export async function adminRecordCashPaymentAction(formData: FormData) {
   });
   await gate.admin
     .from(table)
-    .update({ payment_status: 'paid_cash', balance_due_cents: 0, paid_at: now, updated_at: now })
+    .update({ payment_status: 'paid', balance_due_cents: 0, paid_at: now, updated_at: now })
     .eq('id', id);
   revalidatePath('/admin/work-orders');
   revalidatePath('/admin/payments');

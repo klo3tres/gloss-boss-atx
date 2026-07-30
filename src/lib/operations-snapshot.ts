@@ -30,6 +30,7 @@ import { syncBusinessExceptions } from '@/lib/business-exception-sync';
 import { assessBeforePhotoSlots } from '@/lib/pre-inspection';
 import { fetchWeatherForAddress, type WeatherSnapshot } from '@/lib/weather-forecast';
 import { workOrderPath } from '@/lib/work-order-links';
+import { paymentStatusLabel } from '@/lib/payment-truth';
 import {
   dateKeyChicago,
   endOfTodayChicagoIso,
@@ -128,6 +129,7 @@ export type DailyJobRow = {
   hasAfterPhotos: boolean;
   balanceDueCents: number;
   basePriceCents: number;
+  paymentStatusLabel: string;
 };
 
 export type DailyOperationsBoard = {
@@ -257,6 +259,8 @@ function buildDailyJobRow(
   const address = [row.service_address, row.service_city, row.service_state, row.service_zip].map(str).filter(Boolean).join(', ');
   const phone = str(row.guest_phone);
   const email = str(row.guest_email);
+  const balanceDueCents = cents(row.balance_due_cents);
+  const basePriceCents = cents(row.base_price_cents);
   return {
     id,
     guestName: str(row.guest_name) || 'Guest',
@@ -271,8 +275,14 @@ function buildDailyJobRow(
     hasAgreement: agreementIds.has(id),
     hasBeforePhotos: media.before > 0,
     hasAfterPhotos: media.after > 0,
-    balanceDueCents: cents(row.balance_due_cents),
-    basePriceCents: cents(row.base_price_cents),
+    balanceDueCents,
+    basePriceCents,
+    paymentStatusLabel: paymentStatusLabel({
+      paymentStatus: str(row.payment_status),
+      balanceDueCents,
+      totalCents: basePriceCents,
+      depositRequiredCents: cents(row.deposit_amount_cents),
+    }),
   };
 }
 
@@ -370,7 +380,7 @@ export async function loadOperationsSnapshot(
     admin
       .from('payments')
       .select(
-        'id, amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents',
+        'id, amount_cents, applied_amount_cents, tip_amount_cents, status, payment_method, payment_kind, voided_at, voided, created_at, paid_at, appointment_id, metadata, stripe_checkout_session_id, stripe_payment_intent_id, provider, is_test, exclude_from_revenue, refunded_at, refunded_amount_cents',
       )
       .order('created_at', { ascending: false })
       .limit(2500),
@@ -463,8 +473,12 @@ export async function loadOperationsSnapshot(
   for (const p of paymentRows) {
     const aid = str(p.appointment_id);
     if (!aid || shouldExcludeFromCashRevenue(p)) continue;
-    if (str(p.status).toLowerCase() !== 'succeeded' && str(p.status).toLowerCase() !== 'paid') continue;
-    const amt = Math.max(0, cents(p.amount_cents) - cents(p.refunded_amount_cents));
+    if (!['succeeded', 'paid', 'partially_refunded'].includes(str(p.status).toLowerCase())) continue;
+    const principal =
+      typeof p.applied_amount_cents === 'number'
+        ? cents(p.applied_amount_cents)
+        : Math.max(0, cents(p.amount_cents) - cents(p.tip_amount_cents));
+    const amt = Math.max(0, principal - cents(p.refunded_amount_cents));
     if (amt <= 0) continue;
     cashByAppt.set(aid, (cashByAppt.get(aid) ?? 0) + amt);
   }

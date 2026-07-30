@@ -20,6 +20,7 @@ import {
   type OpenBalanceAppt,
 } from '@/lib/open-balance-filters';
 import { isTestLikeJob } from '@/lib/tech-job-filters';
+import { resolveCanonicalPaymentState } from '@/lib/payment-truth';
 
 export type FinancialSummary = {
   grossRevenueCents: number;
@@ -163,7 +164,7 @@ export async function getFinancialSnapshot(
   const [apptMetaRes, payments, ledgerRows, expenseRows, businessExpenseRows, mileageRows, receiptsRes, techsRes, creditRedemptions] = await Promise.all([
     db
       .from('appointments')
-      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, created_at, service_slug, assigned_technician_id, vehicle_class, stripe_checkout_session_id, fallback_booking_id, archived, archived_at, deleted_at, booking_pricing_breakdown, booking_source')
+      .select('id, guest_name, guest_email, guest_phone, status, payment_status, deposit_amount_cents, deposit_paid_cents, base_price_cents, balance_due_cents, scheduled_start, job_completed_at, updated_at, created_at, service_slug, assigned_technician_id, vehicle_class, stripe_checkout_session_id, fallback_booking_id, archived, archived_at, deleted_at, booking_pricing_breakdown, booking_source')
       .limit(10000),
     fetchPaymentsSince(db, fromIso, toIso),
     safeSelect(db, 'financial_ledger', '*', 'occurred_at', fromIso, toIso),
@@ -335,9 +336,18 @@ export async function getFinancialSnapshot(
     if (!['cancelled', 'canceled', 'voided', 'deleted', 'archived', 'declined', 'expired'].includes(status) && dateInRange(scheduledAt, fromIso, toIso)) {
       bookedValueCents += Math.max(0, cents(row.base_price_cents));
     }
-    const paymentStatus = str(row.payment_status).toLowerCase();
     const balance = Math.max(0, cents(row.balance_due_cents));
     const deposit = Math.max(0, cents(row.deposit_amount_cents));
+    const total = Math.max(0, cents(row.base_price_cents));
+    const collected = Math.max(cents(row.deposit_paid_cents), total - balance);
+    const paymentState = resolveCanonicalPaymentState({
+      paymentStatus: str(row.payment_status),
+      totalCents: total,
+      balanceDueCents: balance,
+      totalPaidCents: collected,
+      depositPaidCents: cents(row.deposit_paid_cents),
+      depositRequiredCents: deposit,
+    });
     const obCtx = openBalanceCtx(row);
     const pdCtx = pendingDepositCtx(row);
     const detail: FinancialDetailRow = {
@@ -358,24 +368,33 @@ export async function getFinancialSnapshot(
         staleOpenBalances.push({ ...detail, category: classifyOpenBalance(row as OpenBalanceAppt, obCtx).reason });
       }
     }
-    if (deposit > 0 && (paymentStatus === 'awaiting_deposit' || status === 'pending')) {
+    const depositDue = Math.max(0, deposit - collected);
+    const pendingDepositRow = {
+      ...row,
+      payment_status: paymentState.code,
+      deposit_amount_cents: depositDue,
+    } as OpenBalanceAppt;
+    if (
+      depositDue > 0 &&
+      ['deposit_due', 'pending', 'processing', 'failed', 'cancelled', 'expired'].includes(paymentState.code)
+    ) {
       const depositDetail: FinancialDetailRow = {
         id: str(row.id),
         label: str(row.guest_name) || 'Customer',
-        amountCents: deposit,
+        amountCents: depositDue,
         occurredAt: str(row.scheduled_start) || null,
         source: 'appointments',
         customer: str(row.guest_name) || null,
         href: `/admin/work-orders/${str(row.id)}`,
       };
-      if (isActionablePendingDeposit(row as OpenBalanceAppt, pdCtx)) {
-        pendingDepositsCents += deposit;
+      if (isActionablePendingDeposit(pendingDepositRow, pdCtx)) {
+        pendingDepositsCents += depositDue;
         pendingDeposits.push(depositDetail);
-      } else if (isStalePendingDeposit(row as OpenBalanceAppt, pdCtx)) {
-        stalePendingDepositsCents += deposit;
+      } else if (isStalePendingDeposit(pendingDepositRow, pdCtx)) {
+        stalePendingDepositsCents += depositDue;
         stalePendingDeposits.push({
           ...depositDetail,
-          category: classifyPendingDeposit(row as OpenBalanceAppt, pdCtx).reason,
+          category: classifyPendingDeposit(pendingDepositRow, pdCtx).reason,
         });
       }
     }

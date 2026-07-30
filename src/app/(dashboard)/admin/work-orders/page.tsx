@@ -20,10 +20,26 @@ function str(v: unknown) {
   return v == null ? '' : String(v);
 }
 
-import { depositPaidLabel, formatDepositPaidDisplay } from '@/lib/payment-truth';
+import { depositPaidLabel, formatDepositPaidDisplay, paymentStatusLabel } from '@/lib/payment-truth';
 
 function money(v: unknown) {
   return typeof v === 'number' ? `$${(v / 100).toFixed(2)}` : '—';
+}
+
+function orderPaymentLabel(row: Row) {
+  const totalCents = typeof row.base_price_cents === 'number' ? row.base_price_cents : 0;
+  const balanceDueCents =
+    typeof row.balance_due_cents === 'number' ? row.balance_due_cents : totalCents;
+  const raw = str(row.payment_status).toLowerCase();
+  const inferredPaid = Math.max(0, totalCents - balanceDueCents);
+  return paymentStatusLabel({
+    paymentStatus: raw,
+    totalCents,
+    balanceDueCents,
+    depositRequiredCents:
+      typeof row.deposit_amount_cents === 'number' ? row.deposit_amount_cents : 0,
+    depositPaidCents: raw.includes('deposit') ? inferredPaid : 0,
+  });
 }
 
 function chicago(v: unknown) {
@@ -370,11 +386,9 @@ export default async function AdminWorkOrdersPage({
                       meta={
                         <>
                           {chicago(r.scheduled_start || r.created_at)} · {str(r.status) || 'pending'} ·{' '}
-                          {str(r.payment_status) === 'pay_later' ? (
-                            <span className='text-amber-300'>Pay later / checkout failed</span>
-                          ) : (
-                            str(r.payment_status) || 'payment pending'
-                          )}
+                          <span className={Number(r.balance_due_cents ?? 0) > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                            {orderPaymentLabel(r)}
+                          </span>
                           {' · '}
                           <AgreementStatusBadge
                             status={

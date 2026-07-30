@@ -6,7 +6,7 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 export const dynamic = 'force-dynamic';
 
 const SELECT =
-  'id, guest_name, guest_phone, guest_email, vehicle_description, service_slug, scheduled_start, base_price_cents, assigned_technician_id, status, service_address, notes, job_started_at, job_completed_at, archived, archived_at, deleted_at, is_test, payment_status';
+  'id, guest_name, guest_phone, guest_email, vehicle_description, service_slug, scheduled_start, base_price_cents, assigned_technician_id, status, service_address, notes, job_started_at, job_completed_at, archived, archived_at, deleted_at, is_test, payment_status, balance_due_cents, deposit_amount_cents';
 
 function guestFromPayload(payload: unknown): { name: string | null; email: string | null; phone: string | null } {
   if (!payload || typeof payload !== 'object') return { name: null, email: null, phone: null };

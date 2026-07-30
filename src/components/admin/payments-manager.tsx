@@ -24,11 +24,38 @@ import {
   Search
 } from 'lucide-react';
 import { excludePaymentFromRevenueAction, reconcileStripeSessionAction, refundStripePaymentAction } from '@/app/(dashboard)/admin/payments/payment-actions';
+import { paymentStatusLabel } from '@/lib/payment-truth';
 
 type PayRow = Record<string, any>;
 
 function money(cents: unknown) {
   return typeof cents === 'number' ? `$${(cents / 100).toFixed(2)}` : '—';
+}
+
+function isOrderSession(row: PayRow) {
+  return row.source === 'fallback_session' || row.source === 'appointment_session';
+}
+
+function transactionStatus(row: PayRow) {
+  return String(row.status ?? 'unknown').toLowerCase();
+}
+
+function appliedAmountCents(row: PayRow) {
+  if (isOrderSession(row)) return Number(row.deposit_amount_cents ?? row.base_price_cents ?? 0);
+  const tender = Number(row.amount_cents ?? 0);
+  const tip = Number(row.tip_amount_cents ?? 0);
+  const applied = row.applied_amount_cents == null ? Math.max(0, tender - tip) : Number(row.applied_amount_cents);
+  return Math.max(0, applied - Number(row.refunded_amount_cents ?? 0));
+}
+
+function visiblePaymentStatus(row: PayRow) {
+  if (!isOrderSession(row)) return transactionStatus(row).replace(/_/g, ' ');
+  return paymentStatusLabel({
+    paymentStatus: row.payment_status,
+    totalCents: row.base_price_cents,
+    balanceDueCents: row.balance_due_cents,
+    depositRequiredCents: row.deposit_amount_cents,
+  });
 }
 
 function chicago(v: unknown) {
@@ -82,10 +109,12 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
       return q.split(/\s+/).every((part) => haystack.includes(part));
     };
     const matchesFilter = (r: PayRow) => {
-      const status = String(r.status ?? r.payment_status ?? '').toLowerCase();
+      const status = isOrderSession(r)
+        ? visiblePaymentStatus(r).toLowerCase()
+        : transactionStatus(r);
       const method = String(r.payment_method ?? r.payment_kind ?? r.source ?? '').toLowerCase();
       if (!showExcluded && (r.exclude_from_revenue || r.is_test || r.voided_at)) return false;
-      if (filter === 'paid') return ['succeeded', 'paid', 'deposit_paid'].some((s) => status.includes(s));
+      if (filter === 'paid') return ['succeeded', 'partially_refunded', 'paid', 'deposit paid'].some((s) => status.includes(s));
       if (filter === 'balance') return Number(r.balance_due_cents ?? 0) > 0 || status.includes('balance');
       if (filter === 'comp') return method.includes('comp') || Number(r.amount_cents ?? 0) === 0;
       if (filter === 'excluded') return Boolean(r.exclude_from_revenue || r.is_test || r.voided_at);
@@ -99,9 +128,10 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
     rows.forEach((r, idx) => {
       if (!matchesQuery(r) || !matchesFilter(r)) return;
       const rowWithIndex = { ...r, _originalIndex: idx };
-      const hasPaymentRecord = !!r.id;
-      const isSucceeded = r.status === 'succeeded' || r.payment_status === 'paid' || r.payment_status === 'deposit_paid';
-      const isPending = r.source === 'fallback_session' || r.source === 'appointment_session';
+      const hasPaymentRecord = !isOrderSession(r) && Boolean(r.id);
+      const txStatus = transactionStatus(r);
+      const isSucceeded = ['succeeded', 'partially_refunded', 'refunded'].includes(txStatus);
+      const isPending = isOrderSession(r) || ['pending', 'processing'].includes(txStatus);
 
       // 1. Pending
       if (isPending) {
@@ -126,9 +156,9 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
   }, [filter, query, rows, showExcluded]);
 
   const activeRow = activeRowIndex !== null ? rows[activeRowIndex] : null;
-  const activeAmount = activeRow ? money(activeRow.amount_cents ?? activeRow.deposit_amount_cents ?? activeRow.base_price_cents) : '—';
+  const activeAmount = activeRow ? money(appliedAmountCents(activeRow)) : '—';
   const activeMethod = activeRow ? String(activeRow.payment_method ?? activeRow.payment_kind ?? activeRow.source ?? '—').replace(/_/g, ' ') : '—';
-  const activeStatus = activeRow ? String(activeRow.payment_status ?? activeRow.status ?? 'unknown').replace(/_/g, ' ') : 'unknown';
+  const activeStatus = activeRow ? visiblePaymentStatus(activeRow) : 'unknown';
   const revenueReason = activeRow
     ? activeRow.exclude_from_revenue
       ? 'Excluded from revenue by receipt/payment flag'
@@ -136,7 +166,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
         ? 'Excluded because this is marked as test data'
         : activeRow.voided_at
           ? 'Excluded because the payment is voided'
-          : ['succeeded', 'paid', 'deposit_paid'].some((s) => String(activeRow.status ?? activeRow.payment_status ?? '').toLowerCase().includes(s))
+          : !isOrderSession(activeRow) && ['succeeded', 'partially_refunded'].includes(transactionStatus(activeRow))
             ? 'Included when status is paid/succeeded and no exclusion flag is set'
             : 'Pending or incomplete status'
     : '';
@@ -227,7 +257,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                 const serviceLabel = String(r.service_slug ?? r.payment_kind ?? 'service').replace(/-/g, ' ');
                 const vehicleLabel = Array.isArray(r.booking_vehicles) ? `${r.booking_vehicles.length} vehicle(s)` : String(r.vehicle_description ?? '—');
                 const costLabel = money(r.base_price_cents);
-                const depositLabel = money(r.deposit_amount_cents ?? r.amount_cents);
+                const depositLabel = money(appliedAmountCents(r));
                 
                 return (
                   <div
@@ -244,11 +274,12 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                           <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{chicago(r.created_at)}</p>
                         </div>
                         <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                          r.status === 'succeeded' || r.payment_status === 'paid'
+                          ['succeeded', 'partially_refunded'].includes(transactionStatus(r)) ||
+                          (isOrderSession(r) && Number(r.balance_due_cents ?? 1) <= 0)
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                             : 'bg-zinc-800 text-zinc-500'
                         }`}>
-                          {String(r.payment_status ?? r.status ?? 'unknown').replace(/_/g, ' ')}
+                          {visiblePaymentStatus(r)}
                         </span>
                       </div>
 
@@ -266,7 +297,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                           <strong className="text-zinc-200 font-mono font-medium">{costLabel}</strong>
                         </p>
                         <p>
-                          <span className="text-zinc-500 block">Deposit Charged</span>
+                          <span className="text-zinc-500 block">{isOrderSession(r) ? 'Payment requested' : 'Net applied'}</span>
                           <strong className="text-gold-soft font-mono font-medium">{depositLabel}</strong>
                         </p>
                       </div>
@@ -372,7 +403,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                   <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Transaction Balance</h4>
                   <div className="grid grid-cols-2 gap-3 bg-zinc-900/20 border border-white/5 p-3 rounded-xl text-xs">
                     <div>
-                      <span className="text-zinc-500 block">Amount</span>
+                      <span className="text-zinc-500 block">Net applied</span>
                       <strong className="text-white font-mono text-sm">{activeAmount}</strong>
                     </div>
                     <div>
@@ -388,6 +419,13 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                       <strong className="text-white text-sm">{chicago(activeRow.created_at)}</strong>
                     </div>
                   </div>
+                  {!isOrderSession(activeRow) ? (
+                    <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/5 bg-black/35 p-3 text-xs">
+                      <p><span className="block text-zinc-500">Tender</span><strong className="text-white">{money(activeRow.amount_cents)}</strong></p>
+                      <p><span className="block text-zinc-500">Tip</span><strong className="text-white">{money(activeRow.tip_amount_cents ?? 0)}</strong></p>
+                      <p><span className="block text-zinc-500">Refunded</span><strong className="text-white">{money(activeRow.refunded_amount_cents ?? 0)}</strong></p>
+                    </div>
+                  ) : null}
                   <div className="rounded-2xl border border-white/5 bg-black/35 p-3 text-xs text-zinc-300">
                     <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Revenue handling</span>
                     <p className="mt-1 leading-5">{revenueReason}</p>

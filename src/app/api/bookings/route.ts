@@ -1080,7 +1080,7 @@ export async function POST(request: Request) {
 
     if (isFullCovered) {
       const newStatus = paymentChoice === 'full' ? 'confirmed' : 'deposit_paid';
-      const newPaymentStatus = paymentChoice === 'full' ? 'full_paid' : 'deposit_paid';
+      const newPaymentStatus = paymentChoice === 'full' ? 'paid' : 'deposit_paid';
       await admin
         .from('appointments')
         .update({

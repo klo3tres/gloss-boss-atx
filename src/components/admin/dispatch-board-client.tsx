@@ -21,6 +21,7 @@ import {
 } from '@/app/(dashboard)/admin/booking-fallback-actions';
 import { GlassCard, PremiumBadge, SectionEyebrow } from '@/components/ui/premium';
 import { adminRescheduleAppointmentActionState } from '@/app/(dashboard)/admin/appointment-lifecycle-actions';
+import { resolveCanonicalPaymentState } from '@/lib/payment-truth';
 
 export type DispatchFallbackRow = {
   id: string;
@@ -50,6 +51,8 @@ export type DispatchJobRow = {
   job_started_at: string | null;
   job_completed_at: string | null;
   payment_status?: string | null;
+  balance_due_cents?: number | null;
+  deposit_amount_cents?: number | null;
 };
 
 export type TechOption = { id: string; full_name: string | null; email: string | null };
@@ -247,6 +250,16 @@ export function DispatchBoardClient({
     };
     
     const indicator = getStatusIndicator();
+    const paymentState = resolveCanonicalPaymentState({
+      paymentStatus: j.payment_status,
+      totalCents: j.base_price_cents,
+      balanceDueCents: j.balance_due_cents,
+      depositRequiredCents: j.deposit_amount_cents,
+      depositPaidCents:
+        String(j.payment_status ?? '').includes('deposit')
+          ? Math.max(0, Number(j.base_price_cents ?? 0) - Number(j.balance_due_cents ?? j.base_price_cents ?? 0))
+          : 0,
+    });
 
     return (
       <motion.li
@@ -275,13 +288,13 @@ export function DispatchBoardClient({
                     <>
                       <span className="text-zinc-600">·</span>
                       <span className={`rounded-full px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider ${
-                        j.payment_status === 'paid'
+                        paymentState.code === 'paid' || paymentState.code === 'comped'
                           ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
-                          : j.payment_status === 'deposit_paid' || j.payment_status === 'deposit_only'
+                          : paymentState.code === 'deposit_paid'
                             ? 'bg-amber-500/15 text-amber-300 border border-amber-500/20'
                             : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
                       }`}>
-                        {j.payment_status.replace(/_/g, ' ')}
+                        {paymentState.label}
                       </span>
                     </>
                   )}

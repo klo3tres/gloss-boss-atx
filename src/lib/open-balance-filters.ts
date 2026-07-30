@@ -53,15 +53,14 @@ function isTerminalStatus(status: string, paymentStatus: string) {
   return (
     ['cancelled', 'canceled', 'deleted', 'archived', 'voided', 'comped', 'test'].includes(status) ||
     paymentStatus === 'comped' ||
-    paymentStatus === 'manual_comped' ||
-    paymentStatus === 'paid'
+    paymentStatus === 'manual_comped'
   );
 }
 
 function isConfirmedJob(status: string, paymentStatus: string) {
   return (
     ['confirmed', 'assigned', 'deposit_paid', 'balance_due', 'in_progress', 'completed'].includes(status) ||
-    paymentStatus.includes('deposit') ||
+    paymentStatus === 'deposit_paid' ||
     paymentStatus === 'confirmed'
   );
 }
@@ -134,7 +133,10 @@ export function classifyPendingDeposit(
 
   const status = str(appt.status).toLowerCase();
   const paymentStatus = str(appt.payment_status).toLowerCase();
-  if (paymentStatus !== 'awaiting_deposit' && status !== 'pending') {
+  if (
+    !['awaiting_deposit', 'deposit_due', 'pending', 'processing', 'failed', 'cancelled', 'expired'].includes(paymentStatus) &&
+    status !== 'pending'
+  ) {
     return { actionable: false, stale: false, reason: 'Not awaiting deposit' };
   }
   if (isTerminalStatus(status, paymentStatus)) {

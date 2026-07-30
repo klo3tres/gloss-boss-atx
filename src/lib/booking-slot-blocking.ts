@@ -127,8 +127,6 @@ export async function fetchBookedBlocks(
     if (r.schedule_override === true) continue;
     const status = str(r.status).toLowerCase();
     if (NON_BLOCKING_STATUSES.has(status)) continue;
-    const payStatus = str(r.payment_status).toLowerCase();
-    if (payStatus === 'refunded' || payStatus === 'voided') continue;
     pushBlockFromRow(r, blocks, rangeStart, rangeEnd, seen);
   }
 

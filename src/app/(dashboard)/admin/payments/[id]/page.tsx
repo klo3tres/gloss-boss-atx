@@ -6,6 +6,7 @@ import { reconcileStripeSessionAction, refundStripePaymentAction } from '../paym
 import { resolveJobPricing } from '@/lib/job-pricing-display';
 import { ReceiptPdfDownloadButton } from '@/components/ui/receipt-pdf-download-button';
 import { ReceiptSendForm } from '@/components/admin/receipt-send-form';
+import { paymentStatusLabel } from '@/lib/payment-truth';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,7 +117,17 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
           <p><span className='text-zinc-500'>Deposit:</span> {money(deposit)}</p>
           <p><span className='text-zinc-500'>Job total:</span> {money(total)}</p>
           <p><span className='text-zinc-500'>Balance:</span> {money(balance)}</p>
-          <p><span className='text-zinc-500'>Payment status:</span> {str(linked.payment_status || p.status)}</p>
+          <p><span className='text-zinc-500'>Transaction status:</span> {str(p.status).replace(/_/g, ' ')}</p>
+          <p>
+            <span className='text-zinc-500'>Order payment status:</span>{' '}
+            {paymentStatusLabel({
+              paymentStatus: str(linked.payment_status),
+              depositPaidCents: pricing.depositPaidCents,
+              depositRequiredCents: pricing.depositCents,
+              balanceDueCents: pricing.remainingBalanceCents,
+              totalCents: pricing.finalTotalCents,
+            })}
+          </p>
         </div>
         <div className='mt-5 flex flex-wrap gap-3'>
           {str(p.appointment_id || linked.id) || str(p.fallback_booking_id) ? (

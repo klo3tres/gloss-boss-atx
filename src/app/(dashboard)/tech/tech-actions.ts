@@ -1337,7 +1337,7 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
     const paysAfter = await fetchPaymentsForJob(db, freshRow, { appointmentId });
     const pricingAfter = resolveJobPricing(freshRow, paysAfter);
     const balanceAfter = pricingAfter.remainingBalanceCents;
-    const paidStatus = balanceAfter <= 0 ? 'paid_cash' : 'balance_due';
+    const paidStatus = balanceAfter <= 0 ? 'paid' : 'balance_due';
     await updateAppointmentSafely(db, appointmentId, [
       { payment_status: paidStatus, balance_due_cents: balanceAfter, paid_at: nowIso, updated_at: nowIso },
       { payment_status: paidStatus, balance_due_cents: balanceAfter, updated_at: nowIso },
@@ -1353,7 +1353,7 @@ export async function techRecordCashPaymentAction(formData: FormData): Promise<v
     });
   } else {
     await updateFallbackSafely(db, fallbackBookingId, 'in_progress');
-    await db.from('booking_fallbacks').update({ payment_status: 'paid_cash', balance_due_cents: 0 }).eq('id', fallbackBookingId);
+    await db.from('booking_fallbacks').update({ payment_status: 'paid', balance_due_cents: 0 }).eq('id', fallbackBookingId);
   }
   revalidatePath('/tech');
   revalidatePath('/admin/payments');

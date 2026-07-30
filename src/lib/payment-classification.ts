@@ -17,7 +17,7 @@ export function isPaymentVoided(p: Row | { status?: unknown; voided_at?: unknown
 
 export function isPaymentSucceeded(p: Row | { status?: unknown }) {
   const st = str((p as Row).status).toLowerCase();
-  return st === 'succeeded' || st === 'paid' || st === 'partially_refunded' || st === 'comped' || st === 'manual_comped';
+  return st === 'succeeded' || st === 'paid' || st === 'partially_refunded' || st === 'refunded' || st === 'comped' || st === 'manual_comped';
 }
 
 /** Cash, Zelle, Venmo, check, Cash App, Apple Pay, manual transfer — never Stripe deposit. */
@@ -124,13 +124,18 @@ export function shouldExcludeFromCashRevenue(
     is_test?: boolean | null;
     metadata?: Record<string, unknown> | null;
     refunded_at?: string | null;
+    refunded_amount_cents?: number | null;
     provider?: string | null;
   },
 ): boolean {
   if (p.exclude_from_revenue === true) return true;
   if (p.is_test === true) return true;
   if (isPaymentVoided(p)) return true;
-  if (p.refunded_at) return true;
+  if (
+    p.refunded_at &&
+    num(p.refunded_amount_cents) >= num((p as Row).amount_cents) &&
+    num((p as Row).amount_cents) > 0
+  ) return true;
 
   const status = str(p.status).toLowerCase();
   if (['voided', 'test', 'excluded', 'comped', 'manual_comped', 'failed', 'canceled', 'cancelled'].includes(status)) {

@@ -186,7 +186,7 @@ export function summarizePayments(
     if (opts?.fromIso && ts && ts < opts.fromIso) continue;
     if (opts?.toIso && ts && ts > opts.toIso) continue;
     if (!isPaymentSucceeded(p) || isPaymentVoided(p)) continue;
-    if (p.exclude_from_revenue === true || p.refunded_at) continue;
+    if (p.exclude_from_revenue === true) continue;
     const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null;
     if (meta?.duplicate_of_stripe === true || meta?.merged_into_payment_id) continue;
     if (meta?.duplicate_of_payment === true) continue;
@@ -237,7 +237,7 @@ export function selectCanonicalRevenueRows(
     const ts = payTimestamp(p);
     if (opts?.fromIso && ts && ts < opts.fromIso) continue;
     if (opts?.toIso && ts && ts > opts.toIso) continue;
-    if (!isPaymentSucceeded(p) || isPaymentVoided(p) || p.exclude_from_revenue === true || p.refunded_at) continue;
+    if (!isPaymentSucceeded(p) || isPaymentVoided(p) || p.exclude_from_revenue === true) continue;
     const meta = p.metadata && typeof p.metadata === 'object' ? p.metadata : null;
     if (meta?.duplicate_of_stripe === true || meta?.duplicate_of_payment === true || meta?.merged_into_payment_id) continue;
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) continue;
@@ -325,11 +325,6 @@ export function buildRevenueDiagnostics(
       pushAudit(p, false, 'Merged duplicate Stripe payment row');
       continue;
     }
-    if (p.refunded_at) {
-      exclusions.push({ id, amountCents: amt, method, reason: 'Refunded payment' });
-      pushAudit(p, false, 'Refunded payment');
-      continue;
-    }
     if (opts?.excludeTest && isTestPaymentRow(p, opts.apptById)) {
       exclusions.push({ id, amountCents: amt, method, reason: 'Test booking or test payment metadata' });
       pushAudit(p, false, 'Test booking or test payment metadata');
@@ -346,9 +341,10 @@ export function buildRevenueDiagnostics(
       continue;
     }
 
-    if (amt <= 0) {
-      exclusions.push({ id, amountCents: amt, method, reason: 'Zero or missing amount' });
-      pushAudit(p, false, 'Zero or missing amount');
+    const netAmount = Math.max(0, amt - (p.refunded_amount_cents ?? 0));
+    if (netAmount <= 0) {
+      exclusions.push({ id, amountCents: netAmount, method, reason: p.refunded_at ? 'Fully refunded payment' : 'Zero or missing amount' });
+      pushAudit(p, false, p.refunded_at ? 'Fully refunded payment' : 'Zero or missing amount');
       continue;
     }
 
@@ -356,7 +352,7 @@ export function buildRevenueDiagnostics(
     if (channel === 'credit' || channel === 'comp') {
       exclusions.push({ id, amountCents: amt, method, reason: `Non-cash ${channel} — not counted in cash revenue` });
       pushAudit(p, false, `Non-cash ${channel} — not counted in cash revenue`);
-      byMethod[channel] = (byMethod[channel] ?? 0) + amt;
+      byMethod[channel] = (byMethod[channel] ?? 0) + netAmount;
       continue;
     }
     if (shouldExcludeFromCashRevenue(p)) {
@@ -379,9 +375,9 @@ export function buildRevenueDiagnostics(
     }
 
     rowsCounted += 1;
-    grossCents += amt;
+    grossCents += netAmount;
     pushAudit(p, true, 'Counted in cash revenue');
-    byMethod[channel] = (byMethod[channel] ?? 0) + amt;
+    byMethod[channel] = (byMethod[channel] ?? 0) + netAmount;
   }
 
   const duplicateGroups = Array.from(duplicateMap.entries())

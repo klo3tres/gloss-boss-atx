@@ -8,6 +8,10 @@ import type { ReceiptBreakdownLine } from '@/lib/receipt-breakdown';
 import { resolveOrderLedger } from '@/lib/order-ledger';
 import { ledgerReceiptLines } from '@/lib/receipt-from-ledger';
 import { normalizeVehicleClass } from '@/lib/vehicle-pricing';
+import {
+  resolveCanonicalPaymentState,
+  type CanonicalPaymentState,
+} from '@/lib/payment-truth';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -96,6 +100,8 @@ export type OrderSnapshot = {
   notes: string;
   jobStatus: string;
   paymentStatus: string;
+  paymentStatusLabel: string;
+  paymentState: CanonicalPaymentState;
 };
 
 function paymentBucket(method: string): 'stripe' | 'cash' | 'zelle' | 'manual' {
@@ -167,7 +173,13 @@ function mapPayments(rows: Row[]): OrderSnapshot['payments'] {
     if (!id || seen.has(id)) continue;
     if (p.voided_at || p.voided === true || str(p.status).toLowerCase() === 'voided') continue;
     seen.add(id);
-    const amountCents = num(p.amount_cents);
+    const grossAmountCents = num(p.amount_cents);
+    const tipAmountCents = num(p.tip_amount_cents);
+    const appliedAmountCents =
+      typeof p.applied_amount_cents === 'number'
+        ? Math.max(0, p.applied_amount_cents)
+        : Math.max(0, grossAmountCents - tipAmountCents);
+    const amountCents = Math.max(0, appliedAmountCents - num(p.refunded_amount_cents));
     const method = str(p.payment_method || p.payment_kind || 'payment');
     const bucket = paymentBucket(method);
     if (bucket === 'stripe') stripeCents += amountCents;
@@ -328,6 +340,15 @@ export async function loadOrderSnapshot(
     .map(str)
     .filter(Boolean)
     .join(', ');
+  const paymentState = resolveCanonicalPaymentState({
+    paymentStatus: str(job.payment_status),
+    depositPaidCents: pricing.depositPaidCents,
+    depositRequiredCents: pricing.depositCents,
+    balanceDueCents: pricing.remainingBalanceCents,
+    totalCents: pricing.finalTotalCents,
+    totalPaidCents: pricing.totalPaidCents,
+    refundedCents: paymentRows.reduce((sum, row) => sum + Math.max(0, num(row.refunded_amount_cents)), 0),
+  });
 
   return {
     refs: {
@@ -359,6 +380,8 @@ export async function loadOrderSnapshot(
     promoCode: str(job.promo_code),
     notes: str(job.notes),
     jobStatus: str(job.status),
-    paymentStatus: str(job.payment_status),
+    paymentStatus: paymentState.code,
+    paymentStatusLabel: paymentState.label,
+    paymentState,
   };
 }

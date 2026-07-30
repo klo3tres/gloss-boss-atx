@@ -17,6 +17,10 @@ import {
   isRealStripeDeposit,
   isRealStripePayment,
 } from '@/lib/payment-classification';
+import {
+  resolveCanonicalPaymentState,
+  type CanonicalPaymentStatus,
+} from '@/lib/payment-truth';
 
 function str(v: unknown) {
   return v == null ? '' : String(v).trim();
@@ -123,7 +127,8 @@ export type OrderLedger = {
     appointmentAtDisplay: string;
     endAt: string;
     jobStatus: string;
-    paymentStatus: string;
+    paymentStatus: CanonicalPaymentStatus;
+    paymentStatusLabel: string;
     completedAt: string;
   };
   vehicles: LedgerVehicle[];
@@ -493,6 +498,15 @@ export async function resolveOrderLedger(
   const b = obj(job.booking_pricing_breakdown);
   const customerPayments = payments.filter((p) => !p.voided && (!isTest || !p.isTest));
   const warnings = buildLedgerWarnings(job, payments, pricing, isTest);
+  const paymentState = resolveCanonicalPaymentState({
+    paymentStatus: str(job.payment_status),
+    depositPaidCents: pricing.depositPaidCents,
+    depositRequiredCents: pricing.depositCents,
+    balanceDueCents: pricing.remainingBalanceCents,
+    totalCents: pricing.finalTotalCents,
+    totalPaidCents: pricing.totalPaidCents,
+    refundedCents: paymentRows.reduce((sum, row) => sum + Math.max(0, num(row.refunded_amount_cents)), 0),
+  });
 
   let lastReceiptRebuiltAt = '';
   if (appointmentId || fallbackBookingId) {
@@ -528,7 +542,8 @@ export async function resolveOrderLedger(
       appointmentAtDisplay: displayChicago(job.scheduled_start),
       endAt: str(job.estimated_end),
       jobStatus: str(job.status),
-      paymentStatus: str(job.payment_status),
+      paymentStatus: paymentState.code,
+      paymentStatusLabel: paymentState.label,
       completedAt: str(job.job_completed_at || job.completed_at),
     },
     vehicles,

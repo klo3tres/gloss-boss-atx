@@ -6,6 +6,7 @@ import { ReceiptLiveSearch } from '@/components/admin/receipt-live-search';
 import { ReceiptDetailDrawer } from '@/components/admin/receipt-detail-drawer';
 import { bulkReceiptRevenueFlagsAction, updateReceiptRevenueFlagsAction } from './receipt-actions';
 import { summarizePayments, type PayRow } from '@/lib/revenue-metrics';
+import { paymentStatusLabel } from '@/lib/payment-truth';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,9 +43,7 @@ function countsForRevenue(r: Row) {
     receipt.exclude_from_revenue !== true &&
     !r.voided_at &&
     !receipt.voided_at &&
-    !r.refunded_at &&
-    !receipt.refunded_at &&
-    !['voided', 'refunded', 'canceled', 'cancelled'].includes(status)
+    !['voided', 'canceled', 'cancelled'].includes(status)
   );
 }
 
@@ -92,6 +91,10 @@ export default async function AdminReceiptsPage() {
       id: paymentId,
       payment_id: str(r.payment_id) || null,
       amount_cents: typeof r.amount_cents === 'number' ? r.amount_cents : null,
+      applied_amount_cents: typeof r.applied_amount_cents === 'number' ? r.applied_amount_cents : null,
+      tip_amount_cents: typeof r.tip_amount_cents === 'number' ? r.tip_amount_cents : null,
+      refunded_amount_cents: typeof r.refunded_amount_cents === 'number' ? r.refunded_amount_cents : null,
+      refunded_at: str(r.refunded_at) || null,
       status: str(r.status || (r.receipt as Row)?.status) || 'paid',
       payment_method: str(r.payment_method || (r.receipt as Row)?.payment_method) || null,
       payment_kind: str(r.payment_kind) || null,
@@ -152,7 +155,19 @@ export default async function AdminReceiptsPage() {
             const workOrderId = str(r.appointment_id || r.fallback_booking_id);
             const id = str(receipt.id || r.payment_id || workOrderId || r.id);
             const receiptNumber = str(receipt.receipt_number) || `RCPT-${id.slice(0, 8).toUpperCase()}`;
-            const statusText = str(receipt.status || r.status || (Number(r.balance_due_cents ?? 0) > 0 ? 'Balance due' : 'Draft'));
+            const documentStatus = str(receipt.status) || (str(r.payment_id) ? 'Available' : 'Draft');
+            const transactionStatus = str(r.payment_id) ? str(r.status || 'unknown').replace(/_/g, ' ') : 'No linked transaction';
+            const orderPaymentStatus = paymentStatusLabel({
+              paymentStatus: str(r.payment_status),
+              totalCents: Number(r.base_price_cents ?? 0),
+              balanceDueCents: Number(r.balance_due_cents ?? 0),
+              depositPaidCents: Number(r.deposit_paid_cents ?? 0),
+              depositRequiredCents: Number(r.deposit_amount_cents ?? 0),
+            });
+            const netAmount = Math.max(
+              0,
+              Number(r.amount_cents ?? receipt.amount_cents ?? 0) - Number(r.refunded_amount_cents ?? 0),
+            );
             const customerName = str(r.guest_name || customer.full_name || r.customer_name) || 'Customer';
             const email = str(r.guest_email || customer.email || r.email);
             const phone = str(r.guest_phone || customer.phone || r.phone);
@@ -161,7 +176,9 @@ export default async function AdminReceiptsPage() {
             const searchText = [
               id,
               receiptNumber,
-              statusText,
+              documentStatus,
+              transactionStatus,
+              orderPaymentStatus,
               customerName,
               email,
               phone,
@@ -187,8 +204,10 @@ export default async function AdminReceiptsPage() {
                     <p className='mt-2 text-sm text-zinc-500'>{address(r) || 'Service address pending'}</p>
                   </div>
                   <div className='text-left lg:text-right'>
-                    <p className='text-2xl font-black text-white'>{money(r.amount_cents ?? receipt.amount_cents)}</p>
-                    <p className='text-xs text-zinc-400'>{str(r.payment_method || r.payment_kind || receipt.payment_method || 'stripe').replace(/_/g, ' ')} · {str(r.status || receipt.status)}</p>
+                    <p className='text-2xl font-black text-white'>{money(netAmount)}</p>
+                    <p className='text-xs text-zinc-400'>Transaction: {transactionStatus}</p>
+                    <p className='text-xs text-zinc-400'>Order: {orderPaymentStatus}</p>
+                    <p className='text-xs text-zinc-500'>Document: {documentStatus}</p>
                     <p className='text-xs text-zinc-500'>{chicago(r.paid_at || r.created_at || receipt.created_at)}</p>
                   </div>
                 </div>
@@ -202,9 +221,9 @@ export default async function AdminReceiptsPage() {
                       phone,
                       workOrderId: str(r.appointment_id || r.fallback_booking_id),
                       paymentId: str(r.payment_id),
-                      amount: money(r.amount_cents ?? receipt.amount_cents),
+                      amount: money(netAmount),
                       balance: money(balance),
-                      status: statusText,
+                      status: `${documentStatus} · ${transactionStatus} · ${orderPaymentStatus}`,
                       sentStatus: str(receipt.sent_status || receipt.last_send_status),
                       lineItems,
                       discounts: str(receipt.discount_label || r.promo_code),

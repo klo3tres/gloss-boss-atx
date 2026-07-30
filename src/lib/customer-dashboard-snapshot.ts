@@ -18,6 +18,7 @@ export type CustomerApptSnapshotView = {
   totalPaidCents: number;
   balanceDueCents: number;
   paymentStatus: string;
+  paymentStatusLabel: string;
   promoCode: string | null;
   receipts: Array<{ receiptNumber: string; amountCents: number; createdAt: string }>;
   payments: Array<{ amountCents: number; status: string }>;
@@ -57,6 +58,7 @@ export function mapOrderSnapshotToCustomerView(snap: OrderSnapshot): CustomerApp
     totalPaidCents: p.totalPaidCents,
     balanceDueCents: p.remainingBalanceCents,
     paymentStatus: snap.paymentStatus || (p.remainingBalanceCents <= 0 ? 'paid' : p.depositPaidCents > 0 ? 'deposit_paid' : 'unpaid'),
+    paymentStatusLabel: snap.paymentStatusLabel,
     promoCode: snap.promoCode || str(snap.originalBookingBreakdown.promo_code) || null,
     receipts: [],
     payments: snap.payments.all.map((pay) => ({ amountCents: pay.amountCents, status: pay.status })),

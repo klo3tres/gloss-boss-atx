@@ -21,6 +21,7 @@ import { getStripeSecrets } from '@/lib/stripe/stripeService';
 import { AlertTriangle } from 'lucide-react';
 import { DuplicatePaymentsPanel } from '@/components/admin/duplicate-payments-panel';
 import { RevenueIssueCreditPanel } from '@/components/admin/revenue-issue-credit-panel';
+import { paymentStatusLabel, resolveCanonicalPaymentState } from '@/lib/payment-truth';
 import { StripeFinanceStatusPanel } from '@/components/admin/stripe-finance-status-panel';
 import { findDuplicatePaymentGroups } from '@/lib/payment-duplicate-repair';
 import type { PayRow } from '@/lib/revenue-metrics';
@@ -169,7 +170,12 @@ export default async function AdminRevenuePage({
 
   // Deposit collection rate
   const apptsWithDeposits = allAppts.filter((a) => (a.deposit_amount_cents ?? 0) > 0);
-  const paidDeposits = apptsWithDeposits.filter((a) => a.payment_status !== 'awaiting_deposit' && a.status !== 'pending');
+  const paidDeposits = apptsWithDeposits.filter((a) => {
+    const total = Math.max(0, Number(a.base_price_cents ?? 0));
+    const balance = Math.max(0, Number(a.balance_due_cents ?? total));
+    const collected = Math.max(0, total - balance);
+    return collected >= Math.max(0, Number(a.deposit_amount_cents ?? 0));
+  });
   const depositCollectionRate = apptsWithDeposits.length > 0
     ? Math.round((paidDeposits.length / apptsWithDeposits.length) * 100)
     : 100;
@@ -179,7 +185,7 @@ export default async function AdminRevenuePage({
   const totalCompletedRevenue = completedAppts.reduce((sum, a) => sum + (a.base_price_cents ?? 0), 0);
   const avgCompletedTicketCents = completedAppts.length > 0 ? Math.round(totalCompletedRevenue / completedAppts.length) : 0;
   const avgTicketSize = displayMoney(avgCompletedTicketCents);
-  const completedPaidJobs = completedAppts.filter((a) => Number(a.balance_due_cents ?? 0) <= 0 || ['paid', 'paid_in_full'].includes(String(a.payment_status ?? '').toLowerCase())).length;
+  const completedPaidJobs = completedAppts.filter((a) => Number(a.balance_due_cents ?? 0) <= 0).length;
   const todayDate = new Date();
   const elapsedDays = Math.max(1, todayDate.getDate());
   const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
@@ -345,7 +351,7 @@ export default async function AdminRevenuePage({
 
   const { data: upcoming } = await admin
     .from('appointments')
-    .select('id, guest_name, scheduled_start, payment_status, balance_due_cents')
+    .select('id, guest_name, scheduled_start, payment_status, balance_due_cents, base_price_cents, deposit_amount_cents')
     .gte('scheduled_start', now)
     .neq('status', 'cancelled')
     .neq('status', 'completed')
@@ -403,7 +409,13 @@ export default async function AdminRevenuePage({
       refundCents, outstandingCents: actionableBalances.get(appointmentId) ?? 0,
       method: methods.length ? methods.join(' + ') : 'unpaid', source: String(appointment?.booking_source ?? 'work order'),
       campaign: appointment?.campaign_id ? campaignNames.get(String(appointment.campaign_id)) ?? 'Campaign' : 'Unattributed',
-      receiptId: null, status: String(appointment?.status ?? appointment?.payment_status ?? 'unknown'),
+      receiptId: null,
+      status: `${String(appointment?.status ?? 'unknown').replace(/_/g, ' ')} · ${resolveCanonicalPaymentState({
+        paymentStatus: appointment?.payment_status,
+        totalCents: Number(appointment?.base_price_cents ?? 0),
+        balanceDueCents: actionableBalances.get(appointmentId) ?? Number(appointment?.balance_due_cents ?? 0),
+        depositRequiredCents: Number(appointment?.deposit_amount_cents ?? 0),
+      }).label}`,
     };
   });
   for (const expense of financial.recentExpenses) cfoTransactions.push({
@@ -779,14 +791,27 @@ export default async function AdminRevenuePage({
           <p className='text-xs font-black uppercase tracking-[0.2em] text-gold-soft'>Upcoming jobs</p>
           <ul className='space-y-2 text-sm'>
             {(upcoming ?? []).map((a) => {
-              const row = a as { id: string; guest_name: string | null; scheduled_start: string; payment_status: string | null; balance_due_cents: number | null };
+              const row = a as {
+                id: string;
+                guest_name: string | null;
+                scheduled_start: string;
+                payment_status: string | null;
+                balance_due_cents: number | null;
+                base_price_cents: number | null;
+                deposit_amount_cents: number | null;
+              };
               return (
                 <li key={row.id} className='flex flex-wrap justify-between gap-2 rounded-xl border border-white/10 px-4 py-3'>
                   <Link href={`/tech/work-orders/${row.id}?shell=admin`} className='font-semibold text-white hover:text-gold-soft'>
                     {row.guest_name ?? 'Customer'}
                   </Link>
                   <span className='text-zinc-400'>
-                    {new Date(row.scheduled_start).toLocaleString()} · {row.payment_status ?? 'pending'} · balance{' '}
+                    {new Date(row.scheduled_start).toLocaleString()} · {paymentStatusLabel({
+                      paymentStatus: row.payment_status,
+                      balanceDueCents: row.balance_due_cents,
+                      totalCents: row.base_price_cents,
+                      depositRequiredCents: row.deposit_amount_cents,
+                    })} · balance{' '}
                     {money(row.balance_due_cents ?? 0)}
                   </span>
                 </li>

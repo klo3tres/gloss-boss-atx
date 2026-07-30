@@ -15,6 +15,7 @@ import {
   manualOnlyDiscountCents,
 } from '@/lib/pricing-custom-lines';
 import { readCustomLineItems } from '@/lib/work-order-line-items';
+import { resolveCanonicalPaymentState } from '@/lib/payment-truth';
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
@@ -278,14 +279,14 @@ export async function syncJobBalanceDue(
   const table = opts.isFallback ? 'booking_fallbacks' : 'appointments';
   const id = str(opts.fallbackBookingId || opts.appointmentId || job.id);
   if (!id) return;
-  const paymentStatus =
-    pricing.remainingBalanceCents <= 0
-      ? pricing.totalPaidCents > 0
-        ? 'paid'
-        : str(job.payment_status)
-      : pricing.totalPaidCents > 0
-        ? 'balance_due'
-        : str(job.payment_status);
+  const paymentStatus = resolveCanonicalPaymentState({
+    paymentStatus: str(job.payment_status),
+    depositPaidCents: pricing.depositPaidCents,
+    depositRequiredCents: pricing.depositCents,
+    balanceDueCents: pricing.remainingBalanceCents,
+    totalCents: pricing.finalTotalCents,
+    totalPaidCents: pricing.totalPaidCents,
+  }).code;
   try {
     await admin
       .from(table)

@@ -68,6 +68,14 @@ const unifiedReceipt = read('src/lib/unified-receipt.ts');
 const adminReceiptDetail = read('src/app/(dashboard)/admin/receipts/[id]/page.tsx');
 const adminReceiptList = read('src/app/(dashboard)/admin/receipts/page.tsx');
 const techWorkOrder = read('src/app/(dashboard)/tech/work-orders/[id]/page.tsx');
+const paymentTruth = read('src/lib/payment-truth.ts');
+const orderSnapshot = read('src/lib/order-snapshot-engine.ts');
+const bookingSlotBlocking = read('src/lib/booking-slot-blocking.ts');
+const calendarFeed = read('src/lib/calendar/calendar-feed.ts');
+const operationsSnapshot = read('src/lib/operations-snapshot.ts');
+const receiptDocument = read('src/components/documents/receipt-document.tsx');
+const financialLedger = read('src/lib/financial-ledger.ts');
+const paymentStatusQa = read('scripts/qa-payment-status.cjs');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -334,6 +342,34 @@ check(
     adminReceiptList.includes('document=receipt') &&
     techWorkOrder.includes('&document=receipt'),
   'Receipts must retain receipt identity even with an open balance, identify their exact transaction, remain owner-scoped and retryable, and use explicit receipt links across customer, admin, and technician surfaces.',
+);
+check(
+  paymentTruth.includes("export type CanonicalPaymentStatus") &&
+    paymentTruth.includes("| 'pending'") &&
+    paymentTruth.includes("| 'partially_refunded'") &&
+    paymentTruth.includes("return result('expired'") &&
+    orderSnapshot.includes('resolveCanonicalPaymentState') &&
+    orderLedger.includes('paymentStatus: paymentState.code') &&
+    bookingSummary.includes('canonicalPaymentStatus === \'failed\''),
+  'Every booking and work order must resolve one canonical payment state, including retryable attempts and refund states.',
+);
+check(
+  receiptDocument.includes("['paid', 'comped', 'no_payment_required'].includes(props.paymentStatusCode)") &&
+    !receiptDocument.includes("statusText.includes('paid')") &&
+    paymentsManager.includes('function transactionStatus') &&
+    paymentsManager.includes('function isOrderSession') &&
+    adminReceiptList.includes('Transaction: {transactionStatus}') &&
+    adminReceiptList.includes('Order: {orderPaymentStatus}') &&
+    financialLedger.includes('resolveCanonicalPaymentState'),
+  'Payment transactions, order balances, receipts, and CFO receivables must display their distinct canonical states without substring guesses.',
+);
+check(
+  !bookingSlotBlocking.includes("payStatus === 'refunded'") &&
+    !calendarFeed.includes("payStatus === 'refunded'") &&
+    paymentStatusQa.includes('refunded but active appointment stopped blocking') &&
+    operationsSnapshot.includes("['succeeded', 'paid', 'partially_refunded']") &&
+    operationsSnapshot.includes('refunded_amount_cents'),
+  'Refunds must reopen the balance without cancelling the appointment, releasing its slot, or dropping net collected money from operations.',
 );
 
 // Regression fixture from the real customer screenshot:

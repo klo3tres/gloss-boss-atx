@@ -35,8 +35,6 @@ function isActiveAppointment(row: Record<string, unknown>) {
   const status = str(row.status).toLowerCase();
   if (['cancelled', 'canceled', 'deleted', 'voided', 'declined', 'expired', 'abandoned'].includes(status)) return false;
   if (row.archived_at || row.deleted_at) return false;
-  const payStatus = str(row.payment_status).toLowerCase();
-  if (payStatus === 'refunded' || payStatus === 'voided') return false;
   return true;
 }
 

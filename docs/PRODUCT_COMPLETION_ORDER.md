@@ -24,9 +24,10 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **2.3 Recover failed, cancelled, and expired checkout**,
 **2.4 Record manual and external payments**,
 **2.5 Refund and partially refund**,
-**2.6 View and download invoices**
+**2.6 View and download invoices**,
+**2.7 View and download receipts**
 
-Current active item: **2.7 View and download receipts**
+Current active item: **2.8 Resolve one consistent payment status everywhere**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 
@@ -61,6 +62,12 @@ payment, canonical $130.00 total, $39.00 applied plus a separate $1.00 tip,
 $91.00 due, itemized custom charges and partial refunds, inline and repeated PDF
 delivery, recoverable missing-document handling, full appointment history, and
 no false receipt creation.
+
+Payment 2.7 evidence: **Passed** with `npm run qa:receipts` against production,
+including owner-only inline view and repeated download, stable receipt identity,
+explicit receipt labeling while a balance remains open, exact $40.00 tender,
+$39.00 applied principal, separate $1.00 tip, $91.00 balance due, and no
+duplicate receipt creation.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

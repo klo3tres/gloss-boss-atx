@@ -38,16 +38,20 @@ export default async function AdminPaymentsPage() {
       admin.from('payments').select('*').order('created_at', { ascending: false }).limit(120),
       admin
         .from('appointments')
-        .select('id, customer_id, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, final_payment_checkout_session_id, scheduled_start, created_at')
+        .select('id, customer_id, guest_name, guest_email, guest_phone, vehicle_description, booking_vehicles, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, deposit_paid_cents, balance_due_cents, payment_status, status, stripe_checkout_session_id, final_payment_checkout_session_id, scheduled_start, created_at')
         .order('created_at', { ascending: false })
         .limit(120),
       admin
         .from('booking_fallbacks')
-        .select('id, guest_name, guest_email, guest_phone, vehicle_description, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, payment_status, status, stripe_checkout_session_id, created_at')
+        .select('id, guest_name, guest_email, guest_phone, vehicle_description, service_address, service_city, service_state, service_zip, service_slug, base_price_cents, deposit_amount_cents, deposit_paid_cents, balance_due_cents, payment_status, status, stripe_checkout_session_id, created_at')
         .order('created_at', { ascending: false })
         .limit(80),
     ]);
-    if (payments.error) loadError = payments.error.message;
+    loadError =
+      payments.error?.message ??
+      appointments.error?.message ??
+      fallbacks.error?.message ??
+      null;
     const bySession = new Map<string, PayRow>();
     const apptById = new Map<string, PayRow>();
     const apptBySession = new Map<string, PayRow>();

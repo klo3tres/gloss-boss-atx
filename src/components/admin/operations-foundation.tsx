@@ -188,7 +188,10 @@ function DailyOpsSection({ dailyOps, expanded }: { dailyOps: DailyOperationsBoar
             <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
               {today.jobs.slice(0, 8).map((job) => (
                 <Link key={job.id} href={job.href} className="flex items-center justify-between rounded-lg border border-white/5 px-3 py-2 text-xs hover:border-gold/30">
-                  <span className="truncate text-white">{job.time} · {job.guestName}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-white">{job.time} · {job.guestName}</span>
+                    <span className="block truncate text-[10px] text-zinc-500">{job.paymentStatusLabel}</span>
+                  </span>
                   <ChevronRight className="h-3 w-3 shrink-0 text-zinc-500" />
                 </Link>
               ))}

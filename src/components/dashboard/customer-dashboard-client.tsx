@@ -129,7 +129,7 @@ function apptFromSnapshot(appt: CustomerAppt, snap?: CustomerApptSnapshotView): 
     base_price_cents: snap.finalTotalCents,
     deposit_amount_cents: snap.depositPaidCents,
     balance_due_cents: snap.balanceDueCents,
-    payment_status: snap.paymentStatus,
+    payment_status: snap.paymentStatusLabel,
     service_address: snap.serviceAddress || appt.service_address,
     booking_vehicles: vehicles.map((v) => ({
       vehicle_description: v?.description ?? 'Vehicle',
