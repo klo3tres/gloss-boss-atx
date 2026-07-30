@@ -54,6 +54,10 @@ const stripeWebhook = read('src/app/api/stripe/webhook/route.ts');
 const paymentOpsActions = read('src/app/(dashboard)/admin/payment-ops-actions.ts');
 const jobPricingDisplay = read('src/lib/job-pricing-display.ts');
 const paymentClassification = read('src/lib/payment-classification.ts');
+const paymentRefundState = read('src/lib/payment-refund-state.ts');
+const paymentActions = read('src/app/(dashboard)/admin/payments/payment-actions.ts');
+const stripeAutomation = read('src/lib/stripe-automation.ts');
+const paymentsManager = read('src/components/admin/payments-manager.tsx');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -269,6 +273,19 @@ check(
     jobPricingDisplay.includes('Math.min(depositOnFile, totalPaidCents)') &&
     paymentClassification.includes("source.includes('external_card')"),
   'Manual and external payments must use the canonical balance, remain atomic and idempotent, keep tips outside service principal, satisfy deposits, and classify external card tender correctly.',
+);
+check(
+  paymentRefundState.includes("status: fullyRefunded ? 'refunded' : 'partially_refunded'") &&
+    paymentRefundState.includes('refundedTotalCents') &&
+    paymentActions.includes('requestedCents > refundableCents') &&
+    paymentActions.includes('manual_refund_') &&
+    paymentActions.includes('applyPaymentRefundState') &&
+    stripeAutomation.includes('currentCharge.amount_refunded') &&
+    stripeAutomation.includes('applyPaymentRefundState') &&
+    jobPricingDisplay.includes('p.refunded_amount_cents') &&
+    paymentsManager.includes('blank = full remaining') &&
+    paymentsManager.includes('name="reason"'),
+  'Full and partial refunds must validate the refundable remainder, support Stripe and manual/external tender, remain cumulative and idempotent, reopen the canonical balance, and require an operator reason.',
 );
 
 // Regression fixture from the real customer screenshot:

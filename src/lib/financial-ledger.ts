@@ -3,6 +3,7 @@ import type Stripe from 'stripe';
 import {
   buildRevenueDiagnostics,
   fetchPaymentsSince,
+  isTestPaymentRow,
   selectCanonicalRevenueRows,
   summarizePayments,
   type PayRow,
@@ -204,7 +205,7 @@ export async function getFinancialSnapshot(
 
   function isPaymentSucceededGuard(p: PayRow) {
     const st = str(p.status).toLowerCase();
-    return st === 'succeeded' || st === 'paid';
+    return st === 'succeeded' || st === 'paid' || st === 'partially_refunded';
   }
 
   const openBalanceCtx = (row: Record<string, unknown>) => {
@@ -263,8 +264,17 @@ export async function getFinancialSnapshot(
   let stripeFeesCents = 0;
   let payoutsCents = 0;
   let ledgerExpensesCents = 0;
+  const refundPayments = payments.filter((payment) => {
+    if (cents(payment.refunded_amount_cents) <= 0) return false;
+    if (payment.exclude_from_revenue === true || isPaymentVoided(payment)) return false;
+    if (!includeTest && isTestPaymentRow(payment, apptById as Map<string, { guest_email?: string | null; guest_name?: string | null }>)) return false;
+    const timestamp = str(payment.paid_at || payment.created_at);
+    if (fromIso && timestamp && timestamp < fromIso) return false;
+    if (toIso && timestamp && timestamp > toIso) return false;
+    return true;
+  });
   const refundedPaymentIds = new Set(
-    countedPayments.filter((payment) => cents(payment.refunded_amount_cents) > 0).map((payment) => str(payment.id)).filter(Boolean),
+    refundPayments.map((payment) => str(payment.id)).filter(Boolean),
   );
   for (const row of ledgerRows) {
     if (!includeTest && row.is_test === true) continue;
@@ -276,7 +286,7 @@ export async function getFinancialSnapshot(
     if (type === 'payout') payoutsCents += Math.abs(cents(row.amount || row.gross_amount));
     if (type === 'revenue') stripeFeesCents += Math.max(0, cents(row.fee_amount));
   }
-  for (const p of countedPayments) {
+  for (const p of refundPayments) {
     refundsCents += Math.max(0, cents(p.refunded_amount_cents));
   }
 

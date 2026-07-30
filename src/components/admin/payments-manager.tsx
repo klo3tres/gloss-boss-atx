@@ -477,7 +477,7 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                 )}
 
                 {/* REFUND TOOL */}
-                {(activeRow.stripe_checkout_session_id || activeRow.stripe_payment_intent_id) && (
+                {activeRow.id && (
                   <div className="border-t border-white/5 pt-4 space-y-3">
                     <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Refund Matrix</h4>
                     <p className="text-[10px] text-zinc-500">Reconcile customer disputes by issuing a complete or partial refund.</p>
@@ -490,12 +490,13 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                       }}
                       className="bg-rose-500/5 border border-rose-500/10 p-4 rounded-2xl space-y-3"
                     >
+                      <input type="hidden" name="paymentId" value={activeRow.id || ''} />
                       <input type="hidden" name="sessionId" value={activeRow.stripe_checkout_session_id || ''} />
                       <input type="hidden" name="paymentIntentId" value={activeRow.stripe_payment_intent_id || ''} />
                       
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div className="space-y-1">
-                          <label className="text-[9px] uppercase font-bold text-zinc-500">Refund Amount (cents)</label>
+                          <label className="text-[9px] uppercase font-bold text-zinc-500">Refund cents (blank = full remaining)</label>
                           <input 
                             name="amountCents" 
                             placeholder="e.g. 5000 for $50.00" 
@@ -512,6 +513,12 @@ export function PaymentsManager({ rows }: { rows: PayRow[] }) {
                           />
                         </div>
                       </div>
+                      <input
+                        name="reason"
+                        required
+                        placeholder="Reason for refund"
+                        className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white"
+                      />
 
                       <button type="submit" className="w-full py-2.5 bg-rose-950/20 border border-rose-500/20 text-rose-300 hover:bg-rose-500/30 rounded-xl text-[10px] font-black uppercase tracking-wider transition">
                         Execute Stripe Refund

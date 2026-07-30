@@ -55,10 +55,11 @@ function isVoided(p: Row) {
 }
 
 function appliedPaymentCents(p: Row) {
+  const refundedCents = num(p.refunded_amount_cents);
   if (typeof p.applied_amount_cents === 'number' && Number.isFinite(p.applied_amount_cents)) {
-    return Math.max(0, p.applied_amount_cents);
+    return Math.max(0, p.applied_amount_cents - refundedCents);
   }
-  return Math.max(0, num(p.amount_cents) - num(p.tip_amount_cents));
+  return Math.max(0, num(p.amount_cents) - num(p.tip_amount_cents) - refundedCents);
 }
 
 /** Single pricing snapshot for work order, receipt HTML/PDF, and email. */

@@ -17,7 +17,7 @@ export function isPaymentVoided(p: Row | { status?: unknown; voided_at?: unknown
 
 export function isPaymentSucceeded(p: Row | { status?: unknown }) {
   const st = str((p as Row).status).toLowerCase();
-  return st === 'succeeded' || st === 'paid' || st === 'comped' || st === 'manual_comped';
+  return st === 'succeeded' || st === 'paid' || st === 'partially_refunded' || st === 'comped' || st === 'manual_comped';
 }
 
 /** Cash, Zelle, Venmo, check, Cash App, Apple Pay, manual transfer — never Stripe deposit. */

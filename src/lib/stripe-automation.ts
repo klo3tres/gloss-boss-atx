@@ -376,15 +376,41 @@ export async function automateStripeRefund(params: {
   const charge = params.charge ?? null;
   const paymentIntentId = stripeId(refund?.payment_intent) ?? stripeId(charge?.payment_intent);
   const chargeId = refund ? stripeId(refund.charge) : charge?.id ?? null;
-  const amountCents = refund?.amount ?? charge?.amount_refunded ?? 0;
+  let amountCents = charge?.amount_refunded ?? refund?.amount ?? 0;
   const occurredAt = isoFromUnix(refund?.created ?? charge?.created);
 
   if (paymentIntentId) {
-    await params.admin.from('payments').update({
-      refunded_at: occurredAt,
-      refunded_amount_cents: amountCents,
-      status: amountCents > 0 ? 'refunded' : 'succeeded',
-    }).eq('stripe_payment_intent_id', paymentIntentId);
+    if (params.stripe && chargeId) {
+      try {
+        const currentCharge = await params.stripe.charges.retrieve(chargeId);
+        amountCents = currentCharge.amount_refunded;
+      } catch (error) {
+        console.warn('[stripe-automation] refund total retrieve', error);
+      }
+    }
+    const { applyPaymentRefundState } = await import('@/lib/payment-refund-state');
+    const applied = await applyPaymentRefundState(params.admin, {
+      stripePaymentIntentId: paymentIntentId,
+      refundedTotalCents: amountCents,
+      occurredAt,
+    });
+    if (!applied.ok) console.warn('[stripe-automation] refund state', applied.error);
+  }
+
+  if (refund?.id) {
+    const refundRow = {
+      stripe_refund_id: refund.id,
+      stripe_payment_intent_id: paymentIntentId,
+      amount_cents: refund.amount,
+      status: refund.status ?? 'pending',
+      payload: refund as unknown as Record<string, unknown>,
+    };
+    const saved = await params.admin
+      .from('payment_refunds')
+      .upsert(refundRow, { onConflict: 'stripe_refund_id' });
+    if (saved.error && !isSchemaDriftError(saved.error.message)) {
+      console.warn('[stripe-automation] refund record', saved.error.message);
+    }
   }
 
   await safeInsertOutbox(params.admin, {

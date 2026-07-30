@@ -8,6 +8,8 @@ import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
 import { getStripeSdk } from '@/lib/stripe/stripeService';
 import { processCheckoutSessionCompleted } from '@/lib/stripe/checkout';
 import { isSchemaDriftError } from '@/lib/booking-server-shared';
+import { applyPaymentRefundState } from '@/lib/payment-refund-state';
+import { randomUUID } from 'node:crypto';
 
 async function requireAdmin() {
   const session = await getSessionWithProfile();
@@ -39,44 +41,99 @@ export async function reconcileStripeSessionAction(formData: FormData): Promise<
 export async function refundStripePaymentAction(formData: FormData): Promise<void> {
   const gate = await requireAdmin();
   if (!gate?.admin) return;
+  const paymentId = String(formData.get('paymentId') ?? '').trim();
   const sessionId = String(formData.get('sessionId') ?? '').trim();
   const paymentIntentId = String(formData.get('paymentIntentId') ?? '').trim();
   const amountRaw = String(formData.get('amountCents') ?? '').trim();
+  const reason = String(formData.get('reason') ?? '').trim() || 'Customer refund';
   const confirm = String(formData.get('confirm') ?? '').trim().toUpperCase();
   if (confirm !== 'REFUND') return;
+
+  let paymentQuery = gate.admin
+    .from('payments')
+    .select('id, appointment_id, fallback_booking_id, customer_id, amount_cents, refunded_amount_cents, stripe_payment_intent_id, stripe_checkout_session_id, payment_method, provider');
+  if (paymentId) paymentQuery = paymentQuery.eq('id', paymentId);
+  else if (paymentIntentId) paymentQuery = paymentQuery.eq('stripe_payment_intent_id', paymentIntentId);
+  else paymentQuery = paymentQuery.eq('stripe_checkout_session_id', sessionId);
+  const payment = await paymentQuery.limit(1).maybeSingle();
+  if (payment.error || !payment.data?.id) return;
+
+  const originalCents = Math.max(0, Number(payment.data.amount_cents ?? 0));
+  const alreadyRefundedCents = Math.max(0, Number(payment.data.refunded_amount_cents ?? 0));
+  const refundableCents = Math.max(0, originalCents - alreadyRefundedCents);
+  const requestedCents = amountRaw ? Number(amountRaw) : refundableCents;
+  if (!Number.isInteger(requestedCents) || requestedCents <= 0 || requestedCents > refundableCents) return;
+
   const stripe = await getStripeSdk(gate.admin);
-  if (!stripe) return;
-  let pi = paymentIntentId;
-  if (!pi && sessionId.startsWith('cs_')) {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+  let pi = paymentIntentId || String(payment.data.stripe_payment_intent_id ?? '');
+  const savedSessionId = sessionId || String(payment.data.stripe_checkout_session_id ?? '');
+  if (!pi && savedSessionId.startsWith('cs_') && stripe) {
+    const session = await stripe.checkout.sessions.retrieve(savedSessionId);
     pi = typeof session.payment_intent === 'string' ? session.payment_intent : '';
   }
-  if (!pi.startsWith('pi_')) return;
-  const amount = Number(amountRaw);
-  const refund = await stripe.refunds.create({
-    payment_intent: pi,
-    ...(Number.isFinite(amount) && amount > 0 ? { amount } : {}),
-  });
-  const row = {
-    stripe_refund_id: refund.id,
-    stripe_payment_intent_id: pi,
-    stripe_checkout_session_id: sessionId || null,
-    amount_cents: refund.amount,
-    status: refund.status ?? 'pending',
-    actor_id: gate.userId,
-    payload: refund as unknown as Record<string, unknown>,
+
+  let refundId = `manual_refund_${randomUUID()}`;
+  let refundStatus = 'succeeded';
+  let refundPayload: Record<string, unknown> = {
+    kind: 'manual_external_refund',
+    reason,
+    payment_id: payment.data.id,
   };
-  const ins = await gate.admin.from('payment_refunds').insert(row);
-  if (ins.error && !isSchemaDriftError(ins.error.message)) console.warn('[payments] refund row', ins.error.message);
+  if (pi.startsWith('pi_')) {
+    if (!stripe) return;
+    const refund = await stripe.refunds.create(
+      { payment_intent: pi, amount: requestedCents, metadata: { payment_id: String(payment.data.id), reason: reason.slice(0, 500) } },
+      { idempotencyKey: `refund-${payment.data.id}-${alreadyRefundedCents + requestedCents}`.slice(0, 255) },
+    );
+    refundId = refund.id;
+    refundStatus = refund.status ?? 'pending';
+    refundPayload = refund as unknown as Record<string, unknown>;
+  }
+
+  const row = {
+    stripe_refund_id: refundId,
+    stripe_payment_intent_id: pi || null,
+    stripe_checkout_session_id: savedSessionId || null,
+    amount_cents: requestedCents,
+    status: refundStatus,
+    actor_id: gate.userId,
+    customer_id: payment.data.customer_id ?? null,
+    appointment_id: payment.data.appointment_id ?? null,
+    fallback_booking_id: payment.data.fallback_booking_id ?? null,
+    payload: { ...refundPayload, reason, payment_id: payment.data.id },
+  };
+  let ins = await gate.admin.from('payment_refunds').upsert(row, { onConflict: 'stripe_refund_id' });
+  if (ins.error && isSchemaDriftError(ins.error.message)) {
+    ins = await gate.admin.from('payment_refunds').upsert({
+      stripe_refund_id: refundId,
+      stripe_payment_intent_id: pi || null,
+      stripe_checkout_session_id: savedSessionId || null,
+      amount_cents: requestedCents,
+      status: refundStatus,
+      actor_id: gate.userId,
+      payload: row.payload,
+    }, { onConflict: 'stripe_refund_id' });
+  }
+  if (ins.error) return;
+
+  const applied = await applyPaymentRefundState(gate.admin, {
+    paymentId: String(payment.data.id),
+    refundedTotalCents: alreadyRefundedCents + requestedCents,
+  });
+  if (!applied.ok) return;
+
   await gate.admin.from('payment_reconciliation_events').insert({
-    stripe_checkout_session_id: sessionId || null,
-    stripe_payment_intent_id: pi,
+    stripe_checkout_session_id: savedSessionId || null,
+    stripe_payment_intent_id: pi || null,
     action: 'refund',
-    status: refund.status ?? 'pending',
+    status: applied.fullyRefunded ? 'refunded' : 'partially_refunded',
     actor_id: gate.userId,
     payload: row.payload,
   });
   revalidatePath('/admin/payments');
+  revalidatePath('/admin/revenue');
+  revalidatePath('/admin/reports');
+  if (applied.appointmentId) revalidatePath(`/admin/work-orders/${applied.appointmentId}`);
 }
 
 export async function excludePaymentFromRevenueAction(formData: FormData): Promise<void> {

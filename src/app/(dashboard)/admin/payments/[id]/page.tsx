@@ -137,11 +137,13 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               <button className='rounded bg-gold px-4 py-2 text-xs font-black uppercase text-black'>Repair / Reconcile</button>
             </form>
           ) : null}
-          {(sessionId || paymentIntentId) ? (
+          {id ? (
             <form action={refundStripePaymentAction} className='flex flex-wrap gap-2'>
+              <input type='hidden' name='paymentId' value={id} />
               <input type='hidden' name='sessionId' value={sessionId} />
               <input type='hidden' name='paymentIntentId' value={paymentIntentId} />
-              <input name='amountCents' placeholder='partial cents' className='w-28 rounded border border-white/10 bg-black px-3 py-2 text-xs' />
+              <input name='amountCents' placeholder='blank = full' className='w-28 rounded border border-white/10 bg-black px-3 py-2 text-xs' />
+              <input name='reason' required placeholder='reason' className='w-32 rounded border border-white/10 bg-black px-3 py-2 text-xs' />
               <input name='confirm' placeholder='REFUND' className='w-28 rounded border border-red-500/30 bg-black px-3 py-2 text-xs' />
               <button className='rounded border border-red-500/40 px-4 py-2 text-xs font-black uppercase text-red-200'>Refund</button>
             </form>

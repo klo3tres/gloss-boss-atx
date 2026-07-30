@@ -12,7 +12,7 @@ function digits(v: unknown) {
 
 function isSucceeded(row: Row) {
   const st = str(row.status).toLowerCase();
-  return st === 'succeeded' || st === 'paid' || st === 'comped' || st === 'manual_comped';
+  return st === 'succeeded' || st === 'paid' || st === 'partially_refunded' || st === 'comped' || st === 'manual_comped';
 }
 
 function belongsToJob(
