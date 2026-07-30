@@ -26,9 +26,10 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **2.5 Refund and partially refund**,
 **2.6 View and download invoices**,
 **2.7 View and download receipts**,
-**2.8 Resolve one consistent payment status everywhere**
+**2.8 Resolve one consistent payment status everywhere**,
+**3.1 Confirm**
 
-Current active item: **3.1 Confirm**
+Current active item: **3.2 Reschedule**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 Phase 2 exit gate: **Passed** with the payment lifecycle acceptance suite against production.
@@ -75,6 +76,15 @@ Payment 2.8 evidence: **Passed** with `npm run qa:payment-status` against
 production, including deposit due, pending, processing, failed, cancelled,
 expired, deposit paid, paid in full, partial refund, full refund, repayment,
 customer recovery flags, and retained calendar-slot blocking after a refund.
+
+Appointment 3.1 evidence: **Passed** with
+`npm run qa:appointment-confirmation` against production, including enforced
+acknowledgement and payment gates, audited override protection, canonical
+confirmed/scheduled state, customer confirmation resolution, repeat-call
+idempotency without duplicate transition events, secure delivery links, stale
+Stripe-return recovery, and inactive-appointment rejection. The production
+acceptance run also caught and verified the fix for canonical `approved` stages
+being misread as legacy leads.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery

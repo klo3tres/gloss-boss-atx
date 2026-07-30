@@ -3,6 +3,7 @@ import { resendConfigured, sendResendHtml } from '@/lib/email-send';
 import { notifyBusinessNewBookingFull } from '@/lib/business-booking-notify';
 import { runGoogleCalendarSync } from '@/lib/google/google-calendar-sync';
 import { tryCreateAdminSupabase } from '@/lib/supabase/safeClient';
+import { buildCustomerPortalAccessUrl } from '@/lib/customer-portal-access';
 import {
   stageFromLegacyStatus,
   transitionWorkOrder,
@@ -40,13 +41,15 @@ async function logOutbox(
   },
 ) {
   try {
-    await admin.from('notification_outbox').insert({
+    const result = await admin.from('notification_outbox').insert({
       ...row,
       provider: row.channel === 'email' ? 'resend' : 'internal',
       created_at: new Date().toISOString(),
     });
+    return result.error?.message ?? null;
   } catch (e) {
     console.warn('[lifecycle] outbox', e);
+    return e instanceof Error ? e.message : 'Outbox write failed';
   }
 }
 
@@ -58,7 +61,7 @@ async function emailCustomer(
   appointmentId: string,
   templateKey: string,
 ) {
-  if (!to.includes('@')) return;
+  if (!to.includes('@')) return { status: 'skipped', error: 'No deliverable customer email.' };
   let status = 'skipped';
   let err: string | null = null;
   if (resendConfigured()) {
@@ -66,7 +69,7 @@ async function emailCustomer(
     status = sent.ok ? 'sent' : 'failed';
     err = sent.ok ? null : sent.error ?? 'send failed';
   }
-  await logOutbox(admin, {
+  const outboxError = await logOutbox(admin, {
     appointment_id: appointmentId,
     kind: templateKey,
     channel: 'email',
@@ -75,6 +78,10 @@ async function emailCustomer(
     error_message: err,
     payload: { to },
   });
+  return {
+    status,
+    error: err ?? (outboxError ? `Delivery record failed: ${outboxError}` : null),
+  };
 }
 
 const CONFIRMED_OR_LATER_STAGES = new Set<WorkOrderStage>([
@@ -399,7 +406,13 @@ export async function rescheduleAppointmentLifecycle(
     customEmailSubject?: string;
     customSmsBody?: string;
   },
-): Promise<{ ok: boolean; error?: string; googleCalendar?: { ok: boolean; skipped?: boolean; error?: string } }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  alreadyRescheduled?: boolean;
+  warnings?: string[];
+  googleCalendar?: { ok: boolean; skipped?: boolean; error?: string };
+}> {
   const id = str(input.appointmentId);
   const newStart = str(input.newScheduledStart);
   if (!id || !newStart) return { ok: false, error: 'Missing appointment or new time' };
@@ -409,22 +422,84 @@ export async function rescheduleAppointmentLifecycle(
   if (!appt) return { ok: false, error: 'Appointment not found' };
   const row = appt as Record<string, unknown>;
   const oldStart = str(row.scheduled_start);
+  const currentStage = stageFromLegacyStatus(row.lifecycle_stage || row.status);
+  if (
+    currentStage === 'cancelled' ||
+    ['in_progress', 'quality_check', 'payment_due', 'completed'].includes(currentStage) ||
+    row.job_started_at ||
+    row.job_completed_at ||
+    row.archived_at ||
+    row.deleted_at
+  ) {
+    return { ok: false, error: 'This appointment can no longer be rescheduled online.' };
+  }
+  if (new Date(newStart).getTime() <= Date.now()) {
+    return { ok: false, error: 'Choose a future appointment time.' };
+  }
+  if (oldStart && new Date(oldStart).getTime() === new Date(newStart).getTime()) {
+    return { ok: true, alreadyRescheduled: true };
+  }
   const now = new Date().toISOString();
 
-  const scheduleFields = await import('@/lib/booking-slot-blocking').then((m) => {
-    const vehicles = Array.isArray(row.booking_vehicles) ? row.booking_vehicles : [];
-    const durationLines =
-      vehicles.length > 0
-        ? (vehicles as Record<string, unknown>[]).map((v) => ({
-            serviceSlug: str(v.service_slug) || str(row.service_slug) || 'exterior-wash',
-            vehicleClass: str(v.vehicle_class) || str(row.vehicle_class) || 'sedan',
-            addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
-          }))
-        : [{ serviceSlug: str(row.service_slug) || 'exterior-wash', vehicleClass: str(row.vehicle_class) || 'sedan' }];
-    return m.buildAppointmentScheduleFields(newStart, durationLines);
+  const vehicles = Array.isArray(row.booking_vehicles) ? row.booking_vehicles : [];
+  const durationLines =
+    vehicles.length > 0
+      ? (vehicles as Record<string, unknown>[]).map((v) => ({
+          serviceSlug: str(v.service_slug) || str(row.service_slug) || 'exterior-wash',
+          vehicleClass: str(v.vehicle_class) || str(row.vehicle_class) || 'sedan',
+          addOnSlugs: Array.isArray(v.add_on_slugs) ? (v.add_on_slugs as string[]) : [],
+        }))
+      : [{ serviceSlug: str(row.service_slug) || 'exterior-wash', vehicleClass: str(row.vehicle_class) || 'sedan' }];
+  const [
+    { buildAppointmentScheduleFields },
+    { isBookingInstantAllowedInChicago, bookingInstantFitsInChicagoWindow },
+    { loadDurationCatalog },
+    { reserveBookingSlot, releaseBookingSlot, convertBookingSlotHold },
+    { loadBookingAvailabilityRules },
+  ] = await Promise.all([
+    import('@/lib/booking-slot-blocking'),
+    import('@/lib/booking-availability'),
+    import('@/lib/booking-duration-catalog'),
+    import('@/lib/booking-slot-holds'),
+    import('@/lib/booking-server-shared'),
+  ]);
+  const availabilityRules = await loadBookingAvailabilityRules(admin);
+  if (!isBookingInstantAllowedInChicago(new Date(newStart), availabilityRules)) {
+    return {
+      ok: false,
+      error: 'That time is outside current online booking hours. Choose another available time.',
+    };
+  }
+  const durationCatalog = await loadDurationCatalog(admin);
+  const scheduleFields = buildAppointmentScheduleFields(newStart, durationLines, durationCatalog);
+  if (
+    !bookingInstantFitsInChicagoWindow(
+      new Date(newStart),
+      scheduleFields.estimated_duration_minutes,
+      availabilityRules,
+    )
+  ) {
+    return {
+      ok: false,
+      error: 'That start time does not leave enough business hours for this service. Choose an earlier time.',
+    };
+  }
+  const rescheduleSessionId = `reschedule_${id.replace(/-/g, '')}`;
+  const hold = await reserveBookingSlot(admin, {
+    bookingSessionId: rescheduleSessionId,
+    scheduledStartIso: newStart,
+    durationMinutes: scheduleFields.estimated_duration_minutes,
+    excludeAppointmentId: id,
+    isTest: row.is_test === true,
   });
+  if (!hold.ok) {
+    return {
+      ok: false,
+      error: hold.error ?? 'That appointment time is no longer available. Choose another time.',
+    };
+  }
 
-  const { error } = await admin
+  const update = await admin
     .from('appointments')
     .update({
       scheduled_start: newStart,
@@ -434,10 +509,29 @@ export async function rescheduleAppointmentLifecycle(
       cancelled_at: null,
       updated_at: now,
     })
-    .eq('id', id);
-  if (error) return { ok: false, error: error.message };
+    .eq('id', id)
+    .eq('scheduled_start', oldStart)
+    .select('id')
+    .maybeSingle();
+  if (update.error || !update.data?.id) {
+    await releaseBookingSlot(admin, rescheduleSessionId);
+    return {
+      ok: false,
+      error: update.error?.message ?? 'The appointment changed while you were rescheduling. Refresh and try again.',
+    };
+  }
+  await convertBookingSlotHold(admin, {
+    bookingSessionId: rescheduleSessionId,
+    holdId: hold.holdId,
+    appointmentId: id,
+  });
+  const warnings: string[] = [];
 
-  try {
+  if (
+    row.is_test !== true &&
+    row.exclude_from_automations !== true &&
+    row.exclude_from_customer_communications !== true
+  ) try {
     const { rescheduleAgreementReminders } = await import('@/lib/agreements/reminders');
     await rescheduleAgreementReminders(admin, {
       appointmentId: id,
@@ -453,11 +547,15 @@ export async function rescheduleAppointmentLifecycle(
   const email = str(row.guest_email);
   const phone = str(row.guest_phone);
   const token = str(row.access_token);
+  const suppressNotifications =
+    row.is_test === true ||
+    row.exclude_from_automations === true ||
+    row.exclude_from_customer_communications === true;
   const calUrl = `${appBase()}/api/calendar/appointment/${id}`;
   const confirmUrl =
-    token ? `${appBase()}/book/confirmation?appointment_id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}` : `${appBase()}/book`;
+    token ? buildCustomerPortalAccessUrl(id, token) : `${appBase()}/book`;
 
-  if (input.notifyCustomer !== false && (email || phone)) {
+  if (!suppressNotifications && input.notifyCustomer !== false && (email || phone)) {
     const { buildRescheduleEmailBody, buildRescheduleSmsBody } = await import('@/lib/outbound-message-builders');
     const plainBody =
       input.customEmailBody ??
@@ -469,13 +567,16 @@ export async function rescheduleAppointmentLifecycle(
       const html = input.customEmailBody
         ? `<p style="color:#e4e4e7;font-size:15px;line-height:1.6;white-space:pre-wrap">${plainBody.replace(/</g, '&lt;')}</p>`
         : `<p>Hi ${guest},</p><p>Your appointment has been rescheduled.</p><p><strong>Was:</strong> ${whenChicago(oldStart)}<br/><strong>Now:</strong> ${whenChicago(newStart)}</p><p><a href="${confirmUrl}">View confirmation</a> · <a href="${calUrl}">Add to calendar (.ics)</a></p>`;
-      await emailCustomer(admin, email, subject, html, id, 'booking_rescheduled');
+      const emailResult = await emailCustomer(admin, email, subject, html, id, 'booking_rescheduled');
+      if (!['queued', 'sent', 'delivered'].includes(emailResult.status)) {
+        warnings.push(`Customer email needs attention: ${emailResult.error ?? emailResult.status}`);
+      }
     }
     if (phone) {
       const { twilioConfigured } = await import('@/lib/email-send');
       const { sendCustomerSms } = await import('@/lib/sms-send');
       if (twilioConfigured()) {
-        await sendCustomerSms({
+        const smsResult = await sendCustomerSms({
           db: admin,
           kind: 'booking_rescheduled',
           template_key: 'reschedule_cancel',
@@ -485,11 +586,14 @@ export async function rescheduleAppointmentLifecycle(
           customer_id: row.customer_id ? str(row.customer_id) : null,
           requireConsent: false,
         });
+        if (!smsResult.ok && !smsResult.skipped) {
+          warnings.push(`Customer SMS needs attention: ${smsResult.error ?? 'send failed'}`);
+        }
       }
     }
   }
 
-  try {
+  if (!suppressNotifications) try {
     const addr = [row.service_address, row.service_city, row.service_state, row.service_zip].filter(Boolean).join(', ');
     const total = typeof row.base_price_cents === 'number' ? row.base_price_cents : 0;
     await notifyBusinessNewBookingFull({
@@ -518,12 +622,23 @@ export async function rescheduleAppointmentLifecycle(
     console.warn('[lifecycle] owner reschedule notify', e);
   }
 
-  const googleCalendar = await runGoogleCalendarSync(admin, id, 'upsert');
-  void import('@/lib/booking-availability-block').then(({ upsertAppointmentAvailabilityBlock }) =>
-    upsertAppointmentAvailabilityBlock(admin, id).catch((e) => console.warn('[lifecycle] availability block', e)),
-  );
+  const googleCalendar =
+    row.is_test === true
+      ? { ok: false, skipped: true, error: 'QA appointment is excluded from Google Calendar.' }
+      : await runGoogleCalendarSync(admin, id, 'upsert');
+  if (!googleCalendar.ok && !googleCalendar.skipped) {
+    warnings.push(`Google Calendar will retry: ${googleCalendar.error ?? 'sync failed'}`);
+  }
+  try {
+    const { upsertAppointmentAvailabilityBlock } = await import('@/lib/booking-availability-block');
+    await upsertAppointmentAvailabilityBlock(admin, id);
+  } catch (error) {
+    warnings.push(
+      `Availability block needs attention: ${error instanceof Error ? error.message : 'update failed'}`,
+    );
+  }
 
-  return { ok: true, googleCalendar };
+  return { ok: true, googleCalendar, warnings };
 }
 
 export async function verifyAppointmentAccessToken(appointmentId: string, token: string): Promise<boolean> {

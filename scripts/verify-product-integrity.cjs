@@ -65,6 +65,10 @@ const agreementSignRoute = read('src/app/api/agreements/sign/route.ts');
 const dispatchActions = read('src/app/(dashboard)/admin/dispatch-job-actions.ts');
 const crmActions = read('src/app/(dashboard)/admin/crm-actions.ts');
 const confirmationActions = read('src/app/(dashboard)/admin/confirmation-actions.ts');
+const publicAppointmentLifecycle = read('src/app/api/public/appointment-lifecycle/route.ts');
+const customerBookingLifecycle = read('src/components/booking/customer-booking-lifecycle.tsx');
+const bookingAvailability = read('src/lib/booking-availability.ts');
+const bookingAvailabilityBlock = read('src/lib/booking-availability-block.ts');
 const paymentsManager = read('src/components/admin/payments-manager.tsx');
 const receiptPdfRoute = read('src/app/api/receipts/[id]/pdf/route.ts');
 const receiptResolver = read('src/lib/receipt-resolve.ts');
@@ -409,6 +413,24 @@ check(
     delivery.includes(".eq('kind', 'booking_confirmation')") &&
     delivery.includes('acceptedAt(emailRow)'),
   'Confirmation delivery must recover stale Stripe returns, reject unconfirmed sends, use secure links, dedupe webhook retries, record accepted delivery, and never confuse receipts with confirmations.',
+);
+check(
+  appointmentLifecycle.includes('rescheduleAppointmentLifecycle') &&
+    appointmentLifecycle.includes('reserveBookingSlot') &&
+    appointmentLifecycle.includes('excludeAppointmentId: id') &&
+    appointmentLifecycle.includes(".eq('scheduled_start', oldStart)") &&
+    appointmentLifecycle.includes('buildCustomerPortalAccessUrl(id, token)') &&
+    appointmentLifecycle.includes('await upsertAppointmentAvailabilityBlock') &&
+    publicAppointmentLifecycle.includes('timingSafeEqual') &&
+    publicAppointmentLifecycle.includes('export async function GET') &&
+    publicAppointmentLifecycle.includes('bookingInstantFitsInChicagoWindow') &&
+    publicAppointmentLifecycle.includes('alreadyRescheduled: true') &&
+    customerBookingLifecycle.includes('Loading available times') &&
+    customerBookingLifecycle.includes('controller.abort()') &&
+    customerBookingLifecycle.includes('router.refresh()') &&
+    bookingAvailability.includes('isBookingInstantAllowedInChicago') &&
+    bookingAvailabilityBlock.includes('if (updated.error) throw new Error'),
+  'Customer rescheduling must be secure, Central-time correct, availability-driven, race-protected, idempotent, finite, immediately visible, and move its canonical availability block.',
 );
 
 // Regression fixture from the real customer screenshot:

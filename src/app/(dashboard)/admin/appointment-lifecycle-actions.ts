@@ -88,6 +88,8 @@ export async function adminRescheduleAppointmentAction(formData: FormData): Prom
   revalidatePath('/admin/calendar');
   revalidatePath(`/tech/work-orders/${appointmentId}`);
   const gNote = googleSyncNote(r.googleCalendar);
+  const warningNote = r.warnings?.length ? ` ${r.warnings.join(' ')}` : '';
+  if (r.warnings?.length) return actionWarn(`Appointment rescheduled.${gNote}${warningNote}`);
   if (r.googleCalendar && !r.googleCalendar.ok && !r.googleCalendar.skipped) {
     return actionWarn(`Appointment rescheduled — customer notified.${gNote}`);
   }

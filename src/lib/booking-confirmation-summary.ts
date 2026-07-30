@@ -15,7 +15,7 @@ export async function loadBookingConfirmationSummary(
 ) {
   const { data: appointment } = await admin
     .from('appointments')
-    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code, job_started_at, job_completed_at')
+    .select('id, access_token, status, guest_name, guest_email, guest_phone, scheduled_start, payment_status, payment_choice, promo_code, job_started_at, job_completed_at, archived_at, deleted_at')
     .eq('id', appointmentId)
     .maybeSingle();
   if (!appointment) return null;
@@ -77,14 +77,18 @@ export async function loadBookingConfirmationSummary(
   const loyalty = (loyaltyResult.data ?? []) as Array<{ stamp_count?: number; voided?: boolean }>;
   const rewards = (rewardsResult.data ?? []) as Array<{ status?: string }>;
   const status = str(job.status).toLowerCase();
-  const appointmentActive = !['cancelled', 'voided', 'deleted'].includes(status);
+  const appointmentActive =
+    !['cancelled', 'canceled', 'voided', 'deleted', 'archived', 'no_show'].includes(status) &&
+    !job.archived_at &&
+    !job.deleted_at;
   const scheduledTime = new Date(str(job.scheduled_start)).getTime();
   const customerCanModify =
     appointmentActive &&
     !job.job_started_at &&
     !job.job_completed_at &&
     !['in_progress', 'completed'].includes(status) &&
-    (Number.isNaN(scheduledTime) || scheduledTime > Date.now());
+    !Number.isNaN(scheduledTime) &&
+    scheduledTime > Date.now();
   const intakeForm =
     intake?.form_data && typeof intake.form_data === 'object'
       ? (intake.form_data as Record<string, unknown>)

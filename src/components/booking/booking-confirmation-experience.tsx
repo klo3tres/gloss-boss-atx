@@ -554,6 +554,7 @@ function ConfirmationInner({
         <CustomerBookingLifecycle
           appointmentId={appointmentId}
           token={token}
+          scheduledStart={summary.scheduledStart}
           canReschedule={summary.sessionState.canReschedule}
           canCancel={summary.sessionState.canCancel}
         />

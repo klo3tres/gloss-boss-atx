@@ -27,13 +27,19 @@ export async function upsertAppointmentAvailabilityBlock(
   admin: SupabaseClient,
   appointmentId: string,
 ): Promise<void> {
-  const { data: appt } = await admin.from('appointments').select('*').eq('id', appointmentId).maybeSingle();
+  const { data: appt, error: appointmentError } = await admin
+    .from('appointments')
+    .select('*')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (appointmentError) throw new Error(appointmentError.message);
   if (!appt) return;
 
   const row = appt as Record<string, unknown>;
   const status = str(row.status).toLowerCase();
   if (['cancelled', 'canceled', 'voided', 'declined', 'expired', 'deleted', 'abandoned'].includes(status) || row.archived_at || row.deleted_at) {
-    await admin.from('booking_availability_blocks').delete().eq('appointment_id', appointmentId);
+    const removed = await admin.from('booking_availability_blocks').delete().eq('appointment_id', appointmentId);
+    if (removed.error) throw new Error(removed.error.message);
     return;
   }
 
@@ -62,16 +68,19 @@ export async function upsertAppointmentAvailabilityBlock(
     updated_at: new Date().toISOString(),
   };
 
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from('booking_availability_blocks')
     .select('id')
     .eq('appointment_id', appointmentId)
     .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
 
   if (existing?.id) {
-    await admin.from('booking_availability_blocks').update(payload).eq('id', existing.id);
+    const updated = await admin.from('booking_availability_blocks').update(payload).eq('id', existing.id);
+    if (updated.error) throw new Error(updated.error.message);
   } else {
-    await admin.from('booking_availability_blocks').insert(payload);
+    const inserted = await admin.from('booking_availability_blocks').insert(payload);
+    if (inserted.error) throw new Error(inserted.error.message);
   }
 }
 

@@ -235,6 +235,70 @@ export function isBookingSlotAllowed(date: Date, rules: BookingAvailabilityRules
 
 }
 
+/** Server-safe booking-window check for an absolute instant in Austin/Central Time. */
+export function isBookingInstantAllowedInChicago(
+  date: Date,
+  rules: BookingAvailabilityRules = DEFAULT_BOOKING_AVAILABILITY,
+): boolean {
+  if (Number.isNaN(date.getTime()) || date.getTime() < Date.now() - 60_000) return false;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((value) => value.type === type)?.value ?? '';
+  const dateKey = `${part('year')}-${part('month')}-${part('day')}`;
+  if ((rules.blackoutDates ?? []).includes(dateKey)) return false;
+  if (rules.allowAllOtherDays) return true;
+  const weekday = part('weekday');
+  const minutes = Number(part('hour')) * 60 + Number(part('minute'));
+  const inCentralWindow = (window: DayTimeWindow) =>
+    minutes >= window.startHour * 60 + window.startMinute &&
+    minutes <= window.endHour * 60 + window.endMinute;
+  if (weekday === 'Sun' && rules.allowSunday) {
+    return inCentralWindow(rules.sundayWindow ?? DEFAULT_WEEKEND);
+  }
+  if (weekday === 'Sat' && rules.allowSaturday) {
+    return inCentralWindow(rules.saturdayWindow ?? DEFAULT_WEEKEND);
+  }
+  if (weekday === 'Fri') {
+    return inCentralWindow(rules.fridayWindow ?? DEFAULT_FRIDAY);
+  }
+  return false;
+}
+
+export function bookingInstantFitsInChicagoWindow(
+  date: Date,
+  durationMinutes: number,
+  rules: BookingAvailabilityRules = DEFAULT_BOOKING_AVAILABILITY,
+): boolean {
+  if (!isBookingInstantAllowedInChicago(date, rules)) return false;
+  if (rules.allowAllOtherDays) return true;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((value) => value.type === type)?.value ?? '';
+  const weekday = part('weekday');
+  const startMinutes = Number(part('hour')) * 60 + Number(part('minute'));
+  const window =
+    weekday === 'Sun'
+      ? rules.sundayWindow ?? DEFAULT_WEEKEND
+      : weekday === 'Sat'
+        ? rules.saturdayWindow ?? DEFAULT_WEEKEND
+        : rules.fridayWindow ?? DEFAULT_FRIDAY;
+  const endMinutes = window.endHour * 60 + window.endMinute;
+  return startMinutes + Math.max(15, Math.round(durationMinutes)) <= endMinutes;
+}
+
 
 
 export function bookingAvailabilityHint(rules: BookingAvailabilityRules = DEFAULT_BOOKING_AVAILABILITY): string {
