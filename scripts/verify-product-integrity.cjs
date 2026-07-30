@@ -90,6 +90,7 @@ const receiptDocument = read('src/components/documents/receipt-document.tsx');
 const financialLedger = read('src/lib/financial-ledger.ts');
 const paymentStatusQa = read('scripts/qa-payment-status.cjs');
 const appointmentCancelQa = read('scripts/qa-appointment-cancel.cjs');
+const cancellationStatusMigration = read('supabase/migrations/000149_cancellation_status_compatibility.sql');
 const vercel = JSON.parse(read('vercel.json'));
 
 check(
@@ -435,7 +436,9 @@ check(
   'Customer rescheduling must be secure, Central-time correct, availability-driven, race-protected, idempotent, finite, immediately visible, and move its canonical availability block.',
 );
 check(
-  appointmentLifecycle.includes('cancel_appointment_atomic') &&
+    appointmentLifecycle.includes('cancel_appointment_atomic') &&
+    appointmentLifecycle.includes("status: 'cancelled'") &&
+    appointmentLifecycle.includes("skipped_reason: 'appointment_cancelled'") &&
     appointmentLifecycle.includes('alreadyCancelled: true') &&
     appointmentLifecycle.includes('removeAppointmentAvailabilityBlock') &&
     appointmentLifecycle.includes("runGoogleCalendarSync(admin, id, 'delete')") &&
@@ -450,7 +453,9 @@ check(
     techWorkOrderActions.includes('cancelFallbackBookingLifecycle') &&
     !techWorkOrderActions.includes("payment_status: 'cancelled'") &&
     appointmentCancelQa.includes('Cancellation retry was not idempotent') &&
-    appointmentCancelQa.includes('Cancellation erased the collected-payment state'),
+    appointmentCancelQa.includes('Cancellation erased the collected-payment state') &&
+    cancellationStatusMigration.includes("'cancelled'") &&
+    cancellationStatusMigration.includes("'canceled'"),
   'Appointment cancellation must be secure, atomic, idempotent, immediately visible, release the slot, stop reminders, preserve payment history, sync connected systems, and cover fallback work orders.',
 );
 

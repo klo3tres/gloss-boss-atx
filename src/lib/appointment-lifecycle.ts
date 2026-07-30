@@ -337,6 +337,24 @@ export async function cancelAppointmentLifecycle(
     }
     return { ok: true, alreadyCancelled: true, warnings };
   }
+  // Production historically allowed "cancelled" while the original RPC wrote
+  // "canceled". Close pending reminders first so legacy functions cannot roll
+  // back an otherwise valid cancellation on that spelling mismatch.
+  const reminderCancellation = await admin
+    .from('scheduled_messages')
+    .update({
+      status: 'cancelled',
+      skipped_reason: 'appointment_cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('appointment_id', id)
+    .in('status', ['queued', 'scheduled', 'pending']);
+  if (reminderCancellation.error) {
+    return {
+      ok: false,
+      error: `Cancellation could not safely stop pending reminders: ${reminderCancellation.error.message}`,
+    };
+  }
   const { error } = await admin.rpc('cancel_appointment_atomic', {
     p_appointment_id: id,
     p_reason: str(input.reason) || 'Cancelled',

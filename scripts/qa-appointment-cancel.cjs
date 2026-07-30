@@ -106,9 +106,11 @@ async function main() {
       rule_key: `qa-cancel-${suffix}`,
       appointment_id: appointmentId,
       channel: 'sms',
-      status: 'pending',
+      recipient: '+15125550199',
+      body: 'QA cancellation reminder. Do not send.',
+      status: 'scheduled',
       scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      payload: { qa: true },
+      metadata: { qa: true },
     }).select('id').maybeSingle();
     if (message.error || !message.data?.id) throw new Error(message.error?.message || 'Cancellation QA reminder failed.');
     messageId = String(message.data.id);
