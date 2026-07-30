@@ -21,9 +21,10 @@ Completed: **1.1 Claim guest booking**, **1.2 Create account**, **1.3 Login**,
 **1.8 View memberships**, **1.9 View rewards**, **1.10 View referrals**,
 **1.11 Send and receive messages**, **2.1 Pay deposit**,
 **2.2 Pay remaining balance**,
-**2.3 Recover failed, cancelled, and expired checkout**
+**2.3 Recover failed, cancelled, and expired checkout**,
+**2.4 Record manual and external payments**
 
-Current active item: **2.4 Record manual and external payments**
+Current active item: **2.5 Refund and partially refund**
 
 Phase 1 exit gate: **Passed** with `npm run qa:portal` against production.
 
@@ -41,6 +42,11 @@ Payment 2.3 evidence: **Passed** with `npm run qa:balance` against production,
 including visible expired-attempt state, retryable failed/cancelled checkout,
 expired and wrong-amount session replacement, webhook state repair, and the
 same-booking return path with no invalid-booking dead end.
+
+Payment 2.4 evidence: **Passed** with `npm run qa:manual-payments` against
+production, including atomic cash deposit, separate tip accounting, idempotent
+replay, external-card balance payment, exact $91.00 remainder, and canonical
+$130.00 paid-in-full state.
 
 Completion evidence is recorded only after the item passes code integrity,
 production build, production-data invariants, and its customer-facing recovery
